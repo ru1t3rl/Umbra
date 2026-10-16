@@ -19,3 +19,6 @@ The GUI lives in `gui/` (Bun workspaces): `features/` and `feature-shells/` are 
 ## Tips
 - Run one milestone per session and review the plan before implementation starts.
 - Several skills call `cargo xtask ...` commands; M0 should create the `xtask` crate (`check-deps`, later `gen-api`, `gen-header`, `build-plugins`).
+
+## License
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT) at your option (ADR 0001).

@@ -5,6 +5,9 @@ name: ci
 on:
   push:
   pull_request:
+  schedule:
+    # Weekly (Monday 05:00 UTC): new advisories can turn deny/audit red with no code change (intended).
+    - cron: "0 5 * * 1"
 
 permissions:
   contents: read
@@ -19,6 +22,7 @@ env:
 
 jobs:
   fmt:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,6 +31,7 @@ jobs:
       - run: cargo fmt --all -- --check
 
   clippy:
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -40,6 +45,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   test:
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +61,7 @@ jobs:
       #   cargo test -p cgf-engine --test determinism --locked
 
   doc:
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -70,6 +77,7 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
 
   check-deps:
+    if: github.event_name != 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -81,3 +89,22 @@ jobs:
         run: rustup show active-toolchain
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo xtask check-deps
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          arguments: --all-features
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo install cargo-audit --version 0.22.2 --locked
+      - run: cargo audit
