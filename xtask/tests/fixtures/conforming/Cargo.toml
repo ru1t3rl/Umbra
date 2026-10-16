@@ -1,0 +1,5 @@
+# Fixture workspace, see ../README.md
+[workspace]
+members = ["crates/*"]
+exclude = ["fake_external"]
+resolver = "3"

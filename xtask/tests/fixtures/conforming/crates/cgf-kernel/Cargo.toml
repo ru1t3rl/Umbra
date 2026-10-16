@@ -1,0 +1,14 @@
+[package]
+name = "cgf-kernel"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+cgf-core = { path = "../cgf-core" }
+
+[dev-dependencies]
+cgf-core = { path = "../cgf-core" }
+
+[target.'cfg(windows)'.dependencies]
+cgf-core = { path = "../cgf-core" }

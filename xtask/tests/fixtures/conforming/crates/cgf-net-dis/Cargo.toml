@@ -1,0 +1,9 @@
+[package]
+name = "cgf-net-dis"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+cgf-sdk = { path = "../cgf-sdk" }
+fake_external = { path = "../../fake_external" }

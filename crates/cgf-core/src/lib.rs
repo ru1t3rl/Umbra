@@ -8,6 +8,16 @@
 
 #![forbid(unsafe_code)]
 
+pub mod id;
+pub mod time;
+pub mod units;
+
+pub use id::{BehaviorId, EntityId, IdError, MAX_ID_LEN, MotionModelId, PluginId, TemplateId};
+pub use time::{SimTime, TickRate, TimeError};
+pub use units::{
+    Kilograms, Meters, MetersPerSecond, MetersPerSecondSquared, Radians, RadiansPerSecond, Seconds,
+};
+
 #[cfg(test)]
 mod tests {
     #[test]
