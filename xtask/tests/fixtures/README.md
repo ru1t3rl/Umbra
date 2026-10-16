@@ -22,3 +22,9 @@ from the fixture workspace. Package names reuse the real crate names so the real
 Only allowed edges, including a dev edge, a build edge, a target-specific edge and a renamed edge
 that are all allowed, plus an external dev-dependency on `cgf-plugin-api` (only normal and build
 externals are forbidden there).
+
+## unsafe-forbid check (ASM-024)
+Every crate root except `cgf-plugin-api`, `cgf-plugin-host` and `cgf-sdk` carries
+`#![forbid(unsafe_code)]` in both fixtures, with one seeded exception: `violating/crates/cgf-api-types`
+has an empty `lib.rs` (expected `MissingForbidUnsafe`). The three FFI crates stay empty in both
+fixtures to prove they are exempt.

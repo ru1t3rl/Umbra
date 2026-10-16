@@ -1,6 +1,6 @@
 //! Repository tooling library for `cargo xtask` (ASM-002).
 //!
-//! STUB (M0 step 4): signatures only, bodies are `todo!()` until WI-3.
+//! Currently provides the dependency-rule check (`deps`, REQ-A-1..3, NFR-2).
 
 #![forbid(unsafe_code)]
 

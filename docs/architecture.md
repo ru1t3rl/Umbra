@@ -14,7 +14,7 @@ Planned crates (section 4) are added in their own milestones; no placeholders (A
 - REQ-A-2: the kernel never depends on server, network adapters or API types.
 - REQ-A-3: `cgf-sdk` depends only on `cgf-plugin-api`; `cgf-plugin-api` depends on nothing.
 - REQ-A-4: GUI rule, enforced in `gui/` (M8, ASM-021).
-- Enforcement: `cargo xtask check-deps` (WI-3, not yet implemented).
+- Enforcement: `cargo xtask check-deps` (`xtask/src/deps/`). It checks every direct edge (normal, build, dev, target-specific, renamed) of every workspace member against the rule table in `xtask/src/deps/rules.rs` (ASM-005..007), and that every crate root outside `cgf-plugin-api`, `cgf-plugin-host` and `cgf-sdk` has `#![forbid(unsafe_code)]` (ASM-024). Negative tests run it against `xtask/tests/fixtures/violating`.
 
 ## Code-level guards (workspace-wide)
 - `unsafe_code = "deny"` in `[workspace.lints]`; non-FFI crates also `#![forbid(unsafe_code)]` (NFR-2, ASM-012).
