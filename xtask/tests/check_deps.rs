@@ -19,7 +19,10 @@ fn real_workspace() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.toml")
 }
 
-#[allow(clippy::expect_used)] // test helper: spawn failure is a test error
+#[expect(
+    clippy::expect_used,
+    reason = "test helper: spawn failure is a test error"
+)]
 fn run_check_deps(manifest: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_xtask"))
         .arg("check-deps")

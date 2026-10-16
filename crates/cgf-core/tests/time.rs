@@ -3,7 +3,7 @@
 use cgf_core::{Seconds, SimTime, TickRate, TimeError};
 use proptest::prelude::*;
 
-#[allow(clippy::expect_used)] // test helper
+#[expect(clippy::expect_used, reason = "test helper")]
 fn rate(hz: u32) -> TickRate {
     TickRate::new(hz).expect("non-zero rate")
 }

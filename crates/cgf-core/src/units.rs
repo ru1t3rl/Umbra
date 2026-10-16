@@ -1,5 +1,5 @@
 //! SI unit newtypes (REQ-C-4, ASM-015). STUB (M0 step 4): signatures only, bodies are `todo!()` until WI-5.
-#![allow(clippy::todo, clippy::needless_pass_by_value, missing_docs)]
+#![expect(clippy::todo, missing_docs, reason = "stub until WI-5")]
 
 use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 

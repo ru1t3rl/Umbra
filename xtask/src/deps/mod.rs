@@ -74,7 +74,7 @@ pub enum Violation {
 }
 
 /// Pure and deterministic: the result is sorted.
-#[allow(clippy::todo)]
+#[expect(clippy::todo, reason = "stub until WI-3")]
 #[must_use]
 pub fn check(graph: &WorkspaceGraph, rules: &RuleSet) -> Vec<Violation> {
     let _ = (graph, rules);

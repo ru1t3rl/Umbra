@@ -3,3 +3,8 @@
 *.ico binary
 *.dll binary
 *.so binary
+*.exe binary
+*.lib binary
+*.pdb binary
+*.bat text eol=crlf
+*.cmd text eol=crlf

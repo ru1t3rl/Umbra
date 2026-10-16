@@ -1,6 +1,6 @@
 //! Entity and namespaced string IDs (REQ-C-2, ADR 0002). STUB (M0 step 4): signatures only,
 //! bodies are `todo!()` until WI-7.
-#![allow(clippy::todo, missing_docs)]
+#![expect(clippy::todo, missing_docs, reason = "stub until WI-7")]
 
 pub const MAX_ID_LEN: usize = 128;
 

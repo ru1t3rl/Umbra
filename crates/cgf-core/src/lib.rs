@@ -17,11 +17,3 @@ pub use time::{SimTime, TickRate, TimeError};
 pub use units::{
     Kilograms, Meters, MetersPerSecond, MetersPerSecondSquared, Radians, RadiansPerSecond, Seconds,
 };
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn smoke() {
-        assert_eq!(2 + 2, 4);
-    }
-}

@@ -18,4 +18,6 @@ Planned crates (section 4) are added in their own milestones; no placeholders (A
 
 ## Code-level guards (workspace-wide)
 - `unsafe_code = "deny"` in `[workspace.lints]`; non-FFI crates also `#![forbid(unsafe_code)]` (NFR-2, ASM-012).
-- `clippy.toml` bans `SystemTime::now`, `Instant::now`, `HashMap` and `HashSet` (REQ-K-4, ASM-013).
+- `clippy.toml` bans `SystemTime::now`/`elapsed`, `Instant::now`/`elapsed`, `thread::sleep`, `HashMap`, `HashSet` and `RandomState` (REQ-K-4, ASM-013). A `HashMap` from a third-party API iterated without naming the type remains a review item.
+- `allow_attributes` and `allow_attributes_without_reason` are `warn`: use `#[expect(..., reason = "...")]` (ASM-012).
+- Binaries and tests may print (`print_stdout`/`print_stderr` are `warn`; tests are exempt, ASM-023).

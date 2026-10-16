@@ -11,7 +11,7 @@ pub enum LoadError {
 }
 
 /// Runs `cargo metadata --no-deps --format-version 1 --manifest-path <p>`.
-#[allow(clippy::todo)]
+#[expect(clippy::todo, reason = "stub until WI-3")]
 pub fn load_graph(manifest_path: &std::path::Path) -> Result<WorkspaceGraph, LoadError> {
     let _ = manifest_path;
     todo!("WI-3")

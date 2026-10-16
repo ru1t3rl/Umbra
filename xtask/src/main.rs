@@ -5,7 +5,7 @@
 
 #![forbid(unsafe_code)]
 
-#[allow(clippy::todo)]
+#[expect(clippy::todo, reason = "stub until WI-3")]
 fn main() {
     todo!("WI-3: parse args, load_graph, check, print violations, exit code")
 }

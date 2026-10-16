@@ -1,5 +1,5 @@
 //! Simulation time (REQ-C-1, ASM-016). STUB (M0 step 4): signatures only, bodies are `todo!()` until WI-6.
-#![allow(clippy::todo, missing_docs)]
+#![expect(clippy::todo, missing_docs, reason = "stub until WI-6")]
 
 use crate::units::Seconds;
 
