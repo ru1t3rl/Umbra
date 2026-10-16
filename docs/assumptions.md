@@ -28,3 +28,10 @@ Entries that become architectural decisions move to `docs/adr/`.
 | ASM-019 | The determinism gate (`cargo test -p cgf-engine --test determinism`) is reported as "skipped (from M1)" in M0: no tick pipeline or `cgf-engine` exists yet. | Nothing stateful to hash in M0. | M1 enables it, and it gates every PR from then on |
 | ASM-020 | The `deny.toml` license allow-list starts with only the permissive licenses the current dependency tree needs (from MIT, Apache-2.0, Apache-2.0 WITH LLVM-exception, Unicode-3.0, BSD-2-Clause, BSD-3-Clause, ISC, Zlib). Copyleft is denied. Workspace crates are checked like any other (they carry `MIT OR Apache-2.0`). | ADR 0001. | When a new dependency brings a new license (add it in the PR that adds the dependency, with a note) |
 | ASM-021 | The GUI rule REQ-A-4 is not part of `cargo xtask check-deps`. It is enforced by `bun run check:deps` in `gui/` (M8). | The GUI is not a Cargo package. | M8 |
+
+## M0 WI-1 (recorded 2026-10-17 by build-engineer)
+
+| ID | Assumption | Reason | Revisit when |
+|---|---|---|---|
+| ASM-022 | `[workspace.package] repository` is the placeholder `https://example.invalid/cgf-engine` until a remote exists. The toolchain is pinned to 1.99.1, the locally installed stable, and `rust-version` equals it (ASM-004). | No remote yet (ASM-003). Avoids downloads. | When the remote is created |
+| ASM-023 | The pedantic allow-list is `module_name_repetitions`, `must_use_candidate`, `missing_errors_doc`. `print_stdout` is `warn` workspace-wide; binaries (`xtask`, `cgf-cli`) will opt out locally. | Keeps the list short (ASM-012). Errors are documented through `thiserror` enums. | When noise or gaps appear |

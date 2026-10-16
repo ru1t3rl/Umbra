@@ -1,0 +1,14 @@
+# REQ-K-4 / ASM-013: determinism guards. A legitimate site needs a local
+# #[allow] with a `// REQ-K-4:` justification.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+
+disallowed-methods = [
+    { path = "std::time::SystemTime::now", reason = "REQ-K-4: wall clock is forbidden in simulation logic; use Clock" },
+    { path = "std::time::Instant::now", reason = "REQ-K-4: wall clock is forbidden in simulation logic; use Clock" },
+]
+
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "REQ-K-4: iteration order is nondeterministic; use BTreeMap" },
+    { path = "std::collections::HashSet", reason = "REQ-K-4: iteration order is nondeterministic; use BTreeSet" },
+]
