@@ -1,0 +1,64 @@
+# Frontend architecture
+
+Companion to spec sections 12-13 and `gui/CLAUDE.md`. Defines how the GUI is organized so agents can extend it consistently.
+
+## 1. Concepts
+- **Feature**: a library (`features/<name>`, package `@cgf/<name>`) that does one domain thing well and exposes a small public API via `src/index.ts`. Examples: `ui-kit`, `engine-client`, `engine-stream`, `map-view`, `entity-inspector`, `scenario-control`, `template-browser`, `plugin-status`, `log-view`.
+- **Feature shell**: a library (`feature-shells/<name>`, package `@cgf/shell-<name>`) representing a **page**. It composes features into a layout and exports a route definition. Examples: `dashboard` (live map + run controls + inspector), `templates`, `plugins`, `settings`.
+- **App** (`src/`): bootstraps providers (query client, engine connection, theme), builds the router from shell route definitions, reads runtime config (engine URL). Almost no code.
+
+## 2. Initial inventory (plan, adjust via ADR)
+| Package | Type | Tier | Purpose |
+|---|---|---|---|
+| `@cgf/ui-kit` | feature | foundation | Design tokens, primitives (Button, Panel, Table, Toast), i18n helper |
+| `@cgf/engine-client` | feature | foundation | Generated REST client, typed hooks wrapper, connection/config |
+| `@cgf/engine-stream` | feature | foundation | WebSocket connection, encoding negotiation (json/msgpack), subscription filters, entity store |
+| `@cgf/map-view` | feature | domain | `MapView` interface + implementation (library chosen M8), entity layer |
+| `@cgf/entity-inspector` | feature | domain | Entity list/detail panel |
+| `@cgf/scenario-control` | feature | domain | Load scenario, start/pause/step/stop, clock mode |
+| `@cgf/template-browser` | feature | domain | Browse templates, render param forms from JSON Schema |
+| `@cgf/plugin-status` | feature | domain | Plugins, capabilities, adapters, faults |
+| `@cgf/log-view` | feature | domain | Engine log stream |
+| `@cgf/shell-dashboard` | shell | | Map + controls + inspector |
+| `@cgf/shell-templates` | shell | | Template browser page |
+| `@cgf/shell-plugins` | shell | | Plugin/adapter status page |
+| `@cgf/shell-settings` | shell | | Engine connection and app settings |
+
+## 3. Dependency graph
+```
+src  ->  feature-shells  ->  domain features  ->  foundation features
+ \_____________________________________________/
+```
+Domain features never depend on each other; shells connect them (props, callbacks, selectors from the shared stream store in `engine-stream`).
+
+## 4. Package layout
+Feature:
+```
+features/<name>/
+  package.json        # name @cgf/<name>, "exports": "./src/index.ts", cgf.tier
+  tsconfig.json       # extends ../../tsconfig.base.json
+  README.md           # purpose, public API, example
+  src/index.ts        # the ONLY public surface
+  src/components/  src/hooks/  src/model/   # model = pure logic/types
+  src/*.test.ts(x)    # colocated tests
+```
+Shell:
+```
+feature-shells/<name>/
+  package.json        # name @cgf/shell-<name>
+  src/index.ts        # exports `route` (path, lazy page, nav metadata)
+  src/<Name>Page.tsx  # layout + wiring only
+  src/*.test.tsx
+```
+
+## 5. Data flow
+- Commands and config: generated REST client (`engine-client`) wrapped by TanStack Query hooks.
+- Live state: `engine-stream` owns the WebSocket, decodes frames, applies deltas to a Zustand store; features read through narrow selectors.
+- Contract source of truth: `api/openapi.json` + stream schema from the Rust server. Regenerate with `bun run gen:api`; never hand-write API types.
+
+## 6. Runtime targets
+- Web: `bun run build` produces static assets served anywhere; engine URL from runtime config (`/config.json`), not baked in.
+- Windows: Tauri bundles the same build; may spawn `cgf-cli` as sidecar or connect to a remote engine URL.
+
+## 7. Testing pyramid
+Pure `model/` logic (bun test) > component tests (Testing Library + happy-dom) > shell tests with mocked engine client > Playwright e2e against a real headless engine running the example scenario.

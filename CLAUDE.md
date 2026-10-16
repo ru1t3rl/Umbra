@@ -1,0 +1,63 @@
+# CGF Engine: project instructions for all agents
+
+Source of truth: `docs/SPEC.md` (export of the "CGF Engine: Software Specification"). Requirement IDs (REQ-*, NFR-*, D-*, A-*) are referenced in code comments, commits and PRs.
+
+## Ground rules
+1. Build strictly in milestone order (spec section 17). Never start Mn+1 before Mn's acceptance criteria pass.
+2. MUST/SHOULD/MAY in the spec carry their RFC meaning. Do not silently reverse a decision (D-*). If you think one is wrong, stop and write an ADR proposal in `docs/adr/` and ask the human.
+3. Ambiguity: pick the simplest option consistent with KISS/SOLID/DRY, record it in `docs/assumptions.md`, continue.
+4. Dependencies point inward (REQ-A-1..4). `cgf-core` depends on no workspace crate. `cgf-sdk` depends only on `cgf-plugin-api`.
+5. `unsafe` only in `cgf-plugin-api`, `cgf-plugin-host`, `cgf-sdk`; every block has `// SAFETY:` and a test. Everywhere else `#![forbid(unsafe_code)]`.
+6. No `unwrap`/`expect` on external input. `thiserror` in libraries, `anyhow` only in binaries.
+7. Determinism (REQ-K-4): no wall clock, no `HashMap` iteration order, no ad-hoc randomness inside simulation logic. Use `Clock` and `SimRng`.
+8. Definition of done for any change: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, determinism test, dependency-rule check all pass; docs and tests updated; commit references requirement IDs.
+
+## Team (subagents in `.claude/agents/`)
+| Agent | Use for |
+|---|---|
+| `architect` | Design, ADRs, crate boundaries, trait design, spec questions |
+| `rust-engineer` | Implementing kernel, templates, behavior, motion, engine facade |
+| `plugin-abi-engineer` | `cgf-plugin-api`, host, SDK, FFI safety |
+| `network-engineer` | `cgf-net`, DIS/HLA adapters |
+| `api-engineer` | `cgf-server`, `cgf-api-types`, OpenAPI, stream schema |
+| `frontend-architect` | GUI package plan: features, shells, tiers, public APIs, ADRs |
+| `frontend-engineer` | GUI implementation under `gui/` with Bun (features, shells, app, Tauri) |
+| `frontend-test-engineer` | GUI tests: bun test, Playwright, stream and architecture tests |
+| `test-engineer` | Test strategy, determinism/property/plugin/network tests, benchmarks |
+| `code-reviewer` | Read-only review against spec and principles |
+| `build-engineer` | Workspace, CI, cross-platform builds, releases |
+
+## Skills (in `.claude/skills/`)
+Backend: `implement-milestone`, `add-crate`, `add-plugin-kind`, `add-network-adapter`, `write-tests`, `update-openapi`, `record-decision`, `verify-and-build`, `review-change`.
+Frontend (`gui/`, Bun): `add-feature`, `add-feature-shell`, `generate-api-client`, `write-frontend-tests`, `verify-frontend`, `review-frontend-change`.
+Frontend rules live in `gui/CLAUDE.md` and `docs/frontend-architecture.md` (they supersede spec section 13).
+
+## Standard workflow
+1. `architect` plans the milestone slice (skill `implement-milestone`).
+2. Specialist engineer implements one requirement ID at a time, test first.
+3. `test-engineer` reviews coverage and adds determinism/property/failure tests.
+4. `code-reviewer` reviews (skill `review-change`).
+5. `build-engineer` runs full verification (skill `verify-and-build`).
+6. Only then mark acceptance criteria met in `docs/milestones.md`.
+
+## Frontend workflow (milestone M8 and earlier GUI slices)
+1. `frontend-architect` plans packages (feature vs shell, tier, public API).
+2. `frontend-test-engineer` writes failing tests (`write-frontend-tests`).
+3. `frontend-engineer` implements via `add-feature` / `add-feature-shell`, using `generate-api-client` after contract changes.
+4. `code-reviewer` applies `review-frontend-change`.
+5. `build-engineer` / anyone runs `verify-frontend` before done.
+GUI work may begin after M5 (the API exists); it must never block or change engine milestones.
+
+## Model policy
+Each agent pins its model in frontmatter (full IDs, so behavior does not shift when aliases move). Bump IDs deliberately when upgrading.
+
+| Model | Agents | Why |
+|---|---|---|
+| `claude-opus-5-5` | `architect`, `frontend-architect`, `code-reviewer`, `plugin-abi-engineer` | Low-volume, high-stakes work: design, review, FFI/`unsafe`/ABI |
+| `claude-sonnet-5-5` | `rust-engineer`, `network-engineer`, `api-engineer`, `frontend-engineer`, `test-engineer`, `frontend-test-engineer`, `build-engineer` | Well-specified, high-volume implementation guarded by spec, plans and tests |
+
+Rules:
+- Never set `CLAUDE_CODE_SUBAGENT_MODEL`; it overrides every agent's `model:` and defeats this policy.
+- Escalation: if a Sonnet agent fails twice on the same task (hard determinism bug, tricky protocol issue), re-run that task with a per-invocation model override to Opus. Do not permanently upgrade the agent.
+- Skills run in the main session's model. Use Opus (`/model`) when planning or orchestrating a milestone, Sonnet for routine execution.
+- Verify with `/agents` after changing any frontmatter.
