@@ -1,84 +1,107 @@
-//! SI unit newtypes (REQ-C-4, ASM-015). STUB (M0 step 4): signatures only, bodies are `todo!()` until WI-5.
-#![expect(clippy::todo, missing_docs, reason = "stub until WI-5")]
+//! SI unit newtypes (REQ-C-4, ASM-015).
+//!
+//! Each unit is a public-field `f64` newtype. Only `+ - * /` and `to_radians`/`to_degrees`
+//! (a single multiplication each) are used, so results are bit-reproducible (ADR 0003).
+//! Degrees exist only as conversion functions; the stored value is always SI.
 
 use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 
-macro_rules! unit_stub {
-    ($($name:ident),*) => {$(
+macro_rules! unit {
+    ($($(#[$doc:meta])* $name:ident),* $(,)?) => {$(
+        $(#[$doc])*
         #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
         pub struct $name(pub f64);
-        impl Add for $name { type Output = $name; fn add(self, _: $name) -> $name { todo!() } }
-        impl Sub for $name { type Output = $name; fn sub(self, _: $name) -> $name { todo!() } }
-        impl Neg for $name { type Output = $name; fn neg(self) -> $name { todo!() } }
-        impl Mul<f64> for $name { type Output = $name; fn mul(self, _: f64) -> $name { todo!() } }
-        impl Div<f64> for $name { type Output = $name; fn div(self, _: f64) -> $name { todo!() } }
-        impl Div<$name> for $name { type Output = f64; fn div(self, _: $name) -> f64 { todo!() } }
-        impl AddAssign for $name { fn add_assign(&mut self, _: $name) { todo!() } }
-        impl SubAssign for $name { fn sub_assign(&mut self, _: $name) { todo!() } }
+        impl Add for $name {
+            type Output = $name;
+            fn add(self, rhs: $name) -> $name { $name(self.0 + rhs.0) }
+        }
+        impl Sub for $name {
+            type Output = $name;
+            fn sub(self, rhs: $name) -> $name { $name(self.0 - rhs.0) }
+        }
+        impl Neg for $name {
+            type Output = $name;
+            fn neg(self) -> $name { $name(-self.0) }
+        }
+        impl Mul<f64> for $name {
+            type Output = $name;
+            fn mul(self, rhs: f64) -> $name { $name(self.0 * rhs) }
+        }
+        impl Div<f64> for $name {
+            type Output = $name;
+            fn div(self, rhs: f64) -> $name { $name(self.0 / rhs) }
+        }
+        impl Div<$name> for $name {
+            type Output = f64;
+            fn div(self, rhs: $name) -> f64 { self.0 / rhs.0 }
+        }
+        impl AddAssign for $name {
+            fn add_assign(&mut self, rhs: $name) { self.0 += rhs.0; }
+        }
+        impl SubAssign for $name {
+            fn sub_assign(&mut self, rhs: $name) { self.0 -= rhs.0; }
+        }
     )*};
 }
-unit_stub!(
+
+unit!(
+    /// Length in meters.
     Meters,
+    /// Duration in seconds.
     Seconds,
+    /// Angle in radians.
     Radians,
+    /// Mass in kilograms.
     Kilograms,
+    /// Speed in meters per second.
     MetersPerSecond,
+    /// Acceleration in meters per second squared.
     MetersPerSecondSquared,
-    RadiansPerSecond
+    /// Angular rate in radians per second.
+    RadiansPerSecond,
 );
 
-impl Mul<Seconds> for MetersPerSecond {
-    type Output = Meters;
-    fn mul(self, _: Seconds) -> Meters {
-        todo!()
-    }
+/// Defines `rate * Seconds = quantity` and `quantity / Seconds = rate`.
+macro_rules! time_relation {
+    ($rate:ident, $qty:ident) => {
+        impl Mul<Seconds> for $rate {
+            type Output = $qty;
+            fn mul(self, rhs: Seconds) -> $qty {
+                $qty(self.0 * rhs.0)
+            }
+        }
+        impl Div<Seconds> for $qty {
+            type Output = $rate;
+            fn div(self, rhs: Seconds) -> $rate {
+                $rate(self.0 / rhs.0)
+            }
+        }
+    };
 }
-impl Div<Seconds> for Meters {
-    type Output = MetersPerSecond;
-    fn div(self, _: Seconds) -> MetersPerSecond {
-        todo!()
+time_relation!(MetersPerSecond, Meters);
+time_relation!(MetersPerSecondSquared, MetersPerSecond);
+time_relation!(RadiansPerSecond, Radians);
+
+impl Radians {
+    /// Converts degrees to radians (`deg * pi / 180`, one multiplication; deterministic).
+    pub fn from_degrees(deg: f64) -> Self {
+        Self(deg.to_radians())
     }
-}
-impl Mul<Seconds> for MetersPerSecondSquared {
-    type Output = MetersPerSecond;
-    fn mul(self, _: Seconds) -> MetersPerSecond {
-        todo!()
-    }
-}
-impl Div<Seconds> for MetersPerSecond {
-    type Output = MetersPerSecondSquared;
-    fn div(self, _: Seconds) -> MetersPerSecondSquared {
-        todo!()
-    }
-}
-impl Mul<Seconds> for RadiansPerSecond {
-    type Output = Radians;
-    fn mul(self, _: Seconds) -> Radians {
-        todo!()
-    }
-}
-impl Div<Seconds> for Radians {
-    type Output = RadiansPerSecond;
-    fn div(self, _: Seconds) -> RadiansPerSecond {
-        todo!()
+
+    /// Converts to degrees (`rad * 180 / pi`, one multiplication; deterministic).
+    pub fn to_degrees(self) -> f64 {
+        self.0.to_degrees()
     }
 }
 
-impl Radians {
-    pub fn from_degrees(deg: f64) -> Self {
-        let _ = deg;
-        todo!()
-    }
-    pub fn to_degrees(self) -> f64 {
-        todo!()
-    }
-}
 impl RadiansPerSecond {
+    /// Converts degrees per second to radians per second.
     pub fn from_degrees_per_second(dps: f64) -> Self {
-        let _ = dps;
-        todo!()
+        Self(dps.to_radians())
     }
+
+    /// Converts to degrees per second.
     pub fn to_degrees_per_second(self) -> f64 {
-        todo!()
+        self.0.to_degrees()
     }
 }
