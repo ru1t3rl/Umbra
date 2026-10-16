@@ -23,3 +23,16 @@ Example violation line: `REQ-A-1: cgf-core -> cgf-kernel (normal) not allowed; c
 Negative tests: `cargo test -p xtask` (fixtures in `xtask/tests/fixtures/`, see the README there).
 
 More `cargo xtask` subcommands will be documented here as they are added.
+
+## Continuous integration (`.github/workflows/ci.yml`, NFR-3)
+Triggers: `push`, `pull_request` (and a weekly schedule, see Supply chain). `permissions: contents: read`; a new run cancels a superseded run of the same ref. The toolchain comes from `rust-toolchain.toml` (`rustup show active-toolchain` installs it); `Swatinem/rust-cache` caches builds keyed on the lockfile; all cargo calls use `--locked`.
+
+| Job | OS | Command |
+|---|---|---|
+| `fmt` | ubuntu-latest | `cargo fmt --all -- --check` |
+| `clippy` | ubuntu-latest, windows-latest | `cargo clippy --workspace --all-targets --locked -- -D warnings` |
+| `test` | ubuntu-latest, windows-latest | `cargo test --workspace --locked` |
+| `doc` | ubuntu-latest, windows-latest | `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked` |
+| `check-deps` | ubuntu-latest, windows-latest | `cargo xtask check-deps` |
+
+The determinism gate is reported as skipped in M0 (ASM-019); M1 adds it to the `test` job. Third-party actions are pinned by commit SHA with the tag in a comment. Branch protection (required checks) is a manual admin step on the remote.
