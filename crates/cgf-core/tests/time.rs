@@ -47,6 +47,8 @@ fn at_tick_keeps_tick_and_rate() {
 #[test]
 fn as_seconds_equals_tick_over_hz() {
     assert_eq!(SimTime::at_tick(rate(30), 90).as_seconds(), Seconds(3.0));
+    // 3/10 is 0.3, whereas 3 * (1/10) is 0.30000000000000004.
+    assert_eq!(SimTime::at_tick(rate(10), 3).as_seconds(), Seconds(0.3));
 }
 
 /// REQ-C-1: `SimTime::dt` matches the rate's `dt`.
@@ -119,10 +121,7 @@ fn ticks_since_a_later_time_is_negative_interval() {
 
     assert_eq!(
         a.ticks_since(b),
-        Err(TimeError::NegativeInterval {
-            earlier: 25,
-            later: 10
-        })
+        Err(TimeError::NegativeInterval { from: 25, to: 10 })
     );
 }
 
@@ -156,16 +155,22 @@ fn time_error_messages_are_stable() {
         "tick rates differ: 30 Hz vs 60 Hz"
     );
     assert_eq!(
-        TimeError::NegativeInterval {
-            earlier: 9,
-            later: 3
-        }
-        .to_string(),
+        TimeError::NegativeInterval { from: 9, to: 3 }.to_string(),
         "time 3 is before 9"
     );
 }
 
 proptest! {
+    /// ASM-016: `as_seconds` is exactly `tick / hz`, bit for bit (not `tick * dt`).
+    #[test]
+    fn as_seconds_is_bitwise_tick_over_hz(hz in 1u32..=1000, tick in 0u64..(1u64 << 53)) {
+        let got = SimTime::at_tick(rate(hz), tick).as_seconds().0;
+
+        #[expect(clippy::cast_precision_loss, reason = "tick < 2^53 is exact")]
+        let want = tick as f64 / f64::from(hz);
+        prop_assert_eq!(got.to_bits(), want.to_bits());
+    }
+
     /// Clock-monotonicity groundwork (section 15): ticks strictly increase, seconds never decrease.
     #[test]
     fn next_strictly_increases_tick_and_never_decreases_seconds(

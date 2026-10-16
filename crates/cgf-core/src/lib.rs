@@ -1,7 +1,11 @@
 //! `cgf-core`: shared domain types for the CGF Engine.
 //!
-//! Responsibility: IDs (REQ-C-2), simulation time (REQ-C-1) and SI units (REQ-C-4).
-//! These arrive in later M0 work items; this crate is currently an empty skeleton.
+//! Responsibility, one module each:
+//! - [`units`]: SI `f64` newtypes (`Meters`, `Seconds`, `Radians`, ...) with dimension-checked
+//!   arithmetic (REQ-C-4).
+//! - [`time`]: [`SimTime`] (tick count at a [`TickRate`]) and [`TimeError`] (REQ-C-1).
+//! - [`id`]: [`EntityId`] and the namespaced string IDs [`TemplateId`], [`BehaviorId`],
+//!   [`MotionModelId`], [`PluginId`] (REQ-C-2, ADR 0002).
 //!
 //! Dependency rule (REQ-A-1): this crate depends on no other workspace crate.
 //! It contains no `unsafe` code and never reads the wall clock (REQ-K-4).

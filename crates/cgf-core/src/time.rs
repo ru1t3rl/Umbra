@@ -34,6 +34,10 @@ impl TickRate {
 }
 
 /// A point in simulation time: a tick count at a fixed [`TickRate`].
+///
+/// This is simulated time, not wall-clock time (REQ-K-4). There is deliberately no `Ord`:
+/// times with different rates are unordered ([`PartialOrd`] returns `None`). Key a `BTreeMap`
+/// on [`SimTime::tick`] instead. `SimTime` is `Copy`; advancing returns a new value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SimTime {
     tick: u64,
@@ -74,11 +78,13 @@ impl SimTime {
     }
 
     /// The next tick, or `None` on overflow.
+    #[must_use = "returns the advanced time; SimTime is Copy and is not modified"]
     pub fn checked_next(self) -> Option<Self> {
         self.checked_advance(1)
     }
 
     /// Advances by `ticks`, or `None` on overflow.
+    #[must_use = "returns the advanced time; SimTime is Copy and is not modified"]
     pub fn checked_advance(self, ticks: u64) -> Option<Self> {
         let tick = self.tick.checked_add(ticks)?;
         Some(Self { tick, ..self })
@@ -99,8 +105,8 @@ impl SimTime {
         self.tick
             .checked_sub(earlier.tick)
             .ok_or(TimeError::NegativeInterval {
-                earlier: earlier.tick,
-                later: self.tick,
+                from: earlier.tick,
+                to: self.tick,
             })
     }
 }
@@ -114,6 +120,7 @@ impl PartialOrd for SimTime {
 
 /// Errors from time arithmetic.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum TimeError {
     /// Two times with different tick rates were combined.
     #[error("tick rates differ: {left} Hz vs {right} Hz")]
@@ -124,11 +131,11 @@ pub enum TimeError {
         right: u32,
     },
     /// An interval was requested from a later time to an earlier one.
-    #[error("time {later} is before {earlier}")]
+    #[error("time {to} is before {from}")]
     NegativeInterval {
-        /// Tick of the (supposedly) earlier time.
-        earlier: u64,
-        /// Tick of the (supposedly) later time.
-        later: u64,
+        /// Tick of the reference time passed to `ticks_since` (the start of the interval).
+        from: u64,
+        /// Tick of the receiver (the end of the interval), which is before `from`.
+        to: u64,
     },
 }

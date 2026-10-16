@@ -41,12 +41,13 @@ impl fmt::Display for EntityId {
 
 /// Why a string was rejected as a namespaced ID. `index` values are byte offsets.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum IdError {
     /// The input was empty.
     #[error("id is empty")]
     Empty,
     /// The input exceeds [`MAX_ID_LEN`]; `id` is only a bounded prefix of it.
-    #[error("id `{id}` is {len} bytes; max is {max}")]
+    #[error("id {id:?} is {len} bytes; max is {max}")]
     TooLong {
         /// A prefix of the offending input (at most 64 bytes).
         id: String,
@@ -56,13 +57,13 @@ pub enum IdError {
         max: usize,
     },
     /// The input has a single segment.
-    #[error("id `{id}` needs at least two dot-separated segments")]
+    #[error("id {id:?} needs at least two dot-separated segments")]
     MissingNamespace {
         /// The offending input.
         id: String,
     },
     /// Two dots in a row, or a leading or trailing dot.
-    #[error("id `{id}` has an empty segment at byte {index}")]
+    #[error("id {id:?} has an empty segment at byte {index}")]
     EmptySegment {
         /// The offending input.
         id: String,
@@ -70,7 +71,7 @@ pub enum IdError {
         index: usize,
     },
     /// A character outside `[a-z0-9_.]`.
-    #[error("id `{id}` has invalid character {ch:?} at byte {index}")]
+    #[error("id {id:?} has invalid character {ch:?} at byte {index}")]
     InvalidChar {
         /// The offending input.
         id: String,
@@ -80,7 +81,7 @@ pub enum IdError {
         index: usize,
     },
     /// A segment starts with a digit or underscore.
-    #[error("id `{id}`: segment at byte {index} must start with a-z")]
+    #[error("id {id:?}: segment at byte {index} must start with a-z")]
     InvalidSegmentStart {
         /// The offending input.
         id: String,

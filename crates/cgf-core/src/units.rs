@@ -3,6 +3,27 @@
 //! Each unit is a public-field `f64` newtype. Only `+ - * /` and `to_radians`/`to_degrees`
 //! (a single multiplication each) are used, so results are bit-reproducible (ADR 0003).
 //! Degrees exist only as conversion functions; the stored value is always SI.
+//!
+//! Values are not validated here (ASM-015, REQ-C-4): NaN and infinity are rejected at the edges
+//! (templates, network, API), not inside the types. The derived `PartialEq` and `PartialOrd` follow
+//! `f64`: `NaN != NaN` and a NaN compares as `None`.
+//!
+//! Mixing units does not compile:
+//!
+//! ```compile_fail
+//! use cgf_core::{Meters, Seconds};
+//! let _ = Meters(1.0) + Seconds(1.0);
+//! ```
+//!
+//! ```compile_fail
+//! use cgf_core::Seconds;
+//! let _ = Seconds(1.0) * Seconds(1.0);
+//! ```
+//!
+//! ```compile_fail
+//! use cgf_core::Meters;
+//! let _ = Meters(1.0) * Meters(1.0);
+//! ```
 
 use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 
@@ -83,12 +104,12 @@ time_relation!(MetersPerSecondSquared, MetersPerSecond);
 time_relation!(RadiansPerSecond, Radians);
 
 impl Radians {
-    /// Converts degrees to radians (`deg * pi / 180`, one multiplication; deterministic).
+    /// Converts degrees to radians (`deg * (PI / 180)`, one multiplication; deterministic).
     pub fn from_degrees(deg: f64) -> Self {
         Self(deg.to_radians())
     }
 
-    /// Converts to degrees (`rad * 180 / pi`, one multiplication; deterministic).
+    /// Converts to degrees (`rad * (180 / PI)`, one multiplication; deterministic).
     pub fn to_degrees(self) -> f64 {
         self.0.to_degrees()
     }

@@ -140,14 +140,87 @@ fn non_ascii_is_invalid_char() {
 /// `InvalidChar` or `InvalidSegmentStart`; either is accepted (see plan ambiguity note).
 #[test]
 fn uppercase_segment_start_is_rejected() {
-    let r = TemplateId::new("Tank.base");
+    assert_eq!(
+        TemplateId::new("Tank.base"),
+        Err(IdError::InvalidChar {
+            id: "Tank.base".into(),
+            ch: 'T',
+            index: 0
+        })
+    );
+}
 
+/// ASM-025: `EmptySegment.index` is where the empty segment begins.
+#[test]
+fn empty_segment_index_is_where_it_begins() {
+    assert_eq!(
+        TemplateId::new("a..b"),
+        Err(IdError::EmptySegment {
+            id: "a..b".into(),
+            index: 2
+        })
+    );
+    assert_eq!(
+        TemplateId::new("a.b."),
+        Err(IdError::EmptySegment {
+            id: "a.b.".into(),
+            index: 4
+        })
+    );
+}
+
+/// ASM-025: an invalid character wins over a missing namespace.
+#[test]
+fn invalid_char_takes_precedence_over_missing_namespace() {
+    assert!(matches!(
+        TemplateId::new("Tank"),
+        Err(IdError::InvalidChar {
+            ch: 'T',
+            index: 0,
+            ..
+        })
+    ));
+}
+
+/// ASM-025: a digit at the very start is `InvalidSegmentStart` at byte 0.
+#[test]
+fn digit_first_segment_start_reports_index_zero() {
+    assert_eq!(
+        TemplateId::new("1a.b"),
+        Err(IdError::InvalidSegmentStart {
+            id: "1a.b".into(),
+            index: 0
+        })
+    );
+}
+
+/// ASM-025: the `TooLong` prefix is cut at a char boundary (a 2-byte char straddles byte 64).
+#[test]
+fn too_long_prefix_respects_char_boundaries() {
+    // 63 ASCII bytes, then a 2-byte char occupying bytes 63..65, then padding past 128.
+    let s = format!("{}\u{fc}{}", "a".repeat(63), "b".repeat(100));
+
+    let Err(IdError::TooLong { id, len, max }) = TemplateId::new(&s) else {
+        panic!("expected TooLong");
+    };
+
+    assert_eq!((len, max), (s.len(), 128));
+    assert_eq!(id, "a".repeat(63));
+}
+
+/// Error messages quote the input with `{:?}`, so control characters cannot forge extra lines.
+#[test]
+fn newline_in_input_does_not_make_multiline_message() {
+    for s in ["a.b\nc", "a\n.b", "a.b\n", "\n"] {
+        let msg = TemplateId::new(s).unwrap_err().to_string();
+        assert!(!msg.contains(['\n', '\r', '\x1b']), "{msg:?}");
+    }
+    let long = format!("a.{}\n", "b".repeat(200));
     assert!(
-        matches!(
-            r,
-            Err(IdError::InvalidChar { .. } | IdError::InvalidSegmentStart { .. })
-        ),
-        "{r:?}"
+        !TemplateId::new(&long)
+            .unwrap_err()
+            .to_string()
+            .contains('\n')
     );
 }
 
@@ -258,7 +331,23 @@ fn valid_id() -> impl Strategy<Value = String> {
     "[a-z][a-z0-9_]{0,10}(\\.[a-z][a-z0-9_]{0,10}){1,5}"
 }
 
+/// Reference predicate for `^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$` and at most 128 bytes.
+fn oracle_accepts(s: &str) -> bool {
+    let segment_ok = |seg: &str| {
+        let mut chars = seg.chars();
+        chars.next().is_some_and(|c| c.is_ascii_lowercase())
+            && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    };
+    s.len() <= MAX_ID_LEN && s.split('.').count() >= 2 && s.split('.').all(segment_ok)
+}
+
 proptest! {
+    /// ADR 0002: the validator accepts exactly what the reference grammar accepts.
+    #[test]
+    fn validator_matches_reference_grammar(s in "[a-zA-Z0-9_.\\-]{0,20}") {
+        prop_assert_eq!(TemplateId::new(&s).is_ok(), oracle_accepts(&s), "{:?}", s);
+    }
+
     /// REQ-C-2: any grammar-valid string parses and displays back unchanged.
     #[test]
     fn display_then_parse_round_trips(s in valid_id()) {

@@ -95,7 +95,7 @@ fn default_is_zero_and_ordering_is_by_value() {
 /// REQ-C-4: 180 degrees is pi radians, and back.
 #[test]
 fn radians_from_degrees_180_is_pi() {
-    assert!(close(Radians::from_degrees(180.0).0, PI));
+    assert_eq!(Radians::from_degrees(180.0).0, PI);
     assert!(close(Radians(PI).to_degrees(), 180.0));
 }
 
