@@ -18,6 +18,9 @@ pub struct CrateRule {
 pub struct RuleSet {
     /// One entry per crate.
     pub crates: &'static [CrateRule],
+    /// Non-member path dependencies that are allowed (ASM-006). Any other path dependency
+    /// outside the workspace is a violation, because it could launder forbidden edges.
+    pub allowed_path_deps: &'static [&'static str],
 }
 
 impl RuleSet {
@@ -44,6 +47,8 @@ const fn rule(
 /// The full section 4 table (REQ-A-1..3, ASM-005..009). Crates that do not exist yet are listed
 /// so they are covered the day they appear.
 pub const RULES: RuleSet = RuleSet {
+    // `fake_external` only exists in the test fixtures under `xtask/tests/fixtures`.
+    allowed_path_deps: &["fake_external"],
     crates: &[
         rule("cgf-core", &[], "REQ-A-1"),
         rule("cgf-kernel", &["cgf-core"], "REQ-A-2"),

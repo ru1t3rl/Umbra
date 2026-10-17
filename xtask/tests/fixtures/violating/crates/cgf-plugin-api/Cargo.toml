@@ -9,3 +9,6 @@ fake_external = { path = "../../fake_external" }
 
 [build-dependencies]
 fake_external = { path = "../../fake_external" }
+
+[lints]
+workspace = true

@@ -126,7 +126,13 @@ fn given_violating_fixture_when_loaded_then_only_api_types_is_missing_forbid() {
     let roots = load_crate_roots(&fixture("violating")).expect("load");
 
     assert!(roots.iter().any(|r| r.package == "cgf-plugin-api"));
-    assert_eq!(check_forbid_unsafe(&roots), vec![missing("cgf-api-types")]);
+    assert_eq!(
+        check_forbid_unsafe(&roots),
+        vec![Violation::MissingForbidUnsafe {
+            package: "cgf-api-types".to_string(),
+            file: "src/lib.rs".to_string()
+        }]
+    );
 }
 
 /// ASM-024 (fixture): the conforming fixture has no violation.
@@ -134,7 +140,22 @@ fn given_violating_fixture_when_loaded_then_only_api_types_is_missing_forbid() {
 fn given_conforming_fixture_when_loaded_then_no_forbid_violation() {
     let roots = load_crate_roots(&fixture("conforming")).expect("load");
 
-    assert!(roots.len() >= 4, "expected the fixture crate roots");
+    let ids: Vec<(&str, &str)> = roots
+        .iter()
+        .map(|r| (r.package.as_str(), r.file.as_str()))
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            ("cgf-core", "src/lib.rs"),
+            ("cgf-kernel", "src/lib.rs"),
+            ("cgf-motion", "src/lib.rs"),
+            ("cgf-net-dis", "src/lib.rs"),
+            ("cgf-plugin-api", "src/lib.rs"),
+            ("cgf-plugin-host", "src/lib.rs"),
+            ("cgf-sdk", "src/lib.rs"),
+        ]
+    );
     assert_eq!(check_forbid_unsafe(&roots), Vec::<Violation>::new());
 }
 
@@ -142,4 +163,104 @@ fn given_conforming_fixture_when_loaded_then_no_forbid_violation() {
 #[test]
 fn given_missing_manifest_when_loading_roots_then_error() {
     assert!(load_crate_roots(&fixture("does_not_exist")).is_err());
+}
+
+// ---------------------------------------------------------------- review M3 / m1 / m4
+
+fn assert_missing(source: &str) {
+    let r = root("cgf-kernel", source);
+    assert_eq!(
+        check_forbid_unsafe(&[r]),
+        vec![missing("cgf-kernel")],
+        "source accepted wrongly:\n{source}"
+    );
+}
+
+fn assert_accepted(source: &str) {
+    let r = root("cgf-kernel", source);
+    assert_eq!(
+        check_forbid_unsafe(&[r]),
+        Vec::<Violation>::new(),
+        "source rejected wrongly:\n{source}"
+    );
+}
+
+/// M3: an attribute inside a block comment does not count.
+#[test]
+fn given_forbid_in_block_comment_when_checked_then_violation() {
+    assert_missing("/*\n#![forbid(unsafe_code)]\n*/\npub fn f() {}\n");
+}
+
+/// M3: an attribute inside a multi-line string literal does not count.
+#[test]
+fn given_forbid_in_string_literal_when_checked_then_violation() {
+    assert_missing("pub const S: &str = \"\n#![forbid(unsafe_code)]\n\";\n");
+}
+
+/// M3: an attribute inside an inner module does not count.
+#[test]
+fn given_forbid_in_inner_module_when_checked_then_violation() {
+    assert_missing("mod inner {\n    #![forbid(unsafe_code)]\n}\n");
+    assert_missing("mod inner {\n#![forbid(unsafe_code)]\n}\n");
+}
+
+/// M3: after the first item the preamble is over.
+#[test]
+fn given_forbid_after_first_item_when_checked_then_violation() {
+    assert_missing("pub fn f() {}\n#![forbid(unsafe_code)]\n");
+}
+
+/// M3: an indented attribute does not count.
+#[test]
+fn given_indented_forbid_when_checked_then_violation() {
+    assert_missing("  #![forbid(unsafe_code)]\n");
+}
+
+/// M3: comments, doc comments, blank lines and other inner attributes may precede it.
+#[test]
+fn given_preamble_before_forbid_when_checked_then_no_violation() {
+    assert_accepted(
+        "//! docs\n\n// note\n/* block\n   #![deny(x)] */\n/** doc */\n#![warn(missing_docs)]\n#![forbid(unsafe_code)]\npub fn f() {}\n",
+    );
+}
+
+/// m1: the attribute may span lines and have spaces after `#!`.
+#[test]
+fn given_multiline_or_spaced_forbid_when_checked_then_no_violation() {
+    assert_accepted("#![forbid(\n    unsafe_code\n)]\n");
+    assert_accepted("#! [forbid(unsafe_code)]\n");
+    assert_accepted("#![forbid(unsafe_code)]\r\npub fn f() {}\r\n");
+}
+
+/// m1 / ASM-024: `cfg_attr(..., forbid(unsafe_code))` is conditional and does not count.
+#[test]
+fn given_cfg_attr_forbid_when_checked_then_violation() {
+    assert_missing("#![cfg_attr(all(), forbid(unsafe_code))]\n");
+}
+
+/// m1: `forbid` of another lint does not count.
+#[test]
+fn given_forbid_of_other_lint_when_checked_then_violation() {
+    assert_missing("#![forbid(unused)]\n");
+}
+
+/// M3: a string containing `]` inside an earlier attribute does not end it early.
+#[test]
+fn given_attribute_with_bracket_in_string_when_checked_then_scan_continues() {
+    assert_accepted("#![doc = \"a ] b\"]\n#![forbid(unsafe_code)]\n");
+}
+
+/// m4: roots are identified by path relative to the package, with `/` separators.
+#[test]
+fn given_real_workspace_when_loading_roots_then_lib_and_main_are_distinct() {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.toml");
+
+    let roots = load_crate_roots(&manifest).expect("load");
+
+    let xtask: Vec<&str> = roots
+        .iter()
+        .filter(|r| r.package == "xtask")
+        .map(|r| r.file.as_str())
+        .collect();
+    assert_eq!(xtask, ["src/lib.rs", "src/main.rs"]);
 }

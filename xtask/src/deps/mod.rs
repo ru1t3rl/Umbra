@@ -4,7 +4,9 @@
 mod load;
 mod rules;
 
-pub use load::{CrateRoot, LoadError, load_crate_roots, load_graph};
+pub use load::{
+    CrateRoot, LoadError, Manifest, Metadata, load_crate_roots, load_graph, load_manifests,
+};
 pub use rules::{CrateRule, RULES, RuleSet, UNSAFE_ALLOWED};
 
 use std::collections::BTreeSet;
@@ -33,6 +35,8 @@ pub struct DepEdge {
     pub target: Option<String>,
     /// `to` is a workspace member (ASM-006).
     pub is_workspace: bool,
+    /// Declared with a `path` (so not a registry or git dependency).
+    pub is_path: bool,
 }
 
 /// Workspace members plus direct dependency edges.
@@ -72,6 +76,20 @@ pub enum Violation {
         /// Edge kind.
         kind: DepKind,
     },
+    /// Path dependency outside the workspace that is not allow-listed (ASM-006).
+    NonMemberPathDep {
+        /// Depending crate.
+        from: String,
+        /// Dependency.
+        to: String,
+        /// Edge kind.
+        kind: DepKind,
+    },
+    /// Member manifest lacks `[lints] workspace = true` (ASM-024).
+    MissingWorkspaceLints {
+        /// Package name.
+        package: String,
+    },
     /// Crate root lacks `#![forbid(unsafe_code)]` (ASM-024, NFR-2).
     MissingForbidUnsafe {
         /// Package name.
@@ -93,11 +111,13 @@ impl DepKind {
     }
 }
 
-impl std::fmt::Display for Violation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Violation {
+    /// One-line message; the allowed lists come from the injected `rules`.
+    #[must_use]
+    pub fn render(&self, rules: &RuleSet) -> String {
         match self {
             Violation::UnknownCrate { name } => {
-                write!(f, "unknown crate: {name} is not in the rule table")
+                format!("unknown crate: {name} is not in the rule table")
             }
             Violation::ForbiddenWorkspaceDep {
                 from,
@@ -105,24 +125,32 @@ impl std::fmt::Display for Violation {
                 kind,
                 requirement,
             } => {
-                let allowed = RULES
+                let allowed = rules
                     .get(from)
                     .map(|r| r.allowed_workspace_deps.join(", "))
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| "(none)".to_string());
-                write!(
-                    f,
+                format!(
                     "{requirement}: {from} -> {to} ({}) not allowed; {from} may depend on: {allowed}",
                     kind.label()
                 )
             }
-            Violation::ExternalDepNotAllowed { from, to, kind } => write!(
-                f,
-                "section 4: {from} -> {to} ({}) not allowed; {from} may have no external dependencies",
+            Violation::ExternalDepNotAllowed { from, to, kind } => {
+                let requirement = rules.get(from).map_or("section 4", |r| r.requirement);
+                format!(
+                    "{requirement}: {from} -> {to} ({}) not allowed; {from} may have no normal/build external dependencies (ASM-009)",
+                    kind.label()
+                )
+            }
+            Violation::NonMemberPathDep { from, to, kind } => format!(
+                "ASM-006: {from} -> {to} ({}) is a path dependency outside the workspace and is not allow-listed",
                 kind.label()
             ),
+            Violation::MissingWorkspaceLints { package } => {
+                format!("NFR-2: {package} Cargo.toml lacks [lints] workspace = true")
+            }
             Violation::MissingForbidUnsafe { package, file } => {
-                write!(f, "NFR-2: {package} ({file}) lacks #![forbid(unsafe_code)]")
+                format!("NFR-2: {package} ({file}) lacks #![forbid(unsafe_code)]")
             }
         }
     }
@@ -154,6 +182,12 @@ pub fn check(graph: &WorkspaceGraph, rules: &RuleSet) -> Vec<Violation> {
                     requirement: rule.requirement,
                 });
             }
+        } else if e.is_path && !rules.allowed_path_deps.contains(&e.to.as_str()) {
+            out.insert(Violation::NonMemberPathDep {
+                from: e.from.clone(),
+                to: e.to.clone(),
+                kind: e.kind,
+            });
         } else if !rule.allow_external_deps && e.kind != DepKind::Dev {
             out.insert(Violation::ExternalDepNotAllowed {
                 from: e.from.clone(),
@@ -167,8 +201,9 @@ pub fn check(graph: &WorkspaceGraph, rules: &RuleSet) -> Vec<Violation> {
 
 /// ASM-024: every root of a non-FFI crate must carry `#![forbid(unsafe_code)]`.
 ///
-/// A source scan, not a parser: a single-line inner attribute whose list contains
-/// `unsafe_code`; commented-out lines do not count. The result is sorted.
+/// Only the crate-root preamble is scanned: comments and inner attributes from the top of the
+/// file, up to the first item. The attribute must start at column 0 and may span lines.
+/// `cfg_attr(..., forbid(unsafe_code))` is conditional and does not count. The result is sorted.
 #[must_use]
 pub fn check_forbid_unsafe(roots: &[CrateRoot]) -> Vec<Violation> {
     let out: BTreeSet<Violation> = roots
@@ -183,11 +218,157 @@ pub fn check_forbid_unsafe(roots: &[CrateRoot]) -> Vec<Violation> {
     out.into_iter().collect()
 }
 
+/// Scans the preamble for a column-0 inner attribute `forbid(.. unsafe_code ..)`.
 fn has_forbid_unsafe(source: &str) -> bool {
-    source.lines().any(|line| {
-        let line = line.trim();
-        line.strip_prefix("#![forbid(")
-            .and_then(|rest| rest.split_once(")]"))
-            .is_some_and(|(list, _)| list.split(',').any(|i| i.trim() == "unsafe_code"))
-    })
+    let b = source.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            c if c.is_ascii_whitespace() => i += 1,
+            b'/' if b.get(i + 1) == Some(&b'/') => {
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if b.get(i + 1) == Some(&b'*') => {
+                let mut depth = 0usize;
+                while i < b.len() {
+                    if b[i..].starts_with(b"/*") {
+                        depth += 1;
+                        i += 2;
+                    } else if b[i..].starts_with(b"*/") {
+                        depth -= 1;
+                        i += 2;
+                        if depth == 0 {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'#' => {
+                let at_line_start = i == 0 || b[i - 1] == b'\n';
+                let mut j = i + 1;
+                if b.get(j) != Some(&b'!') {
+                    return false;
+                }
+                j += 1;
+                while b.get(j).is_some_and(u8::is_ascii_whitespace) {
+                    j += 1;
+                }
+                if b.get(j) != Some(&b'[') {
+                    return false;
+                }
+                let Some(end) = attribute_end(b, j) else {
+                    return false;
+                };
+                if at_line_start && is_forbid_unsafe(&source[j + 1..end]) {
+                    return true;
+                }
+                i = end + 1;
+            }
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// Index of the `]` matching the `[` at `open`, skipping string literals.
+fn attribute_end(b: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut i = open;
+    while i < b.len() {
+        match b[i] {
+            b'[' => depth += 1,
+            b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            b'"' => {
+                i += 1;
+                while i < b.len() && b[i] != b'"' {
+                    if b[i] == b'\\' {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// `body` is the text between `[` and `]`: true for `forbid(a, unsafe_code, b)`.
+fn is_forbid_unsafe(body: &str) -> bool {
+    let compact: String = body.chars().filter(|c| !c.is_whitespace()).collect();
+    compact
+        .strip_prefix("forbid(")
+        .and_then(|r| r.strip_suffix(')'))
+        .is_some_and(|list| list.split(',').any(|i| i == "unsafe_code"))
+}
+
+/// A member's `Cargo.toml` must contain `[lints]` with `workspace = true` (ASM-024), otherwise
+/// the workspace lint table (`unsafe_code = "deny"`, clippy) silently does not apply.
+#[must_use]
+pub fn check_workspace_lints(manifests: &[Manifest]) -> Vec<Violation> {
+    let out: BTreeSet<Violation> = manifests
+        .iter()
+        .filter(|m| !inherits_workspace_lints(&m.source))
+        .map(|m| Violation::MissingWorkspaceLints {
+            package: m.package.clone(),
+        })
+        .collect();
+    out.into_iter().collect()
+}
+
+fn inherits_workspace_lints(source: &str) -> bool {
+    let mut in_lints = false;
+    for line in source.lines() {
+        let code = line.split('#').next().unwrap_or("");
+        let compact: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+        if compact.starts_with('[') {
+            in_lints = compact == "[lints]";
+        } else if in_lints && compact == "workspace=true" {
+            return true;
+        }
+    }
+    false
+}
+
+/// Everything `check-deps` loads from one `cargo metadata` run.
+#[derive(Debug)]
+pub struct Workspace {
+    /// Members and dependency edges.
+    pub graph: WorkspaceGraph,
+    /// Crate roots of all members.
+    pub roots: Vec<CrateRoot>,
+    /// Member manifests.
+    pub manifests: Vec<Manifest>,
+}
+
+impl Workspace {
+    /// Loads everything with a single `cargo metadata` run (review m5).
+    pub fn load(manifest_path: Option<&std::path::Path>) -> Result<Self, LoadError> {
+        let meta = Metadata::load(manifest_path)?;
+        Ok(Self {
+            graph: meta.graph()?,
+            roots: meta.crate_roots()?,
+            manifests: meta.manifests()?,
+        })
+    }
+}
+
+/// All `check-deps` checks; the result is sorted.
+#[must_use]
+pub fn check_workspace(ws: &Workspace, rules: &RuleSet) -> Vec<Violation> {
+    let mut violations = check(&ws.graph, rules);
+    violations.extend(check_forbid_unsafe(&ws.roots));
+    violations.extend(check_workspace_lints(&ws.manifests));
+    violations.sort();
+    violations
 }

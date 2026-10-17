@@ -13,10 +13,10 @@ publish = false
 repository = "https://example.invalid/cgf-engine"
 
 [workspace.dependencies]
-thiserror = "2"
-serde_json = "1"
 anyhow = "1"
 proptest = "1"
+serde_json = "1"
+thiserror = "2"
 
 [workspace.lints.rust]
 unsafe_code = "deny"

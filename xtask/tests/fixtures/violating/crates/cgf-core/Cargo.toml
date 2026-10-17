@@ -6,3 +6,6 @@ publish = false
 
 [dependencies]
 cgf-kernel = { path = "../cgf-kernel" }
+
+[lints]
+workspace = true

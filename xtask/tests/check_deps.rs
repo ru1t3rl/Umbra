@@ -110,6 +110,11 @@ fn given_violating_fixture_when_loaded_and_checked_then_each_seeded_violation_is
         Violation::UnknownCrate {
             name: "cgf-mystery".into(),
         },
+        Violation::NonMemberPathDep {
+            from: "cgf-cli".into(),
+            to: "shim".into(),
+            kind: DepKind::Normal,
+        },
     ];
     // cgf-motion -> cgf-kernel (renamed): requirement label is "section 4" per the plan table.
     expected.push(f("cgf-motion", "cgf-kernel", DepKind::Normal, "section 4"));
@@ -152,6 +157,9 @@ fn given_violating_fixture_when_check_deps_runs_then_exit_code_1_and_lists_each_
         "cgf-plugin-api -> fake_external (build)",
         "cgf-motion -> cgf-kernel (normal)",
         "cgf-mystery",
+        "cgf-cli -> shim (normal)",
+        "NFR-2: cgf-api-types (src/lib.rs) lacks #![forbid(unsafe_code)]",
+        "cgf-net-dis",
     ] {
         assert!(
             text.contains(needle),
@@ -194,4 +202,101 @@ fn given_missing_manifest_when_check_deps_runs_then_exit_code_2() {
     let out = run_check_deps(&fixture("does_not_exist"));
 
     assert_eq!(out.status.code(), Some(2), "output:\n{}", combined(&out));
+}
+
+// ---------------------------------------------------------------- review M1 / M2 / m2 / n3 / n4
+
+/// M1: the shim fixture edge is reported (`cgf-cli -> shim` would launder `cgf-kernel`).
+#[test]
+fn given_shim_path_dep_when_loaded_then_edge_is_path_and_not_workspace() {
+    let g = load_graph(&fixture("violating")).expect("load");
+
+    let e = g.edges.iter().find(|e| e.to == "shim").expect("shim edge");
+
+    assert!(e.is_path && !e.is_workspace);
+}
+
+/// M2: a workspace whose only violation is a missing `forbid(unsafe_code)` exits 1.
+#[test]
+fn given_only_missing_forbid_when_check_deps_runs_then_exit_code_1() {
+    let out = run_check_deps(&fixture("unsafe_only"));
+    let text = combined(&out);
+
+    assert_eq!(out.status.code(), Some(1), "output:\n{text}");
+    assert!(
+        text.contains("NFR-2: cgf-core (src/lib.rs) lacks #![forbid(unsafe_code)]"),
+        "{text}"
+    );
+    assert!(!text.contains("REQ-A"), "{text}");
+}
+
+/// M2/m6: a workspace whose only violation is a missing `[lints] workspace = true` exits 1.
+#[test]
+fn given_only_missing_lints_when_check_deps_runs_then_exit_code_1() {
+    let out = run_check_deps(&fixture("lints_only"));
+    let text = combined(&out);
+
+    assert_eq!(out.status.code(), Some(1), "output:\n{text}");
+    assert!(text.contains("cgf-core"), "{text}");
+    assert!(text.contains("[lints] workspace = true"), "{text}");
+}
+
+#[expect(
+    clippy::expect_used,
+    reason = "test helper: spawn failure is a test error"
+)]
+fn run_args(args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .args(args)
+        .output()
+        .expect("spawn xtask binary")
+}
+
+/// m2: usage errors exit 2.
+#[test]
+fn given_usage_errors_when_check_deps_runs_then_exit_code_2() {
+    assert_eq!(run_args(&[]).status.code(), Some(2));
+    assert_eq!(run_args(&["bogus"]).status.code(), Some(2));
+    assert_eq!(run_args(&["check-deps", "--bogus"]).status.code(), Some(2));
+    assert_eq!(
+        run_args(&["check-deps", "--manifest-path"]).status.code(),
+        Some(2)
+    );
+}
+
+/// m2: a non-UTF-8 subcommand is a usage error (exit 2), not a panic.
+#[cfg(unix)]
+#[test]
+fn given_non_utf8_argument_when_check_deps_runs_then_exit_code_2() {
+    use std::os::unix::ffi::OsStrExt;
+    let bad = std::ffi::OsStr::from_bytes(b"check-deps\xff");
+
+    let out = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .arg(bad)
+        .output()
+        .expect("spawn");
+
+    assert_eq!(out.status.code(), Some(2));
+}
+
+/// n4: `--manifest-path=<p>` is accepted.
+#[test]
+fn given_equals_form_when_check_deps_runs_then_it_works() {
+    let arg = format!("--manifest-path={}", fixture("conforming").display());
+
+    let out = run_args(&["check-deps", &arg]);
+
+    assert_eq!(out.status.code(), Some(0), "{}", combined(&out));
+}
+
+/// n3: without `--manifest-path`, cargo searches upward from the working directory.
+#[test]
+fn given_subdirectory_cwd_when_check_deps_runs_without_manifest_then_workspace_is_found() {
+    let out = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .arg("check-deps")
+        .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("src"))
+        .output()
+        .expect("spawn");
+
+    assert_eq!(out.status.code(), Some(0), "{}", combined(&out));
 }

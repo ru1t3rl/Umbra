@@ -6,3 +6,6 @@ publish = false
 
 [dev-dependencies]
 fake_external = { path = "../../fake_external" }
+
+[lints]
+workspace = true

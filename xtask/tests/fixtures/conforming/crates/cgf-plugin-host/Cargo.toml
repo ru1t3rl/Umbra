@@ -7,3 +7,6 @@ publish = false
 [dependencies]
 cgf-core = { path = "../cgf-core" }
 cgf-plugin-api = { path = "../cgf-plugin-api" }
+
+[lints]
+workspace = true

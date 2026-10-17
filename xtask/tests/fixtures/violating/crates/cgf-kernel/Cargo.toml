@@ -12,3 +12,6 @@ cgf-net-dis = { path = "../cgf-net-dis" }
 
 [build-dependencies]
 cgf-api-types = { path = "../cgf-api-types" }
+
+[lints]
+workspace = true

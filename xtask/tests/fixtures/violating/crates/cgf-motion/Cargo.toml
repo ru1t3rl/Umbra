@@ -6,3 +6,6 @@ publish = false
 
 [dependencies]
 k = { package = "cgf-kernel", path = "../cgf-kernel" }
+
+[lints]
+workspace = true

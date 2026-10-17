@@ -9,3 +9,6 @@ c = { package = "cgf-core", path = "../cgf-core" }
 
 [build-dependencies]
 cgf-core = { path = "../cgf-core" }
+
+[lints]
+workspace = true

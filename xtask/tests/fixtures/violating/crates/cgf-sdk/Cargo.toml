@@ -6,3 +6,6 @@ publish = false
 
 [target.'cfg(windows)'.dependencies]
 cgf-core = { path = "../cgf-core" }
+
+[lints]
+workspace = true

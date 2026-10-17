@@ -10,11 +10,12 @@
     reason = "CLI binary: output is its interface"
 )]
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
-use xtask::deps::{RULES, check, check_forbid_unsafe, load_crate_roots, load_graph};
+use xtask::deps::{RULES, Workspace, check_workspace};
 
 fn main() -> ExitCode {
     match run() {
@@ -29,34 +30,40 @@ fn main() -> ExitCode {
 
 /// Returns `Ok(true)` when the workspace conforms.
 fn run() -> Result<bool> {
-    let mut args = std::env::args().skip(1);
-    match args.next().as_deref() {
+    let mut args = std::env::args_os().skip(1);
+    let Some(sub) = args.next() else {
+        bail!("usage: cargo xtask check-deps [--manifest-path <path>]");
+    };
+    match sub.to_str() {
         Some("check-deps") => check_deps(args),
-        Some(other) => bail!("unknown subcommand `{other}`; available: check-deps"),
-        None => bail!("usage: cargo xtask check-deps [--manifest-path <path>]"),
+        _ => bail!(
+            "unknown subcommand `{}`; available: check-deps",
+            sub.to_string_lossy()
+        ),
     }
 }
 
-fn check_deps(mut args: impl Iterator<Item = String>) -> Result<bool> {
-    let mut manifest = PathBuf::from("Cargo.toml");
+fn check_deps(mut args: impl Iterator<Item = OsString>) -> Result<bool> {
+    // Without --manifest-path cargo searches upward from the working directory.
+    let mut manifest: Option<PathBuf> = None;
     while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "--manifest-path" => {
-                manifest = args.next().context("--manifest-path needs a value")?.into();
+        match arg.to_str() {
+            Some("--manifest-path") => {
+                manifest = Some(args.next().context("--manifest-path needs a value")?.into());
             }
-            other => bail!("unknown argument `{other}`"),
+            Some(a) if a.starts_with("--manifest-path=") => {
+                manifest = Some(a["--manifest-path=".len()..].into());
+            }
+            _ => bail!("unknown argument `{}`", arg.to_string_lossy()),
         }
     }
-    let graph = load_graph(&manifest)?;
-    let roots = load_crate_roots(&manifest)?;
-    let mut violations = check(&graph, &RULES);
-    violations.extend(check_forbid_unsafe(&roots));
-    violations.sort();
+    let ws = Workspace::load(manifest.as_deref())?;
+    let violations = check_workspace(&ws, &RULES);
     for v in &violations {
-        println!("{v}");
+        println!("{}", v.render(&RULES));
     }
     if violations.is_empty() {
-        println!("check-deps: ok ({} crates)", graph.members.len());
+        println!("check-deps: ok ({} crates)", ws.graph.members.len());
     } else {
         println!("check-deps: {} violation(s)", violations.len());
     }

@@ -19,7 +19,7 @@ Toolchain is pinned in `rust-toolchain.toml` (Rust 1.99.1, edition 2024, resolve
 
 | Command | Purpose |
 |---|---|
-| `cargo xtask check-deps [--manifest-path <path>]` | Verifies the dependency rules REQ-A-1..3 (direct edges of all kinds against the table in `xtask/src/deps/rules.rs`; unknown workspace crates are violations) and that all crate roots except `cgf-plugin-api`, `cgf-plugin-host`, `cgf-sdk` have `#![forbid(unsafe_code)]` (NFR-2, ASM-024). Prints one line per violation, sorted. Exit 0 clean, 1 violations, 2 load or usage error. |
+| `cargo xtask check-deps [--manifest-path <path>]` | Verifies the dependency rules REQ-A-1..3 (direct edges of all kinds against the table in `xtask/src/deps/rules.rs`; unknown workspace crates are violations) that every member has `[lints] workspace = true`, non-member path dependencies are rejected unless allow-listed (ASM-006), and that all crate roots except `cgf-plugin-api`, `cgf-plugin-host`, `cgf-sdk` have `#![forbid(unsafe_code)]` (NFR-2, ASM-024). Prints one line per violation, sorted. Exit 0 clean, 1 violations, 2 load or usage error. |
 
 Example violation line: `REQ-A-1: cgf-core -> cgf-kernel (normal) not allowed; cgf-core may depend on: (none)`.
 Negative tests: `cargo test -p xtask` (fixtures in `xtask/tests/fixtures/`, see the README there).

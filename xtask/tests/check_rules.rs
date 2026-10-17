@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use xtask::deps::{DepEdge, DepKind, RULES, Violation, WorkspaceGraph, check};
+use xtask::deps::{CrateRule, DepEdge, DepKind, RULES, RuleSet, Violation, WorkspaceGraph, check};
 
 fn edge(from: &str, to: &str, kind: DepKind) -> DepEdge {
     DepEdge {
@@ -14,6 +14,7 @@ fn edge(from: &str, to: &str, kind: DepKind) -> DepEdge {
         kind,
         target: None,
         is_workspace: to.starts_with("cgf-"),
+        is_path: false,
     }
 }
 
@@ -415,4 +416,96 @@ fn check_output_is_sorted_and_stable() {
     );
     assert_eq!(first, second);
     assert_eq!(first, from_reversed);
+}
+
+// ---------------------------------------------------------------- review M1 / m3
+
+fn path_edge(from: &str, to: &str, kind: DepKind) -> DepEdge {
+    DepEdge {
+        is_path: true,
+        ..edge(from, to, kind)
+    }
+}
+
+/// M1 (ASM-006): a path dependency outside the workspace could launder forbidden edges
+/// (`cgf-sdk -> shim -> cgf-kernel`), so it is a violation unless allow-listed.
+#[test]
+fn given_non_member_path_dep_when_checked_then_violation() {
+    let g = graph(vec![path_edge("cgf-sdk", "shim", DepKind::Normal)]);
+
+    assert_eq!(
+        check(&g, &RULES),
+        vec![Violation::NonMemberPathDep {
+            from: "cgf-sdk".to_string(),
+            to: "shim".to_string(),
+            kind: DepKind::Normal
+        }]
+    );
+}
+
+/// M1: dev and build path dependencies are checked too.
+#[test]
+fn given_non_member_path_dev_and_build_deps_when_checked_then_violations() {
+    let g = graph(vec![
+        path_edge("cgf-core", "shim", DepKind::Dev),
+        path_edge("cgf-core", "shim", DepKind::Build),
+    ]);
+
+    assert_eq!(check(&g, &RULES).len(), 2);
+}
+
+/// M1: the allow-list (`fake_external`, used by the fixtures) is honoured.
+#[test]
+fn given_allow_listed_path_dep_when_checked_then_no_violation() {
+    let g = graph(vec![path_edge(
+        "cgf-core",
+        "fake_external",
+        DepKind::Normal,
+    )]);
+
+    assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
+}
+
+/// M1: registry dependencies (not path) stay fine.
+#[test]
+fn given_registry_dep_when_checked_then_no_violation() {
+    let g = graph(vec![edge("cgf-core", "serde_json", DepKind::Normal)]);
+
+    assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
+}
+
+static CUSTOM: RuleSet = RuleSet {
+    crates: &[CrateRule {
+        name: "cgf-core",
+        allowed_workspace_deps: &["cgf-odd"],
+        allow_external_deps: false,
+        requirement: "REQ-A-1",
+    }],
+    allowed_path_deps: &[],
+};
+
+/// m3: rendering uses the injected rule set, not the global table.
+#[test]
+fn given_custom_rules_when_rendered_then_allowed_list_comes_from_them() {
+    let v = forbidden("cgf-core", "cgf-kernel", DepKind::Normal, "REQ-A-1");
+
+    let text = v.render(&CUSTOM);
+
+    assert_eq!(
+        text,
+        "REQ-A-1: cgf-core -> cgf-kernel (normal) not allowed; cgf-core may depend on: cgf-odd"
+    );
+}
+
+/// n1: the external-dependency message names the rule and ASM-009.
+#[test]
+fn given_external_violation_when_rendered_then_message_is_precise() {
+    let v = external("cgf-core", "libc", DepKind::Build);
+
+    let text = v.render(&CUSTOM);
+
+    assert_eq!(
+        text,
+        "REQ-A-1: cgf-core -> libc (build) not allowed; cgf-core may have no normal/build external dependencies (ASM-009)"
+    );
 }

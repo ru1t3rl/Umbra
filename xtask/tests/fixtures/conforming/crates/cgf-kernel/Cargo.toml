@@ -12,3 +12,6 @@ cgf-core = { path = "../cgf-core" }
 
 [target.'cfg(windows)'.dependencies]
 cgf-core = { path = "../cgf-core" }
+
+[lints]
+workspace = true

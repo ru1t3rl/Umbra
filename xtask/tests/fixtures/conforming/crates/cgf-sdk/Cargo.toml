@@ -6,3 +6,6 @@ publish = false
 
 [dependencies]
 cgf-plugin-api = { path = "../cgf-plugin-api" }
+
+[lints]
+workspace = true
