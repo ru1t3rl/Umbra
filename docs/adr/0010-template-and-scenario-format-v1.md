@@ -59,5 +59,6 @@ Option 1:
   one reader for templates, scenarios and overrides (DRY).
 - Harder: hand-written readers are more code than derives; the spec 7.1 example template does not
   validate in M2 (its behavior and sensor IDs are unknown) and validates once M3 registers them.
+- `network.<adapter>` tables are opaque to validation but still cross as JSON: datetimes, `nan`/`inf` and integers outside 64 bits are rejected there (ASM-060).
 - Fractional tick rates would need a new form of `tick_rate_hz` and a version bump (human 2026-10-17).
 - Revisit if users need abstract templates, multiple templates per file, or array merging by key.

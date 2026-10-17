@@ -60,7 +60,7 @@ impl Origin {
 /// The payload of a located value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LKind {
-    /// A string (a datetime also becomes its text; it is reported as `unsupported_value`).
+    /// A string.
     String(String),
     /// An integer.
     Integer(i64),
@@ -72,6 +72,10 @@ pub enum LKind {
     Array(Vec<LValue>),
     /// A table (inline or header).
     Table(LTable),
+    /// A value the format cannot carry (a datetime, a non-finite float, an integer outside 64
+    /// bits). `parse` has already reported it as `unsupported_value`; readers and schemas skip it
+    /// silently so it causes no follow-on errors.
+    Unsupported,
 }
 
 impl LKind {
@@ -84,6 +88,7 @@ impl LKind {
             Self::Boolean(_) => "boolean",
             Self::Array(_) => "array",
             Self::Table(_) => "table",
+            Self::Unsupported => "unsupported value",
         }
     }
 }
@@ -114,7 +119,7 @@ impl LValue {
         &self.kind
     }
 
-    /// The value as JSON, without losing the integer/float distinction. Non-finite floats (which
+    /// The value as JSON, without losing the integer/float distinction. Unsupported values (which
     /// `parse` reports) become `null`.
     pub fn to_param(&self) -> ParamValue {
         match &self.kind {
@@ -126,6 +131,7 @@ impl LValue {
             LKind::Boolean(b) => ParamValue::Bool(*b),
             LKind::Array(items) => ParamValue::Array(items.iter().map(Self::to_param).collect()),
             LKind::Table(t) => t.to_param(),
+            LKind::Unsupported => ParamValue::Null,
         }
     }
 }
@@ -222,6 +228,15 @@ pub fn parse(file: &SourceFile) -> (Option<LTable>, Vec<Diagnostic>) {
     };
     let root = builder.table(document.get_ref(), document.span());
     let mut diagnostics = syntax_diagnostics(file, &errors, &root);
+    if diagnostics.is_empty()
+        && let Some(first) = errors.first()
+    {
+        diagnostics.push(syntax_diagnostic(
+            file,
+            first.span(),
+            first.message().to_string(),
+        ));
+    }
     if diagnostics.is_empty() {
         diagnostics = builder.unsupported;
     }
@@ -260,23 +275,29 @@ impl Builder<'_> {
         let kind = match value.get_ref() {
             DeValue::String(s) => LKind::String(s.to_string()),
             DeValue::Integer(i) => {
-                let parsed = i64::from_str_radix(i.as_str(), i.radix());
-                if parsed.is_err() {
+                if let Ok(n) = i64::from_str_radix(i.as_str(), i.radix()) {
+                    LKind::Integer(n)
+                } else {
                     self.report(&span, "integer does not fit in 64 bits");
+                    LKind::Unsupported
                 }
-                LKind::Integer(parsed.unwrap_or(0))
             }
-            DeValue::Float(f) => {
-                let n = f.as_str().parse::<f64>().unwrap_or(f64::NAN);
-                if !n.is_finite() {
+            DeValue::Float(f) => match f.as_str().parse::<f64>() {
+                Ok(n) if n.is_finite() => LKind::Float(n),
+                Ok(n) if n.is_infinite() && !f.as_str().contains("inf") => {
+                    self.report(&span, "float out of range");
+                    LKind::Unsupported
+                }
+                _ => {
                     self.report(&span, "non-finite floats (`nan`, `inf`) are not supported");
+                    LKind::Unsupported
                 }
-                LKind::Float(n)
-            }
+            },
             DeValue::Boolean(b) => LKind::Boolean(*b),
             DeValue::Datetime(d) => {
+                let _ = d;
                 self.report(&span, "datetimes are not supported");
-                LKind::String(d.to_string())
+                LKind::Unsupported
             }
             DeValue::Array(items) => LKind::Array(items.iter().map(|v| self.value(v)).collect()),
             DeValue::Table(t) => LKind::Table(self.table(t, span.clone())),
@@ -297,20 +318,25 @@ impl Builder<'_> {
     }
 }
 
-/// ASM-054 rule 1: every parser error, deduplicated by (span, message). Rule 2: an unclosed array
-/// or inline table is reported at its opening bracket, and the follow-on errors between the bracket
-/// and the end of the file are dropped.
+/// ASM-054 rule 1: every parser error is reported (sorted by span). Rule 2: an unclosed array or
+/// inline table is reported at its opening bracket and the follow-on errors between the bracket
+/// and the end of the file are dropped; an "unclosed" error is never dropped, so nested unclosed
+/// containers each keep their own. Invariant: any parser error gives at least one diagnostic.
 fn syntax_diagnostics(
     file: &SourceFile,
     errors: &[toml::de::Error],
     root: &LTable,
 ) -> Vec<Diagnostic> {
-    let mut items: Vec<(Range<usize>, String)> = errors
+    let mut items: Vec<(Option<Range<usize>>, String)> = errors
         .iter()
-        .map(|e| (e.span().unwrap_or(0..0), e.message().to_string()))
+        .map(|e| (e.span(), e.message().to_string()))
         .collect();
-    items.sort_by(|a, b| (a.0.start, a.0.end, &a.1).cmp(&(b.0.start, b.0.end, &b.1)));
-    items.dedup();
+    items.sort_by(|a, b| {
+        let key = |i: &(Option<Range<usize>>, String)| {
+            (i.0.as_ref().map(|s| (s.start, s.end)), i.1.clone())
+        };
+        key(a).cmp(&key(b))
+    });
     let unclosed: Vec<usize> = (0..items.len())
         .filter(|&i| {
             items
@@ -319,45 +345,55 @@ fn syntax_diagnostics(
         })
         .collect();
     let mut dropped = vec![false; items.len()];
-    let mut moved: Vec<(usize, Range<usize>)> = Vec::new();
+    let mut moved: BTreeMap<usize, Range<usize>> = BTreeMap::new();
+    let mut taken: Vec<usize> = Vec::new();
     for &i in &unclosed {
-        let Some((span, message)) = items.get(i) else {
+        let Some((Some(span), message)) = items.get(i) else {
             continue;
         };
         let open = unclosed_open(message).unwrap_or('[');
-        if let Some(start) = find_open(root, file.text(), open) {
-            for (j, (other, _)) in items.iter().enumerate() {
-                if j != i
-                    && other.start > start
-                    && other.start <= span.start
-                    && let Some(d) = dropped.get_mut(j)
-                {
-                    *d = true;
-                }
+        let Some(start) = find_open(root, file.text(), open, span.start, &taken) else {
+            continue;
+        };
+        taken.push(start);
+        for (j, (other, other_message)) in items.iter().enumerate() {
+            if j != i
+                && unclosed_open(other_message).is_none()
+                && other
+                    .as_ref()
+                    .is_some_and(|o| o.start > start && o.start <= span.start)
+                && let Some(d) = dropped.get_mut(j)
+            {
+                *d = true;
             }
-            moved.push((i, start..start + 1));
         }
+        moved.insert(i, start..start + 1);
     }
-    let path = file.path();
-    items
+    let diagnostics: Vec<Diagnostic> = items
         .into_iter()
         .enumerate()
         .filter(|(i, _)| !dropped.get(*i).copied().unwrap_or(false))
         .map(|(i, (span, message))| {
-            let span = moved
-                .iter()
-                .find(|(j, _)| *j == i)
-                .map_or(span, |(_, s)| s.clone());
-            let (line, column) = file.line_col(span.start);
-            let location = Location {
-                path: path.to_path_buf(),
-                line,
-                column,
-                span,
-            };
-            Diagnostic::new(DiagnosticCode::Syntax, message, Some(location))
+            syntax_diagnostic(file, moved.get(&i).cloned().or(span), message)
         })
-        .collect()
+        .collect();
+    diagnostics
+}
+
+/// One syntax diagnostic. A parser error without a span is not given an invented position.
+fn syntax_diagnostic(file: &SourceFile, span: Option<Range<usize>>, message: String) -> Diagnostic {
+    let Some(span) = span else {
+        return Diagnostic::new(DiagnosticCode::Syntax, message, None)
+            .with_note("position not reported by the parser", None);
+    };
+    let (line, column) = file.line_col(span.start);
+    let location = Location {
+        path: file.path().to_path_buf(),
+        line,
+        column,
+        span,
+    };
+    Diagnostic::new(DiagnosticCode::Syntax, message, Some(location))
 }
 
 /// The opening bracket of the container an "unclosed ..." message talks about.
@@ -371,13 +407,33 @@ fn unclosed_open(message: &str) -> Option<char> {
     }
 }
 
-/// The start of the outermost array (`[`) or inline table (`{`) in the tree that starts with
-/// `open` and does not end with its closing bracket. The partial tree ends such a container where
-/// the parser gave up, so a properly closed one always ends with the closing bracket.
-fn find_open(root: &LTable, text: &str, open: char) -> Option<usize> {
+/// Whether a container's span ends with its own closing bracket: the last byte is `close` and it
+/// is not the last byte of the last item (`[[1]` ends with the inner `]` only).
+fn is_closed(value: &LValue, bytes: &[u8], close: u8) -> bool {
+    let end = value.origin.span.end;
+    let last_is_close = end
+        .checked_sub(1)
+        .and_then(|i| bytes.get(i))
+        .is_some_and(|&b| b == close);
+    let last_child_end = match &value.kind {
+        LKind::Array(items) => items.last().map(|v| v.origin.span.end),
+        LKind::Table(t) => t.entries.values().map(|e| e.value.origin.span.end).max(),
+        _ => None,
+    };
+    last_is_close && last_child_end.is_none_or(|child| child < end)
+}
+
+/// The start of the container an unclosed error at byte `eof` belongs to. The partial tree ends
+/// an unclosed container at the error offset, so the candidates are the containers of the right
+/// kind that start with `open` and end at `eof`; the unclosed ones are the outermost of those
+/// (a closed container cannot contain an unclosed one), so take the outermost not yet taken.
+/// When the parser ended the container earlier (an inline table followed by more lines), fall back
+/// to the outermost container of the right kind whose span does not end with its closing bracket.
+fn find_open(root: &LTable, text: &str, open: char, eof: usize, taken: &[usize]) -> Option<usize> {
     let close = if open == '[' { b']' } else { b'}' };
     let bytes = text.as_bytes();
-    let mut best: Option<usize> = None;
+    let mut ending_here: Vec<usize> = Vec::new();
+    let mut unterminated: Vec<usize> = Vec::new();
     let mut stack: Vec<&LValue> = root.entries.values().map(|e| &e.value).collect();
     while let Some(value) = stack.pop() {
         let range = &value.origin.span;
@@ -389,13 +445,13 @@ fn find_open(root: &LTable, text: &str, open: char) -> Option<usize> {
         let opens = bytes
             .get(range.start)
             .is_some_and(|&b| char::from(b) == open);
-        let closes = range
-            .end
-            .checked_sub(1)
-            .and_then(|i| bytes.get(i))
-            .is_some_and(|&b| b == close);
-        if kind_matches && opens && !closes && best.is_none_or(|b| range.start < b) {
-            best = Some(range.start);
+        if kind_matches && opens && !taken.contains(&range.start) && !is_closed(value, bytes, close)
+        {
+            if range.end == eof {
+                ending_here.push(range.start);
+            } else {
+                unterminated.push(range.start);
+            }
         }
         match &value.kind {
             LKind::Array(items) => stack.extend(items.iter()),
@@ -403,5 +459,24 @@ fn find_open(root: &LTable, text: &str, open: char) -> Option<usize> {
             _ => {}
         }
     }
-    best
+    ending_here
+        .into_iter()
+        .min()
+        .or_else(|| unterminated.into_iter().min())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_parser_error_without_a_span_gets_no_invented_position() {
+        let file = SourceFile::new("a.toml", "x = 1\n");
+
+        let d = syntax_diagnostic(&file, None, "boom".to_string());
+
+        assert_eq!(d.location, None);
+        assert_eq!(d.notes.len(), 1);
+        assert!(d.to_string().starts_with("error[syntax]: boom"));
+    }
 }

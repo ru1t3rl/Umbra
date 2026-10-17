@@ -130,6 +130,72 @@ fn given_unclosed_array_then_many_lines_then_only_one_error_regardless_of_length
     assert_eq!(rows(&diagnostics), [row("syntax", "a.toml", (1, 8))]);
 }
 
+/// B1: two unclosed containers each get their own error at their own opening bracket; neither
+/// suppresses the other and the file is never accepted.
+#[test]
+fn given_unclosed_array_inside_unclosed_inline_table_then_both_reported_at_their_brackets() {
+    let text = "x = { a = [1, 2\n[t]\nq = 1\n";
+
+    assert_eq!(
+        rows(&diagnostics_of(text)),
+        [
+            row("syntax", "a.toml", (1, 5)),
+            row("syntax", "a.toml", (1, 11))
+        ]
+    );
+}
+
+#[test]
+fn given_unclosed_inline_table_inside_unclosed_array_then_both_reported_at_their_brackets() {
+    let text = "x = [1, { a = 1\nz = 2\n";
+
+    assert_eq!(
+        rows(&diagnostics_of(text)),
+        [
+            row("syntax", "a.toml", (1, 5)),
+            row("syntax", "a.toml", (1, 9))
+        ]
+    );
+}
+
+#[test]
+fn given_unclosed_array_closed_by_a_brace_inside_an_inline_table_then_both_reported() {
+    let text = "a = {x = 1, y = [1, 2}\nb = 3\n";
+
+    assert_eq!(
+        rows(&diagnostics_of(text)),
+        [
+            row("syntax", "a.toml", (1, 5)),
+            row("syntax", "a.toml", (1, 17))
+        ]
+    );
+}
+
+#[test]
+fn given_two_unclosed_containers_after_a_valid_header_then_the_file_is_not_accepted() {
+    let text = "[motion]\nmodel = \"m.n\"\nparams = { a = [1, 2\n";
+
+    assert_eq!(
+        rows(&diagnostics_of(text)),
+        [
+            row("syntax", "a.toml", (3, 10)),
+            row("syntax", "a.toml", (3, 16))
+        ]
+    );
+}
+
+/// M1: the bracket is found even when the last item ends with its own closing bracket.
+#[test]
+fn given_unclosed_array_whose_last_item_is_closed_then_error_at_the_opening_bracket() {
+    for text in ["x = [[1]\n", "x = [1, [2]\n", "x = {a = {b = 1}\n"] {
+        assert_eq!(
+            rows(&diagnostics_of(text)),
+            [row("syntax", "a.toml", (1, 5))],
+            "{text:?}"
+        );
+    }
+}
+
 #[test]
 fn given_syntax_errors_in_two_places_then_sorted_by_position() {
     let diagnostics = diagnostics_of("a = $\nb = 1\nc = $\n");
@@ -238,6 +304,16 @@ proptest! {
         }
     }
 
+    /// B1 invariant: if the parser reports any error there is at least one syntax diagnostic.
+    #[test]
+    fn toml_errors_imply_a_syntax_diagnostic(text in "[a-z0-9 =\\[\\]{}.,#\"'$:\\n+-]{0,120}") {
+        let (_, errors) = toml::de::DeTable::parse_recoverable(&text);
+        let (_, diagnostics) = parse(&SourceFile::new("a.toml", text.clone()));
+        if !errors.is_empty() {
+            prop_assert!(diagnostics.iter().any(|d| d.code.as_str() == "syntax"), "{text:?}");
+        }
+    }
+
     /// NFR-2 with TOML-shaped noise, which reaches far more parser states than random text.
     #[test]
     fn parse_never_panics_on_toml_shaped_text(text in "[a-z0-9 =\\[\\]{}.,#\"'$:\\n\\r+-]{0,160}") {
@@ -248,4 +324,42 @@ proptest! {
             }
         }
     }
+}
+
+/// m1: a parser error without a span is not given an invented position (here: the helper that
+/// builds the diagnostic is exercised through a recursion-limit input, whose error has a span; the
+/// span-less path is covered by the unit test in `value.rs`).
+#[test]
+fn given_deep_nesting_every_syntax_diagnostic_has_a_real_position() {
+    let deep = format!("a = {}1{}\n", "[".repeat(300), "]".repeat(300));
+
+    let diagnostics = diagnostics_of(&deep);
+
+    assert_ne!(diagnostics.len(), 0);
+    assert!(
+        diagnostics
+            .iter()
+            .all(|d| d.location.as_ref().is_some_and(|l| l.span.start > 0))
+    );
+}
+
+/// m2: placeholders do not produce follow-on values.
+#[test]
+fn given_unsupported_values_then_they_are_placeholders_not_strings_or_zeros() {
+    let (table, diagnostics) = parse(&SourceFile::new(
+        "a.toml",
+        "d = 1979-05-27\nbig = 99999999999999999999\nf = 1e999\n",
+    ));
+
+    assert_eq!(diagnostics.len(), 3);
+    let table = table.unwrap_or_else(|| panic!("no table"));
+    for key in ["d", "big", "f"] {
+        let kind = table.get(key).map(|v| v.kind().type_name());
+        assert_eq!(kind, Some("unsupported value"), "{key}");
+    }
+    assert!(
+        diagnostics[2].message.contains("out of range"),
+        "{}",
+        diagnostics[2].message
+    );
 }

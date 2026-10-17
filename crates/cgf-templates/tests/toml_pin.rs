@@ -215,3 +215,44 @@ fn toml_reports_datetimes_and_non_finite_floats_as_values_so_the_reader_must_rej
     assert!(matches!(get("n"), Some(DeValue::Float(_))));
     assert!(matches!(get("i"), Some(DeValue::Float(_))));
 }
+
+/// M1: a container whose last item is closed still ends at the unclosed error's offset, so the
+/// reader can find its opening bracket from the partial tree.
+#[test]
+fn toml_ends_an_unclosed_container_at_the_error_offset_even_when_its_last_item_is_closed() {
+    for (text, open) in [
+        ("x = [[1]\n", 4),
+        ("x = [1, [2]\n", 4),
+        ("x = {a = {b = 1}\n", 4),
+    ] {
+        let (doc, errors) = DeTable::parse_recoverable(text);
+        let x = doc
+            .get_ref()
+            .get("x")
+            .unwrap_or_else(|| panic!("no `x` in {text:?}"));
+        assert_eq!(x.span().start, open, "{text:?}");
+        let last = errors
+            .last()
+            .and_then(toml::de::Error::span)
+            .map(|s| s.start);
+        assert_eq!(Some(x.span().end), last, "{text:?}");
+        assert!(
+            errors.iter().any(|e| e.message().starts_with("unclosed")),
+            "{text:?}"
+        );
+    }
+}
+
+/// B1: two unclosed containers give two "unclosed" errors at one offset.
+#[test]
+fn toml_reports_two_unclosed_errors_at_one_offset_for_nested_unclosed_containers() {
+    let (_, errors) = DeTable::parse_recoverable("x = { a = [1, 2\n[t]\nq = 1\n");
+
+    let unclosed: Vec<_> = errors
+        .iter()
+        .filter(|e| e.message().starts_with("unclosed"))
+        .map(|e| e.span().map(|s| s.start))
+        .collect();
+    assert_eq!(unclosed.len(), 2);
+    assert_eq!(unclosed[0], unclosed[1]);
+}

@@ -60,7 +60,9 @@ Chains are folded root first. `id`, `extends`, `description` and `schema_version
   parent's model). Naming the same one again keeps merging.
 - `sensors` arrays replace as a whole (the most derived list wins; an empty list clears).
 - Each `network.<adapter>` table replaces the parent's table for that adapter as a whole; other adapters
-  are inherited. The tables are never validated by the engine and are handed to the adapter unchanged.
+  are inherited. The tables are never validated by the engine and are handed to the adapter unchanged,
+  but they still cross as JSON: datetimes, `nan`/`inf` and integers outside 64 bits are rejected there too
+  (`unsupported_value`, ASM-060).
 - The merged `params` are validated against the component's JSON Schema, then dry-run through the
   component factory (`Factory::build`), so `validate` catches what spawning would (ASM-058).
 - Errors are located where the offending value is written, so an error inherited from a parent is reported
@@ -137,6 +139,6 @@ accepts only TOML integers, `number` accepts both), `properties`, `required`, `a
 (boolean or schema), `items` (single schema), `minItems`, `maxItems`, `enum`, `const`, `minimum`,
 `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `minLength`, `maxLength`, `oneOf` (when none matches,
 the errors of the closest branch are reported), `$defs` at the root with local `$ref: "#/$defs/<name>"`
-(reference cycles are rejected). `$schema`, `$id`, `$comment`, `title`, `description`, `default`,
+(any cycle is rejected, including through `properties` or `items`; a schema whose `$ref` expansion exceeds 10 000 nodes is rejected, ASM-068). `$schema`, `$id`, `$comment`, `title`, `description`, `default`,
 `examples`, `deprecated`, `readOnly`, `writeOnly` are accepted and ignored. Any other keyword makes the
 schema invalid; a registered component with such a schema is a component bug and the loader refuses to start.
