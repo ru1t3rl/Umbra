@@ -1,7 +1,7 @@
 //! Entity and namespaced string IDs (REQ-C-2, ADR 0002, ASM-017).
 //!
 //! Grammar of the string IDs: `segment ("." segment)+`, `segment = [a-z][a-z0-9_]*`,
-//! at most [`MAX_ID_LEN`] bytes. One private validator is shared by all four newtypes.
+//! at most [`MAX_ID_LEN`] bytes. One private validator is shared by all string-ID newtypes.
 
 use core::fmt;
 use core::num::NonZeroU64;
@@ -213,4 +213,6 @@ string_id!(
     MotionModelId,
     /// Identifier of a plugin, e.g. `acme.tools`.
     PluginId,
+    /// Identifier of a registered component of any kind, e.g. `builtin.ground.kinematic`.
+    ComponentId,
 );

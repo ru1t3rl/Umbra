@@ -5,7 +5,7 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 ## Crates (current)
 | Crate | Path | Role | Workspace deps |
 |---|---|---|---|
-| `cgf-core` | `crates/cgf-core` | IDs, time, units; `math` (single site for non-exact float functions, ADR 0003), `geo` (Vec3, Quaternion, Euler), `coords` (WGS-84, ECEF, geodetic, ENU/NED, LocalFrame, Position), `hash` (canonical state hasher, ADR 0007), `rng` (SimRng, ADR 0006), and the motion domain `intent`, `ownership`, `terrain`, `motion` (M1) | none (REQ-A-1) |
+| `cgf-core` | `crates/cgf-core` | IDs, time, units; `math` (single site for non-exact float functions, ADR 0003), `geo` (Vec3, Quaternion, Euler), `coords` (WGS-84, ECEF, geodetic, ENU/NED, LocalFrame, Position), `hash` (canonical state hasher, ADR 0007), `rng` (SimRng, ADR 0006), and the motion domain `intent`, `ownership`, `terrain`, `motion` (M1), `params` (`ParamValue` = `serde_json::Value`, `ParamSchema`) and `registry` (`Registry`, `Factory<T>`, `ComponentKind`; M2, ADR 0008) | none (REQ-A-1); external: `thiserror`, `serde_json` |
 | `cgf-kernel` | `crates/cgf-kernel` | Clock (four modes, wall-clock site), hecs-backed world, fixed six-phase tick pipeline, state hash, snapshot (M1) | `cgf-core` (REQ-A-2) |
 | `cgf-motion` | `crates/cgf-motion` | Built-in motion models, `builtin.ground.kinematic` (M1) | `cgf-core` |
 | `cgf-templates` | `crates/cgf-templates` | Template and scenario reading, inheritance, schema validation, located diagnostics (M2; WI-1 scaffold, no modules yet) | `cgf-core` only |

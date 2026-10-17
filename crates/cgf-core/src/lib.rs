@@ -12,6 +12,8 @@
 //!   (REQ-C-3, D-15).
 //! - [`hash`]: the canonical [`StateHasher`] (ADR 0007).
 //! - [`rng`]: [`SimRng`] and derived streams (ADR 0006).
+//! - [`params`], [`registry`]: [`ParamValue`], [`ParamSchema`] and the single component
+//!   [`Registry`] of [`Factory`] objects (REQ-T-1, REQ-T-3, D-8, ADR 0008).
 //! - [`intent`], [`ownership`], [`terrain`], [`motion`]: [`Intent`], [`Ownership`],
 //!   [`TerrainProvider`], [`KinematicState`] and the [`MotionModel`] trait (REQ-B-2, REQ-K-5,
 //!   REQ-C-6, REQ-M-1).
@@ -29,6 +31,8 @@ pub mod intent;
 pub mod math;
 pub mod motion;
 pub mod ownership;
+pub mod params;
+pub mod registry;
 pub mod rng;
 pub mod terrain;
 pub mod time;
@@ -37,10 +41,14 @@ pub mod units;
 pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
 pub use geo::{Euler, Quaternion, Vec3};
 pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher};
-pub use id::{BehaviorId, EntityId, IdError, MAX_ID_LEN, MotionModelId, PluginId, TemplateId};
+pub use id::{
+    BehaviorId, ComponentId, EntityId, IdError, MAX_ID_LEN, MotionModelId, PluginId, TemplateId,
+};
 pub use intent::Intent;
 pub use motion::{KinematicState, MotionModel};
 pub use ownership::{Ownership, RemoteSource};
+pub use params::{ParamSchema, ParamSchemaError, ParamValue};
+pub use registry::{BuildError, ComponentKind, Factory, Registry, RegistryError};
 pub use rng::{RngStream, SimRng, SplitMix64, StreamKey};
 pub use terrain::{FlatTerrain, TerrainProvider};
 pub use time::{SimTime, TickRate, TimeError};
