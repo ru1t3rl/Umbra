@@ -582,3 +582,66 @@ fn ground_kinematic_style_schema_reports_every_problem_in_one_pass() {
         ]
     );
 }
+
+// review fixes ----------------------------------------------------------------------------------
+
+/// m4: a small schema whose `$ref`s fan out exponentially is rejected at compile time.
+#[test]
+fn exponentially_expanding_ref_chains_are_a_compile_error() {
+    let mut defs = vec![r#""d0":{"type":"integer"}"#.to_string()];
+    for i in 1..=20 {
+        let p = i - 1;
+        defs.push(format!(
+            r##""d{i}":{{"oneOf":[{{"$ref":"#/$defs/d{p}"}},{{"$ref":"#/$defs/d{p}"}}]}}"##
+        ));
+    }
+    let schema = format!(
+        r##"{{"$defs":{{{}}},"$ref":"#/$defs/d20"}}"##,
+        defs.join(",")
+    );
+
+    let error = compile(&schema).err();
+
+    assert!(error.is_some_and(|e| e.message.contains("expands")));
+}
+
+#[test]
+fn a_moderate_ref_fan_out_still_compiles() {
+    let schema = r##"{"$defs":{"n":{"type":"number"}},"type":"object","properties":{"a":{"$ref":"#/$defs/n"},"b":{"$ref":"#/$defs/n"}}}"##;
+
+    assert!(compile(schema).is_ok());
+}
+
+/// Nit: integers are compared exactly against integer bounds (beyond 2^53 f64 would conflate them).
+#[test]
+fn integer_bounds_are_compared_exactly() {
+    let schema = r#"{"type":"integer","maximum":9007199254740992}"#;
+
+    assert_eq!(check(schema, "9007199254740992"), []);
+    assert_eq!(
+        check(schema, "9007199254740993"),
+        [at("param_out_of_range", 1, 5)]
+    );
+}
+
+/// Nit: `~1` and `~0` in `$ref` names are decoded.
+#[test]
+fn ref_names_are_json_pointer_decoded() {
+    let schema = r##"{"$defs":{"a/b":{"type":"string"}},"$ref":"#/$defs/a~1b"}"##;
+
+    assert_eq!(check(schema, "\"s\""), []);
+    assert_eq!(check(schema, "1"), [at("param_wrong_type", 1, 5)]);
+}
+
+/// m2: a value `parse` already rejected causes no schema error on top.
+#[test]
+fn unsupported_values_are_skipped_silently() {
+    let compiled = compile(r#"{"type":"string","minLength":3}"#).unwrap_or_else(|e| panic!("{e}"));
+    let file = SourceFile::new("v.toml", "x = 1979-05-27\n");
+    let (table, diagnostics) = parse(&file);
+    let table = table.unwrap_or_else(|| panic!("no table"));
+    let value = table.get("x").unwrap_or_else(|| panic!("no x"));
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(compiled.validate(value, CTX), []);
+}

@@ -4,6 +4,7 @@
 //! walks the schema in sorted key order and returns every violation, each located at the offending
 //! value, sorted by position, so output is stable (REQ-K-4).
 
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use cgf_core::ParamSchema;
@@ -25,6 +26,9 @@ const ANNOTATIONS: [&str; 10] = [
     "readOnly",
     "writeOnly",
 ];
+
+/// The most nodes one validation may visit (see `reject_oversized`).
+const MAX_EXPANDED_NODES: u64 = 10_000;
 
 const DEFS_PREFIX: &str = "#/$defs/";
 
@@ -174,6 +178,7 @@ impl CompiledSchema {
         let root = compiler.nodes.len();
         compiler.nodes.push(root_node);
         compiler.reject_cycles()?;
+        compiler.reject_oversized(root)?;
         Ok(Self {
             nodes: compiler.nodes,
             root,
@@ -314,8 +319,9 @@ impl Compiler {
                 ),
             ));
         };
+        let name = name.replace("~1", "/").replace("~0", "~");
         self.defs
-            .get(name)
+            .get(&name)
             .copied()
             .ok_or_else(|| error(at, format!("`{target}` is not defined")))
     }
@@ -351,6 +357,39 @@ impl Compiler {
             }
         }
         Ok(())
+    }
+
+    /// Validation visits a shared definition once per use, so a small schema can expand to an
+    /// exponential number of nodes (`oneOf` chains of `$ref`s). Reject schemas whose expansion
+    /// exceeds [`MAX_EXPANDED_NODES`].
+    fn reject_oversized(&self, root: usize) -> Result<(), SchemaError> {
+        if u64::try_from(self.nodes.len()).map_or(true, |n| n > MAX_EXPANDED_NODES) {
+            return Err(error("", "the schema has too many subschemas"));
+        }
+        let mut sizes: Vec<Option<u64>> = vec![None; self.nodes.len()];
+        let size = self.expanded_size(root, &mut sizes);
+        if size > MAX_EXPANDED_NODES {
+            let message = format!(
+                "the schema expands to more than {MAX_EXPANDED_NODES} nodes once `$ref`s are followed"
+            );
+            return Err(error("", message));
+        }
+        Ok(())
+    }
+
+    /// Nodes visited by one validation of `node`, saturating. The graph has no cycles here.
+    fn expanded_size(&self, node: usize, memo: &mut [Option<u64>]) -> u64 {
+        if let Some(Some(known)) = memo.get(node) {
+            return *known;
+        }
+        let mut total: u64 = 1;
+        for child in self.edges_of(node) {
+            total = total.saturating_add(self.expanded_size(child, memo));
+        }
+        if let Some(slot) = memo.get_mut(node) {
+            *slot = Some(total);
+        }
+        total
     }
 
     fn edges_of(&self, node: usize) -> Vec<usize> {
@@ -436,6 +475,9 @@ impl Run<'_> {
         let Some(node) = self.schema.nodes.get(index) else {
             return;
         };
+        if matches!(value.kind(), LKind::Unsupported) {
+            return; // already reported as `unsupported_value`
+        }
         if let Some(target) = node.reference {
             self.node(target, value, path);
         }
@@ -476,6 +518,9 @@ impl Run<'_> {
     }
 
     fn check_enumeration(&mut self, node: &Node, value: &LValue, path: &[String]) {
+        if node.enumeration.is_none() && node.constant.is_none() {
+            return;
+        }
         let actual = value.to_param();
         if let Some(allowed) = &node.enumeration
             && !allowed.iter().any(|a| json_eq(a, &actual))
@@ -503,32 +548,21 @@ impl Run<'_> {
     }
 
     fn check_number(&mut self, node: &Node, value: &LValue, path: &[String]) {
-        let n = match value.kind() {
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "bounds are f64; exact below 2^53"
-            )]
-            LKind::Integer(i) => *i as f64,
-            LKind::Float(f) => *f,
+        let shown = match value.kind() {
+            LKind::Integer(i) => i.to_string(),
+            LKind::Float(f) => f.to_string(),
             _ => return,
         };
-        let rules: [(Option<f64>, bool, &str); 4] = [
-            (node.minimum, n < node.minimum.unwrap_or(f64::MIN), ">="),
-            (node.maximum, n > node.maximum.unwrap_or(f64::MAX), "<="),
-            (
-                node.exclusive_minimum,
-                n <= node.exclusive_minimum.unwrap_or(f64::MIN),
-                ">",
-            ),
-            (
-                node.exclusive_maximum,
-                n >= node.exclusive_maximum.unwrap_or(f64::MAX),
-                "<",
-            ),
+        let rules: [Rule; 4] = [
+            (node.minimum, Ordering::is_lt, ">="),
+            (node.maximum, Ordering::is_gt, "<="),
+            (node.exclusive_minimum, Ordering::is_le, ">"),
+            (node.exclusive_maximum, Ordering::is_ge, "<"),
         ];
         for (bound, violated, op) in rules {
-            if let (Some(bound), true) = (bound, violated) {
-                let what = format!("must be {op} {bound}, found {n}");
+            let Some(bound) = bound else { continue };
+            if compare(value.kind(), bound).is_some_and(violated) {
+                let what = format!("must be {op} {bound}, found {shown}");
                 self.add(
                     DiagnosticCode::ParamOutOfRange,
                     value.origin().location(),
@@ -695,6 +729,36 @@ fn dotted(path: &[String], name: &str) -> String {
     } else {
         format!("{}.{name}", path.join("."))
     }
+}
+
+/// A bound, the orderings that violate it, and its operator for messages.
+type Rule = (Option<f64>, fn(Ordering) -> bool, &'static str);
+
+/// Orders a number against a bound; integers are compared exactly against integral bounds.
+fn compare(value: &LKind, bound: f64) -> Option<Ordering> {
+    match value {
+        LKind::Integer(i) => match exact_i64(bound) {
+            Some(b) => Some(i.cmp(&b)),
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "non-integral bounds are f64 anyway"
+            )]
+            None => (*i as f64).partial_cmp(&bound),
+        },
+        LKind::Float(f) => f.partial_cmp(&bound),
+        _ => None,
+    }
+}
+
+/// `bound` as an `i64` when it is a whole number in range.
+fn exact_i64(bound: f64) -> Option<i64> {
+    // 2^63 as f64 is exactly representable; the range check keeps the cast exact.
+    let limit = 9_223_372_036_854_775_808.0;
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "whole and within the i64 range"
+    )]
+    (bound.fract() == 0.0 && (-limit..limit).contains(&bound)).then_some(bound as i64)
 }
 
 /// JSON equality where numbers compare by value (`1` equals `1.0`).
