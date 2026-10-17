@@ -1,4 +1,5 @@
 # cargo-deny configuration (NFR-4, NFR-6, ADR 0001, ASM-020).
+# Copyleft is denied by omission: anything not on the allow-list fails (not on the allow-list = denied).
 # Minimal list: only licenses the current tree uses (ASM-020). Candidates to add when a dependency needs
 # them: Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, ISC, Zlib.
 # Add a license only in the PR that adds a dependency needing it, with a note.
@@ -16,6 +17,8 @@ allow = [
     "Unicode-3.0",
 ]
 confidence-threshold = 0.9
+# Check dev-dependency licenses too (default is false; a GPL dev-dependency otherwise passes).
+include-dev = true
 
 [bans]
 multiple-versions = "warn"
