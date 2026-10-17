@@ -60,6 +60,7 @@ A Computer Generated Force (CGF) simulates many autonomous entities (vehicles, a
 | D-16 | **Owned vs. remote (ghost) entities are distinct** | Ghosts are dead-reckoned only; avoids running behavior on others' entities and echo loops | Treating all entities the same |
 | D-17 | **Declarative behaviors (FSM/behavior tree) in data first; native plugins for complex logic; scripting optional later** | Most users need no code; layering by complexity | Plugins as the only way |
 | D-18 | **License: `MIT OR Apache-2.0` for the whole workspace**, plugin API and SDK included (ADR 0001) | Rust ecosystem norm; permissive enough that third parties can ship closed-source plugins, so the SDK needs no separate license | MPL-2.0 engine, proprietary, separate SDK license |
+| D-19 | **No hosted CI; the local `verify-and-build` run is the quality gate** (ADR 0004). Read "CI" in this spec as that run. M0 acceptance 1 is waived | The project has no remote and will not use CI; all gates stay scripted commands | GitHub Actions as specified |
 
 ## 3. System overview
 
