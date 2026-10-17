@@ -132,6 +132,7 @@ name = "cgf-behavior"
 version = "0.1.0"
 dependencies = [
  "cgf-core",
+ "proptest",
  "serde_json",
  "thiserror",
 ]
