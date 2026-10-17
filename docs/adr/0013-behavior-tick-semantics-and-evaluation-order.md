@@ -62,3 +62,13 @@ Option 1.
   per-tick intent comparison in gate 4).
 - Revisit when replay (REQ-K-7, M7) needs behavior state in snapshots, or if profiling (NFR-1) asks for
   memory composites by default.
+
+## Amended 2026-10-17 after WI-3 review
+- **Erratum:** `BehaviorContext` has no `dt` field (the Decision's "`BehaviorContext::{now, dt, rng}`"
+  reads `{now, rng}`). Durations are whole tick counts converted once at `instantiate` (ASM-078); a later
+  `dt` would be an additive field with a new constructor.
+- `instantiate` is fallible (`InstantiateError`): a duration that does not convert to ticks at the
+  scenario rate fails the spawn instead of panicking or saturating.
+- **Order independence:** each entity has its own `IntentBuffer`, contact vector and RNG stream and sees
+  only pre-tick state, so the outcome of the Perception and Behavior phases does not depend on the order
+  in which entities are visited (tested in WI-6); id order remains the fixed visiting order.

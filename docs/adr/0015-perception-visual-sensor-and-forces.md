@@ -41,3 +41,16 @@ Option 1.
 - Harder: perception is O(n^2) per tick; NFR-1 (10k entities) will need a spatial index (M9 profiling).
 - Revisit when a second sensor or the sensor plugin kind (M7) arrives (move to `cgf-perception`), or when
   force relations (allies, neutrals that are hostile) are needed.
+
+## Amended 2026-10-17 after WI-3 review
+- Signature: `Sensor::sense(&self, ctx: &mut SenseContext<'_>, observer: &Observer<'_>, candidates:
+  &[Target<'_>], out: &mut ContactBuffer<'_>)`. `SenseContext` is `#[non_exhaustive]` with `new(now, rng,
+  terrain)`: simulation time, the observer's own hashed RNG stream (for future noisy sensors; `builtin.visual`
+  draws nothing) and the terrain (moved from a separate argument, so later additions stay additive).
+  `ContactBuffer` is append-only like `IntentBuffer`. `Contact` is `#[non_exhaustive]` with `new`.
+- `builtin.visual` checks 3D range, then field of view, and only then `line_of_sight`.
+- With `eye_height_m = 0`, two entities on smooth (flat or curved) ground never have line of sight: the
+  straight segment dips below the surface. Documented in ASM-080 and `docs/behavior.md`; AT-15 covers it.
+- `Force` names use the one private segment validator in `id.rs` (`MAX_ID_LEN` cap, bounded error echo,
+  `ForceError::TooLong`), also used for blackboard key names.
+- Batched sensing for plugins (`sense_batch`) will be an additive default method in M4 (ASM-086).

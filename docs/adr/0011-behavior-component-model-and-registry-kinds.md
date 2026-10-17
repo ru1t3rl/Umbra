@@ -51,3 +51,12 @@ Option 1 (approved by the human 2026-10-17; option 2 is not used).
 - Migration (approved): the one M2 test edit is made in its own commit, reviewed as a
   diff of that test alone. Every other M2 test and fixture stays byte-identical.
 - Revisit if a plugin needs one ID under two kinds (ASM-063), or if `cgf-core` must shrink.
+
+## Amended 2026-10-17 after WI-3 review
+Code-reviewer and plugin-abi-engineer approved WI-3 (b182969); refinements adopted for the core traits so
+an FFI bridge (M4) can implement them: `Behavior::instantiate` and `Action::instantiate` return
+`Result<Box<dyn ..Instance>, InstantiateError>` (`#[non_exhaustive]`, `thiserror`); `BehaviorInstance::output`
+returns an owned `Option<BbValue>`; `BehaviorInstance::set_input(&mut self, param, Option<BbValue>) ->
+Result<(), BlackboardError>` is a required method; `Contact`, `RouteView`, `BbType`, `BbValue` are
+`#[non_exhaustive]` (structs with `new`). Batching, fault reporting and snapshots stay additive default
+methods or fields for M4 (ASM-086). Signatures: `docs/plans/M3.md`, "`cgf-core` additions".
