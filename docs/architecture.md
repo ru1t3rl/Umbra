@@ -5,11 +5,11 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 ## Crates (current)
 | Crate | Path | Role | Workspace deps |
 |---|---|---|---|
-| `cgf-core` | `crates/cgf-core` | IDs, time, units (M1 adds math, geo, coords, hash, rng, motion domain) | none (REQ-A-1) |
-| `cgf-kernel` | `crates/cgf-kernel` | Clock, ECS world, fixed tick pipeline, state hash (M1, scaffold) | `cgf-core` (REQ-A-2) |
-| `cgf-motion` | `crates/cgf-motion` | Built-in motion models, `builtin.ground.kinematic` (M1, scaffold) | `cgf-core` |
-| `cgf-engine` | `crates/cgf-engine` | Embeddable synchronous facade and M1 demo scenario (M1, scaffold) | `cgf-core`, `cgf-kernel`, `cgf-motion` |
-| `cgf-cli` | `crates/cgf-cli` | Binary; `demo` command in M1 (scaffold) | `cgf-engine` |
+| `cgf-core` | `crates/cgf-core` | IDs, time, units; `math` (single site for non-exact float functions, ADR 0003), `geo` (Vec3, Quaternion, Euler), `coords` (WGS-84, ECEF, geodetic, ENU/NED, LocalFrame, Position), `hash` (canonical state hasher, ADR 0007), `rng` (SimRng, ADR 0006), and the motion domain `intent`, `ownership`, `terrain`, `motion` (M1) | none (REQ-A-1) |
+| `cgf-kernel` | `crates/cgf-kernel` | Clock (four modes, wall-clock site), hecs-backed world, fixed six-phase tick pipeline, state hash, snapshot (M1) | `cgf-core` (REQ-A-2) |
+| `cgf-motion` | `crates/cgf-motion` | Built-in motion models, `builtin.ground.kinematic` (M1) | `cgf-core` |
+| `cgf-engine` | `crates/cgf-engine` | Embeddable synchronous facade, placement by ECEF or lat/lon/alt, M1 demo scenario (M1) | `cgf-core`, `cgf-kernel`, `cgf-motion` |
+| `cgf-cli` | `crates/cgf-cli` | Binary; `demo` command in M1 | `cgf-engine` |
 
 Planned crates (section 4) are added in their own milestones; no placeholders (ASM-010).
 
@@ -23,5 +23,8 @@ Planned crates (section 4) are added in their own milestones; no placeholders (A
 ## Code-level guards (workspace-wide)
 - `unsafe_code = "deny"` in `[workspace.lints]`; non-FFI crates also `#![forbid(unsafe_code)]` (NFR-2, ASM-012).
 - `clippy.toml` bans `SystemTime::now`/`elapsed`, `Instant::now`/`elapsed`, `thread::sleep`, `HashMap`, `HashSet` and `RandomState` (REQ-K-4, ASM-013). A `HashMap` from a third-party API iterated without naming the type remains a review item.
+- Math (ADR 0003, ASM-034): every non-exact float function (trig, inverse trig, hyperbolic, exp/log, `powi`, `powf`, `cbrt`, `hypot`) goes through `cgf_core::math`, the one place that may call the `std` methods and so the one swap point for `libm`. `clippy.toml` bans the direct `f64`/`f32` methods (and `mul_add`) workspace-wide with the reason "ADR 0003: use cgf_core::math"; `sqrt`, `abs`, `floor`, `to_radians` and the basic operators stay allowed because IEEE 754 makes them exact.
+- Randomness (ASM-042): `clippy.toml` also bans the `rand` entry points `random`, `thread_rng`, `rng`, `OsRng`, the `getrandom` functions and `fastrand` entry points (paths that do not resolve use `allow-invalid`), and the types `hashbrown::HashMap`/`HashSet`. Simulation randomness comes from `SimRng` streams (ADR 0006).
+- Wall time (ASM-035): `Instant::now` is allowed in exactly one place, a private module of `crates/cgf-kernel/src/clock/wall.rs` (`StdWallClock`), through one `#[expect(clippy::disallowed_methods, reason = "REQ-K-4: ...")]`; everything else reads time through `WallClock` or `Clock`.
 - `allow_attributes` and `allow_attributes_without_reason` are `warn`: use `#[expect(..., reason = "...")]` (ASM-012).
 - Binaries and tests may print (`print_stdout`/`print_stderr` are `warn`; tests are exempt, ASM-023).

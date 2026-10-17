@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 pub mod demo;
+pub mod display;
 pub mod engine;
 pub mod error;
 
@@ -23,5 +24,6 @@ pub use cgf_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, TickReport, TimeScale,
     WallClock,
 };
+pub use display::EntityDisplay;
 pub use engine::{Engine, EngineConfig, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView};
 pub use error::EngineError;
