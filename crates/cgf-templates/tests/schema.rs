@@ -139,7 +139,7 @@ fn wrong_type_message_names_the_parameter_the_expected_type_and_the_found_type()
         d[0].message,
         "motion model `builtin.ground.kinematic`: parameter `max_speed_mps` must be a number, found string"
     );
-    assert_eq!(rows(&d), [at("param_wrong_type", 1, 25)]);
+    assert_eq!(rows(&d), [at("param_wrong_type", 1, 23)]);
 }
 
 // properties, required, additionalProperties -----------------------------------------------------
@@ -578,7 +578,7 @@ fn ground_kinematic_style_schema_reports_every_problem_in_one_pass() {
             row("missing_param", "v.toml", (1, 5)),
             row("param_wrong_type", "v.toml", pos_of(text, "\"fast\"")),
             row("param_out_of_range", "v.toml", pos_of(text, "0.0")),
-            row("unknown_param", "v.toml", pos_of(text, "speed")),
+            row("unknown_param", "v.toml", pos_of(text, "speed = 3")),
         ]
     );
 }
