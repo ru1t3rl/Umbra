@@ -136,8 +136,7 @@ fn non_ascii_is_invalid_char() {
     );
 }
 
-/// ADR 0002: upper case at the segment start is rejected. The plan does not say whether this is
-/// `InvalidChar` or `InvalidSegmentStart`; either is accepted (see plan ambiguity note).
+/// ADR 0002, ASM-025: an upper-case first char is `InvalidChar` at byte 0.
 #[test]
 fn uppercase_segment_start_is_rejected() {
     assert_eq!(
@@ -211,7 +210,7 @@ fn too_long_prefix_respects_char_boundaries() {
 /// Error messages quote the input with `{:?}`, so control characters cannot forge extra lines.
 #[test]
 fn newline_in_input_does_not_make_multiline_message() {
-    for s in ["a.b\nc", "a\n.b", "a.b\n", "\n"] {
+    for s in ["a.b\nc", "a\n.b", "a.b\n", "\n", "a.b\x1b[31m", "a.b\rc"] {
         let msg = TemplateId::new(s).unwrap_err().to_string();
         assert!(!msg.contains(['\n', '\r', '\x1b']), "{msg:?}");
     }
