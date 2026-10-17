@@ -1,6 +1,6 @@
 //! `cgf-kernel`: the deterministic simulation kernel of the CGF Engine.
 //!
-//! Responsibility (filled in by later M1 work items): the simulation clock and its modes
+//! Responsibility: the simulation clock and its modes
 //! (REQ-K-3), the ECS world (REQ-K-1, ADR 0005), the fixed six-phase tick pipeline (REQ-K-2),
 //! per-tick timings (REQ-K-8) and the state hash (REQ-K-4, ADR 0007).
 //!
@@ -13,6 +13,8 @@ pub mod clock;
 pub mod error;
 pub mod kernel;
 pub mod pipeline;
+mod state;
+mod world;
 
 pub use clock::{
     Clock, ClockError, ClockMode, ManualWallClock, Pace, StdWallClock, TimeScale, WallClock,

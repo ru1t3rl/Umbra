@@ -10,7 +10,9 @@ repository.workspace = true
 
 [dependencies]
 cgf-core = { path = "../cgf-core" }
+hecs = { version = "0.11.2", default-features = false, features = ["std"] }
 thiserror.workspace = true
+tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 
 [lints]
 workspace = true
