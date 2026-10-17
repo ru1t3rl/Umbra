@@ -169,6 +169,11 @@ impl LTable {
         self.entries.iter().map(|(k, e)| (k.as_str(), e))
     }
 
+    /// A table made of existing entries (used when merging inherited parameters).
+    pub(crate) fn from_entries(origin: Origin, entries: BTreeMap<String, LEntry>) -> Self {
+        Self { origin, entries }
+    }
+
     /// The table as JSON.
     pub fn to_param(&self) -> ParamValue {
         ParamValue::Object(

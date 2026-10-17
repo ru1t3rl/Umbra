@@ -14,6 +14,7 @@
 
 #![forbid(unsafe_code)]
 
+pub(crate) mod components;
 pub mod diagnostic;
 pub mod loader;
 pub(crate) mod reader;
