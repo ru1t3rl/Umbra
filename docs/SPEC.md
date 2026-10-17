@@ -1,6 +1,8 @@
-# CGF Engine: Software Specification v0.1
+# CGF Engine: Software Specification v0.2
 
 *Computer Generated Forces engine: headless Rust simulation core, plugin SDK, optional control API and GUI.*
+
+> **Changelog v0.1 -> v0.2 (amendment A-001, behavior graphs and subgraphs).** Adds D-18, D-19, section 8.1 (REQ-B-6..17), REQ-X-10..12, `condition`/`action` plugin kinds, and milestone changes to M3, M5, M7 and new M8b. **Compatibility:** M0-M2 deliverables are frozen and unchanged. Existing template and scenario files stay valid; behavior graphs reuse the M2 loader, registry and validation pipeline. Details: `docs/amendments/A-001-behavior-graphs.md`.
 
 > Note: GUI structure and tooling are further specified in `gui/CLAUDE.md` and `docs/frontend-architecture.md`, which supersede section 13 where they differ.
 
@@ -59,14 +61,8 @@ A Computer Generated Force (CGF) simulates many autonomous entities (vehicles, a
 | D-15 | **f64 positions; ECEF/WGS-84 canonical frame**, local ENU/NED for motion math | Matches DIS; avoids precision loss globally | f32, flat-earth only |
 | D-16 | **Owned vs. remote (ghost) entities are distinct** | Ghosts are dead-reckoned only; avoids running behavior on others' entities and echo loops | Treating all entities the same |
 | D-17 | **Declarative behaviors (FSM/behavior tree) in data first; native plugins for complex logic; scripting optional later** | Most users need no code; layering by complexity | Plugins as the only way |
-| D-18 | **License: `MIT OR Apache-2.0` for the whole workspace**, plugin API and SDK included (ADR 0001) | Rust ecosystem norm; permissive enough that third parties can ship closed-source plugins, so the SDK needs no separate license | MPL-2.0 engine, proprietary, separate SDK license |
-| D-19 | **No hosted CI; the local `verify-and-build` run is the quality gate** (ADR 0004). Read "CI" in this spec as that run. M0 acceptance 1 is waived | The project has no remote and will not use CI; all gates stay scripted commands | GitHub Actions as specified |
-| D-20 | **ECS is `hecs`, kernel-internal only** (ADR 0005); entities addressed by `EntityId`, iteration in `EntityId` order | No scheduler of its own (our phase pipeline orders work), small dependency tree, deterministic use is easy to enforce | `bevy_ecs` (multi-threaded executor by default, frequent breaking releases), own ECS |
-| D-21 | **`SimRng` is hand-rolled Xoshiro256\*\* with SplitMix64 key expansion; streams keyed by (domain, id)** (ADR 0006) | A dependency bump can never change what a seed produces; per-entity streams keep results independent of iteration and spawn order | `rand`/`rand_chacha`, one global stream |
-| D-22 | **State hash is FNV-1a 64 over a versioned little-endian canonical encoding, walked in `EntityId` order; -0.0 and NaN canonicalised; v2 includes route content (ADR 0007 amendment)** (ADR 0007) | Stable by construction, no dependency, cheap; hashes are for equality checks, not security | xxHash/BLAKE3 crates, hashing `Debug` output |
-| D-23 | **Component registry and generic `Factory<T>` live in `cgf-core`; component parameters are `serde_json::Value` with hand-written JSON Schemas; no serde derives on domain types** (ADR 0008) | `cgf-templates` may only see `cgf-core` (section 4); one registry for built-ins and plugins (REQ-T-1, D-8); schemas are the component's contract (REQ-T-3) | Registry in `cgf-engine`, `schemars`, serde derives on core types |
-| D-24 | **Hand-rolled validator for a documented JSON Schema keyword subset; schemas using other keywords are rejected** (ADR 0009) | Small, deterministic, no heavy dependency; fail-closed | `jsonschema` crate |
-| D-25 | **Template and scenario file format v1** (ADR 0010): keys, merge rules, initial routes in placements, `schema_version` policy (adding keys does not bump it), diagnostics `path:line:col: error[code]: message` | REQ-T-1..6, D-14 | Ad-hoc per-milestone formats |
+| D-18 | **Behavior graphs: behavior tree as the primary format, with `fsm` and `subgraph` as node types** (A-001) | In a tree a subtree is just a node, so reuse of pre-built pieces (own, built-in, plugin, third-party) needs only a simple result interface; FSM nodes cover mode-based logic; both emit the same intents, so the engine core is unchanged; visual authoring stays simple | FSM-only (reuse needs exit-point design, nested transitions get tangled), tree-only (modal logic awkward), free-form scripting (determinism and test surface) |
+| D-19 | **Visual behavior editor is part of the GUI**, driven by an engine **catalog** and **validation** API (A-001) | No second client to build and package; plugins extend the editor automatically; one validation pipeline | Separate editor application; hard-coded node palette in the GUI |
 
 ## 3. System overview
 
@@ -187,11 +183,26 @@ A scenario lists: seed, clock mode, tick rate, plugins to load, enabled network 
 - **REQ-B-1** Core trait (conceptual): `Behavior::tick(ctx: &BehaviorContext, entity: EntityView, out: &mut IntentBuffer)`. A behavior **reads** state and perception and **writes intents**; it never mutates entity state directly. This keeps behaviors deterministic and replaceable.
 - **REQ-B-2 Intents** are a closed, versioned set: `MoveTo`, `FollowRoute`, `SetSpeed`, `SetHeading`, `Hold`, `Fire{target, weapon}`, `Spawn`, `Despawn`, `Custom{kind,payload}`.
 - **REQ-B-3 Layers:**
-  1. **Declarative**: FSM and behavior-tree definitions in TOML using built-in conditions and actions (`move_to`, `is_enemy_in_range`, `wait`, ...). Covers most users with no code.
-  2. **Plugin behaviors** via the C ABI for complex logic.
-  3. *Later (MAY):* embedded scripting or WASM as another plugin kind.
+  1. **Declarative behavior graphs** (section 8.1): behavior trees in TOML, with `fsm` and `subgraph` node types, using built-in conditions and actions (`move_to`, `enemy_in_range`, `wait`, ...). Covers most users with no code.
+  2. **Plugin behaviors, conditions, actions and subgraphs** via the C ABI for complex logic.
+  3. *Later (MAY):* embedded scripting or WASM as another plugin kind (needs an ADR on determinism).
 - **REQ-B-4** Plugin behaviors are invoked in **batches** (a slice of entities per call) to limit FFI overhead.
 - **REQ-B-5** Per-instance behavior state is held in an engine-managed opaque blob (or a plugin-owned handle with create/destroy callbacks) so replay and snapshotting can be supported.
+
+### 8.1 Behavior graphs and subgraphs (A-001)
+
+- **REQ-B-6 Graph format:** A **behavior graph** is a TOML file (`*.behavior.toml`) with `id`, `schema_version`, `version`, optional `[interface]`, a `root` node, and a `[nodes.*]` table. Graphs load through the same loader, registry and validation pipeline as templates (REQ-T-2). Existing M2 template and scenario files remain valid unchanged; templates keep referencing behaviors through `[behavior] ref` (REQ-T-1), and a graph's ID is a valid `ref`.
+- **REQ-B-7 Node kinds (v1):** composites `sequence`, `selector`, `parallel`; decorators `inverter`, `repeat`, `cooldown`, `timeout`, `succeed_always`; leaves `condition` and `action` referencing the catalog by ID; `fsm` (states, transitions with conditions, optional hierarchical child states, named exits mapped to Success/Failure); `subgraph`.
+- **REQ-B-8 Tick semantics:** every node returns Success, Failure or Running. Evaluation order is fixed and documented. Nodes never mutate entity state; they only emit intents (REQ-B-1).
+- **REQ-B-9 Subgraphs:** a `subgraph` node references another graph by ID with an optional semver range (`version`) and `params`. It resolves through the registry; whether the target is a file, built-in or plugin is invisible to the referencing graph (D-8).
+- **REQ-B-10 Interface:** a reusable graph MAY declare `[interface]`: typed parameters (JSON Schema, REQ-T-3), optional named outputs, and its result semantics. Call sites are validated against it (missing, unknown or wrongly typed params are errors).
+- **REQ-B-11 Isolation:** every subgraph instance has its own node state and scoped blackboard. Data crosses only through declared params (in) and outputs (out) bindings. No hidden shared state between instances or graphs.
+- **REQ-B-12 Validation:** loading MUST reject unknown refs, version mismatches, subgraph cycles (direct or indirect), nesting deeper than a configurable limit (default 16), unreachable FSM states, FSMs without an initial state, and invalid interface bindings. All errors are reported with file and line (REQ-T-2).
+- **REQ-B-13 Provenance:** each graph has a source tag (`builtin`, `file`, `plugin`) exposed by the catalog. `builtin` and `plugin` graphs are read-only for editors.
+- **REQ-B-14 Versioning:** graphs carry a semantic version; a breaking interface change requires a major bump; `schema_version` follows REQ-T-5.
+- **REQ-B-15 Conditions (v1):** selected from a catalog of parameterized built-in or plugin conditions (e.g. `enemy_in_range`, `health_below`, `timer_elapsed`). No free-form expression language or scripting in v1.
+- **REQ-B-16 Determinism:** graph evaluation uses only `SimTime`, perception data and `SimRng` (REQ-K-4). Editor metadata (`[editor]` tables: node positions, comments, colors) is ignored by the engine and excluded from state hashes and replay.
+- **REQ-B-17 Catalog:** the engine exposes a catalog of node types, conditions, actions and available graphs/subgraphs, each with id, description, source, version and param JSON Schema. It is the single data source for editors (REQ-X-10).
 
 ## 9. Motion and physics
 
@@ -208,7 +219,7 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 - **REQ-P-1** Plugins are dynamic libraries (`.dll` / `.so`) exporting exactly one symbol: `const CgfPluginDescriptor* cgf_plugin_entry(const CgfHostApi* host);`
 - **REQ-P-2** All plugin API structs are `#[repr(C)]`, begin with `abi_version` and `struct_size` fields, and are **append-only** within a major ABI version. Hosts and plugins check sizes before reading newer fields.
 - **REQ-P-3 Descriptor** contains: plugin id, name, semantic version, required ABI major/minor, and a list of **capabilities** (kind + id + param JSON Schema + vtable pointer).
-- **REQ-P-4 Capability kinds (v1):** `behavior`, `motion_model`, `network_adapter`, `sensor`, `component`. New kinds extend the enum and vtable set, never add new loading paths (D-8).
+- **REQ-P-4 Capability kinds (v1):** `behavior`, `motion_model`, `network_adapter`, `sensor`, `component`; `condition` and `action` (custom behavior-graph leaves) are added in M7. New kinds extend the enum and vtable set, never add new loading paths (D-8).
 - **REQ-P-5 HostApi** provides: logging, `SimRng` access, current `SimTime`, terrain queries, event emit, memory helpers, capability registration. Plugins interact with the engine only through this.
 - **REQ-P-6 Ownership:** memory crossing the boundary is freed by the side that allocated it, via a provided free function. Prefer host-allocated output buffers. Strings are UTF-8 pointer+length. Params and payloads cross as UTF-8 JSON or length-prefixed byte buffers.
 - **REQ-P-7 Panics:** the SDK wraps every exported function in `catch_unwind` and converts panics to error codes. On plugin error the host logs, marks the capability faulted, and applies the scenario's `on_plugin_fault` policy (`abort` | `disable_capability`).
@@ -248,6 +259,9 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 - **REQ-X-7** The server holds only an `EngineHandle`; it MUST NOT touch ECS data directly. A slow WebSocket client never slows the tick (REQ-K-6).
 - **REQ-X-8** Multiple concurrent clients are allowed; no command restrictions or authentication in v1. Server binds to localhost by default; exposing it is an explicit config choice. Document this limitation.
 - **REQ-X-9** Errors use a consistent problem-details JSON shape with stable error codes.
+- **REQ-X-10 Catalog:** `GET /api/v1/catalog/behavior` returns node types, conditions, actions and graphs/subgraphs with schemas, versions and provenance (REQ-B-17).
+- **REQ-X-11 Validation:** `POST /api/v1/behaviors/validate` validates a graph document with the same pipeline as `cgf-cli validate`, returning all errors with locations. It changes no state.
+- **REQ-X-12 (SHOULD) Graph files:** list/get/put/delete of user behavior graph files in configured content directories; reject path traversal, write atomically, refuse to modify `builtin` or `plugin` sources; changes apply to new spawns only (REQ-T-7).
 
 ## 13. GUI (separate deliverable, after M5)
 
@@ -255,6 +269,7 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 - API client generated from `api/openapi.json` (`openapi-typescript` + `openapi-fetch`); stream types generated from the shared schema. No hand-written duplicates.
 - **Windows app:** Tauri shell loading the same build; may spawn `cgf-cli` as a sidecar or connect to a remote engine URL.
 - v1 features: connect to engine, load scenario, run controls, map with live entities, entity inspector, template browser, plugin/adapter status, log view. Template/scenario editing UI comes later, driven by JSON Schemas.
+- **Behavior editor (A-001, milestone M8b):** visual node-and-arrow graph editing for behavior graphs, built from the engine catalog (REQ-X-10) and validated by the engine (REQ-X-11). Includes a subgraph library panel, "convert selection to subgraph", expand/collapse and open-in-tab for subgraphs, and read-only display of `builtin` and `plugin` graphs. Layout metadata is stored in the graph's `[editor]` table.
 - The GUI is never required for any engine feature (REQ-G-1).
 - Project structure, tooling (Bun) and layering rules: see `gui/CLAUDE.md` and `docs/frontend-architecture.md`.
 
@@ -273,6 +288,7 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 - **Property tests (`proptest`):** coordinate round-trips, template inheritance, clock monotonicity.
 - **Determinism tests:** run each reference scenario twice (and under different clock modes) and compare per-tick state hashes. This test MUST gate every PR.
 - **Plugin tests:** a test plugin built in CI and loaded by the host; cases for ABI mismatch, missing symbol, plugin panic, wrong struct size, double load, unload ordering.
+- **Behavior graph tests (A-001):** subgraph cycle and depth-limit rejection, version-range mismatch, interface param validation, blackboard isolation between two instances of the same subgraph, FSM exit mapping, determinism with nested graphs, `[editor]` data not affecting state hashes.
 - **Network tests:** DIS golden-packet encode/decode; loopback adapter integration; echo-loop prevention.
 - **API tests:** contract tests against the generated OpenAPI; WebSocket back-pressure test (slow client does not slow ticks).
 - **End-to-end:** CLI runs a scenario headless and asserts on recorded output.
@@ -297,12 +313,13 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 | M0 | Foundations | Workspace, CI, lint/deny config, license, dependency-rule check, `cgf-core` skeleton (IDs, time, units) | CI green on Windows + Linux; dependency-rule check fails when a rule is violated (tested) |
 | M1 | Walking skeleton | Kernel, clock modes, ECS, `SimRng`, coordinates, `ground.kinematic`, hard-coded entity, CLI prints state, state hash | Determinism test passes; coordinate tests pass; entity follows a waypoint list |
 | M2 | Templates and scenarios | TOML loader, inheritance, registry, validation errors, `validate` command, JSON Schemas | REQ-T-1..6 tested including cycle and unknown-ID errors; example scenario with 3 templates runs |
-| M3 | Declarative behavior | FSM and behavior-tree interpreters, built-in actions/conditions, intents pipeline, perception (visual sensor) | Patrol-and-engage scenario runs deterministically; swapping a behavior needs only a template change |
+| M3 | Declarative behavior | Behavior-tree interpreter with `fsm` and `subgraph` nodes, graph format and loader (REQ-B-6..17), subgraph resolution, versioning and cycle detection, built-in conditions/actions, catalog data model, intents pipeline, perception (visual sensor) | Patrol-and-engage scenario (tree with an embedded FSM and a reusable subgraph) runs deterministically; swapping a behavior needs only a template change; REQ-B-6..17 tested incl. cycle, version-mismatch and scoped-blackboard isolation; all M2 template/scenario fixtures still pass unchanged |
 | M4 | Plugin ABI v0 and SDK | `cgf-plugin-api`, host, SDK, `export_plugin!`, behavior plugin kind, example plugin, generated C header | Example plugin loaded and driving entities; all plugin failure tests pass; a C example compiles against the header |
-| M5 | Engine facade and control | `EngineHandle`, snapshots, `cgf-server` REST + WebSocket, committed OpenAPI, stream schema | OpenAPI drift check passes; a script or generated client runs a scenario end to end; slow-client test passes |
+| M5 | Engine facade and control | `EngineHandle`, snapshots, `cgf-server` REST + WebSocket, committed OpenAPI, stream schema, behavior catalog and validation endpoints (REQ-X-10, X-11) | OpenAPI drift check passes; a script or generated client runs a scenario end to end; slow-client test passes; catalog and validate endpoints covered by contract tests |
 | M6 | Networking and DIS | `cgf-net`, loopback adapter, DIS adapter (as plugin), publish thresholds, ghosts and dead reckoning | Two engine instances exchange entities over DIS on localhost; no echo loops; golden-packet tests pass |
-| M7 | More plugin kinds and replay | Motion model, sensor and network plugin kinds; air/sea models; recording/replay | A third-party-style example plugin of each kind in `examples/`; replay reproduces state hashes |
+| M7 | More plugin kinds and replay | Motion model, sensor, network, condition and action plugin kinds; air/sea models; recording/replay | A third-party-style example plugin of each kind in `examples/`; replay reproduces state hashes |
 | M8 | GUI and Windows app | React app, generated client, Tauri packaging, `MapView` | Web and Windows builds both show live entities from a running engine; GUI uses no engine source |
+| M8b | Behavior editor | `@cgf/behavior-editor`, `@cgf/shell-behaviors`, subgraph library, convert-selection-to-subgraph, validation display | A user builds a tree with a nested subgraph in the GUI, saves it, and the engine runs it; invalid graphs show engine validation errors; `builtin` and `plugin` graphs are read-only |
 | M9 | HLA and hardening | HLA adapter with chosen RTI, C# plugin sample, benchmark tuning, docs | HLA interop test against a reference federate; NFR-1 target met |
 
 ## 18. Risks and mitigations
@@ -319,9 +336,9 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 
 ## 19. Open questions (resolve before or during the named milestone)
 
-1. **M0 (resolved 2026-10-17, D-18):** ~~Project license, and whether the SDK/plugin API gets a more permissive license than the engine.~~ `MIT OR Apache-2.0` everywhere.
-2. **M1 (resolved 2026-10-17):** ~~Confirm A-1 (scale) and A-2 (determinism). Changes affect the scheduler and plugin RNG rules.~~ Both confirmed by the human as written; A-2 scope is same-OS (ADR 0003).
-3. **M3:** Behavior trees vs FSM as the first declarative format, or both at once.
+1. **M0:** Project license, and whether the SDK/plugin API gets a more permissive license than the engine.
+2. **M1:** Confirm A-1 (scale) and A-2 (determinism). Changes affect the scheduler and plugin RNG rules.
+3. ~~M3: Behavior trees vs FSM~~ **Resolved (A-001, D-18):** behavior tree primary, with `fsm` and `subgraph` as node types.
 4. **M5:** Is command access control needed (more than one operator)? Currently out of scope.
 5. **M6:** Reuse an existing DIS crate or implement PDUs in-house (depends on license and coverage).
 6. **M8:** Map library (MapLibre 2D vs Cesium 3D).
