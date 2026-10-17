@@ -63,7 +63,7 @@ A Computer Generated Force (CGF) simulates many autonomous entities (vehicles, a
 | D-19 | **No hosted CI; the local `verify-and-build` run is the quality gate** (ADR 0004). Read "CI" in this spec as that run. M0 acceptance 1 is waived | The project has no remote and will not use CI; all gates stay scripted commands | GitHub Actions as specified |
 | D-20 | **ECS is `hecs`, kernel-internal only** (ADR 0005); entities addressed by `EntityId`, iteration in `EntityId` order | No scheduler of its own (our phase pipeline orders work), small dependency tree, deterministic use is easy to enforce | `bevy_ecs` (multi-threaded executor by default, frequent breaking releases), own ECS |
 | D-21 | **`SimRng` is hand-rolled Xoshiro256\*\* with SplitMix64 key expansion; streams keyed by (domain, id)** (ADR 0006) | A dependency bump can never change what a seed produces; per-entity streams keep results independent of iteration and spawn order | `rand`/`rand_chacha`, one global stream |
-| D-22 | **State hash is FNV-1a 64 over a versioned little-endian canonical encoding, walked in `EntityId` order; -0.0 and NaN canonicalised** (ADR 0007) | Stable by construction, no dependency, cheap; hashes are for equality checks, not security | xxHash/BLAKE3 crates, hashing `Debug` output |
+| D-22 | **State hash is FNV-1a 64 over a versioned little-endian canonical encoding, walked in `EntityId` order; -0.0 and NaN canonicalised; v2 includes route content (ADR 0007 amendment)** (ADR 0007) | Stable by construction, no dependency, cheap; hashes are for equality checks, not security | xxHash/BLAKE3 crates, hashing `Debug` output |
 
 ## 3. System overview
 

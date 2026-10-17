@@ -32,7 +32,7 @@ Option 1 (KISS; stability by construction).
 - `write_f64` canonicalises: `-0.0` becomes `+0.0`; every NaN becomes `0x7FF8_0000_0000_0000`; then
   `to_bits()` little-endian.
 - The stream starts with `STATE_HASH_VERSION: u32 = 1`. Any change to what is hashed bumps it.
-- Content (kernel, version 1): tick, tick rate (Hz), entity count; then for each entity in ascending
+- Content (kernel, version 1; see the v2 amendment below): tick, tick rate (Hz), entity count; then for each entity in ascending
   `EntityId` order: id, ownership tag (and remote source string), motion model id string, kinematic
   state (position x, y, z; velocity x, y, z; orientation w, x, y, z), route state (waypoint count,
   next index; absent = tag 0), entity RNG state (four `u64`). Transient per-tick buffers (intents) and
@@ -48,3 +48,22 @@ Option 1 (KISS; stability by construction).
   because the next arithmetic difference shows up in later ticks anyway.
 - Revisit if hashing becomes a measured hot spot (switch to option 2 with a version bump) or if
   cross-OS hash comparison is required (ADR 0003 option 2).
+
+## Amendment 2026-10-17 (v2, approved by the human)
+`STATE_HASH_VERSION` is now `2`. The route part of the entity encoding covers the route's content, not
+just its progress. Reason: in version 1 two kernels whose routes differed in a waypoint, the arrival
+radius or the cruise speed hashed alike until their positions diverged (about 175 ticks in the demo), so
+the determinism gate saw a configuration divergence late.
+
+Per entity, in ascending `EntityId` order, the encoding is unchanged up to and including the kinematic
+state. The route part is then:
+- absent route: `u8` tag `0` (unchanged);
+- present route: `u8` tag `1`; waypoint count as `u64`; for each waypoint in order its ECEF `x`, `y`, `z`
+  as three `write_f64`; the next-waypoint index as `u64`; the arrival radius (meters) as `f64`; the cruise
+  speed (m/s) as `f64`.
+
+The entity RNG state (four `u64`) still follows. Header (tick, tick rate, entity count) and every other field
+keep their v1 position. The hand-built reference encoding in `crates/cgf-kernel/tests/state_hash.rs`
+(`state_hash_equals_the_reference_encoding`) pins this order, and the platform-independent goldens in
+`crates/cgf-core/tests/hash.rs` were regenerated with an independent encoder for version 2.
+

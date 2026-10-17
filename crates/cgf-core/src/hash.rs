@@ -16,7 +16,7 @@ use core::fmt;
 use crate::geo::{Quaternion, Vec3};
 
 /// Version of the canonical encoding. Any change to what or how the kernel hashes bumps it.
-pub const STATE_HASH_VERSION: u32 = 1;
+pub const STATE_HASH_VERSION: u32 = 2;
 
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;

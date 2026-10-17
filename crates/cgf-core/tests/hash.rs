@@ -28,20 +28,20 @@ fn fnv1a64_published_vectors() {
 
 /// ADR 0007: the version constant is part of the contract.
 #[test]
-fn state_hash_version_is_one() {
-    assert_eq!(STATE_HASH_VERSION, 1);
+fn state_hash_version_is_two() {
+    assert_eq!(STATE_HASH_VERSION, 2);
 }
 
 /// ADR 0007: the stream starts with the version as a little-endian `u32`, so an empty hasher
-/// equals raw FNV-1a over `01 00 00 00`.
+/// equals raw FNV-1a over `02 00 00 00`.
 ///
-/// Verification route: Python FNV-1a 64 over `bytes([1, 0, 0, 0])` printed `0xad2aca7747985764`.
+/// Verification route: Python FNV-1a 64 over `bytes([2, 0, 0, 0])` printed `0x8d1ace904a398d17`.
 #[test]
 fn version_prefix_is_hashed() {
-    let expected = fnv1a64(&[1, 0, 0, 0]);
+    let expected = fnv1a64(&[2, 0, 0, 0]);
 
     assert_eq!(StateHasher::new().finish(), StateHash(expected));
-    assert_eq!(expected, 0xad2a_ca77_4798_5764);
+    assert_eq!(expected, 0x8d1a_ce90_4a39_8d17);
 }
 
 /// ADR 0007: `-0.0` is written as `+0.0`.
@@ -152,7 +152,7 @@ fn composite_writers_are_the_documented_sequences() {
 ///
 /// Verification route: an independent Python encoder (version `u32` LE; `u8`; `u32` LE; `u64` LE;
 /// `f64` as 8 LE bytes with `-0.0 -> 0` and NaN -> `0x7FF8...`; bytes as `u64` LE length then the
-/// bytes) fed to FNV-1a 64 printed `0x75cff8b2a925fc71`.
+/// bytes) fed to FNV-1a 64 printed `0x4023c60d9f54beb0`.
 #[test]
 fn golden_encoding_hash() {
     let got = hash_of(|h| {
@@ -177,28 +177,28 @@ fn golden_encoding_hash() {
         });
     });
 
-    assert_eq!(got, StateHash(0x75cf_f8b2_a925_fc71));
+    assert_eq!(got, StateHash(0x4023_c60d_9f54_beb0));
 }
 
 /// ADR 0007: single-write goldens (same Python encoder as `golden_encoding_hash`).
 #[test]
 fn single_write_goldens() {
-    assert_eq!(hash_of(|h| h.write_u8(1)), StateHash(0xd80d_6dae_a7dc_809f));
+    assert_eq!(hash_of(|h| h.write_u8(1)), StateHash(0xfe1a_152e_1fca_bc62));
     assert_eq!(
         hash_of(|h| h.write_u32(1)),
-        StateHash(0x29c7_dd31_7360_ac35)
+        StateHash(0x46c2_da3b_e7c3_1176)
     );
     assert_eq!(
         hash_of(|h| h.write_u64(1)),
-        StateHash(0x7e1e_f442_cd31_7605)
+        StateHash(0x1ff3_f111_c7bd_8bd6)
     );
     assert_eq!(
         hash_of(|h| h.write_f64(0.0)),
-        StateHash(0x5f24_2d39_c242_2be4)
+        StateHash(0x3eee_b81a_d2ac_d5f7)
     );
     assert_eq!(
         hash_of(|h| h.write_bytes(b"abc")),
-        StateHash(0x825e_049f_5721_b329)
+        StateHash(0x2812_9758_9ba4_e2fc)
     );
 }
 

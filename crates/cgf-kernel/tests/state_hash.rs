@@ -98,7 +98,8 @@ fn identical_kernels_hash_alike() {
 
 /// ADR 0007: every hashed field changes the hash when varied alone (tick, tick rate, entity
 /// count, position, velocity, orientation, ownership, remote source, motion model id, route
-/// waypoint count, RNG state through the seed).
+/// waypoint count, waypoint positions to 1 mm, arrival radius, cruise speed, RNG state through
+/// the seed).
 #[test]
 fn state_hash_changes_with_each_hashed_field() {
     let base_hash = Spec::baseline().hash();
@@ -110,7 +111,8 @@ fn state_hash_changes_with_each_hashed_field() {
 
 /// One variation of `base` per hashed field.
 fn variations(base: &Spec) -> Vec<(&'static str, Spec)> {
-    vec![
+    let mut all = route_variations(base);
+    all.extend(vec![
         (
             "tick",
             Spec {
@@ -189,6 +191,20 @@ fn variations(base: &Spec) -> Vec<(&'static str, Spec)> {
             },
         ),
         (
+            "rng state (seed)",
+            Spec {
+                seed: 8,
+                ..base.clone()
+            },
+        ),
+    ]);
+    all
+}
+
+/// One variation of the route per hashed route field.
+fn route_variations(base: &Spec) -> Vec<(&'static str, Spec)> {
+    vec![
+        (
             "route absent",
             Spec {
                 route: None,
@@ -203,9 +219,26 @@ fn variations(base: &Spec) -> Vec<(&'static str, Spec)> {
             },
         ),
         (
-            "rng state (seed)",
+            "waypoint position (1 mm)",
             Spec {
-                seed: 8,
+                route: Some(route(vec![at(100.001), at(200.0)], 5.0)),
+                ..base.clone()
+            },
+        ),
+        (
+            "arrival radius",
+            Spec {
+                route: Some(RouteInit {
+                    arrival_radius: Meters(6.0),
+                    ..route(vec![at(100.0), at(200.0)], 5.0)
+                }),
+                ..base.clone()
+            },
+        ),
+        (
+            "cruise speed",
+            Spec {
+                route: Some(route(vec![at(100.0), at(200.0)], 5.001)),
                 ..base.clone()
             },
         ),
@@ -328,15 +361,18 @@ fn hash_walks_entities_in_id_order() {
     assert_eq!(ids, [1, 2, 3, 4, 5, 6]);
 }
 
+/// A route as hashed: waypoints, arrival radius and cruise speed (`next` is 0 at tick 0).
+type RefRoute = (Vec<Ecef>, f64, f64);
+
+/// Hashes one entity by hand in the ADR 0007 (v2) field order.
 #[expect(clippy::expect_used, reason = "test helper")]
-/// Hashes one entity by hand in the ADR 0007 field order. `route` is `(waypoints, next)`.
 fn hash_entity(
     h: &mut StateHasher,
     id: u64,
     seed: u64,
     model: &str,
     state: &KinematicState,
-    route: Option<(u64, u64)>,
+    route: Option<&RefRoute>,
 ) {
     h.write_u64(id);
     h.write_u8(0); // Owned
@@ -346,10 +382,17 @@ fn hash_entity(
     h.write_quaternion(state.orientation);
     match route {
         None => h.write_u8(0),
-        Some((count, next)) => {
+        Some((waypoints, radius, cruise)) => {
             h.write_u8(1);
-            h.write_u64(count);
-            h.write_u64(next);
+            h.write_u64(waypoints.len() as u64);
+            for w in waypoints {
+                h.write_f64(w.0.x);
+                h.write_f64(w.0.y);
+                h.write_f64(w.0.z);
+            }
+            h.write_u64(0); // next
+            h.write_f64(*radius);
+            h.write_f64(*cruise);
         }
     }
     let entity_id = EntityId::new(id).expect("non-zero id");
@@ -365,7 +408,7 @@ fn hash_entity(
 /// (tick, tick rate, entity count), then per entity in ascending id order, whatever the ECS
 /// archetypes are (route on odd ids only here, so storage order differs from id order), each
 /// with its own RNG stream. This pins walk order, the count, the absent-route tag and the
-/// per-entity stream keys.
+/// per-entity stream keys, and the v2 route content.
 #[test]
 fn state_hash_equals_the_reference_encoding() {
     let seed = 11;
@@ -383,7 +426,8 @@ fn state_hash_equals_the_reference_encoding() {
     h.write_u64(0); // tick
     h.write_u32(30); // tick rate
     h.write_u64(3); // entity count
-    for (id, route) in [(1, Some((2, 0))), (2, None), (3, Some((2, 0)))] {
+    let ref_route: RefRoute = (vec![at(1000.0), at(2000.0)], 5.0, 5.0);
+    for (id, route) in [(1, Some(&ref_route)), (2, None), (3, Some(&ref_route))] {
         let state = state_at(at(f64::from(u32::try_from(id - 1).expect("small")) * 10.0));
         hash_entity(&mut h, id, seed, "test.stub.still", &state, route);
     }
