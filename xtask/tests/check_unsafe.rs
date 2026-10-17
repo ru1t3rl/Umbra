@@ -286,6 +286,7 @@ fn given_real_workspace_when_loading_roots_then_every_target_is_listed() {
             "tests/check_lints.rs",
             "tests/check_rules.rs",
             "tests/check_unsafe.rs",
+            "tests/repo_config.rs",
         ]
     );
 }
