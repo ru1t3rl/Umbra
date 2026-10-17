@@ -350,7 +350,9 @@ mod tests {
 
     #[test]
     fn all_lists_every_kind_once() {
-        // The exhaustive match fails to compile when a variant is added without updating it.
+        // The exhaustive match fails to compile when a variant is added without updating it;
+        // `COUNT` sits next to it and must grow with it, so dropping a kind from `ALL` fails.
+        const COUNT: usize = 4;
         let index = |k: ComponentKind| match k {
             ComponentKind::MotionModel => 0,
             ComponentKind::Terrain => 1,
@@ -359,9 +361,7 @@ mod tests {
         };
         let mut seen: Vec<usize> = ComponentKind::ALL.iter().map(|&k| index(k)).collect();
         seen.sort_unstable();
-        // Indices are dense from 0, so a missing or repeated kind in `ALL` breaks this.
-        let expected: Vec<usize> = (0..seen.len()).collect();
-        assert_eq!(seen, expected);
+        assert_eq!(seen, (0..COUNT).collect::<Vec<_>>());
         assert_eq!(ComponentKind::Terrain.to_string(), "terrain provider");
     }
 

@@ -1,6 +1,6 @@
 # Template and scenario file reference (format v1)
 
-Source of truth for the format: ADR 0010 (decisions), ASM-053..ASM-067 (details), and the readers in
+Source of truth for the format: ADR 0010 (decisions), ASM-053..ASM-069 (details), and the readers in
 `crates/cgf-templates`. The JSON Schemas `crates/cgf-templates/schemas/{template,scenario}.v1.schema.json`
 (printed by `cgf-cli schema template|scenario`) describe the structure for editors; they are hand-written,
 use only the ADR 0009 subset, and the reader is authoritative where they differ (REQ-T-3, NFR-5, D-14).
@@ -106,7 +106,7 @@ path:line:col: error[code]: message
   note: extra line (path:line:col)
 ```
 Line and column are 1-based; the column counts Unicode scalar values; CRLF is one line break. A diagnostic
-without a position (`io` on a path) has no `path:line:col:` prefix. All errors of all files are reported
+without a position (`io` on a path, or a parser error that reports no span) has no `path:line:col:` prefix. All errors of all files are reported
 together. Files with syntax errors are not checked further; templates that depend on a broken or
 cyclic template produce no follow-on errors.
 
@@ -114,7 +114,7 @@ cyclic template produce no follow-on errors.
 |---|---|
 | `io` | A file or directory could not be read |
 | `syntax` | TOML syntax error (an unclosed array or inline table is reported at its opening bracket) |
-| `unsupported_value` | A datetime or a non-finite float |
+| `unsupported_value` | A datetime, a non-finite or out-of-range float, or an integer outside 64 bits |
 | `unknown_key` | A key the format does not define |
 | `missing_key` | A required key or table is missing, or a template has no motion model |
 | `wrong_type` | A value of the wrong TOML type |
@@ -142,3 +142,34 @@ the errors of the closest branch are reported), `$defs` at the root with local `
 (any cycle is rejected, including through `properties` or `items`; a schema whose `$ref` expansion exceeds 10 000 nodes is rejected, ASM-068). `$schema`, `$id`, `$comment`, `title`, `description`, `default`,
 `examples`, `deprecated`, `readOnly`, `writeOnly` are accepted and ignored. Any other keyword makes the
 schema invalid; a registered component with such a schema is a component bug and the loader refuses to start.
+
+## Built-in components
+`cgf-cli schema component <ID>` prints the registered parameter schema of any component and is the
+authoritative source; this section is a summary. Unknown parameters are errors for both.
+
+### `builtin.ground.kinematic` (motion model)
+Kinematic ground vehicle limits (spec section 7.1). All three parameters are required numbers (integers
+are accepted), greater than 0, with upper bounds that reject absurd values (ASM-065).
+
+| Parameter | Unit | Bound |
+|---|---|---|
+| `max_speed_mps` | m/s | > 0, <= 1000 |
+| `max_turn_rate_dps` | degrees per second | > 0, <= 3600 |
+| `max_accel_mps2` | m/s^2 (acceleration and braking) | > 0, <= 1000 |
+
+```toml
+params = { max_speed_mps = 18.0, max_turn_rate_dps = 40.0, max_accel_mps2 = 2.5 }
+```
+
+### `builtin.terrain.flat` (terrain provider, the default for scenarios)
+Flat terrain at a constant height above the WGS-84 ellipsoid.
+
+| Parameter | Unit | Bound |
+|---|---|---|
+| `height_m` (required) | m | within [-1000, 10000] (ASM-069) |
+
+```toml
+[terrain]
+provider = "builtin.terrain.flat"
+params = { height_m = 0.0 }
+```
