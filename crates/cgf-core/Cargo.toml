@@ -1,6 +1,6 @@
 [package]
 name = "cgf-core"
-description = "CGF Engine core types: IDs, time and units. Depends on no workspace crate."
+description = "CGF Engine core types: IDs, time, units, math, coordinates, hashing, RNG and the motion domain. Depends on no workspace crate."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

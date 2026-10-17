@@ -6,6 +6,15 @@
 //! - [`time`]: [`SimTime`] (tick count at a [`TickRate`]) and [`TimeError`] (REQ-C-1).
 //! - [`id`]: [`EntityId`] and the namespaced string IDs [`TemplateId`], [`BehaviorId`],
 //!   [`MotionModelId`], [`PluginId`] (REQ-C-2, ADR 0002).
+//! - [`math`]: the single site for transcendental float functions (ADR 0003).
+//! - [`geo`]: [`Vec3`], [`Quaternion`], [`Euler`] (REQ-C-3).
+//! - [`coords`]: WGS-84, [`Ecef`], [`Geodetic`], [`Enu`]/[`Ned`], [`LocalFrame`], [`Position`]
+//!   (REQ-C-3, D-15).
+//! - [`hash`]: the canonical [`StateHasher`] (ADR 0007).
+//! - [`rng`]: [`SimRng`] and derived streams (ADR 0006).
+//! - [`intent`], [`ownership`], [`terrain`], [`motion`]: [`Intent`], [`Ownership`],
+//!   [`TerrainProvider`], [`KinematicState`] and the [`MotionModel`] trait (REQ-B-2, REQ-K-5,
+//!   REQ-C-6, REQ-M-1).
 //!
 //! Dependency rule (REQ-A-1): this crate depends on no other workspace crate.
 //! It contains no `unsafe` code and never reads the wall clock (REQ-K-4).
