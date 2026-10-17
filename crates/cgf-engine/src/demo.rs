@@ -82,14 +82,14 @@ pub fn route_of(index: usize) -> Vec<Geodetic> {
 /// # Errors
 /// [`EngineError`] if the model parameters or a spawn are rejected (not expected).
 pub fn spawn_walking_skeleton(engine: &mut Engine) -> Result<Vec<EntityId>, EngineError> {
-    let model: Arc<dyn MotionModel> = Arc::new(GroundKinematic::new(ground_params())?);
-    let max_speed = ground_params().max_speed.0;
+    let params = ground_params();
+    let model: Arc<dyn MotionModel> = Arc::new(GroundKinematic::new(params)?);
     let mut ids = Vec::with_capacity(3);
-    for index in 0..3_u64 {
-        let i = usize::try_from(index).unwrap_or(0);
+    for i in 0..3_usize {
         let Some((start, waypoints)) = layout(i) else {
-            continue;
+            return Err(EngineError::DemoLayout(i));
         };
+        let index = u64::try_from(i).map_err(|_| EngineError::DemoLayout(i))?;
         let u = engine.rng().stream(StreamKey::scenario(index)).next_f64();
         let spec = SpawnSpec {
             position: Position::Geodetic(start),
@@ -100,7 +100,7 @@ pub fn spawn_walking_skeleton(engine: &mut Engine) -> Result<Vec<EntityId>, Engi
             route: Some(RouteSpec {
                 waypoints: waypoints.into_iter().map(Position::Geodetic).collect(),
                 arrival_radius: Meters(ARRIVAL_RADIUS_M),
-                cruise_speed: MetersPerSecond(max_speed * (0.8 + 0.2 * u)),
+                cruise_speed: MetersPerSecond(params.max_speed.0 * (0.8 + 0.2 * u)),
             }),
         };
         ids.push(engine.spawn(spec)?);

@@ -29,21 +29,31 @@ const ALL_REACHED_BY_S: f64 = 200.0;
 
 /// The post-tick state of entity 1 for each tick, preceded by its spawn state.
 fn entity_1_states(seed: u64) -> Vec<KinematicState> {
+    entity_1_trace(seed).0
+}
+
+/// Like [`entity_1_states`], plus entity 1's `route_next` after each tick (and at spawn).
+fn entity_1_trace(seed: u64) -> (Vec<KinematicState>, Vec<Option<(usize, usize)>>) {
     let config = EngineConfig {
         seed,
         tick_rate: TickRate::new(30).expect("non-zero rate"),
         clock: ClockMode::AsFastAsPossible,
         terrain_height: Meters(0.0),
     };
-    let mut engine = Engine::with_wall_clock(config, Box::new(ManualWallClock::new()));
+    let mut engine =
+        Engine::with_wall_clock(config, Box::new(ManualWallClock::new())).expect("valid config");
     assert!(demo::spawn_walking_skeleton(&mut engine).is_ok());
-    let mut states = vec![engine.snapshot().entities[0].state];
+    let first = engine.snapshot().entities[0].clone();
+    let mut states = vec![first.state];
+    let mut nexts = vec![first.route_next];
     engine
         .run(RunUntil::Ticks(TICKS), |v| {
-            states.push(v.snapshot().entities[0].state);
+            let e = v.snapshot().entities[0].clone();
+            states.push(e.state);
+            nexts.push(e.route_next);
         })
         .expect("run");
-    states
+    (states, nexts)
 }
 
 fn waypoints() -> Vec<Ecef> {
@@ -99,7 +109,8 @@ fn given_demo_when_spawned_then_ids_are_1_2_3_in_order() {
         clock: ClockMode::AsFastAsPossible,
         terrain_height: Meters(0.0),
     };
-    let mut engine = Engine::with_wall_clock(config, Box::new(ManualWallClock::new()));
+    let mut engine =
+        Engine::with_wall_clock(config, Box::new(ManualWallClock::new())).expect("valid config");
 
     let ids = demo::spawn_walking_skeleton(&mut engine);
 
@@ -245,7 +256,8 @@ fn given_demo_when_run_then_all_three_entities_move() {
         clock: ClockMode::AsFastAsPossible,
         terrain_height: Meters(0.0),
     };
-    let mut engine = Engine::with_wall_clock(config, Box::new(ManualWallClock::new()));
+    let mut engine =
+        Engine::with_wall_clock(config, Box::new(ManualWallClock::new())).expect("valid config");
     assert!(demo::spawn_walking_skeleton(&mut engine).is_ok());
     let before = engine.snapshot();
 
@@ -261,4 +273,41 @@ fn given_demo_when_run_then_all_three_entities_move() {
     }
     assert_ne!(demo::route_of(0), demo::route_of(1));
     assert_ne!(demo::route_of(1), demo::route_of(2));
+}
+
+/// ASM-029: at the tick the entity first comes within the arrival radius of waypoint `k`, the route
+/// still points at `k`; one tick later it points at `k + 1` (and stays on the last waypoint).
+#[test]
+fn given_entity_1_visits_waypoint_then_route_next_advances_by_one() {
+    let (states, nexts) = entity_1_trace(42);
+    let route = waypoints();
+    let visits = visit_ticks(&states, &route);
+
+    for (k, tick) in visits.iter().enumerate() {
+        assert_eq!(nexts[*tick], Some((k, 4)), "at the visit of waypoint {k}");
+        let after = if k + 1 < route.len() { k + 1 } else { k };
+        assert_eq!(nexts[tick + 1], Some((after, 4)), "after waypoint {k}");
+    }
+    assert_eq!(nexts[nexts.len() - 1], Some((3, 4)));
+}
+
+/// REQ-M-2: the entity stays near the straight leg it is flying: cross-track error below 50 m.
+#[test]
+fn given_route_then_cross_track_error_stays_below_50_m() {
+    let (states, _) = entity_1_trace(42);
+    let route = waypoints();
+    let visits = visit_ticks(&states, &route);
+    let mut leg_start = states[0].position;
+
+    for (k, end) in route.iter().enumerate() {
+        let (from, to) = (if k == 0 { 0 } else { visits[k - 1] }, visits[k]);
+        let axis = *end - leg_start;
+        for s in &states[from..=to] {
+            let rel = s.position - leg_start;
+            let t = (rel.dot(axis) / axis.dot(axis)).clamp(0.0, 1.0);
+            let cross = (rel - axis * t).norm();
+            assert!(cross < 50.0, "leg {k}: cross-track {cross} m");
+        }
+        leg_start = *end;
+    }
 }

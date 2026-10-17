@@ -49,7 +49,8 @@ fn run_demo(args: &DemoArgs) -> Result<()> {
         tick_rate: args.rate,
         clock: args.clock,
         terrain_height: Meters(0.0),
-    });
+    })
+    .context("building the engine")?;
     demo::spawn_walking_skeleton(&mut engine).context("spawning the demo scenario")?;
 
     let stdout = io::stdout();

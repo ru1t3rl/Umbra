@@ -49,8 +49,15 @@ fn config(seed: u64, clock: ClockMode) -> EngineConfig {
 
 /// A demo engine on a manual wall clock that advances 0.5 ms on every read.
 fn demo_engine(seed: u64, clock: ClockMode) -> Engine {
-    let wall = ManualWallClock::with_auto_advance(Duration::from_micros(500));
-    let mut engine = Engine::with_wall_clock(config(seed, clock), Box::new(wall));
+    demo_engine_with_wall(seed, clock, Duration::from_micros(500))
+}
+
+/// A demo engine whose manual wall clock advances by `read_cost` on every read, so different
+/// costs give different wall-time scripts for the same simulation.
+fn demo_engine_with_wall(seed: u64, clock: ClockMode, read_cost: Duration) -> Engine {
+    let wall = ManualWallClock::with_auto_advance(read_cost);
+    let mut engine =
+        Engine::with_wall_clock(config(seed, clock), Box::new(wall)).expect("valid config");
     let ids = demo::spawn_walking_skeleton(&mut engine).expect("spawn demo");
     assert_eq!(ids.len(), 3);
     engine
@@ -110,6 +117,13 @@ fn baseline() -> Trace {
 
 /// The first difference between two entity snapshots, as `(field, left, right)`.
 fn entity_diff(a: &EntitySnapshot, b: &EntitySnapshot) -> Option<(String, String, String)> {
+    if a.id != b.id {
+        return Some((
+            "id (entity order differs)".into(),
+            a.id.to_string(),
+            b.id.to_string(),
+        ));
+    }
     let bits = |x: f64| format!("{x:?} (bits {:#018x})", x.to_bits());
     let fields = [
         ("position.x", a.state.position.0.x, b.state.position.0.x),
@@ -187,7 +201,7 @@ fn assert_same_trace(label: &str, got: &Trace, want: &Trace) {
                 .find_map(|(a, b)| entity_diff(a, b).map(|d| (a.id, d)))
                 .map_or_else(
                     || {
-                        "snapshots equal: the difference is in hashed state outside the snapshot"
+                        "snapshots equal: the difference is in RNG state or hash order (not in the snapshot)"
                             .to_string()
                     },
                     |(id, (field, a, b))| format!("entity {id}, field {field}: {a} vs {b}"),
@@ -210,9 +224,18 @@ fn assert_same_trace(label: &str, got: &Trace, want: &Trace) {
 #[test]
 fn given_demo_when_run_twice_afap_then_per_tick_hashes_are_identical() {
     let first = baseline();
-    let second = baseline();
+    // A different wall-time script: wall time leaking into the simulation (for example into dt)
+    // would make the runs differ.
+    let second = run_to_end(
+        demo_engine_with_wall(
+            SEED,
+            ClockMode::AsFastAsPossible,
+            Duration::from_micros(1700),
+        ),
+        false,
+    );
 
-    assert_same_trace("afap twice", &second, &first);
+    assert_same_trace("afap twice, other wall script", &second, &first);
     assert_eq!(first.len(), TICKS);
 }
 
@@ -220,7 +243,7 @@ fn given_demo_when_run_twice_afap_then_per_tick_hashes_are_identical() {
 /// wall clock; wall time never reaches the state.
 #[test]
 fn given_demo_when_run_on_std_wall_clock_then_hashes_match_manual_wall_clock() {
-    let mut engine = Engine::new(config(SEED, ClockMode::AsFastAsPossible));
+    let mut engine = Engine::new(config(SEED, ClockMode::AsFastAsPossible)).expect("valid config");
     assert!(demo::spawn_walking_skeleton(&mut engine).is_ok());
     let got = run_to_end(engine, false);
 
@@ -296,6 +319,12 @@ fn given_different_seeds_when_run_then_final_hashes_differ() {
     let b = run_to_end(demo_engine(2, ClockMode::AsFastAsPossible), false);
 
     assert_ne!(a.hashes.last(), b.hashes.last());
+    let final_position = |t: &Trace| t.snapshots.last().map(|s| s.entities[0].state.position);
+    assert_ne!(
+        final_position(&a),
+        final_position(&b),
+        "the seed changes where entity 1 ends up (its cruise speed)"
+    );
 }
 
 /// REQ-K-4: one hash per tick, and the per-tick hashes of a moving scenario are all distinct.

@@ -15,7 +15,7 @@ use cgf_kernel::{
     TickReport, WallClock,
 };
 
-use crate::error::EngineError;
+use crate::error::{EngineError, SpawnParam};
 
 /// Engine construction parameters.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -104,12 +104,24 @@ pub struct Engine {
 
 impl Engine {
     /// An engine paced by the real wall clock.
-    pub fn new(config: EngineConfig) -> Self {
+    ///
+    /// # Errors
+    /// [`EngineError::InvalidTerrainHeight`] if the terrain height is not finite.
+    pub fn new(config: EngineConfig) -> Result<Self, EngineError> {
         Self::with_wall_clock(config, Box::new(StdWallClock::new()))
     }
 
     /// An engine paced by the given wall clock (tests and embedding use a manual one).
-    pub fn with_wall_clock(config: EngineConfig, wall: Box<dyn WallClock>) -> Self {
+    ///
+    /// # Errors
+    /// [`EngineError::InvalidTerrainHeight`] if the terrain height is not finite.
+    pub fn with_wall_clock(
+        config: EngineConfig,
+        wall: Box<dyn WallClock>,
+    ) -> Result<Self, EngineError> {
+        if !config.terrain_height.0.is_finite() {
+            return Err(EngineError::InvalidTerrainHeight);
+        }
         let kernel_config = KernelConfig {
             tick_rate: config.tick_rate,
             seed: config.seed,
@@ -118,12 +130,16 @@ impl Engine {
         let terrain = FlatTerrain {
             height: config.terrain_height,
         };
-        Self {
+        Ok(Self {
             kernel: Kernel::new(kernel_config, Box::new(terrain), wall),
-        }
+        })
     }
 
     /// The master random source, for scenario-level randomness (ADR 0006).
+    ///
+    /// Streams are pure functions of (seed, key): deriving the same key again restarts that
+    /// stream from its beginning. The scenario layer therefore owns the `SCENARIO` stream indices
+    /// and draws each index once.
     pub fn rng(&self) -> SimRng {
         self.kernel.rng()
     }
@@ -132,9 +148,14 @@ impl Engine {
     /// and velocity come from the heading and speed in the local frame at the position.
     ///
     /// # Errors
-    /// [`EngineError::Kernel`] for an invalid route or exhausted ids.
+    /// [`EngineError::InvalidSpawn`] for a non-finite heading or position or a non-finite or
+    /// negative speed; [`EngineError::Kernel`] for an invalid route or exhausted ids.
     pub fn spawn(&mut self, spec: SpawnSpec) -> Result<EntityId, EngineError> {
         let position = spec.position.to_ecef();
+        validate_spawn(&spec, position)?;
+        // The frame is built from the geodetic derived from the ECEF position, never from the
+        // geodetic the caller gave, so an ECEF spawn and a geodetic spawn of the same point are
+        // bit-identical (AT-15).
         let frame = LocalFrame::at(position.to_geodetic());
         let (sin_h, cos_h) = math::sin_cos(spec.heading.0);
         let velocity: Vec3 = frame.vector_from_enu(Enu {
@@ -244,4 +265,19 @@ impl Engine {
     pub fn snapshot(&self) -> Snapshot {
         self.kernel.snapshot()
     }
+}
+
+/// Checks the user-supplied numbers of a spawn (kernel checks cover the route and the state).
+fn validate_spawn(spec: &SpawnSpec, position: cgf_core::Ecef) -> Result<(), EngineError> {
+    let p = position.0;
+    if !(p.x.is_finite() && p.y.is_finite() && p.z.is_finite()) {
+        return Err(EngineError::InvalidSpawn(SpawnParam::Position));
+    }
+    if !spec.heading.0.is_finite() {
+        return Err(EngineError::InvalidSpawn(SpawnParam::Heading));
+    }
+    if !(spec.speed.0.is_finite() && spec.speed.0 >= 0.0) {
+        return Err(EngineError::InvalidSpawn(SpawnParam::Speed));
+    }
+    Ok(())
 }

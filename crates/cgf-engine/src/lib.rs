@@ -26,4 +26,4 @@ pub use cgf_kernel::{
 };
 pub use display::EntityDisplay;
 pub use engine::{Engine, EngineConfig, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView};
-pub use error::EngineError;
+pub use error::{EngineError, SpawnParam};

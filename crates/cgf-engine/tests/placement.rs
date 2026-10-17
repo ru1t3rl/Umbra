@@ -23,7 +23,7 @@ fn engine() -> Engine {
         clock: ClockMode::AsFastAsPossible,
         terrain_height: Meters(0.0),
     };
-    Engine::with_wall_clock(config, Box::new(ManualWallClock::new()))
+    Engine::with_wall_clock(config, Box::new(ManualWallClock::new())).expect("valid config")
 }
 
 fn model() -> Arc<dyn MotionModel> {
@@ -122,6 +122,13 @@ fn given_heading_90_deg_at_lat_lon_then_velocity_points_east_in_enu() {
     let v = e.snapshot().entities[0].state.velocity;
     let enu = LocalFrame::at(g).vector_to_enu(v);
     assert!((enu.east - 10.0).abs() < 1e-9, "{enu:?}");
+    let heading = LocalFrame::at(g)
+        .euler_from_orientation(e.snapshot().entities[0].state.orientation)
+        .heading;
+    assert!(
+        (heading.0 - core::f64::consts::FRAC_PI_2).abs() < 1e-9,
+        "{heading:?}"
+    );
     assert!(enu.north.abs() < 1e-9 && enu.up.abs() < 1e-9, "{enu:?}");
 }
 
