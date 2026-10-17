@@ -386,3 +386,87 @@ fn validate_and_load_agree_on_every_scenario_fixture() {
     }
     assert_eq!(checked, 14);
 }
+
+// --- remaining lost-error cases (N3, N4, N5, clock) ----------------------------------------------
+
+/// N3: an entity with an unknown template still gets its override checked.
+#[test]
+fn unknown_entity_template_does_not_hide_override_errors() {
+    let text = head(&[])
+        + &lines(&[
+            "[[entities]]",
+            "template = \"veh.nope\"",
+            "position = { lat_deg = 52.0, lon_deg = 4.0 }",
+            "[entities.overrides.motion]",
+            "model = \"stub.motion.alpha\"",
+            "params = { a = \"x\" }",
+            "[[entities]]",
+            "template = \"veh.nope\"",
+            "position = { lat_deg = 52.0, lon_deg = 4.0 }",
+            "[entities.overrides.motion]",
+            "model = \"stub.motion.nope\"",
+        ]);
+
+    let found = errors(scenario(&src(SCN, &text), &[gamma_template()]));
+
+    assert_eq!(
+        rows(&found),
+        [
+            row(
+                "unknown_template",
+                SCN,
+                pos_of_nth(&text, "\"veh.nope\"", 0)
+            ),
+            row("param_wrong_type", SCN, pos_of(&text, "\"x\"")),
+            row(
+                "unknown_template",
+                SCN,
+                pos_of_nth(&text, "\"veh.nope\"", 1)
+            ),
+            row("unknown_id", SCN, pos_of(&text, "\"stub.motion.nope\"")),
+        ]
+    );
+}
+
+/// N4: a bad `params` does not hide an unknown provider.
+#[test]
+fn terrain_with_bad_params_and_unknown_provider_reports_both() {
+    let text =
+        head(&[]) + &lines(&["[terrain]", "provider = \"nope.x\"", "params = 5"]) + &entity(&[]);
+
+    let found = errors(scenario(&src(SCN, &text), &[gamma_template()]));
+
+    let codes: Vec<&str> = found.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["unknown_id", "wrong_type"]);
+}
+
+/// Nit: a wrong-typed `clock` does not hide a bad `time_scale`.
+#[test]
+fn wrong_typed_clock_and_bad_time_scale_are_both_reported() {
+    let text = head(&["clock = 5", "time_scale = \"fast\""]) + &entity(&[]);
+
+    let found = errors(scenario(&src(SCN, &text), &[gamma_template()]));
+
+    let codes: Vec<&str> = found.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["wrong_type", "wrong_type"]);
+}
+
+/// N5: the context of a single template file is its own directory, not the whole subtree.
+#[test]
+fn single_template_validation_ignores_unrelated_templates_in_subdirectories() {
+    let (registry, _) = registry();
+    let parent = fixture_path("dirs/ctx_flat/parent.toml");
+
+    let report = loader(&registry).validate_path(&parent);
+
+    assert_eq!(rows(&report.diagnostics), []);
+}
+
+#[test]
+fn single_template_validation_still_finds_a_sibling_parent() {
+    let (registry, _) = registry();
+
+    let report = loader(&registry).validate_path(&fixture_path("dirs/ctx_flat/child.toml"));
+
+    assert_eq!(rows(&report.diagnostics), []);
+}

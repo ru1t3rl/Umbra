@@ -1,0 +1,7 @@
+# Fixture: an unrelated template deeper in the tree with the same id as the sibling parent.
+# Provenance: hand-written for the M2 review fixes.
+schema_version = 1
+id = "ctx.parent"
+[motion]
+model = "stub.motion.alpha"
+params = { a = 2.0 }

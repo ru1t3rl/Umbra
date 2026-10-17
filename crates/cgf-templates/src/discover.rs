@@ -50,6 +50,28 @@ pub(crate) fn toml_files(dir: &Path, diagnostics: &mut Vec<Diagnostic>) -> Vec<P
     found
 }
 
+/// The `*.toml` files directly in `dir` (not below it), sorted: the context of a single template
+/// file (ASM-067).
+fn sibling_files(dir: &Path, diagnostics: &mut Vec<Diagnostic>) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    match fs::read_dir(dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let is_file = entry.file_type().is_ok_and(|k| k.is_file())
+                    || (entry.file_type().is_ok_and(|k| k.is_symlink())
+                        && fs::metadata(&path).is_ok_and(|m| m.is_file()));
+                if is_file && is_toml(&path) {
+                    found.push(path);
+                }
+            }
+        }
+        Err(error) => diagnostics.push(io_diagnostic(dir, &error)),
+    }
+    found.sort();
+    found
+}
+
 fn is_toml(path: &Path) -> bool {
     path.extension().is_some_and(|e| e == "toml")
 }
@@ -242,7 +264,7 @@ impl Loader<'_> {
         let mut ignored = Vec::new();
         let mut unread = Vec::new();
         let dir = file.path().parent().unwrap_or_else(|| Path::new(""));
-        let siblings = toml_files(dir, &mut ignored);
+        let siblings = sibling_files(dir, &mut ignored);
         let me = identity(file.path());
         let mut sources: Vec<SourceFile> = read_all(&siblings, &mut ignored, &mut unread)
             .into_iter()

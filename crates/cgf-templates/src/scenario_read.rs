@@ -195,8 +195,14 @@ impl Loader<'_> {
             }
             None => Some(default_terrain_params(origin)),
         };
-        let ((id, at), params) = (provider?, params?);
+        let (id, at) = provider?;
         let mut out = Vec::new();
+        let Some(params) = params else {
+            // The parameters are unreadable, but an unknown provider is still reported.
+            self.check_registered(ComponentKind::Terrain, &id, &at, &mut out);
+            reader.extend(out);
+            return None;
+        };
         let json = self.check_component(ComponentKind::Terrain, &id, &at, &params, &mut out);
         reader.extend(out);
         Some(ComponentRef { id, params: json? })
@@ -244,13 +250,28 @@ impl Loader<'_> {
             Some(v) => non_negative(reader, "speed_mps", v).map(MetersPerSecond),
             None => Some(MetersPerSecond(0.0)),
         };
-        let overrides = table.get("overrides").map(|v| read_overrides(reader, v));
-        let route = table.get("route").map(|v| read_route(reader, v));
+        let overrides = match table.get("overrides") {
+            None => Some(None),
+            Some(v) => read_overrides(reader, v).map(Some),
+        };
+        let route = match table.get("route") {
+            None => Some(None),
+            Some(v) => read_route(reader, v).map(Some),
+        };
+        // The override is checked even when something else about the entity is wrong.
+        let motion = if let Some(t) = template {
+            overrides
+                .as_ref()
+                .and_then(|o| self.placement_motion(reader, t, o.as_ref()))
+        } else {
+            if let Some(Some(over)) = &overrides {
+                self.check_override_alone(reader, over);
+            }
+            None
+        };
         let (template, position) = (template?, position?);
         let (heading, speed) = (heading?, speed?);
-        let overrides = overrides.map_or(Some(None), |o| o.map(Some))?;
-        let route = route.map_or(Some(None), |r| r.map(Some))?;
-        let motion = self.placement_motion(reader, template, overrides.as_ref())?;
+        let (route, motion) = (route?, motion?);
         Some(Placement {
             template: template.id.clone(),
             name,
@@ -261,6 +282,22 @@ impl Loader<'_> {
             motion,
             route,
         })
+    }
+
+    /// What an override says by itself when its entity's template is unknown: the model ID and
+    /// the parameters it sets (a missing one may come from the template).
+    fn check_override_alone(&self, reader: &mut Reader<'_>, over: &RawComponent) {
+        let Some((id, at)) = &over.id else { return };
+        let mut out = Vec::new();
+        if self.check_registered(ComponentKind::MotionModel, id, at, &mut out) {
+            self.check_own_params(
+                ComponentKind::MotionModel,
+                id,
+                over.params.as_ref(),
+                &mut out,
+            );
+        }
+        reader.extend(out);
     }
 
     /// The template's motion merged with the entity's overrides and checked again; unchanged
@@ -503,7 +540,13 @@ fn read_clock(reader: &mut Reader<'_>, table: &LTable) -> Option<ClockSetting> {
             None => Some(ClockSetting::AsFastAsPossible),
         };
     };
-    let mode = reader.string("clock", clock)?;
+    let Some(mode) = reader.string("clock", clock) else {
+        // A bad `time_scale` is reported even when the clock itself is unreadable.
+        if let Some(v) = scale {
+            reader.number("time_scale", v);
+        }
+        return None;
+    };
     if mode == "scaled" {
         return read_scaled(reader, clock, scale);
     }

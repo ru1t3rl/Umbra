@@ -156,15 +156,24 @@ impl Loader<'_> {
         ];
         for (kind, own, ancestor) in known {
             let Some(own) = own else { continue };
-            let Some((id, at)) = &own.id else { continue };
-            if ancestor.as_ref().is_some_and(|a| a != id) {
-                let params = own
-                    .params
-                    .clone()
-                    .unwrap_or_else(|| LTable::from_entries(own.origin.clone(), BTreeMap::new()));
-                let _ = self.check_component(kind, id, at, &params, out);
-            } else {
-                let _ = self.check_registered(kind, id, at, out);
+            match &own.id {
+                Some((id, at)) if ancestor.as_ref().is_some_and(|a| a != id) => {
+                    let params = own.params.clone().unwrap_or_else(|| {
+                        LTable::from_entries(own.origin.clone(), BTreeMap::new())
+                    });
+                    let _ = self.check_component(kind, id, at, &params, out);
+                }
+                Some((id, at)) => {
+                    if self.check_registered(kind, id, at, out) {
+                        self.check_own_params(kind, id, own.params.as_ref(), out);
+                    }
+                }
+                // The model comes from a readable ancestor: check what the child writes.
+                None => {
+                    if let Some(id) = &ancestor {
+                        self.check_own_params(kind, id, own.params.as_ref(), out);
+                    }
+                }
             }
         }
         if let Some(sensors) = &template.sensors {
@@ -504,20 +513,16 @@ impl SetBuilder {
     /// (duplicate, broken, in a cycle) are silent: their error is already reported.
     fn check_parents(&mut self, unread: &[PathBuf]) {
         let mut missing = Vec::new();
-        for (id, &index) in &self.unique {
-            let Some((parent, at)) = self
-                .defs
-                .get(index)
-                .and_then(|d| d.template.as_ref())
-                .and_then(|t| t.extends.as_ref())
-            else {
+        for (index, def) in self.defs.iter().enumerate() {
+            let Some((parent, at)) = def.template.as_ref().and_then(|t| t.extends.as_ref()) else {
                 continue;
             };
             if !self.unique.contains_key(parent) && !self.bad.contains(parent) {
-                missing.push((id.clone(), parent.clone(), at.clone()));
+                let unique = self.unique.get(&def.id) == Some(&index);
+                missing.push((def.id.clone(), parent.clone(), at.clone(), unique));
             }
         }
-        for (id, parent, at) in missing {
+        for (id, parent, at, unique) in missing {
             let message = format!("template `{parent}` (extends) is not defined");
             let mut diagnostic = Diagnostic::new(
                 DiagnosticCode::UnknownTemplate,
@@ -528,7 +533,9 @@ impl SetBuilder {
                 diagnostic = diagnostic.with_note(note, None);
             }
             self.diagnostics.push(diagnostic);
-            self.bad.insert(id);
+            if unique {
+                self.bad.insert(id);
+            }
         }
     }
 

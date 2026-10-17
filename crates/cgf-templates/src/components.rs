@@ -47,6 +47,28 @@ impl Loader<'_> {
         }
     }
 
+    /// Checks the parameters a template or override writes itself against the schema, key by
+    /// key, without the merge: a missing required parameter may come from elsewhere, so
+    /// `missing_param` is dropped, and no trial build runs (ASM-056).
+    pub(crate) fn check_own_params(
+        &self,
+        kind: ComponentKind,
+        id: &ComponentId,
+        params: Option<&LTable>,
+        out: &mut Vec<Diagnostic>,
+    ) {
+        let (Some(params), Some(schema)) = (params, self.schemas.get(&(kind, id.clone()))) else {
+            return;
+        };
+        let context = format!("{} `{id}`", kind.noun());
+        out.extend(
+            schema
+                .validate(&params.clone().into_value(), &context)
+                .into_iter()
+                .filter(|d| d.code != DiagnosticCode::MissingParam),
+        );
+    }
+
     /// Whether `id` is registered as a `kind`; if not, records `unknown_id`.
     pub(crate) fn check_registered(
         &self,

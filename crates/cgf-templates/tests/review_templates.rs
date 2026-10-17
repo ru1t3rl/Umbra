@@ -194,3 +194,125 @@ fn motion_model_naming_a_terrain_provider_says_which_kind_it_is() {
         "`stub.terrain.flat` is a terrain provider, not a motion model"
     );
 }
+
+// --- remaining lost-error cases (N1, N2) ---------------------------------------------------------
+
+fn plain(id: &str, extends: Option<&str>) -> String {
+    let mut l = vec!["schema_version = 1".to_string(), format!("id = \"{id}\"")];
+    if let Some(e) = extends {
+        l.push(format!("extends = \"{e}\""));
+    }
+    l.push("[motion]".into());
+    l.push("model = \"stub.motion.alpha\"".into());
+    l.push("params = { a = 1.0 }".into());
+    l.join("\n") + "\n"
+}
+
+/// N1: an unknown parent on the second definition of a duplicated id.
+#[test]
+fn unknown_extends_on_the_second_definition_of_a_duplicated_id_is_reported() {
+    let found = errors(templates(&[
+        src("a.toml", &plain("x.x", None)),
+        src("b.toml", &plain("x.x", Some("nope.nope"))),
+    ]));
+
+    assert_eq!(
+        rows(&found),
+        [
+            row("duplicate_id", "b.toml", (2, 6)),
+            row("unknown_template", "b.toml", (3, 11)),
+        ]
+    );
+}
+
+/// N1: and on the first definition.
+#[test]
+fn unknown_extends_on_the_first_definition_of_a_duplicated_id_is_reported() {
+    let found = errors(templates(&[
+        src("a.toml", &plain("x.x", Some("nope.nope"))),
+        src("b.toml", &plain("x.x", None)),
+    ]));
+
+    assert_eq!(
+        rows(&found),
+        [
+            row("unknown_template", "a.toml", (3, 11)),
+            row("duplicate_id", "b.toml", (2, 6)),
+        ]
+    );
+}
+
+fn child_with_params(model: Option<&str>) -> String {
+    let mut l = vec![
+        "schema_version = 1",
+        "id = \"c.child\"",
+        "extends = \"p.parent\"",
+        "[motion]",
+    ];
+    let model_line = model.map(|m| format!("model = \"{m}\""));
+    if let Some(line) = &model_line {
+        l.push(line);
+    }
+    l.push("params = { a = \"str\", zz = 1 }");
+    lines(&l)
+}
+
+/// N2: the child's own wrong-typed and unknown params are reported under a broken parent.
+#[test]
+fn child_params_are_checked_key_by_key_under_a_broken_parent() {
+    let text = child_with_params(Some("stub.motion.alpha"));
+
+    let found = errors(templates(&[
+        src("a.toml", &parent(&["colour = \"red\""])),
+        src("b.toml", &text),
+    ]));
+
+    assert_eq!(
+        rows(&found),
+        [
+            row("unknown_key", "a.toml", (3, 1)),
+            row("param_wrong_type", "b.toml", pos_of(&text, "\"str\"")),
+            row("unknown_param", "b.toml", pos_of(&text, "zz")),
+        ]
+    );
+}
+
+/// N2: the model may come from a readable but unusable ancestor.
+#[test]
+fn child_params_are_checked_against_the_model_of_an_unusable_ancestor() {
+    let text = child_with_params(None);
+
+    let found = errors(templates(&[
+        src("a.toml", &parent(&["extends = \"nowhere.x\""])),
+        src("b.toml", &text),
+    ]));
+
+    assert_eq!(
+        rows(&found),
+        [
+            row("unknown_template", "a.toml", (3, 11)),
+            row("param_wrong_type", "b.toml", pos_of(&text, "\"str\"")),
+            row("unknown_param", "b.toml", pos_of(&text, "zz")),
+        ]
+    );
+}
+
+/// N2: a required parameter that the missing parent may supply is not reported.
+#[test]
+fn missing_params_are_not_reported_under_an_unusable_parent() {
+    let text = lines(&[
+        "schema_version = 1",
+        "id = \"c.child\"",
+        "extends = \"p.parent\"",
+        "[motion]",
+        "model = \"stub.motion.alpha\"",
+        "params = { }",
+    ]);
+
+    let found = errors(templates(&[
+        src("a.toml", &parent(&["colour = \"red\""])),
+        src("b.toml", &text),
+    ]));
+
+    assert_eq!(rows(&found), [row("unknown_key", "a.toml", (3, 1))]);
+}
