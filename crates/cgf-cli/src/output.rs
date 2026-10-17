@@ -1,7 +1,8 @@
-//! Text and JSON Lines output of `demo` (ASM-027). The format is unstable until M2.
+//! Text and JSON Lines output of `run` (REQ-X-2, ASM-062) and the `validate` report.
 
 use std::io::{self, Write};
 
+use cgf_engine::scenario::{Diagnostic, EntityInfo, Location};
 use cgf_engine::{EntityDisplay, Snapshot, StateHash};
 use serde_json::json;
 
@@ -35,19 +36,29 @@ fn waypoint_text(d: &EntityDisplay) -> String {
         .map_or_else(|| "-".to_string(), |(next, len)| format!("{next}/{len}"))
 }
 
-/// Writes one line per entity of `snapshot`.
-pub fn write_entities(out: &mut impl Write, format: Format, snapshot: &Snapshot) -> io::Result<()> {
+/// Writes one line per entity of `snapshot`; `infos` supplies the entity names.
+pub fn write_entities(
+    out: &mut impl Write,
+    format: Format,
+    snapshot: &Snapshot,
+    infos: &[EntityInfo],
+) -> io::Result<()> {
     let tick = snapshot.time.tick();
     let t = snapshot.time.as_seconds().0;
     for entity in &snapshot.entities {
         let mut d = EntityDisplay::from_snapshot(entity);
         d.heading_deg = heading_for_display(d.heading_deg);
         d.height_m = height_for_display(d.height_m);
+        let name = infos
+            .iter()
+            .find(|i| i.id == d.id)
+            .and_then(|i| i.name.as_deref());
         match format {
             Format::Text => writeln!(
                 out,
-                "tick={tick} t={t:.3}s id={} lat={:.7} lon={:.7} h={:.3} heading_deg={:.2} speed_mps={:.2} waypoint={}",
+                "tick={tick} t={t:.3}s id={}{} lat={:.7} lon={:.7} h={:.3} heading_deg={:.2} speed_mps={:.2} waypoint={}",
                 d.id,
+                name.map_or_else(String::new, |n| format!(" name={n}")),
                 d.lat_deg,
                 d.lon_deg,
                 d.height_m,
@@ -62,6 +73,7 @@ pub fn write_entities(out: &mut impl Write, format: Format, snapshot: &Snapshot)
                     "tick": tick,
                     "t": t,
                     "id": d.id.get(),
+                    "name": name,
                     "lat_deg": d.lat_deg,
                     "lon_deg": d.lon_deg,
                     "height_m": d.height_m,
@@ -103,6 +115,59 @@ pub fn write_final(
             json!({"tick": tick, "state_hash": hash.to_string()})
         ),
     }
+}
+
+fn location_json(location: Option<&Location>) -> serde_json::Value {
+    location.map_or_else(
+        || json!({"path": null, "line": null, "column": null}),
+        |l| json!({"path": l.path.display().to_string(), "line": l.line, "column": l.column}),
+    )
+}
+
+fn diagnostic_json(d: &Diagnostic) -> serde_json::Value {
+    let notes: Vec<serde_json::Value> = d
+        .notes
+        .iter()
+        .map(|n| {
+            let mut v = location_json(n.location.as_ref());
+            v["message"] = json!(n.message);
+            v
+        })
+        .collect();
+    let mut v = location_json(d.location.as_ref());
+    v["code"] = json!(d.code.as_str());
+    v["message"] = json!(d.message);
+    v["notes"] = json!(notes);
+    v
+}
+
+/// The `validate --json` document: validity, checked files and every diagnostic.
+pub fn validation_json(files: &[std::path::PathBuf], diagnostics: &[Diagnostic]) -> String {
+    json!({
+        "valid": diagnostics.is_empty(),
+        "files": files.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+        "diagnostics": diagnostics.iter().map(diagnostic_json).collect::<Vec<_>>(),
+    })
+    .to_string()
+}
+
+/// The `validate` text summary: `ok: N files checked` or `N error(s) in M file(s)`.
+pub fn validation_summary(files_checked: usize, diagnostics: &[Diagnostic]) -> String {
+    if diagnostics.is_empty() {
+        return format!("ok: {files_checked} files checked");
+    }
+    let mut paths: Vec<&std::path::Path> = diagnostics
+        .iter()
+        .filter_map(|d| d.location.as_ref().map(|l| l.path.as_path()))
+        .collect();
+    paths.sort_unstable();
+    paths.dedup();
+    let unlocated = diagnostics.iter().filter(|d| d.location.is_none()).count();
+    format!(
+        "{} error(s) in {} file(s)",
+        diagnostics.len(),
+        paths.len() + unlocated
+    )
 }
 
 #[cfg(test)]

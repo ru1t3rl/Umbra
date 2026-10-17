@@ -24,8 +24,8 @@ pub use cgf_core::{
     Position, Radians, Registry, SimTime, StateHash, TerrainProvider, TickRate, TimeError,
 };
 pub use cgf_kernel::{
-    ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, TickReport, TimeScale,
-    WallClock,
+    ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, StdWallClock, TickReport,
+    TimeScale, WallClock,
 };
 pub use cgf_templates::{SCENARIO_FILE_SCHEMA, TEMPLATE_FILE_SCHEMA};
 pub use display::EntityDisplay;

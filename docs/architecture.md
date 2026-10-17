@@ -10,7 +10,7 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 | `cgf-motion` | `crates/cgf-motion` | Built-in motion models, `builtin.ground.kinematic` (M1) | `cgf-core` |
 | `cgf-templates` | `crates/cgf-templates` | Template and scenario reading, inheritance, schema validation, located diagnostics (M2; WI-1 scaffold, no modules yet) | `cgf-core` only (section 4) |
 | `cgf-engine` | `crates/cgf-engine` | Embeddable synchronous facade, placement by ECEF or lat/lon/alt, M1 demo scenario (M1); built-in registry, `builtin.terrain.flat`, scenario load/validate/instantiate, `ControlFlow` run callbacks (M2) | `cgf-core`, `cgf-kernel`, `cgf-motion`, `cgf-templates` |
-| `cgf-cli` | `crates/cgf-cli` | Binary; `demo` command in M1 | `cgf-engine` |
+| `cgf-cli` | `crates/cgf-cli` | Binary; `run`, `validate`, `schema` commands (M2; `demo` removed) | `cgf-engine` |
 
 Planned crates (section 4) are added in their own milestones; no placeholders (ASM-010).
 

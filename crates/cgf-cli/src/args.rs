@@ -1,8 +1,10 @@
-//! Command-line arguments (REQ-X-2 minimal, ASM-027).
+//! Command-line arguments (REQ-X-2, REQ-T-6, ASM-062).
+
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-use cgf_engine::{ClockMode, TickRate, TimeScale};
+use cgf_engine::{ClockMode, TimeScale};
 use tracing_subscriber::filter::LevelFilter;
 
 /// The CGF Engine command line.
@@ -14,28 +16,31 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// Commands. Only `demo` exists in M1.
+/// Commands.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Run the built-in walking-skeleton scenario and print entity state and the state hash.
-    Demo(DemoArgs),
+    /// Run a scenario file headless and print entity state and the state hash.
+    Run(RunArgs),
+    /// Check scenario and template files without running anything.
+    Validate(ValidateArgs),
+    /// Print a JSON Schema: the file formats or a registered component's parameters.
+    Schema(SchemaArgs),
 }
 
-/// Options of `demo`.
+/// Options of `run`.
 #[derive(Debug, clap::Args)]
-pub struct DemoArgs {
-    /// Number of ticks to run.
-    #[arg(long, default_value_t = 900)]
-    pub ticks: u64,
-    /// Seed of the simulation's random streams.
-    #[arg(long, default_value_t = 1)]
-    pub seed: u64,
-    /// Tick rate in whole hertz.
-    #[arg(long, default_value = "30", value_parser = parse_rate)]
-    pub rate: TickRate,
-    /// Clock mode: afap, realtime, stepped or `scaled=FACTOR`.
-    #[arg(long, default_value = "afap", value_parser = parse_clock)]
-    pub clock: ClockMode,
+pub struct RunArgs {
+    /// The scenario file.
+    pub scenario: PathBuf,
+    /// Number of ticks to run (default: the scenario's duration).
+    #[arg(long)]
+    pub ticks: Option<u64>,
+    /// Replaces the scenario's seed.
+    #[arg(long)]
+    pub seed: Option<u64>,
+    /// Replaces the scenario's clock: afap, realtime, stepped or `scaled=FACTOR`.
+    #[arg(long, value_parser = parse_clock)]
+    pub clock: Option<ClockMode>,
     /// Print entity state every N ticks (0 prints none).
     #[arg(long, default_value_t = 30)]
     pub print_every: u64,
@@ -50,14 +55,42 @@ pub struct DemoArgs {
     pub log_level: LevelFilter,
 }
 
+/// Options of `validate`.
+#[derive(Debug, clap::Args)]
+pub struct ValidateArgs {
+    /// Scenario files, template files or directories (checked recursively).
+    #[arg(required = true)]
+    pub paths: Vec<PathBuf>,
+    /// Print one JSON document instead of text.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Options of `schema`.
+#[derive(Debug, clap::Args)]
+pub struct SchemaArgs {
+    /// Which schema to print.
+    #[command(subcommand)]
+    pub which: SchemaKind,
+}
+
+/// The schemas `schema` can print.
+#[derive(Debug, Subcommand)]
+pub enum SchemaKind {
+    /// The template file format.
+    Template,
+    /// The scenario file format.
+    Scenario,
+    /// The parameter schema of a registered component, of any kind.
+    Component {
+        /// The component ID, for example `builtin.ground.kinematic`.
+        id: String,
+    },
+}
+
 fn parse_level(s: &str) -> Result<LevelFilter, String> {
     s.parse()
         .map_err(|e| format!("invalid log level {s:?}: {e}"))
-}
-
-fn parse_rate(s: &str) -> Result<TickRate, String> {
-    let hz: u32 = s.parse().map_err(|e| format!("invalid rate {s:?}: {e}"))?;
-    TickRate::new(hz).ok_or_else(|| "rate must be at least 1 Hz".to_string())
 }
 
 fn parse_clock(s: &str) -> Result<ClockMode, String> {

@@ -320,3 +320,31 @@ fn given_demo_subcommand_then_exit_2() {
         stderr(&out)
     );
 }
+
+/// M1 carry-over closed: a write error (here a closed stdout pipe) stops the run instead of
+/// simulating to the end, and the exit code is 1 with the cause on stderr. 7200 ticks at one line
+/// per entity per tick is far more than a pipe buffer holds, so only an early stop is fast.
+#[test]
+fn given_closed_stdout_pipe_then_the_run_stops_with_exit_1() {
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cgf-cli"))
+        .args(["run", example().as_str(), "--print-every", "1"])
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("spawn: {e}"));
+    drop(child.stdout.take());
+
+    let out = child
+        .wait_with_output()
+        .unwrap_or_else(|e| panic!("wait: {e}"));
+
+    assert_eq!(out.status.code(), Some(1), "stderr: {}", stderr(&out));
+    assert!(
+        stderr(&out).contains("writing output"),
+        "stderr: {}",
+        stderr(&out)
+    );
+}
