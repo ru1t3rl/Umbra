@@ -58,6 +58,7 @@ pub struct TickContext<'a> {
 
 /// What one tick reports.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct TickReport {
     /// Simulation time after the tick (ASM-036).
     pub time: SimTime,

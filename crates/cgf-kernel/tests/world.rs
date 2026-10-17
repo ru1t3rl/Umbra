@@ -6,7 +6,7 @@
 mod common;
 
 use cgf_core::{EntityId, Meters, MetersPerSecond, Ownership, RemoteSource, Vec3};
-use cgf_kernel::{EntityInit, KernelError, RouteInit};
+use cgf_kernel::{EntityInit, KernelError, RouteInit, RouteParam};
 use common::{Behavior, Stub, at, kernel, owned, route, state_at};
 
 /// REQ-C-2: ids start at 1 and increase by one per spawn.
@@ -206,4 +206,63 @@ fn each_entity_uses_its_own_motion_model_instance() {
     assert_eq!(snap.entities[1].state.position, at(100.0));
     assert_eq!(drift.calls().len(), 1);
     assert_eq!(still.calls().len(), 1);
+}
+
+/// REQ-K-4 (input validation): a non-finite waypoint is rejected as an invalid route.
+#[test]
+fn spawn_rejects_non_finite_waypoints() {
+    let m = Stub::new("test.stub.still", Behavior::Stationary);
+    let nan = cgf_core::Ecef(Vec3 {
+        x: f64::NAN,
+        y: 0.0,
+        z: 0.0,
+    });
+
+    let mut k = kernel(1);
+    let mut init = owned(at(0.0), &m);
+    init.route = Some(route(vec![at(10.0), nan], 5.0));
+
+    assert_eq!(
+        k.spawn(init),
+        Err(KernelError::InvalidRoute(RouteParam::Waypoints))
+    );
+    assert_eq!(k.entity_count(), 0);
+}
+
+/// REQ-K-4 (input validation): a non-finite initial state is rejected.
+#[test]
+fn spawn_rejects_non_finite_state() {
+    let m = Stub::new("test.stub.still", Behavior::Stationary);
+    let mut k = kernel(1);
+    let mut init = owned(at(0.0), &m);
+    init.state.velocity.y = f64::INFINITY;
+
+    assert_eq!(k.spawn(init), Err(KernelError::InvalidState));
+    assert_eq!(k.entity_count(), 0);
+}
+
+/// The route parameter named by the error is the one that is wrong.
+#[test]
+fn spawn_names_the_invalid_route_parameter() {
+    let m = Stub::new("test.stub.still", Behavior::Stationary);
+    let mut k = kernel(1);
+    let mut radius = owned(at(0.0), &m);
+    radius.route = Some(RouteInit {
+        arrival_radius: Meters(0.0),
+        ..route(vec![at(10.0)], 5.0)
+    });
+    let mut speed = owned(at(0.0), &m);
+    speed.route = Some(RouteInit {
+        cruise_speed: MetersPerSecond(0.0),
+        ..route(vec![at(10.0)], 5.0)
+    });
+
+    assert_eq!(
+        k.spawn(radius),
+        Err(KernelError::InvalidRoute(RouteParam::ArrivalRadius))
+    );
+    assert_eq!(
+        k.spawn(speed),
+        Err(KernelError::InvalidRoute(RouteParam::CruiseSpeed))
+    );
 }

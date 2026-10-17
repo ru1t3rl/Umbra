@@ -53,6 +53,7 @@ pub struct EntityInit {
 
 /// An immutable copy of the world, entities sorted by id (REQ-K-6 partial, ASM-039).
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Snapshot {
     /// Simulation time after the last completed tick.
     pub time: SimTime,
@@ -62,6 +63,7 @@ pub struct Snapshot {
 
 /// One entity in a [`Snapshot`].
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct EntitySnapshot {
     /// The entity id.
     pub id: EntityId,

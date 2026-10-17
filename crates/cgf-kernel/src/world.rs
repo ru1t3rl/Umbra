@@ -11,7 +11,7 @@ use cgf_core::{
     Ecef, EntityId, Intent, KinematicState, MotionModel, Ownership, RngStream, SimRng, StreamKey,
 };
 
-use crate::error::KernelError;
+use crate::error::{KernelError, RouteParam};
 use crate::kernel::{EntityInit, RouteInit};
 
 /// The motion model instance of an entity (REQ-M-4).
@@ -73,17 +73,36 @@ pub(crate) struct World {
     next_id: Option<EntityId>,
 }
 
+fn is_finite(v: cgf_core::Vec3) -> bool {
+    v.x.is_finite() && v.y.is_finite() && v.z.is_finite()
+}
+
+fn validate_state(s: &KinematicState) -> Result<(), KernelError> {
+    let q = s.orientation;
+    let finite = is_finite(s.position.0)
+        && is_finite(s.velocity)
+        && [q.w, q.x, q.y, q.z].iter().all(|c| c.is_finite());
+    if finite {
+        Ok(())
+    } else {
+        Err(KernelError::InvalidState)
+    }
+}
+
 fn validate_route(route: &RouteInit) -> Result<Route, KernelError> {
     if route.waypoints.is_empty() {
         return Err(KernelError::EmptyRoute);
     }
     let radius = route.arrival_radius.0;
     if !(radius.is_finite() && radius > 0.0) {
-        return Err(KernelError::InvalidRoute("arrival_radius"));
+        return Err(KernelError::InvalidRoute(RouteParam::ArrivalRadius));
     }
     let cruise = route.cruise_speed.0;
     if !(cruise.is_finite() && cruise > 0.0) {
-        return Err(KernelError::InvalidRoute("cruise_speed"));
+        return Err(KernelError::InvalidRoute(RouteParam::CruiseSpeed));
+    }
+    if !route.waypoints.iter().all(|w| is_finite(w.0)) {
+        return Err(KernelError::InvalidRoute(RouteParam::Waypoints));
     }
     Ok(Route {
         waypoints: route.waypoints.clone(),
@@ -108,21 +127,22 @@ impl World {
 
     /// Validates `init` and adds the entity under the next id (from 1, never reused, REQ-C-2).
     pub(crate) fn spawn(&mut self, init: EntityInit, rng: SimRng) -> Result<EntityId, KernelError> {
+        validate_state(&init.state)?;
         let route = init.route.as_ref().map(validate_route).transpose()?;
         let id = self.next_id.ok_or(KernelError::IdsExhausted)?;
         self.next_id = id.get().checked_add(1).and_then(EntityId::new);
-        let entity = self.ecs.spawn((
-            id,
-            init.ownership,
-            init.state,
-            MotionRef(init.motion),
-            Intents(Vec::new()),
-            EntityRng(rng.stream(StreamKey::entity(id))),
-        ));
+        let mut builder = hecs::EntityBuilder::new();
+        builder
+            .add(id)
+            .add(init.ownership)
+            .add(init.state)
+            .add(MotionRef(init.motion))
+            .add(Intents(Vec::new()))
+            .add(EntityRng(rng.stream(StreamKey::entity(id))));
         if let Some(route) = route {
-            // The entity was spawned just above, so it exists.
-            let _ = self.ecs.insert_one(entity, route);
+            builder.add(route);
         }
+        let entity = self.ecs.spawn(builder.build());
         self.index.insert(id, entity);
         Ok(id)
     }
@@ -133,6 +153,7 @@ impl World {
             let Ok((ownership, state, motion, intents, route)) =
                 self.ecs.query_one_mut::<MutQuery<'_>>(*entity)
             else {
+                debug_assert!(false, "every indexed entity has all kernel components");
                 continue;
             };
             f(EntityMut {
@@ -149,16 +170,90 @@ impl World {
     pub(crate) fn for_each(&self, mut f: impl FnMut(EntityRef<'_>)) {
         for (id, entity) in &self.index {
             let mut query = self.ecs.query_one::<RefQuery<'_>>(*entity);
-            if let Ok((ownership, state, motion, route, rng)) = query.get() {
-                f(EntityRef {
-                    id: *id,
-                    ownership,
-                    state,
-                    motion,
-                    route,
-                    rng,
-                });
-            }
+            let Ok((ownership, state, motion, route, rng)) = query.get() else {
+                debug_assert!(false, "every indexed entity has all kernel components");
+                continue;
+            };
+            f(EntityRef {
+                id: *id,
+                ownership,
+                state,
+                motion,
+                route,
+                rng,
+            });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cgf_core::{Quaternion, Seconds, TerrainProvider};
+
+    struct Still(cgf_core::MotionModelId);
+
+    impl MotionModel for Still {
+        fn id(&self) -> &cgf_core::MotionModelId {
+            &self.0
+        }
+        fn step(
+            &self,
+            state: &KinematicState,
+            _intents: &[Intent],
+            _dt: Seconds,
+            _terrain: &dyn TerrainProvider,
+        ) -> KinematicState {
+            *state
+        }
+    }
+
+    fn init() -> EntityInit {
+        let Ok(id) = cgf_core::MotionModelId::new("test.stub.still") else {
+            panic!("valid id");
+        };
+        EntityInit {
+            state: KinematicState {
+                position: Ecef(cgf_core::Vec3::new(6_378_137.0, 0.0, 0.0)),
+                velocity: cgf_core::Vec3::ZERO,
+                orientation: Quaternion::IDENTITY,
+            },
+            ownership: Ownership::Owned,
+            motion: Arc::new(Still(id)),
+            route: None,
+        }
+    }
+
+    fn rng_states(world: &World) -> Vec<(u64, [u64; 4])> {
+        let mut out = Vec::new();
+        world.for_each(|e| out.push((e.id.get(), e.rng.0.state())));
+        out
+    }
+
+    fn world_with(count: usize, rng: SimRng) -> World {
+        let mut world = World::new();
+        for _ in 0..count {
+            assert!(world.spawn(init(), rng).is_ok());
+        }
+        world
+    }
+
+    /// ADR 0006: entity `n` gets `rng.stream(StreamKey::entity(n))`, and its stream does not
+    /// depend on how many other entities were spawned.
+    #[test]
+    fn entity_rng_stream_is_independent_of_other_spawns() {
+        let rng = SimRng::new(42);
+
+        let one = rng_states(&world_with(1, rng));
+        let four = rng_states(&world_with(4, rng));
+
+        for (id, state) in &four {
+            let Some(entity_id) = EntityId::new(*id) else {
+                panic!("non-zero id");
+            };
+            assert_eq!(*state, rng.stream(StreamKey::entity(entity_id)).state());
+        }
+        assert_eq!(one[0], four[0]);
+        assert_ne!(four[0].1, four[1].1);
     }
 }

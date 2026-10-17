@@ -42,4 +42,4 @@ Written against `todo!()` stubs (step 4); every row is `failing (stub until WI-n
 | AT-12 | gates | manual | mutations recorded in WI PRs | manual |
 | AT-15 | ASM-044, D-15 | integration | `crates/cgf-core/tests/coords.rs` (`position_*`), `crates/cgf-engine/tests/placement.rs` (5) | core part passing (WI-4); engine part failing (WI-13) |
 
-Gaps: plan test `entity_rng_stream_is_independent_of_other_spawns` and the archetype-order variant of `hash_walks_entities_in_id_order` cannot be expressed through the public kernel API (no rng accessor, no despawn); covered by `drawing_from_one_stream_does_not_affect_another` (core) and the seed/RNG hash sensitivity test. Intents are not directly observable in the hash test.
+Gaps: the archetype-order variant of `hash_walks_entities_in_id_order` cannot be expressed through the public kernel API (no despawn); `state_hash_equals_the_reference_encoding` (hand-built ADR 0007 encoding, mixed archetypes) pins the walk order instead, and `entity_rng_stream_is_independent_of_other_spawns` is a unit test in `crates/cgf-kernel/src/world.rs` (no public rng accessor). Intents are not directly observable in the hash test.

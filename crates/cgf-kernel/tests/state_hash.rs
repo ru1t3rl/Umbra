@@ -14,7 +14,7 @@ use core::time::Duration;
 use cgf_core::{
     Ecef, KinematicState, Ownership, Quaternion, RemoteSource, StateHash, TickRate, Vec3,
 };
-use cgf_core::{FlatTerrain, Meters};
+use cgf_core::{EntityId, FlatTerrain, Meters, SimRng, StateHasher, StreamKey};
 use cgf_kernel::{ClockMode, EntityInit, Kernel, KernelConfig, ManualWallClock, RouteInit};
 use common::{Behavior, Stub, at, kernel, owned, route, state_at};
 
@@ -326,4 +326,67 @@ fn hash_walks_entities_in_id_order() {
     assert_eq!(a.state_hash(), b.state_hash());
     let ids: Vec<u64> = a.snapshot().entities.iter().map(|e| e.id.get()).collect();
     assert_eq!(ids, [1, 2, 3, 4, 5, 6]);
+}
+
+#[expect(clippy::expect_used, reason = "test helper")]
+/// Hashes one entity by hand in the ADR 0007 field order. `route` is `(waypoints, next)`.
+fn hash_entity(
+    h: &mut StateHasher,
+    id: u64,
+    seed: u64,
+    model: &str,
+    state: &KinematicState,
+    route: Option<(u64, u64)>,
+) {
+    h.write_u64(id);
+    h.write_u8(0); // Owned
+    h.write_str(model);
+    h.write_vec3(state.position.0);
+    h.write_vec3(state.velocity);
+    h.write_quaternion(state.orientation);
+    match route {
+        None => h.write_u8(0),
+        Some((count, next)) => {
+            h.write_u8(1);
+            h.write_u64(count);
+            h.write_u64(next);
+        }
+    }
+    let entity_id = EntityId::new(id).expect("non-zero id");
+    for word in SimRng::new(seed)
+        .stream(StreamKey::entity(entity_id))
+        .state()
+    {
+        h.write_u64(word);
+    }
+}
+
+/// ADR 0007: the kernel hash equals a hand-built encoding in the documented order: header
+/// (tick, tick rate, entity count), then per entity in ascending id order, whatever the ECS
+/// archetypes are (route on odd ids only here, so storage order differs from id order), each
+/// with its own RNG stream. This pins walk order, the count, the absent-route tag and the
+/// per-entity stream keys.
+#[test]
+fn state_hash_equals_the_reference_encoding() {
+    let seed = 11;
+    let mut k = kernel(seed);
+    let m = Stub::new("test.stub.still", Behavior::Stationary);
+    for i in 0..3_u32 {
+        let mut init = owned(at(f64::from(i) * 10.0), &m);
+        if i % 2 == 0 {
+            init.route = Some(route(vec![at(1000.0), at(2000.0)], 5.0));
+        }
+        assert!(k.spawn(init).is_ok());
+    }
+
+    let mut h = StateHasher::new();
+    h.write_u64(0); // tick
+    h.write_u32(30); // tick rate
+    h.write_u64(3); // entity count
+    for (id, route) in [(1, Some((2, 0))), (2, None), (3, Some((2, 0)))] {
+        let state = state_at(at(f64::from(u32::try_from(id - 1).expect("small")) * 10.0));
+        hash_entity(&mut h, id, seed, "test.stub.still", &state, route);
+    }
+
+    assert_eq!(k.state_hash(), h.finish());
 }

@@ -1,4 +1,26 @@
-//! Kernel errors (STUB shape from the M1 plan; thiserror per CLAUDE.md rule 6).
+//! Kernel errors.
+
+/// Which route parameter was invalid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RouteParam {
+    /// The arrival radius is not finite and > 0.
+    ArrivalRadius,
+    /// The cruise speed is not finite and > 0.
+    CruiseSpeed,
+    /// A waypoint has a non-finite coordinate.
+    Waypoints,
+}
+
+impl core::fmt::Display for RouteParam {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::ArrivalRadius => "arrival radius",
+            Self::CruiseSpeed => "cruise speed",
+            Self::Waypoints => "waypoints",
+        })
+    }
+}
 
 /// Errors from the clock and the kernel.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -13,7 +35,10 @@ pub enum KernelError {
     /// A route needs at least one waypoint.
     #[error("route has no waypoints")]
     EmptyRoute,
-    /// A route parameter (arrival radius or cruise speed) is invalid.
+    /// A route parameter is invalid.
     #[error("invalid route parameter: {0}")]
-    InvalidRoute(&'static str),
+    InvalidRoute(RouteParam),
+    /// The initial kinematic state has a non-finite component.
+    #[error("initial entity state is not finite")]
+    InvalidState,
 }
