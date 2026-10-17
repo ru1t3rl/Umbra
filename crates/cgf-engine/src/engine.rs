@@ -11,6 +11,7 @@ use cgf_core::{
     EntityId, Euler, KinematicState, LocalFrame, Meters, MetersPerSecond, MotionModel, Ownership,
     Position, Radians, SimRng, SimTime, StateHash, TerrainProvider, TickRate, Vec3, math,
 };
+pub use cgf_kernel::AgentInit;
 use cgf_kernel::{
     ClockMode, EntityInit, Kernel, KernelConfig, Pace, RouteInit, Snapshot, StdWallClock,
     TickReport, WallClock,
@@ -178,6 +179,21 @@ impl Engine {
             route,
         };
         Ok(self.kernel.spawn(init)?)
+    }
+
+    /// Places an entity with a behavior, sensors and a force (ADR 0011). `spawn(spec)` is
+    /// `spawn_with(spec, AgentInit::default())`.
+    ///
+    /// # Errors
+    /// The errors of [`Engine::spawn`], and [`EngineError::Kernel`] wrapping
+    /// `KernelError::Instantiate` when the behavior cannot be instantiated at the tick rate.
+    #[expect(clippy::todo, reason = "M3 WI-15 stub")]
+    pub fn spawn_with(
+        &mut self,
+        _spec: SpawnSpec,
+        _agent: AgentInit,
+    ) -> Result<EntityId, EngineError> {
+        todo!("M3 WI-15")
     }
 
     /// Drives the kernel by its clock: polls, ticks or waits, and calls `on_tick` after every

@@ -2,10 +2,12 @@
 
 use std::sync::Arc;
 
+use cgf_behavior::GraphRegistrationError;
 use cgf_core::{
     BuildError, ComponentId, Factory, FlatTerrain, Meters, ParamSchema, ParamValue, Registry,
-    RegistryError, TerrainProvider,
+    RegistryError, Sensor, TerrainProvider,
 };
+use cgf_templates::{Diagnostics, LoaderError};
 
 /// ID of the flat terrain provider.
 pub const FLAT_TERRAIN_ID: &str = "builtin.terrain.flat";
@@ -71,6 +73,58 @@ pub fn builtin_registry() -> Result<Registry, RegistryError> {
     cgf_motion::register_builtins(&mut registry)?;
     registry.register_terrain(Arc::new(FlatTerrainFactory::new()))?;
     Ok(registry)
+}
+
+/// `builtin.visual` (ADR 0015): perfect detection by 3D range, then field of view, then line of
+/// sight. Parameters `range_m`, `fov_deg`, `eye_height_m`.
+///
+/// M3 step 4: signatures only; the bodies are `todo!()` until WI-15.
+#[derive(Debug)]
+pub struct VisualSensorFactory(());
+
+#[expect(clippy::todo, reason = "M3 WI-15 stub")]
+impl Factory<dyn Sensor> for VisualSensorFactory {
+    fn id(&self) -> &ComponentId {
+        todo!("M3 WI-15")
+    }
+
+    fn param_schema(&self) -> &ParamSchema {
+        todo!("M3 WI-15")
+    }
+
+    fn build(&self, _params: &ParamValue) -> Result<Arc<dyn Sensor>, BuildError> {
+        todo!("M3 WI-15")
+    }
+}
+
+/// Why [`standard_registry`] failed (not expected: every part is built in and tested).
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum StandardRegistryError {
+    /// A component registered twice.
+    #[error(transparent)]
+    Registry(#[from] RegistryError),
+    /// A registered schema is outside the supported subset.
+    #[error(transparent)]
+    Loader(#[from] LoaderError),
+    /// A built-in graph file has errors.
+    #[error("built-in graphs: {0}")]
+    BuiltinGraphs(Diagnostics),
+    /// A built-in graph could not be registered.
+    #[error(transparent)]
+    Graphs(#[from] GraphRegistrationError),
+}
+
+/// [`builtin_registry`] plus the built-in conditions and actions, `builtin.visual` and the built-in
+/// graphs (`builtin.fsm.patrol_and_engage`, `builtin.subgraph.engage_target`), ASM-084.
+///
+/// M3 step 4: `todo!()` until WI-15.
+///
+/// # Errors
+/// [`StandardRegistryError`]; not expected.
+#[expect(clippy::todo, reason = "M3 WI-15 stub")]
+pub fn standard_registry() -> Result<Registry, StandardRegistryError> {
+    todo!("M3 WI-15")
 }
 
 #[cfg(test)]

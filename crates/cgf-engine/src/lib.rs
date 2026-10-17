@@ -19,8 +19,9 @@ pub mod error;
 pub mod scenario;
 
 pub use cgf_core::{
-    ComponentId, ComponentKind, EntityId, FlatTerrain, Geodetic, Meters, ParamSchema, ParamValue,
-    Position, Radians, Registry, SimTime, StateHash, TerrainProvider, TickRate, TimeError,
+    Catalog, CatalogEntry, CatalogKind, ComponentId, ComponentKind, EntityId, FlatTerrain,
+    Geodetic, Meters, ParamSchema, ParamValue, Position, Provenance, Radians, Registry, SimTime,
+    StateHash, TerrainProvider, TickRate, TimeError,
 };
 pub use cgf_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, StdWallClock, TickReport,
@@ -28,5 +29,7 @@ pub use cgf_kernel::{
 };
 pub use cgf_templates::{SCENARIO_FILE_SCHEMA, TEMPLATE_FILE_SCHEMA};
 pub use display::EntityDisplay;
-pub use engine::{Engine, EngineConfig, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView};
+pub use engine::{
+    AgentInit, Engine, EngineConfig, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView,
+};
 pub use error::{EngineError, SpawnParam};

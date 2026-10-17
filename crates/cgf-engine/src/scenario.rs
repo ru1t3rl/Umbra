@@ -86,6 +86,16 @@ fn clock_mode(setting: ClockSetting) -> Result<ClockMode, EngineError> {
     })
 }
 
+/// A clone of `base` with the scenario's file graphs registered as behaviors (ADR 0011), so a
+/// template can name them by ID. M3 step 4: `todo!()` until WI-15.
+///
+/// # Errors
+/// [`EngineError::Graphs`] if a graph cannot be registered (not expected after validation).
+#[expect(clippy::todo, reason = "M3 WI-15 stub")]
+pub fn scenario_registry(_base: &Registry, _scenario: &Scenario) -> Result<Registry, EngineError> {
+    todo!("M3 WI-15")
+}
+
 /// Builds terrain and motion models through the registry and spawns in file order.
 ///
 /// # Errors

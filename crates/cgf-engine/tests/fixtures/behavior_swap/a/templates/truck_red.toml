@@ -1,0 +1,11 @@
+# Red truck: follows its route (graph behaviors/follow_route.behavior.toml) and never fires.
+schema_version = 1
+id = "example.truck.red"
+extends = "example.ground_vehicle"
+description = "Red truck that drives its route"
+
+[motion.params]
+max_speed_mps = 22.0
+
+[behavior]
+ref = "example.behavior.follow_route"

@@ -54,4 +54,7 @@ pub enum EngineError {
     /// validation).
     #[error("terrain: {0}")]
     TerrainBuild(BuildError),
+    /// Registering the scenario's graphs failed (not expected after validation).
+    #[error(transparent)]
+    Graphs(#[from] cgf_behavior::GraphRegistrationError),
 }

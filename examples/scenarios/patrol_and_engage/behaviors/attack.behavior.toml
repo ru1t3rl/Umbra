@@ -1,0 +1,73 @@
+# Approach the given target and fire at it while it is in range.
+# Input: `target` (entity, required, bound by the caller with `{ key = .. }`).
+# Success: never (runs until halted). Failure: `target` unset or no longer a contact.
+schema_version = 1
+id = "example.subgraph.attack"
+version = "1.0.0"
+description = "Approach and engage the target handed in by the caller"
+root = "modes"
+
+[interface]
+# `target` is binding-only (entity): inside this graph it is the read-only blackboard key `target`.
+# `fire_range_m` is used as `{ param = .. }` below, so callers give it literally (it cannot be bound).
+params = { target         = { type = "entity" },
+           fire_range_m   = { type = "number", exclusiveMinimum = 0, default = 1500.0 },
+           approach_speed_mps = { type = "number", exclusiveMinimum = 0, default = 8.0 } }
+result = "Failure when the target is unset or lost; otherwise Running"
+
+[nodes.modes]                      # the embedded FSM
+type = "fsm"
+initial = "approach"
+states = { approach = "go", engage = "shoot" }
+
+[[nodes.modes.transitions]]
+from = "approach"
+to = "engage"
+when = "in_fire_range"
+
+[[nodes.modes.transitions]]
+from = "engage"
+to = "approach"
+when = "out_of_fire_range"
+
+[nodes.in_fire_range]
+type = "condition"
+ref = "builtin.cond.target_in_range"
+params = { target_key = "target", range_m = { param = "fire_range_m" } }   # plain string: a key name, not a binding
+
+[nodes.out_of_fire_range]
+type = "inverter"
+child = "in_fire_range_2"
+
+[nodes.in_fire_range_2]            # a node has one parent (ASM-075), so the guard is written twice
+type = "condition"
+ref = "builtin.cond.target_in_range"
+params = { target_key = "target", range_m = { param = "fire_range_m" } }
+
+[nodes.go]
+type = "action"
+ref = "builtin.action.move_to"
+params = { target_key = "target", speed_mps = { param = "approach_speed_mps" }, arrival_radius_m = { param = "fire_range_m" } }
+
+[nodes.shoot]
+type = "sequence"
+memory = true                      # roll, fire, then wait, step by step
+children = ["roll", "fire", "reload"]
+
+[nodes.roll]                       # fires on about half of the ticks: this is where the seed matters
+type = "condition"
+ref = "builtin.cond.chance"
+params = { probability = 0.5 }
+
+[nodes.fire]
+type = "action"
+ref = "builtin.action.fire"
+params = { target_key = "target", weapon = "example.weapon.main_gun" }
+
+[nodes.reload]
+type = "action"
+ref = "builtin.action.wait"
+params = { duration_s = 4.0 }
+
+[editor]                           # ignored by the engine (REQ-B-16)
+positions = { modes = [0, 0], go = [-120, 100], shoot = [120, 100] }

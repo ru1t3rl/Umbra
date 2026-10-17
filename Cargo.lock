@@ -162,6 +162,7 @@ dependencies = [
 name = "cgf-engine"
 version = "0.1.0"
 dependencies = [
+ "cgf-behavior",
  "cgf-core",
  "cgf-kernel",
  "cgf-motion",

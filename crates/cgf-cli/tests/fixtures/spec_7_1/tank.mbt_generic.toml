@@ -1,0 +1,22 @@
+# Fixture: the example template of spec section 7.1, verbatim (key order and comments included),
+# except that the leading comment is this one. Provenance: docs/SPEC.md section 7.1, copied for
+# M3 step 4. It must validate against the standard registry: `builtin.visual`,
+# `builtin.fsm.patrol_and_engage` (with its `aggression` parameter) and the network table.
+id = "tank.mbt_generic"
+extends = "ground_vehicle.base"   # optional single inheritance, child overrides parent
+schema_version = 1
+
+[motion]
+model = "builtin.ground.kinematic"
+params = { max_speed_mps = 18.0, max_turn_rate_dps = 40.0, max_accel_mps2 = 2.5 }
+
+[[sensors]]
+kind = "builtin.visual"
+params = { range_m = 3000.0, fov_deg = 120.0 }
+
+[behavior]
+ref = "builtin.fsm.patrol_and_engage"   # or a plugin id, e.g. acme.behavior.smart_tank
+params = { aggression = 0.7 }
+
+[network.dis]                             # protocol-specific mapping lives under network.<adapter>
+entity_type = "1.1.225.1.1.1.0"

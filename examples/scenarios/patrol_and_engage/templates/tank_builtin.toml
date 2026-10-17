@@ -1,0 +1,14 @@
+# Spec section 7.1 style template: the built-in graph and the visual sensor, plus an `aggression`
+# parameter as in the spec's example (`builtin.fsm.patrol_and_engage` must declare it).
+schema_version = 1
+id = "example.tank.builtin"
+extends = "example.ground_vehicle"
+description = "Blue tank that uses the built-in patrol-and-engage graph"
+
+[[sensors]]
+kind = "builtin.visual"
+params = { range_m = 3000.0, fov_deg = 120.0 }
+
+[behavior]
+ref = "builtin.fsm.patrol_and_engage"
+params = { aggression = 0.7 }

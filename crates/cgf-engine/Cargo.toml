@@ -9,6 +9,7 @@ publish.workspace = true
 repository.workspace = true
 
 [dependencies]
+cgf-behavior = { path = "../cgf-behavior" }
 cgf-core = { path = "../cgf-core" }
 cgf-kernel = { path = "../cgf-kernel" }
 cgf-motion = { path = "../cgf-motion" }

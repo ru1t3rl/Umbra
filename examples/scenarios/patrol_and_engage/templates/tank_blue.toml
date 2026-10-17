@@ -1,0 +1,14 @@
+# Blue tank: patrols its route, engages hostiles it sees (graph behaviors/patrol_and_engage).
+# The engage range is the graph's default (900 m), so swapping the behavior (AT-17) is a one-line
+# change of `ref`.
+schema_version = 1
+id = "example.tank.blue"
+extends = "example.ground_vehicle"
+description = "Blue tank with the patrol-and-engage behavior"
+
+[behavior]
+ref = "example.behavior.patrol_and_engage"
+
+[[sensors]]
+kind = "builtin.visual"
+params = { range_m = 1200.0, fov_deg = 120.0 }

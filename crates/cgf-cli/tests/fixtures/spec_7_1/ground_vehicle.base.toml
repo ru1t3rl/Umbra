@@ -1,0 +1,9 @@
+# Fixture: the parent of the spec section 7.1 example template (AT-18, spec_7_1_template_validates_
+# with_standard_registry). Provenance: copied from examples/scenarios/walking_skeleton for M3 step 4.
+schema_version = 1
+id = "ground_vehicle.base"
+description = "Generic ground vehicle with the spec section 7.1 kinematic limits"
+
+[motion]
+model = "builtin.ground.kinematic"
+params = { max_speed_mps = 18.0, max_turn_rate_dps = 40.0, max_accel_mps2 = 2.5 }

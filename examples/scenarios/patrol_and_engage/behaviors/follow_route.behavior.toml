@@ -1,0 +1,10 @@
+# Follow the initial route (M3 example). Success when the route is complete.
+schema_version = 1
+id = "example.behavior.follow_route"
+version = "1.0.0"
+description = "Follow the entity's initial route once"
+root = "drive"
+
+[nodes.drive]
+type = "action"
+ref = "builtin.action.follow_route"

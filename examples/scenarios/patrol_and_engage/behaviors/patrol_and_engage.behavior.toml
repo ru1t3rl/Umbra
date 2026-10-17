@@ -1,0 +1,38 @@
+# Follow the initial route; engage hostiles that come within range (the M3 acceptance graph).
+# A tree (selector, sequence) with an embedded FSM and a reusable subgraph (see attack.behavior.toml).
+schema_version = 1
+id = "example.behavior.patrol_and_engage"
+version = "1.0.0"
+description = "Follow the initial route; engage hostiles that come within range"
+root = "main"
+
+[interface]
+params = { engage_range_m = { type = "number", exclusiveMinimum = 0, default = 900.0 } }
+
+[blackboard]
+target = "entity"
+
+[nodes.main]
+type = "selector"                  # reactive (ADR 0013): engage pre-empts patrol
+children = ["engage", "patrol"]
+
+[nodes.engage]
+type = "sequence"
+children = ["enemy_near", "attack"]
+
+[nodes.enemy_near]                 # picks the nearest hostile and stores it
+type = "condition"
+ref = "builtin.cond.enemy_in_range"
+params = { range_m = { param = "engage_range_m" }, store_as = "target" }
+
+[nodes.attack]
+type = "subgraph"
+ref = "example.subgraph.attack"
+version = "^1.0"
+# `{ key = .. }`: run-time input binding (copied in before each tick, ADR 0014)
+# `{ param = .. }` would be a build-time reference to this graph's own interface param; literals as usual
+params = { target = { key = "target" }, fire_range_m = 450.0 }
+
+[nodes.patrol]
+type = "action"
+ref = "builtin.action.follow_route"
