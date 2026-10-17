@@ -33,26 +33,27 @@ fn number(params: &ParamValue, key: &str) -> Result<f64, BuildError> {
         .ok_or_else(|| BuildError::new(format!("`{key}` must be a number")).at(pointer))
 }
 
-/// Maps a model limit name to the parameter key that sets it.
-fn key_of(name: &str) -> &'static str {
+/// Maps a model limit name to the parameter key that sets it (`None` for an unknown name).
+fn key_of(name: &str) -> Option<&'static str> {
     match name {
-        "max_speed" => "max_speed_mps",
-        "max_turn_rate" => "max_turn_rate_dps",
-        _ => "max_accel_mps2",
+        "max_speed" => Some("max_speed_mps"),
+        "max_turn_rate" => Some("max_turn_rate_dps"),
+        "max_accel" => Some("max_accel_mps2"),
+        _ => None,
     }
 }
 
 /// Locates a model error at the TOML key that caused it.
 fn located(error: &MotionParamError) -> BuildError {
     match error {
-        MotionParamError::NotPositive { name, value } => {
-            let key = key_of(name);
-            BuildError::new(format!(
-                "`{key}` must be greater than 0 (after unit conversion), got {value}"
-            ))
-            .at(format!("/{key}"))
-        }
-        other => BuildError::new(other.to_string()),
+        MotionParamError::NotPositive { name, value } => match key_of(name) {
+            Some(key) => BuildError::new(format!("`{key}` must be greater than 0, got {value}"))
+                .at(format!("/{key}")),
+            None => BuildError::new(error.to_string()),
+        },
+        // The built-in id is a constant checked by a unit test: no parameter is at fault, so
+        // the error stays unlocated (it points at the params table).
+        MotionParamError::InvalidId => BuildError::new(error.to_string()),
     }
 }
 
