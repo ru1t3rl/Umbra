@@ -1,0 +1,17 @@
+[package]
+name = "cgf-behavior"
+description = "CGF Engine behavior graph interpreter: compiled graphs, composites, decorators, FSM, subgraphs and built-in conditions and actions."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+cgf-core = { path = "../cgf-core" }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

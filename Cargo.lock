@@ -128,6 +128,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 
 [[package]]
+name = "cgf-behavior"
+version = "0.1.0"
+dependencies = [
+ "cgf-core",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cgf-cli"
 version = "0.1.0"
 dependencies = [
@@ -143,6 +152,7 @@ name = "cgf-core"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "semver",
  "serde_json",
  "thiserror",
 ]
@@ -649,6 +659,12 @@ checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
 ]
+
+[[package]]
+name = "semver"
+version = "1.0.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "serde"
