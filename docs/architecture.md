@@ -5,7 +5,11 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 ## Crates (current)
 | Crate | Path | Role | Workspace deps |
 |---|---|---|---|
-| `cgf-core` | `crates/cgf-core` | IDs, time, units (empty skeleton in WI-1) | none (REQ-A-1) |
+| `cgf-core` | `crates/cgf-core` | IDs, time, units (M1 adds math, geo, coords, hash, rng, motion domain) | none (REQ-A-1) |
+| `cgf-kernel` | `crates/cgf-kernel` | Clock, ECS world, fixed tick pipeline, state hash (M1, scaffold) | `cgf-core` (REQ-A-2) |
+| `cgf-motion` | `crates/cgf-motion` | Built-in motion models, `builtin.ground.kinematic` (M1, scaffold) | `cgf-core` |
+| `cgf-engine` | `crates/cgf-engine` | Embeddable synchronous facade and M1 demo scenario (M1, scaffold) | `cgf-core`, `cgf-kernel`, `cgf-motion` |
+| `cgf-cli` | `crates/cgf-cli` | Binary; `demo` command in M1 (scaffold) | `cgf-engine` |
 
 Planned crates (section 4) are added in their own milestones; no placeholders (ASM-010).
 

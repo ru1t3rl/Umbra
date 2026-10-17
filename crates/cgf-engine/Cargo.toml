@@ -1,0 +1,17 @@
+[package]
+name = "cgf-engine"
+description = "CGF Engine embeddable synchronous facade."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+cgf-core = { path = "../cgf-core" }
+cgf-kernel = { path = "../cgf-kernel" }
+cgf-motion = { path = "../cgf-motion" }
+
+[lints]
+workspace = true

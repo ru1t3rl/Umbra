@@ -1,0 +1,15 @@
+[package]
+name = "cgf-cli"
+description = "CGF Engine command-line interface."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+cgf-engine = { path = "../cgf-engine" }
+
+[lints]
+workspace = true

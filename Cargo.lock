@@ -82,11 +82,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 
 [[package]]
+name = "cgf-cli"
+version = "0.1.0"
+dependencies = [
+ "cgf-engine",
+]
+
+[[package]]
 name = "cgf-core"
 version = "0.1.0"
 dependencies = [
  "proptest",
  "thiserror",
+]
+
+[[package]]
+name = "cgf-engine"
+version = "0.1.0"
+dependencies = [
+ "cgf-core",
+ "cgf-kernel",
+ "cgf-motion",
+]
+
+[[package]]
+name = "cgf-kernel"
+version = "0.1.0"
+dependencies = [
+ "cgf-core",
+]
+
+[[package]]
+name = "cgf-motion"
+version = "0.1.0"
+dependencies = [
+ "cgf-core",
 ]
 
 [[package]]
