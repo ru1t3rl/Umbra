@@ -37,6 +37,9 @@ impl TickRate {
     /// A product within two ULPs of a whole number of at least 1 is that number, so `0.1 s` at
     /// 30 Hz is 3 ticks, not 4 (ASM-066). Returns `None` when the duration is not finite, not
     /// positive, or the tick count does not fit in `u64`.
+    ///
+    /// Its twin is `read_duration` in `cgf-templates` (scenario files); the integration test
+    /// `cgf-templates/tests/duration_parity.rs` keeps the two in step.
     pub fn ticks_for(self, duration: Seconds) -> Option<NonZeroU64> {
         let seconds = duration.0;
         if !seconds.is_finite() || seconds <= 0.0 {

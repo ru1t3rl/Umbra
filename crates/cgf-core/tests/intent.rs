@@ -1,4 +1,4 @@
-//! WI-2: intent set v1. Requirements: REQ-B-2, ADR 0016, ASM-082.
+//! AT-14 (WI-2): intent set v1. Requirements: REQ-B-2, ADR 0016, ASM-082.
 
 #![forbid(unsafe_code)]
 

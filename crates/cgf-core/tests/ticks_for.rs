@@ -1,4 +1,4 @@
-//! WI-2: `TickRate::ticks_for`. Requirements: ASM-078, ASM-066.
+//! AT-8 (WI-2): `TickRate::ticks_for`. Requirements: ASM-078, ASM-066.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -45,4 +45,33 @@ fn invalid_or_huge_is_none() {
     ] {
         assert_eq!(ticks(hz30(), s), None, "{s}");
     }
+}
+
+#[test]
+fn two_ulp_guard_width_is_pinned() {
+    let one_hz = TickRate::new(1).expect("non-zero");
+    let three = 3.0_f64;
+    assert_eq!(ticks(one_hz, three.next_up().next_up()), Some(3));
+    assert_eq!(ticks(one_hz, three.next_up().next_up().next_up()), Some(4));
+}
+
+#[test]
+fn subnormal_is_one_tick() {
+    let one_hz = TickRate::new(1).expect("non-zero");
+    assert_eq!(ticks(one_hz, f64::from_bits(1)), Some(1));
+}
+
+#[test]
+fn u64_boundary() {
+    let one_hz = TickRate::new(1).expect("non-zero");
+    assert_eq!(
+        ticks(one_hz, 18_446_744_073_709_549_568.0),
+        Some(18_446_744_073_709_549_568)
+    );
+    assert_eq!(ticks(one_hz, 18_446_744_073_709_551_616.0), None);
+}
+
+#[test]
+fn overflowing_product_is_none() {
+    assert_eq!(ticks(hz30(), f64::MAX), None);
 }

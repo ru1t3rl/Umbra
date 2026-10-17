@@ -215,6 +215,6 @@ string_id!(
     PluginId,
     /// Identifier of a registered component of any kind, e.g. `builtin.ground.kinematic`.
     ComponentId,
-    /// A weapon label carried by `Intent::Fire`, e.g. `acme.cannon_120`.
+    /// A weapon label carried by `Intent::Fire` (ADR 0002 grammar), e.g. `acme.cannon_120`.
     WeaponId,
 );

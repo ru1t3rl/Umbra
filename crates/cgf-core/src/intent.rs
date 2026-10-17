@@ -25,7 +25,7 @@ pub enum Intent {
     SetSpeed(MetersPerSecond),
     /// Stop and keep the current heading; wins over every other intent.
     Hold,
-    /// Follow the entity's initial route once; the kernel expands it in place (ASM-082).
+    /// Follow the entity's initial route once; the kernel expands it in place (ASM-082); without a route it is dropped.
     FollowRoute,
     /// Steer to this true heading when no later `MoveTo` overrides it.
     SetHeading(Radians),
