@@ -1,118 +1,246 @@
-//! STUB (WI-13): the embeddable synchronous facade (REQ-S-2 minimal, ASM-026).
+//! The embeddable synchronous facade (REQ-S-2 minimal, ASM-026, ASM-044).
 //!
-//! Signatures only. Acceptance tests: `tests/determinism.rs`, `tests/waypoints.rs`.
-#![expect(
-    missing_docs,
-    clippy::todo,
-    reason = "stub until WI-13: signatures only, documented when implemented"
-)]
+//! `Engine` wraps a [`Kernel`], converts user-facing placement (ECEF or lat/lon/alt) to the
+//! canonical ECEF state exactly once, and drives the kernel according to its clock.
 
 use std::sync::Arc;
 
 use cgf_core::{
-    EntityId, Meters, MetersPerSecond, MotionModel, Ownership, Position, Radians, SimTime,
-    StateHash, TickRate,
+    EntityId, Euler, KinematicState, LocalFrame, Meters, MetersPerSecond, MotionModel, Ownership,
+    Position, Radians, SimRng, SimTime, StateHash, TickRate, Vec3, math,
 };
-use cgf_kernel::{ClockMode, Kernel, Snapshot, TickReport, WallClock};
+use cgf_core::{Enu, FlatTerrain};
+use cgf_kernel::{
+    ClockMode, EntityInit, Kernel, KernelConfig, Pace, RouteInit, Snapshot, StdWallClock,
+    TickReport, WallClock,
+};
 
 use crate::error::EngineError;
 
+/// Engine construction parameters.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EngineConfig {
+    /// Master seed of the simulation's random streams.
     pub seed: u64,
+    /// Ticks per second.
     pub tick_rate: TickRate,
+    /// Initial clock mode.
     pub clock: ClockMode,
+    /// Height of the flat terrain above the WGS-84 ellipsoid (M1 has only flat terrain).
     pub terrain_height: Meters,
 }
 
+/// When [`Engine::run`] returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunUntil {
-    /// Total ticks since start.
+    /// Total ticks since start: runs until the clock has reached this tick.
     Ticks(u64),
-    /// Until the clock reports idle.
+    /// Until the clock reports idle (paused, or stepped with no pending steps). In a free-running
+    /// mode this does not return until the tick counter overflows.
     Idle,
 }
 
-/// Engine-level placement (ASM-044). Heading is clockwise from true north.
+/// Engine-level placement of one entity (ASM-044). Heading is clockwise from true north in the
+/// local ENU frame at the entity's position.
 #[derive(Clone)]
 pub struct SpawnSpec {
+    /// Where the entity starts, as ECEF or lat/lon/alt (height above the ellipsoid).
     pub position: Position,
+    /// Initial heading.
     pub heading: Radians,
+    /// Initial speed along the heading, horizontal.
     pub speed: MetersPerSecond,
+    /// Whether this engine simulates the entity.
     pub ownership: Ownership,
+    /// The entity's motion model instance.
     pub motion: Arc<dyn MotionModel>,
+    /// Optional waypoint route.
     pub route: Option<RouteSpec>,
 }
 
+/// A waypoint route with positions in either form (ASM-044).
 #[derive(Debug, Clone, PartialEq)]
 pub struct RouteSpec {
+    /// Waypoints in visiting order; at least one.
     pub waypoints: Vec<Position>,
+    /// A waypoint counts as reached within this horizontal distance.
     pub arrival_radius: Meters,
+    /// Speed requested while following the route.
     pub cruise_speed: MetersPerSecond,
 }
 
+/// What a per-tick callback sees: the tick's report, and on demand the hash and snapshot of the
+/// state after the tick.
 pub struct TickView<'a> {
+    /// The report of the tick that just ran.
     pub report: &'a TickReport,
     kernel: &'a Kernel,
 }
 
 impl TickView<'_> {
+    /// The state hash after this tick.
     pub fn state_hash(&self) -> StateHash {
         self.kernel.state_hash()
     }
+
+    /// A snapshot after this tick.
     pub fn snapshot(&self) -> Snapshot {
         self.kernel.snapshot()
     }
 }
 
-/// Summary of one `run` or `step` call. Fields are not specified by the plan.
+/// Summary of one [`Engine::run`] or [`Engine::step`] call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
-pub struct RunSummary {}
+pub struct RunSummary {
+    /// Ticks run during the call.
+    pub ticks_run: u64,
+}
 
+/// The embeddable, synchronous engine.
 pub struct Engine {
     kernel: Kernel,
 }
 
 impl Engine {
-    pub fn new(_config: EngineConfig) -> Self {
-        todo!("WI-13")
+    /// An engine paced by the real wall clock.
+    pub fn new(config: EngineConfig) -> Self {
+        Self::with_wall_clock(config, Box::new(StdWallClock::new()))
     }
-    pub fn with_wall_clock(_config: EngineConfig, _wall: Box<dyn WallClock>) -> Self {
-        todo!("WI-13")
+
+    /// An engine paced by the given wall clock (tests and embedding use a manual one).
+    pub fn with_wall_clock(config: EngineConfig, wall: Box<dyn WallClock>) -> Self {
+        let kernel_config = KernelConfig {
+            tick_rate: config.tick_rate,
+            seed: config.seed,
+            clock: config.clock,
+        };
+        let terrain = FlatTerrain {
+            height: config.terrain_height,
+        };
+        Self {
+            kernel: Kernel::new(kernel_config, Box::new(terrain), wall),
+        }
     }
-    pub fn spawn(&mut self, _spec: SpawnSpec) -> Result<EntityId, EngineError> {
-        todo!("WI-13")
+
+    /// The master random source, for scenario-level randomness (ADR 0006).
+    pub fn rng(&self) -> SimRng {
+        self.kernel.rng()
     }
+
+    /// Places an entity. Positions are converted to ECEF here, once (ASM-044); the orientation
+    /// and velocity come from the heading and speed in the local frame at the position.
+    ///
+    /// # Errors
+    /// [`EngineError::Kernel`] for an invalid route or exhausted ids.
+    pub fn spawn(&mut self, spec: SpawnSpec) -> Result<EntityId, EngineError> {
+        let position = spec.position.to_ecef();
+        let frame = LocalFrame::at(position.to_geodetic());
+        let (sin_h, cos_h) = math::sin_cos(spec.heading.0);
+        let velocity: Vec3 = frame.vector_from_enu(Enu {
+            east: spec.speed.0 * sin_h,
+            north: spec.speed.0 * cos_h,
+            up: 0.0,
+        });
+        let orientation = frame.orientation_from_euler(Euler {
+            heading: spec.heading,
+            pitch: Radians(0.0),
+            roll: Radians(0.0),
+        });
+        let route = spec.route.map(|r| RouteInit {
+            waypoints: r.waypoints.into_iter().map(Position::to_ecef).collect(),
+            arrival_radius: r.arrival_radius,
+            cruise_speed: r.cruise_speed,
+        });
+        let init = EntityInit {
+            state: KinematicState {
+                position,
+                velocity,
+                orientation,
+            },
+            ownership: spec.ownership,
+            motion: spec.motion,
+            route,
+        };
+        Ok(self.kernel.spawn(init)?)
+    }
+
+    /// Drives the kernel by its clock: polls, ticks or waits, and calls `on_tick` after every
+    /// tick, until `until` is reached or the clock is idle.
+    ///
+    /// # Errors
+    /// [`EngineError::Kernel`] if a tick fails (time overflow).
     pub fn run(
         &mut self,
-        _until: RunUntil,
-        _on_tick: impl FnMut(&TickView<'_>),
+        until: RunUntil,
+        mut on_tick: impl FnMut(&TickView<'_>),
     ) -> Result<RunSummary, EngineError> {
-        todo!("WI-13")
+        let mut ticks_run = 0_u64;
+        loop {
+            if let RunUntil::Ticks(limit) = until
+                && self.kernel.now().tick() >= limit
+            {
+                break;
+            }
+            match self.kernel.clock_mut().poll() {
+                Pace::Tick => {
+                    let report = self.kernel.tick()?;
+                    ticks_run += 1;
+                    on_tick(&TickView {
+                        report: &report,
+                        kernel: &self.kernel,
+                    });
+                }
+                Pace::WaitUntil(deadline) => self.kernel.clock().wait_until(deadline),
+                Pace::Idle => break,
+            }
+        }
+        Ok(RunSummary { ticks_run })
     }
+
+    /// Runs `n` more ticks. In stepped mode this requests `n` steps first; in other modes it
+    /// runs until the tick count has grown by `n`. While paused nothing runs.
+    ///
+    /// # Errors
+    /// [`EngineError::Kernel`] if a tick fails (time overflow).
     pub fn step(
         &mut self,
-        _n: u64,
-        _on_tick: impl FnMut(&TickView<'_>),
+        n: u64,
+        on_tick: impl FnMut(&TickView<'_>),
     ) -> Result<RunSummary, EngineError> {
-        todo!("WI-13")
+        if self.kernel.clock().mode() == ClockMode::Stepped {
+            self.kernel.clock_mut().request_steps(n);
+        }
+        let target = self.kernel.now().tick().saturating_add(n);
+        self.run(RunUntil::Ticks(target), on_tick)
     }
+
+    /// Pauses the clock in every mode.
     pub fn pause(&mut self) {
-        todo!("WI-13")
+        self.kernel.clock_mut().pause();
     }
+
+    /// Resumes after [`pause`](Self::pause) without a burst of owed ticks.
     pub fn resume(&mut self) {
-        todo!("WI-13")
+        self.kernel.clock_mut().resume();
     }
-    pub fn set_clock(&mut self, _m: ClockMode) {
-        todo!("WI-13")
+
+    /// Switches the clock mode.
+    pub fn set_clock(&mut self, m: ClockMode) {
+        self.kernel.clock_mut().set_mode(m);
     }
+
+    /// The current simulation time.
     pub fn now(&self) -> SimTime {
         self.kernel.now()
     }
+
+    /// The canonical state hash.
     pub fn state_hash(&self) -> StateHash {
         self.kernel.state_hash()
     }
+
+    /// An immutable snapshot of all entities, sorted by id.
     pub fn snapshot(&self) -> Snapshot {
         self.kernel.snapshot()
     }
