@@ -1,0 +1,12 @@
+# Fixture: a template with a behavior graph reference.
+# Provenance: hand-written for M3 step 4.
+schema_version = 1
+id = "graph.tank"
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = 4.0 }
+
+[behavior]
+ref = "test.graph.patrol"
+params = { engage_range_m = 2000.0 }

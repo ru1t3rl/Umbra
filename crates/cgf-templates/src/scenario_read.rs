@@ -163,6 +163,8 @@ impl Loader<'_> {
             terrain: terrain?,
             templates: loaded.set.clone(),
             entities: entities?,
+            // M3 WI-12 fills the graphs of the load.
+            graphs: crate::graph_resolve::GraphSet::default(),
         })
     }
 
@@ -281,6 +283,10 @@ impl Loader<'_> {
             speed,
             motion,
             route,
+            // M3 WI-14 fills the behavior, the sensors and the force.
+            behavior: None,
+            sensors: Vec::new(),
+            force: None,
         })
     }
 

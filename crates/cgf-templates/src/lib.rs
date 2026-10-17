@@ -14,6 +14,7 @@
 pub(crate) mod components;
 pub mod diagnostic;
 pub(crate) mod discover;
+pub mod graph_resolve;
 pub mod loader;
 pub(crate) mod position;
 pub(crate) mod reader;
@@ -26,7 +27,8 @@ pub mod template;
 pub mod value;
 
 pub use diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, Location, Note};
-pub use loader::{Loader, LoaderError, ValidationReport};
+pub use graph_resolve::GraphSet;
+pub use loader::{Loader, LoaderError, LoaderOptions, ValidationReport};
 pub use resolve::{ComponentRef, ResolvedTemplate, TemplateSet};
 pub use scenario::{ClockSetting, Placement, RoutePlan, Scenario};
 pub use schema::{CompiledSchema, SchemaError};

@@ -3,9 +3,10 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use cgf_core::{ComponentId, ComponentKind, Registry};
+use cgf_core::{ComponentId, ComponentKind, Provenance, Registry};
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode, Diagnostics};
+use crate::graph_resolve::GraphSet;
 use crate::resolve::TemplateSet;
 use crate::scenario::Scenario;
 use crate::schema::{CompiledSchema, SchemaError};
@@ -26,6 +27,22 @@ pub enum LoaderError {
         #[source]
         source: SchemaError,
     },
+}
+
+/// Loader settings (library API only, no file key; ASM-073).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct LoaderOptions {
+    /// The most graphs on one `subgraph` chain, the referencing root graph included.
+    pub max_subgraph_depth: u32,
+}
+
+impl Default for LoaderOptions {
+    fn default() -> Self {
+        Self {
+            max_subgraph_depth: 16,
+        }
+    }
 }
 
 /// The result of `validate_path`.
@@ -66,6 +83,32 @@ impl<'r> Loader<'r> {
             }
         }
         Ok(Self { registry, schemas })
+    }
+
+    /// Like [`Loader::new`] with explicit options.
+    ///
+    /// # Errors
+    /// As [`Loader::new`].
+    #[expect(clippy::todo, reason = "M3 WI-13 stub")]
+    pub fn with_options(
+        _registry: &'r Registry,
+        _options: LoaderOptions,
+    ) -> Result<Self, LoaderError> {
+        todo!("M3 WI-13")
+    }
+
+    /// Reads and validates behavior graph files (`*.behavior.toml` contents) into a [`GraphSet`];
+    /// `source` is the provenance recorded in each [`cgf_core::GraphDef`].
+    ///
+    /// # Errors
+    /// Every diagnostic of every file and of the set, sorted.
+    #[expect(clippy::todo, reason = "M3 WI-12 stub")]
+    pub fn graphs_from_sources(
+        &self,
+        _files: &[SourceFile],
+        _source: Provenance,
+    ) -> Result<GraphSet, Diagnostics> {
+        todo!("M3 WI-12")
     }
 
     /// Loads a set of template files.

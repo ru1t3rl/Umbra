@@ -36,6 +36,10 @@ pub struct ResolvedTemplate {
     pub network: BTreeMap<String, ParamValue>,
     /// The file the template was defined in.
     pub source: PathBuf,
+    /// The behavior and its merged parameters, if the chain names one (ADR 0010 merge rules).
+    pub behavior: Option<ComponentRef>,
+    /// The sensors, in template order (a child's list replaces its parent's).
+    pub sensors: Vec<ComponentRef>,
     /// The merged motion parameters with the origin of every value (for scenario overrides).
     pub(crate) located: LocatedMotion,
 }
@@ -199,6 +203,9 @@ impl Loader<'_> {
             motion: ComponentRef { id, params },
             network: merge_network(chain),
             source: head.source.clone(),
+            // M3 WI-14 fills the behavior and the sensors.
+            behavior: None,
+            sensors: Vec::new(),
             located,
         })
     }

@@ -3,8 +3,9 @@
 
 use std::path::PathBuf;
 
-use cgf_core::{Meters, MetersPerSecond, Position, Radians, TemplateId, TickRate};
+use cgf_core::{Force, Meters, MetersPerSecond, Position, Radians, TemplateId, TickRate};
 
+use crate::graph_resolve::GraphSet;
 use crate::resolve::{ComponentRef, TemplateSet};
 
 /// The clock a scenario asks for; mirrors `cgf_kernel::TimeScale` bounds (ASM-060).
@@ -50,6 +51,12 @@ pub struct Placement {
     pub motion: ComponentRef,
     /// The initial route.
     pub route: Option<RoutePlan>,
+    /// The template's behavior with its merged parameters.
+    pub behavior: Option<ComponentRef>,
+    /// The template's sensors in order.
+    pub sensors: Vec<ComponentRef>,
+    /// The entity's force (`None` is neutral, ASM-079).
+    pub force: Option<Force>,
 }
 
 /// A scenario with its templates resolved.
@@ -73,4 +80,6 @@ pub struct Scenario {
     pub templates: TemplateSet,
     /// Entities in file order (spawn order).
     pub entities: Vec<Placement>,
+    /// The behavior graphs of the load (file graphs, ADR 0012).
+    pub graphs: GraphSet,
 }

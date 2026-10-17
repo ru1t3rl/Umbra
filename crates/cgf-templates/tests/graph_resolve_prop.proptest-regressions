@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 0fad3046fe89ce1f13bf963b9e516450079ea3233783db01ce17291f5e1e5292 # shrinks to forest = Forest { edges: [{}], limit: 2, order: [0] }, pick = {}
+cc 13b8dd119ca2e8b393c6ecde0847e7e8f671bfadefe33a460b194d42debfc571 # shrinks to forest = Forest { edges: [{}], limit: 2, order: [0] }

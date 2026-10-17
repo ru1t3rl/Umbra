@@ -63,6 +63,30 @@ pub enum DiagnosticCode {
     DuplicateName,
     /// A file given as a scenario is not one.
     NotAScenario,
+    /// A node name that no `[nodes.*]` table defines (behavior graphs, ADR 0012).
+    UnknownNode,
+    /// A node with two parents.
+    NodeReused,
+    /// Nodes reference each other in a loop.
+    NodeCycle,
+    /// A node not reachable from `root`.
+    UnreachableNode,
+    /// A `version` or version range that is not semver.
+    InvalidVersion,
+    /// A subgraph's version does not satisfy the range.
+    VersionMismatch,
+    /// Graphs call each other in a loop.
+    SubgraphCycle,
+    /// Subgraphs nest deeper than the limit.
+    SubgraphTooDeep,
+    /// An FSM without a valid `initial` state.
+    NoInitialState,
+    /// An FSM state that cannot be reached from `initial`.
+    UnreachableState,
+    /// An invalid `{ key = .. }` binding, output binding or `{ param = .. }` reference.
+    InvalidBinding,
+    /// A guard that is not a condition tree.
+    InvalidGuard,
 }
 
 impl DiagnosticCode {
@@ -89,6 +113,18 @@ impl DiagnosticCode {
             Self::ParamInvalid => "param_invalid",
             Self::DuplicateName => "duplicate_name",
             Self::NotAScenario => "not_a_scenario",
+            Self::UnknownNode => "unknown_node",
+            Self::NodeReused => "node_reused",
+            Self::NodeCycle => "node_cycle",
+            Self::UnreachableNode => "unreachable_node",
+            Self::InvalidVersion => "invalid_version",
+            Self::VersionMismatch => "version_mismatch",
+            Self::SubgraphCycle => "subgraph_cycle",
+            Self::SubgraphTooDeep => "subgraph_too_deep",
+            Self::NoInitialState => "no_initial_state",
+            Self::UnreachableState => "unreachable_state",
+            Self::InvalidBinding => "invalid_binding",
+            Self::InvalidGuard => "invalid_guard",
         }
     }
 }
