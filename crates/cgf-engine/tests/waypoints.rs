@@ -24,11 +24,14 @@ const ARRIVAL_M: f64 = 5.0;
 /// braking) finishes in about 150 s; 200 s leaves margin.
 const ALL_REACHED_BY_S: f64 = 200.0;
 
-/// The full-duration trace of the example run.
+/// The full-duration trace of the example run. Its `snapshots[0]` is the spawn state (taken before
+/// the first tick, as in M1), so `snapshots[i]` is the state after tick `i`; `hashes` has no entry
+/// for the spawn state and is not used here.
 fn full_trace() -> Trace {
     let scenario = load_example();
     let mut engine = example_engine(None, None);
     let mut trace = Trace::default();
+    trace.snapshots.push(engine.snapshot());
     run_traced(
         &mut engine,
         RunUntil::Ticks(scenario.duration_ticks),

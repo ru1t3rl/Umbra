@@ -97,7 +97,7 @@
   "examples": [
     {
       "schema_version": 1,
-      "scenario": { "name": "demo", "seed": 42, "tick_rate_hz": 30, "duration_s": 60.0 },
+      "scenario": { "name": "walking_skeleton", "seed": 42, "tick_rate_hz": 30, "duration_s": 60.0 },
       "entities": [ { "template": "tank.mbt_generic", "position": { "lat_deg": 52.0, "lon_deg": 4.0 } } ]
     }
   ]
