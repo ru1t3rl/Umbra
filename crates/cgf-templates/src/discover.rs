@@ -1,7 +1,8 @@
-//! File discovery and the path-based entry points (ASM-053, REQ-T-6 groundwork).
+//! File discovery and the path-based entry points (ASM-053, ASM-067, REQ-T-6 groundwork).
 //!
 //! Everything else works on in-memory [`SourceFile`]s; this module is the thin I/O layer.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -12,7 +13,7 @@ use crate::scenario::Scenario;
 use crate::scenario_read::{is_scenario, template_paths};
 use crate::source::SourceFile;
 
-/// Directories nested deeper than this are not searched (a guard, not a feature).
+/// Directories nested deeper than this are not searched (a guard, reported as a diagnostic).
 const MAX_DEPTH: usize = 64;
 
 /// The files and diagnostics of a scenario load.
@@ -23,14 +24,24 @@ pub(crate) struct ScenarioLoad {
     pub(crate) files: Vec<PathBuf>,
 }
 
+/// The template files a scenario's `template_paths` lead to.
+struct Collected {
+    templates: Vec<SourceFile>,
+    /// Paths (files or directories) that could not be read.
+    unread: Vec<PathBuf>,
+    /// Template and scenario files found, sorted.
+    files: Vec<PathBuf>,
+}
+
 /// An `io` diagnostic for `path`.
 pub(crate) fn io_diagnostic(path: &Path, error: &io::Error) -> Diagnostic {
     let message = format!("cannot read {}: {error}", path.display());
     Diagnostic::new(DiagnosticCode::Io, message, None)
 }
 
-/// Every regular `*.toml` file under `dir`, recursively, in sorted path order. Directory symlinks
-/// are not followed (ASM-053). Unreadable directories become `io` diagnostics.
+/// Every `*.toml` file (lower-case extension) under `dir`, recursively, in sorted path order. A
+/// symlink to a regular file counts; directory symlinks are not followed (ASM-053). Unreadable
+/// directories become `io` diagnostics.
 pub(crate) fn toml_files(dir: &Path, diagnostics: &mut Vec<Diagnostic>) -> Vec<PathBuf> {
     let mut found = Vec::new();
     walk(dir, 0, &mut found, diagnostics);
@@ -38,8 +49,17 @@ pub(crate) fn toml_files(dir: &Path, diagnostics: &mut Vec<Diagnostic>) -> Vec<P
     found
 }
 
+fn is_toml(path: &Path) -> bool {
+    path.extension().is_some_and(|e| e == "toml")
+}
+
 fn walk(dir: &Path, depth: usize, found: &mut Vec<PathBuf>, diagnostics: &mut Vec<Diagnostic>) {
     if depth > MAX_DEPTH {
+        let message = format!(
+            "{} is nested deeper than {MAX_DEPTH} directories and was not searched",
+            dir.display()
+        );
+        diagnostics.push(Diagnostic::new(DiagnosticCode::Io, message, None));
         return;
     }
     let entries = match fs::read_dir(dir) {
@@ -51,32 +71,55 @@ fn walk(dir: &Path, depth: usize, found: &mut Vec<PathBuf>, diagnostics: &mut Ve
     };
     for entry in entries {
         match entry {
-            Ok(entry) => {
-                let path = entry.path();
-                match entry.file_type() {
-                    Ok(kind) if kind.is_dir() => walk(&path, depth + 1, found, diagnostics),
-                    Ok(kind) if kind.is_file() && path.extension().is_some_and(|e| e == "toml") => {
-                        found.push(path);
-                    }
-                    Ok(_) => {}
-                    Err(error) => diagnostics.push(io_diagnostic(&path, &error)),
-                }
-            }
+            Ok(entry) => visit(&entry, depth, found, diagnostics),
             Err(error) => diagnostics.push(io_diagnostic(dir, &error)),
         }
     }
 }
 
-/// Reads `paths` into sources; unreadable files become `io` diagnostics.
-fn read_all(paths: &[PathBuf], diagnostics: &mut Vec<Diagnostic>) -> Vec<SourceFile> {
+fn visit(
+    entry: &fs::DirEntry,
+    depth: usize,
+    found: &mut Vec<PathBuf>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let path = entry.path();
+    match entry.file_type() {
+        Ok(kind) if kind.is_dir() => walk(&path, depth + 1, found, diagnostics),
+        Ok(kind) if kind.is_file() && is_toml(&path) => found.push(path),
+        Ok(kind) if kind.is_symlink() && is_toml(&path) => {
+            // Only a link to a regular file counts; a link to a directory is never followed.
+            if fs::metadata(&path).is_ok_and(|m| m.is_file()) {
+                found.push(path);
+            }
+        }
+        Ok(_) => {}
+        Err(error) => diagnostics.push(io_diagnostic(&path, &error)),
+    }
+}
+
+/// Reads `paths` into sources; unreadable files become `io` diagnostics and are listed in `unread`.
+fn read_all(
+    paths: &[PathBuf],
+    diagnostics: &mut Vec<Diagnostic>,
+    unread: &mut Vec<PathBuf>,
+) -> Vec<SourceFile> {
     let mut out = Vec::new();
     for path in paths {
         match fs::read_to_string(path) {
             Ok(text) => out.push(SourceFile::new(path.clone(), text)),
-            Err(error) => diagnostics.push(io_diagnostic(path, &error)),
+            Err(error) => {
+                diagnostics.push(io_diagnostic(path, &error));
+                unread.push(path.clone());
+            }
         }
     }
     out
+}
+
+/// A key that is the same for two spellings of one file.
+fn identity(path: &Path) -> PathBuf {
+    fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 impl Loader<'_> {
@@ -86,33 +129,30 @@ impl Loader<'_> {
     /// # Errors
     /// Every diagnostic, sorted; a file that is not a scenario is `not_a_scenario`.
     pub fn load_scenario(&self, path: &Path) -> Result<Scenario, Diagnostics> {
-        let load = self.scenario_pipeline(path);
+        let load = match read_source(path) {
+            Ok(file) => self.scenario_pipeline(&file),
+            Err(diagnostic) => ScenarioLoad {
+                scenario: None,
+                diagnostics: vec![diagnostic],
+                files: Vec::new(),
+            },
+        };
         match (load.scenario, Diagnostics::new(load.diagnostics)) {
             (_, Some(errors)) => Err(errors),
             (Some(scenario), None) => Ok(scenario),
-            (None, None) => Err(Diagnostics::from_one(io_diagnostic(
-                path,
-                &io::Error::other("the scenario could not be loaded"),
+            (None, None) => Err(Diagnostics::from_one(Diagnostic::new(
+                DiagnosticCode::NotAScenario,
+                format!("{} could not be loaded as a scenario", path.display()),
+                None,
             ))),
         }
     }
 
     /// The pipeline shared by `load_scenario` and `validate_path` (ASM-058).
-    pub(crate) fn scenario_pipeline(&self, path: &Path) -> ScenarioLoad {
+    pub(crate) fn scenario_pipeline(&self, file: &SourceFile) -> ScenarioLoad {
+        let path = file.path();
         let mut diagnostics = Vec::new();
-        let text = match fs::read_to_string(path) {
-            Ok(text) => text,
-            Err(error) => {
-                diagnostics.push(io_diagnostic(path, &error));
-                return ScenarioLoad {
-                    scenario: None,
-                    diagnostics,
-                    files: Vec::new(),
-                };
-            }
-        };
-        let file = SourceFile::new(path, text);
-        if !is_scenario(&file) && !has_syntax_errors(&file) {
+        if !is_scenario(file) && !has_syntax_errors(file) {
             let message = format!(
                 "{} is not a scenario (it has no `[scenario]` table)",
                 path.display()
@@ -124,10 +164,10 @@ impl Loader<'_> {
                 files: vec![path.to_path_buf()],
             };
         }
-        let (templates, template_files, incomplete) = collect_templates(&file, &mut diagnostics);
-        let (scenario, own) = self.build_scenario(&file, &templates, incomplete);
+        let collected = collect_templates(file, &mut diagnostics);
+        let (scenario, own) = self.build_scenario(file, &collected.templates, &collected.unread);
         diagnostics.extend(own);
-        let mut files = template_files;
+        let mut files = collected.files;
         files.push(path.to_path_buf());
         files.sort();
         files.dedup();
@@ -165,25 +205,48 @@ impl Loader<'_> {
         files: &mut Vec<PathBuf>,
         diagnostics: &mut Vec<Diagnostic>,
     ) {
-        let text = match fs::read_to_string(path) {
-            Ok(text) => text,
-            Err(error) => {
-                diagnostics.push(io_diagnostic(path, &error));
+        let file = match read_source(path) {
+            Ok(file) => file,
+            Err(diagnostic) => {
+                diagnostics.push(diagnostic);
                 return;
             }
         };
-        let file = SourceFile::new(path, text);
         if is_scenario(&file) {
-            let load = self.scenario_pipeline(path);
+            let load = self.scenario_pipeline(&file);
             files.extend(load.files);
             diagnostics.extend(load.diagnostics);
         } else {
             files.push(path.to_path_buf());
-            diagnostics.extend(self.load_templates(&[file]).diagnostics);
+            diagnostics.extend(self.validate_template_file(&file));
         }
     }
 
-    /// Template files form one set; each scenario is validated with its own templates.
+    /// A single template file is checked in the context of its directory (its parents are
+    /// usually next to it); only diagnostics located in the file, or whose notes point into it
+    /// (a duplicate or a cycle that involves it), are reported (ASM-067).
+    fn validate_template_file(&self, file: &SourceFile) -> Vec<Diagnostic> {
+        let mut ignored = Vec::new();
+        let mut unread = Vec::new();
+        let dir = file.path().parent().unwrap_or_else(|| Path::new(""));
+        let siblings = toml_files(dir, &mut ignored);
+        let me = identity(file.path());
+        let mut sources: Vec<SourceFile> = read_all(&siblings, &mut ignored, &mut unread)
+            .into_iter()
+            .filter(|s| identity(s.path()) != me && !is_scenario(s))
+            .collect();
+        sources.push(file.clone());
+        let loaded = self.load_templates(&sources, &unread);
+        loaded
+            .diagnostics
+            .into_iter()
+            .filter(|d| involves(d, &me))
+            .collect()
+    }
+
+    /// Template files form one set shared by every scenario of the directory; each scenario also
+    /// brings the templates under its own `template_paths`. Every file is read, parsed into a
+    /// source and built once.
     fn validate_directory(
         &self,
         dir: &Path,
@@ -192,49 +255,81 @@ impl Loader<'_> {
     ) {
         let paths = toml_files(dir, diagnostics);
         files.extend(paths.iter().cloned());
-        let sources = read_all(&paths, diagnostics);
-        let (scenarios, templates): (Vec<_>, Vec<_>) = sources.into_iter().partition(is_scenario);
-        diagnostics.extend(self.load_templates(&templates).diagnostics);
-        for scenario in scenarios {
-            let load = self.scenario_pipeline(scenario.path());
-            files.extend(load.files);
-            diagnostics.extend(load.diagnostics);
+        let mut unread = Vec::new();
+        let sources = read_all(&paths, diagnostics, &mut unread);
+        let (scenarios, mut templates): (Vec<_>, Vec<_>) =
+            sources.into_iter().partition(is_scenario);
+        let mut seen: BTreeSet<PathBuf> = paths.iter().map(|p| identity(p)).collect();
+        for scenario in &scenarios {
+            let collected = collect_templates(scenario, diagnostics);
+            files.extend(collected.files);
+            unread.extend(collected.unread);
+            for template in collected.templates {
+                if seen.insert(identity(template.path())) {
+                    templates.push(template);
+                }
+            }
+        }
+        let loaded = self.load_templates(&templates, &unread);
+        diagnostics.extend(loaded.diagnostics.iter().cloned());
+        for scenario in &scenarios {
+            diagnostics.extend(self.read_scenario(scenario, &loaded, &unread).1);
         }
     }
 }
 
-/// Reads the template files under the scenario's `template_paths`, skipping scenario files.
-fn collect_templates(
-    scenario: &SourceFile,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> (Vec<SourceFile>, Vec<PathBuf>, bool) {
+/// Whether a diagnostic is located in the file or has a note that points into it.
+fn involves(diagnostic: &Diagnostic, file: &Path) -> bool {
+    let here = |l: &crate::diagnostic::Location| identity(&l.path) == file;
+    diagnostic.location.as_ref().is_some_and(here)
+        || diagnostic
+            .notes
+            .iter()
+            .any(|n| n.location.as_ref().is_some_and(here))
+}
+
+fn read_source(path: &Path) -> Result<SourceFile, Diagnostic> {
+    fs::read_to_string(path)
+        .map(|text| SourceFile::new(path, text))
+        .map_err(|error| io_diagnostic(path, &error))
+}
+
+/// Reads the template files under the scenario's `template_paths` (recursively, scenario files
+/// skipped), once per file even when reached through two spellings of its path.
+fn collect_templates(scenario: &SourceFile, diagnostics: &mut Vec<Diagnostic>) -> Collected {
     let base = scenario.path().parent().unwrap_or_else(|| Path::new(""));
-    let mut paths = Vec::new();
-    let mut incomplete = false;
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let mut unread = Vec::new();
     for (entry, origin) in template_paths(scenario) {
         let dir = base.join(&entry);
-        let before = diagnostics.len();
-        paths.extend(toml_files(&dir, diagnostics));
-        if diagnostics.len() > before {
-            incomplete = true;
-            for d in diagnostics.iter_mut().skip(before) {
+        let mut local = Vec::new();
+        let found = toml_files(&dir, &mut local);
+        if !local.is_empty() {
+            unread.push(dir);
+            for mut d in local {
                 d.location = Some(origin.location());
+                diagnostics.push(d);
             }
         }
+        paths.extend(found);
     }
+    let mut seen: BTreeSet<PathBuf> = BTreeSet::new();
+    seen.insert(identity(scenario.path()));
+    paths.retain(|p| seen.insert(identity(p)));
     paths.sort();
-    paths.dedup();
-    paths.retain(|p| p != scenario.path());
-    let before = diagnostics.len();
-    let sources = read_all(&paths, diagnostics);
-    incomplete |= diagnostics.len() > before;
+    let sources = read_all(&paths, diagnostics, &mut unread);
     let (scenarios, templates): (Vec<_>, Vec<_>) = sources.into_iter().partition(is_scenario);
-    let files = templates
+    let mut files: Vec<PathBuf> = templates
         .iter()
         .chain(&scenarios)
         .map(|f| f.path().to_path_buf())
         .collect();
-    (templates, files, incomplete)
+    files.sort();
+    Collected {
+        templates,
+        unread,
+        files,
+    }
 }
 
 fn has_syntax_errors(file: &SourceFile) -> bool {

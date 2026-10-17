@@ -73,7 +73,7 @@ impl<'r> Loader<'r> {
     /// # Errors
     /// Every diagnostic of every file and of the set, sorted.
     pub fn templates_from_sources(&self, files: &[SourceFile]) -> Result<TemplateSet, Diagnostics> {
-        let loaded = self.load_templates(files);
+        let loaded = self.load_templates(files, &[]);
         match Diagnostics::new(loaded.diagnostics) {
             Some(errors) => Err(errors),
             None => Ok(loaded.set),
@@ -89,7 +89,7 @@ impl<'r> Loader<'r> {
         scenario: &SourceFile,
         templates: &[SourceFile],
     ) -> Result<Scenario, Diagnostics> {
-        let (loaded, diagnostics) = self.build_scenario(scenario, templates, false);
+        let (loaded, diagnostics) = self.build_scenario(scenario, templates, &[]);
         match (loaded, Diagnostics::new(diagnostics)) {
             (_, Some(errors)) => Err(errors),
             (Some(scenario), None) => Ok(scenario),

@@ -80,37 +80,95 @@ impl TemplateSet {
 impl Loader<'_> {
     /// Reads, checks and resolves template files. Returns the templates that resolved cleanly and
     /// every diagnostic, unsorted. Files are processed in path order, so the result does not
-    /// depend on the order they are given in (REQ-K-4).
-    pub(crate) fn load_templates(&self, files: &[SourceFile]) -> LoadedTemplates {
+    /// depend on the order they are given in (REQ-K-4). `unread` lists template paths that could
+    /// not be read; they only add a note to `unknown_template` errors.
+    ///
+    /// A template that cannot be fully resolved (its chain reaches a broken, duplicate, missing or
+    /// cyclic template) is still checked for what it states itself (ASM-056).
+    pub(crate) fn load_templates(
+        &self,
+        files: &[SourceFile],
+        unread: &[PathBuf],
+    ) -> LoadedTemplates {
         let mut sorted: Vec<&SourceFile> = files.iter().collect();
         sorted.sort_by(|a, b| a.path().cmp(b.path()));
         let mut set = SetBuilder::default();
         for file in sorted {
             set.add_file(file);
         }
-        set.check_set();
+        set.check_set(unread);
         let mut templates = BTreeMap::new();
-        for id in set.defs.keys() {
-            let Some(chain) = set.chain_of(id) else {
+        let mut unusable = set.bad.clone();
+        for (index, def) in set.defs.iter().enumerate() {
+            let Some(template) = &def.template else {
                 continue;
             };
             let mut local = Vec::new();
-            if let Some(resolved) = self.resolve_one(&chain, &mut local) {
-                templates.insert(id.clone(), resolved);
+            let chain = (set.unique.get(&def.id) == Some(&index))
+                .then(|| set.chain_of(&def.id))
+                .flatten();
+            match chain {
+                Some(chain) => {
+                    if let Some(resolved) = self.resolve_one(&chain, &mut local) {
+                        templates.insert(def.id.clone(), resolved);
+                    }
+                }
+                None => self.check_partial(template, &set.known_ancestors(template), &mut local),
             }
             set.diagnostics.extend(local);
         }
-        let unusable = set
-            .defs
-            .keys()
-            .chain(&set.bad)
-            .filter(|id| !templates.contains_key(*id))
-            .cloned()
-            .collect();
+        unusable.extend(set.defs.iter().map(|d| d.id.clone()));
+        unusable.retain(|id| !templates.contains_key(id));
         LoadedTemplates {
             set: TemplateSet { templates },
             diagnostics: set.diagnostics,
             unusable,
+            unreadable: set.unreadable,
+        }
+    }
+
+    /// What a template says itself, when its chain cannot be resolved: its own component IDs,
+    /// its own `[[sensors]]` list (which replaces the parent's), and parameters of a model that
+    /// differs from the nearest known ancestor's (the parent's parameters are dropped then).
+    fn check_partial(
+        &self,
+        template: &RawTemplate,
+        ancestors: &[&RawTemplate],
+        out: &mut Vec<Diagnostic>,
+    ) {
+        let section = |pick: fn(&RawTemplate) -> Option<&RawComponent>| {
+            ancestors
+                .iter()
+                .find_map(|a| pick(a).and_then(|c| c.id.as_ref()))
+                .map(|(id, _)| id.clone())
+        };
+        let known = [
+            (
+                ComponentKind::MotionModel,
+                template.motion.as_ref(),
+                section(|t| t.motion.as_ref()),
+            ),
+            (
+                ComponentKind::Behavior,
+                template.behavior.as_ref(),
+                section(|t| t.behavior.as_ref()),
+            ),
+        ];
+        for (kind, own, ancestor) in known {
+            let Some(own) = own else { continue };
+            let Some((id, at)) = &own.id else { continue };
+            if ancestor.as_ref().is_some_and(|a| a != id) {
+                let params = own
+                    .params
+                    .clone()
+                    .unwrap_or_else(|| LTable::from_entries(own.origin.clone(), BTreeMap::new()));
+                let _ = self.check_component(kind, id, at, &params, out);
+            } else {
+                let _ = self.check_registered(kind, id, at, out);
+            }
+        }
+        if let Some(sensors) = &template.sensors {
+            self.check_sensor_list(sensors, out);
         }
     }
 
@@ -182,9 +240,13 @@ impl Loader<'_> {
 
     /// Sensors replace as a whole: the most derived `[[sensors]]` list wins.
     fn check_sensors(&self, chain: &[&RawTemplate], out: &mut Vec<Diagnostic>) -> bool {
-        let Some(sensors) = chain.iter().find_map(|t| t.sensors.as_ref()) else {
-            return true;
-        };
+        match chain.iter().find_map(|t| t.sensors.as_ref()) {
+            Some(sensors) => self.check_sensor_list(sensors, out),
+            None => true,
+        }
+    }
+
+    fn check_sensor_list(&self, sensors: &[RawComponent], out: &mut Vec<Diagnostic>) -> bool {
         let mut ok = true;
         for sensor in sensors {
             let Some((id, at)) = &sensor.id else { continue };
@@ -209,6 +271,23 @@ pub(crate) struct LoadedTemplates {
     /// IDs that exist (or may exist) but could not be used; references to them are not reported
     /// again (ASM-056).
     pub(crate) unusable: BTreeSet<TemplateId>,
+    /// Template files with syntax errors whose `id` could not be recovered (ASM-054 rule 3).
+    pub(crate) unreadable: Vec<PathBuf>,
+}
+
+/// The notes of an `unknown_template` error: files that may define the name but could not be
+/// used (ASM-054 rule 3).
+pub(crate) fn missing_template_notes(syntax: &[PathBuf], unread: &[PathBuf]) -> Vec<String> {
+    let syntax = syntax
+        .iter()
+        .map(|p| format!("may be defined in {}, which has syntax errors", p.display()));
+    let unread = unread.iter().map(|p| {
+        format!(
+            "may be defined under {}, which could not be read",
+            p.display()
+        )
+    });
+    syntax.chain(unread).collect()
 }
 
 /// The merged `model`/`ref` and `params` of a component section along a chain.
@@ -245,7 +324,7 @@ fn merge_component<'a>(
             params_origin: None,
         });
         if let Some((id, at)) = &section.id {
-            if state.id.as_ref().map(|(old, _)| old) != Some(id) {
+            if state.id.as_ref().is_some_and(|(old, _)| old != id) {
                 state.params.clear();
                 state.params_origin = None;
             }
@@ -273,13 +352,24 @@ fn merge_network(chain: &[&RawTemplate]) -> BTreeMap<String, ParamValue> {
     out
 }
 
+/// One definition of a template ID found in a file; broken files keep their ID when it can be
+/// recovered.
+struct Def {
+    id: TemplateId,
+    at: Origin,
+    template: Option<RawTemplate>,
+}
+
 /// Files read so far and the set-level facts about them.
 #[derive(Default)]
 struct SetBuilder {
     diagnostics: Vec<Diagnostic>,
-    defs: BTreeMap<TemplateId, RawTemplate>,
-    /// IDs whose template cannot be used; dependents get no diagnostic (ASM-056).
+    /// Every definition, in path order.
+    defs: Vec<Def>,
+    /// IDs whose template cannot be used; dependents are not resolved (ASM-056).
     bad: BTreeSet<TemplateId>,
+    /// IDs defined exactly once in a clean file: ID to index in `defs`.
+    unique: BTreeMap<TemplateId, usize>,
     /// Files with syntax errors whose `id` could not be recovered (ASM-054 rule 3).
     unreadable: Vec<PathBuf>,
 }
@@ -288,52 +378,81 @@ impl SetBuilder {
     fn add_file(&mut self, file: &SourceFile) {
         let read = read_template(file);
         self.diagnostics.extend(read.diagnostics);
-        match (read.template, read.known_id) {
-            (Some(template), _) => self.add_template(template),
-            (None, Some(id)) => {
-                self.bad.insert(id);
-            }
-            (None, None) if read.syntax_errors => self.unreadable.push(file.path().to_path_buf()),
-            (None, None) => {}
-        }
-    }
-
-    fn add_template(&mut self, template: RawTemplate) {
-        let id = template.id.0.clone();
-        if let Some(first) = self.defs.get(&id) {
-            let message = format!("template `{id}` is defined more than once");
-            self.diagnostics.push(
-                Diagnostic::new(
-                    DiagnosticCode::DuplicateId,
-                    message,
-                    Some(template.id.1.location()),
-                )
-                .with_note("first defined here", Some(first.id.1.location())),
-            );
-            self.bad.insert(id);
-        } else {
-            self.defs.insert(id, template);
+        match (read.template, read.known_id, read.known_id_origin) {
+            (Some(template), _, _) => self.defs.push(Def {
+                id: template.id.0.clone(),
+                at: template.id.1.clone(),
+                template: Some(template),
+            }),
+            (None, Some(id), Some(at)) => self.defs.push(Def {
+                id,
+                at,
+                template: None,
+            }),
+            (None, _, _) if read.syntax_errors => self.unreadable.push(file.path().to_path_buf()),
+            (None, _, _) => {}
         }
     }
 
     /// Duplicates, cycles and unknown parents; afterwards every `bad` ID is out of the graph.
-    fn check_set(&mut self) {
-        for id in self.bad.clone() {
-            self.defs.remove(&id);
-        }
+    fn check_set(&mut self, unread: &[PathBuf]) {
+        self.check_duplicates();
+        self.unique = self
+            .defs
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| d.template.is_some() && !self.bad.contains(&d.id))
+            .map(|(i, d)| (d.id.clone(), i))
+            .collect();
         self.check_cycles();
-        self.check_parents();
+        self.check_parents(unread);
+    }
+
+    fn template(&self, id: &TemplateId) -> Option<&RawTemplate> {
+        self.unique
+            .get(id)
+            .and_then(|&i| self.defs.get(i))
+            .and_then(|d| d.template.as_ref())
+    }
+
+    /// Every definition after the first of an ID is `duplicate_id` (note at the first), whether
+    /// the definitions are in clean files or in files with errors; a broken definition makes the
+    /// ID unusable.
+    fn check_duplicates(&mut self) {
+        let mut first: BTreeMap<TemplateId, Origin> = BTreeMap::new();
+        for def in &self.defs {
+            if def.template.is_none() {
+                self.bad.insert(def.id.clone());
+            }
+            match first.get(&def.id) {
+                None => {
+                    first.insert(def.id.clone(), def.at.clone());
+                }
+                Some(origin) => {
+                    let message = format!("template `{}` is defined more than once", def.id);
+                    self.diagnostics.push(
+                        Diagnostic::new(
+                            DiagnosticCode::DuplicateId,
+                            message,
+                            Some(def.at.location()),
+                        )
+                        .with_note("first defined here", Some(origin.location())),
+                    );
+                    self.bad.insert(def.id.clone());
+                }
+            }
+        }
     }
 
     fn parent_of(&self, id: &TemplateId) -> Option<&TemplateId> {
-        let parent = &self.defs.get(id)?.extends.as_ref()?.0;
-        self.defs.contains_key(parent).then_some(parent)
+        let parent = &self.template(id)?.extends.as_ref()?.0;
+        self.unique.contains_key(parent).then_some(parent)
     }
 
     /// One diagnostic per cycle, at the `extends` of its smallest ID.
     fn check_cycles(&mut self) {
         let mut done: BTreeSet<TemplateId> = BTreeSet::new();
-        let ids: Vec<TemplateId> = self.defs.keys().cloned().collect();
+        let ids: Vec<TemplateId> = self.unique.keys().cloned().collect();
         for start in ids {
             let mut path: Vec<TemplateId> = Vec::new();
             let mut current = Some(start);
@@ -343,6 +462,7 @@ impl SetBuilder {
                 }
                 if let Some(at) = path.iter().position(|p| *p == id) {
                     let members = path.split_off(at);
+                    done.extend(members.iter().cloned());
                     self.report_cycle(members);
                     break;
                 }
@@ -364,7 +484,7 @@ impl SetBuilder {
             names.join(" -> "),
             names.first().cloned().unwrap_or_default()
         );
-        let edge = |id: &TemplateId| self.defs.get(id).and_then(|t| t.extends.as_ref());
+        let edge = |id: &TemplateId| self.template(id).and_then(|t| t.extends.as_ref());
         let at = members
             .first()
             .and_then(edge)
@@ -382,13 +502,18 @@ impl SetBuilder {
 
     /// `extends` naming a template that does not exist. Parents that exist but are unusable
     /// (duplicate, broken, in a cycle) are silent: their error is already reported.
-    fn check_parents(&mut self) {
+    fn check_parents(&mut self, unread: &[PathBuf]) {
         let mut missing = Vec::new();
-        for (id, template) in &self.defs {
-            let Some((parent, at)) = &template.extends else {
+        for (id, &index) in &self.unique {
+            let Some((parent, at)) = self
+                .defs
+                .get(index)
+                .and_then(|d| d.template.as_ref())
+                .and_then(|t| t.extends.as_ref())
+            else {
                 continue;
             };
-            if !self.defs.contains_key(parent) && !self.bad.contains(parent) {
+            if !self.unique.contains_key(parent) && !self.bad.contains(parent) {
                 missing.push((id.clone(), parent.clone(), at.clone()));
             }
         }
@@ -399,16 +524,30 @@ impl SetBuilder {
                 message,
                 Some(at.location()),
             );
-            for path in &self.unreadable {
-                let note = format!(
-                    "may be defined in {}, which has syntax errors",
-                    path.display()
-                );
+            for note in missing_template_notes(&self.unreadable, unread) {
                 diagnostic = diagnostic.with_note(note, None);
             }
             self.diagnostics.push(diagnostic);
             self.bad.insert(id);
         }
+    }
+
+    /// The templates a template extends that can be read, nearest first (stops at a missing,
+    /// broken or duplicate one, or a loop).
+    fn known_ancestors(&self, template: &RawTemplate) -> Vec<&RawTemplate> {
+        let mut out: Vec<&RawTemplate> = Vec::new();
+        let mut next = template.extends.as_ref().map(|(id, _)| id);
+        while let Some(id) = next {
+            let Some(parent) = self.template(id) else {
+                break;
+            };
+            if parent.id.0 == template.id.0 || out.iter().any(|t| t.id.0 == parent.id.0) {
+                break;
+            }
+            out.push(parent);
+            next = parent.extends.as_ref().map(|(id, _)| id);
+        }
+        out
     }
 
     /// The chain `[self, parent, .., root]`, or `None` when it reaches an unusable template.
@@ -419,12 +558,66 @@ impl SetBuilder {
             if self.bad.contains(current) || chain.len() > self.defs.len() {
                 return None;
             }
-            let template = self.defs.get(current)?;
+            let template = self.template(current)?;
             chain.push(template);
             match &template.extends {
                 None => return Some(chain),
                 Some((parent, _)) => current = parent,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cgf_core::Registry;
+
+    use super::*;
+
+    fn text(id: &str, extends: &str) -> SourceFile {
+        let body = format!("schema_version = 1\nid = \"{id}\"\nextends = \"{extends}\"\n");
+        SourceFile::new(format!("{id}.toml"), body)
+    }
+
+    /// Item 3: a cycle is reported once by the builder itself, not once per member and then
+    /// hidden by the de-duplication.
+    #[test]
+    fn a_three_template_cycle_is_one_raw_diagnostic() {
+        let registry = Registry::new();
+        let Ok(loader) = Loader::new(&registry) else {
+            panic!("loader");
+        };
+        let files = [
+            text("a.one", "b.two"),
+            text("b.two", "c.three"),
+            text("c.three", "a.one"),
+        ];
+
+        let result = loader.load_templates(&files, &[]);
+
+        let cycles = result
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::InheritanceCycle)
+            .count();
+        assert_eq!(cycles, 1);
+    }
+
+    /// Item 6: a root `[motion]` with params and no model keeps them when a child names a model.
+    #[test]
+    fn params_written_before_any_model_survive_the_first_model() {
+        let root = "schema_version = 1\nid = \"r.r\"\n[motion]\nparams = { a = 3.0 }\n";
+        let leaf =
+            "schema_version = 1\nid = \"l.l\"\nextends = \"r.r\"\n[motion]\nmodel = \"m.m\"\n";
+        let root = read_template(&SourceFile::new("r.toml", root)).template;
+        let leaf = read_template(&SourceFile::new("l.toml", leaf)).template;
+        let (Some(root), Some(leaf)) = (root, leaf) else {
+            panic!("templates read");
+        };
+
+        let merged = merge_component(&[&leaf, &root], |t| t.motion.as_ref());
+
+        let params = merged.map(|m| m.table().to_param());
+        assert_eq!(params, Some(serde_json::json!({ "a": 3.0 })));
     }
 }

@@ -21,10 +21,10 @@ impl Loader<'_> {
         params: &LTable,
         out: &mut Vec<Diagnostic>,
     ) -> Option<ParamValue> {
-        let Some(schema) = self.schemas.get(&(kind, id.clone())) else {
-            out.push(self.unknown_id(kind, id, id_at));
+        if !self.check_registered(kind, id, id_at, out) {
             return None;
-        };
+        }
+        let schema = self.schemas.get(&(kind, id.clone()))?;
         let context = format!("{} `{id}`", kind.noun());
         let found = schema.validate(&params.clone().into_value(), &context);
         if !found.is_empty() {
@@ -47,13 +47,35 @@ impl Loader<'_> {
         }
     }
 
-    /// An `unknown_id` diagnostic with a note listing what is registered.
+    /// Whether `id` is registered as a `kind`; if not, records `unknown_id`.
+    pub(crate) fn check_registered(
+        &self,
+        kind: ComponentKind,
+        id: &ComponentId,
+        at: &Origin,
+        out: &mut Vec<Diagnostic>,
+    ) -> bool {
+        let registered = self.schemas.contains_key(&(kind, id.clone()));
+        if !registered {
+            out.push(self.unknown_id(kind, id, at));
+        }
+        registered
+    }
+
+    /// An `unknown_id` diagnostic with a note listing what is registered. An ID that is
+    /// registered under another kind says so (IDs are global, ASM-063).
     pub(crate) fn unknown_id(
         &self,
         kind: ComponentKind,
         id: &ComponentId,
         at: &Origin,
     ) -> Diagnostic {
+        let message = match self.registry.kind_of(id) {
+            Some(other) if other != kind => {
+                format!("`{id}` is a {}, not a {}", other.noun(), kind.noun())
+            }
+            _ => format!("{} `{id}` is not registered", kind.noun()),
+        };
         let ids = self.registry.ids(kind);
         let note = if ids.is_empty() {
             "none are registered in this build".to_string()
@@ -61,12 +83,8 @@ impl Loader<'_> {
             let list: Vec<&str> = ids.iter().map(|i| i.as_str()).collect();
             format!("registered {}s: {}", kind.noun(), list.join(", "))
         };
-        Diagnostic::new(
-            DiagnosticCode::UnknownId,
-            format!("{} `{id}` is not registered", kind.noun()),
-            Some(at.location()),
-        )
-        .with_note(note, None)
+        Diagnostic::new(DiagnosticCode::UnknownId, message, Some(at.location()))
+            .with_note(note, None)
     }
 
     fn trial_build(
@@ -83,7 +101,10 @@ impl Loader<'_> {
             ComponentKind::Terrain => registry
                 .terrain(id)
                 .map_or(Ok(()), |f| f.build(params).map(drop)),
-            _ => Ok(()),
+            // No factories for these kinds until M3 (ASM-055); `Loader::new` never compiles a
+            // schema for them, so they cannot reach here registered.
+            ComponentKind::Behavior | ComponentKind::Sensor => Ok(()),
+            _ => Err(BuildError::new("component kind not supported")),
         }
     }
 }
@@ -120,6 +141,16 @@ fn locate(params: &LTable, pointer: Option<&str>) -> Origin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Item 5: behaviors and sensors have no registry entries in M2 (ASM-055). When M3 adds them,
+    /// `trial_build` needs real arms and this test must be updated with them.
+    #[test]
+    fn behaviors_and_sensors_have_no_registry_entries_yet() {
+        let registry = Registry::new();
+
+        assert_eq!(registry.ids(ComponentKind::Behavior).len(), 0);
+        assert_eq!(registry.ids(ComponentKind::Sensor).len(), 0);
+    }
     use crate::source::SourceFile;
     use crate::value::parse;
 

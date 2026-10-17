@@ -215,6 +215,11 @@ impl Registry {
         }
     }
 
+    /// The kind an ID is registered under, if any (IDs are global across kinds, ASM-063).
+    pub fn kind_of(&self, id: &ComponentId) -> Option<ComponentKind> {
+        self.kinds.get(id).copied()
+    }
+
     /// Registered IDs of a kind in sorted order.
     pub fn ids(&self, kind: ComponentKind) -> Vec<&ComponentId> {
         match kind {
@@ -358,6 +363,16 @@ mod tests {
         let expected: Vec<usize> = (0..seen.len()).collect();
         assert_eq!(seen, expected);
         assert_eq!(ComponentKind::Terrain.to_string(), "terrain provider");
+    }
+
+    #[test]
+    fn kind_of_reports_the_kind_an_id_is_registered_under() {
+        let mut r = Registry::new();
+        r.register_terrain(FlatFactory::arc("a.b")).unwrap();
+        let id = |s: &str| ComponentId::new(s).unwrap();
+
+        assert_eq!(r.kind_of(&id("a.b")), Some(ComponentKind::Terrain));
+        assert_eq!(r.kind_of(&id("c.d")), None);
     }
 
     #[test]

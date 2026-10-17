@@ -77,7 +77,7 @@ A file with a top-level `scenario` table is a scenario; any other `.toml` file i
 | `[scenario]` `name` | string | required |
 | `seed` | integer >= 0 | required, master seed |
 | `tick_rate_hz` | integer >= 1 | required; whole hertz only |
-| `duration_s` | number > 0 | required; run length is `ceil(duration_s * hz)` ticks (a product within 1e-9 of a whole number counts as that number, so 0.1 s at 30 Hz is 3 ticks; ASM-066) |
+| `duration_s` | number > 0 | required; run length is `ceil(duration_s * hz)` ticks (a product within two ULPs of a whole number counts as that number, so 0.1 s at 30 Hz is 3 ticks; ASM-066) |
 | `clock` | `afap` \| `realtime` \| `stepped` \| `scaled` | default `afap` |
 | `time_scale` | number in [0.001, 1000000] | required with `clock = "scaled"`, an error otherwise |
 | `template_paths` | array of strings | directories relative to the scenario file, searched recursively for `*.toml` |

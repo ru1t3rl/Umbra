@@ -1,6 +1,7 @@
 //! Reading a scenario file into a [`Scenario`] (ADR 0010, ASM-058, ASM-060).
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use cgf_core::{
     ComponentId, ComponentKind, Meters, MetersPerSecond, Radians, TemplateId, TickRate,
@@ -10,7 +11,7 @@ use crate::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::loader::Loader;
 use crate::position::read_position;
 use crate::reader::Reader;
-use crate::resolve::{ComponentRef, LoadedTemplates};
+use crate::resolve::{ComponentRef, LoadedTemplates, missing_template_notes};
 use crate::scenario::{ClockSetting, Placement, RoutePlan, Scenario};
 use crate::source::SourceFile;
 use crate::template::{RawComponent, Version, check_version, component};
@@ -79,17 +80,27 @@ struct Settings {
 
 impl Loader<'_> {
     /// Loads the templates and reads the scenario; every diagnostic is returned unsorted.
-    /// `incomplete` is set when template files could not be read, so an unknown template name is
-    /// not reported on top of that.
+    /// `unread` lists template paths that could not be read; unknown template names get a note
+    /// about them.
     pub(crate) fn build_scenario(
         &self,
         file: &SourceFile,
         templates: &[SourceFile],
-        incomplete: bool,
+        unread: &[PathBuf],
     ) -> (Option<Scenario>, Vec<Diagnostic>) {
-        let loaded = self.load_templates(templates);
+        let loaded = self.load_templates(templates, unread);
+        self.build_scenario_with(file, &loaded, unread)
+    }
+
+    /// Reads the scenario against templates that are already loaded.
+    pub(crate) fn build_scenario_with(
+        &self,
+        file: &SourceFile,
+        loaded: &LoadedTemplates,
+        unread: &[PathBuf],
+    ) -> (Option<Scenario>, Vec<Diagnostic>) {
         let mut diagnostics = loaded.diagnostics.clone();
-        let (scenario, own) = self.read_scenario(file, &loaded, incomplete);
+        let (scenario, own) = self.read_scenario(file, loaded, unread);
         diagnostics.extend(own);
         let scenario = if diagnostics.is_empty() {
             scenario
@@ -99,11 +110,11 @@ impl Loader<'_> {
         (scenario, diagnostics)
     }
 
-    fn read_scenario(
+    pub(crate) fn read_scenario(
         &self,
         file: &SourceFile,
         loaded: &LoadedTemplates,
-        incomplete: bool,
+        unread: &[PathBuf],
     ) -> (Option<Scenario>, Vec<Diagnostic>) {
         let (table, mut diagnostics) = parse(file);
         let Some(table) = table else {
@@ -117,7 +128,7 @@ impl Loader<'_> {
             return (None, reader.into_diagnostics());
         }
         reader.unknown_keys(&table, &TOP_KEYS);
-        let scenario = self.read_body(&mut reader, &table, file, loaded, incomplete);
+        let scenario = self.read_body(&mut reader, &table, file, loaded, unread);
         diagnostics.extend(reader.into_diagnostics());
         (scenario, diagnostics)
     }
@@ -128,18 +139,19 @@ impl Loader<'_> {
         table: &LTable,
         file: &SourceFile,
         loaded: &LoadedTemplates,
-        incomplete: bool,
+        unread: &[PathBuf],
     ) -> Option<Scenario> {
-        let Some(section) = table.get("scenario") else {
+        let section = table.get("scenario");
+        if section.is_none() {
             let message = "missing required table `[scenario]`".to_string();
             reader.error(DiagnosticCode::MissingKey, message, table.origin());
-            return None;
-        };
-        let settings = reader
-            .table("scenario", section)
+        }
+        let settings = section
+            .and_then(|s| reader.table("scenario", s))
             .and_then(|t| read_settings(reader, t));
-        let terrain = self.read_terrain(reader, table, section.origin());
-        let entities = self.read_entities(reader, table, loaded, incomplete);
+        let fallback = section.map_or(table.origin(), LValue::origin);
+        let terrain = self.read_terrain(reader, table, fallback);
+        let entities = self.read_entities(reader, table, loaded, unread);
         let settings = settings?;
         Some(Scenario {
             name: settings.name,
@@ -195,7 +207,7 @@ impl Loader<'_> {
         reader: &mut Reader<'_>,
         table: &LTable,
         loaded: &LoadedTemplates,
-        incomplete: bool,
+        unread: &[PathBuf],
     ) -> Option<Vec<Placement>> {
         let Some(value) = table.get("entities") else {
             return Some(Vec::new());
@@ -204,7 +216,7 @@ impl Loader<'_> {
         let mut names: BTreeMap<String, Origin> = BTreeMap::new();
         let placements: Vec<Option<Placement>> = items
             .iter()
-            .map(|item| self.read_entity(reader, item, loaded, incomplete, &mut names))
+            .map(|item| self.read_entity(reader, item, loaded, unread, &mut names))
             .collect();
         placements.into_iter().collect()
     }
@@ -214,12 +226,12 @@ impl Loader<'_> {
         reader: &mut Reader<'_>,
         value: &LValue,
         loaded: &LoadedTemplates,
-        incomplete: bool,
+        unread: &[PathBuf],
         names: &mut BTreeMap<String, Origin>,
     ) -> Option<Placement> {
         let table = reader.table("entities", value)?;
         reader.unknown_keys(table, &ENTITY_KEYS);
-        let template = entity_template(reader, table, loaded, incomplete);
+        let template = entity_template(reader, table, loaded, unread);
         let name = optional_string(reader, table, "name");
         let group = optional_string(reader, table, "group");
         check_duplicate_name(reader, table, names);
@@ -259,7 +271,7 @@ impl Loader<'_> {
         template: &crate::resolve::ResolvedTemplate,
         overrides: Option<&RawComponent>,
     ) -> Option<ComponentRef> {
-        let Some(over) = overrides else {
+        let Some(over) = overrides.filter(|o| o.id.is_some() || o.params.is_some()) else {
             return Some(template.motion.clone());
         };
         let mut id = (
@@ -275,7 +287,9 @@ impl Loader<'_> {
         let mut origin = template.located.params.origin().clone();
         if let Some((new_id, at)) = &over.id {
             if *new_id != id.0 {
+                // The parameters belong to the new model: errors are located in the scenario.
                 entries.clear();
+                origin = over.origin.clone();
             }
             id = (new_id.clone(), at.clone());
         }
@@ -366,13 +380,13 @@ fn positive(reader: &mut Reader<'_>, name: &str, value: &LValue) -> Option<f64> 
     }
 }
 
-/// The template an entity names; unknown names are reported unless the set is known to be
-/// incomplete or broken.
+/// The template an entity names; an unknown name is reported (with a note about files that may
+/// define it) unless the template exists but is unusable, whose error is already reported.
 fn entity_template<'l>(
     reader: &mut Reader<'_>,
     table: &LTable,
     loaded: &'l LoadedTemplates,
-    incomplete: bool,
+    unread: &[PathBuf],
 ) -> Option<&'l crate::resolve::ResolvedTemplate> {
     let Some(value) = table.get("template") else {
         let message = "missing required key `template`".to_string();
@@ -383,9 +397,17 @@ fn entity_template<'l>(
     if let Some(template) = loaded.set.get(&id) {
         return Some(template);
     }
-    if !incomplete && !loaded.unusable.contains(&id) {
+    if !loaded.unusable.contains(&id) {
         let message = format!("template `{id}` is not defined");
-        reader.error(DiagnosticCode::UnknownTemplate, message, value.origin());
+        let mut diagnostic = Diagnostic::new(
+            DiagnosticCode::UnknownTemplate,
+            message,
+            Some(value.origin().location()),
+        );
+        for note in missing_template_notes(&loaded.unreadable, unread) {
+            diagnostic = diagnostic.with_note(note, None);
+        }
+        reader.push_diagnostic(diagnostic);
     }
     None
 }
@@ -442,19 +464,21 @@ fn read_tick_rate(reader: &mut Reader<'_>, value: &LValue) -> Option<TickRate> {
     rate
 }
 
-/// `ceil(duration_s * hz)`, except that a product within 1e-9 (relative) of a whole number is
-/// that number, so `0.1 s` at 30 Hz is 3 ticks, not 4 (ASM-066).
+/// `ceil(duration_s * hz)`, except that a product within two ULPs (of the product) of a whole number of at least 1
+/// is that number, so `0.1 s` at 30 Hz is 3 ticks, not 4 (ASM-066). A tiny positive duration is
+/// one tick, never zero.
 fn read_duration(reader: &mut Reader<'_>, value: &LValue, rate: TickRate) -> Option<u64> {
     let seconds = positive(reader, "duration_s", value)?;
     let product = seconds * f64::from(rate.hz());
     let nearest = product.round();
-    let ticks = if (product - nearest).abs() <= 1e-9 * nearest.max(1.0) {
-        nearest
-    } else {
-        product.ceil()
-    };
+    let ticks =
+        if nearest >= 1.0 && (product - nearest).abs() <= 2.0 * (product.next_up() - product) {
+            nearest
+        } else {
+            product.ceil().max(1.0)
+        };
     // 2^64 as f64; anything at or above does not fit in u64.
-    if !(1.0..18_446_744_073_709_551_616.0).contains(&ticks) {
+    if ticks >= 18_446_744_073_709_551_616.0 {
         let message = format!("`duration_s` of {seconds} s is {ticks} ticks, which does not fit");
         reader.error(DiagnosticCode::InvalidValue, message, value.origin());
         return None;
@@ -583,7 +607,7 @@ mod tests {
     fn run(text: &str) {
         let registry = Registry::new();
         if let Ok(loader) = Loader::new(&registry) {
-            let _ = loader.build_scenario(&SourceFile::new("s.toml", text), &[], false);
+            let _ = loader.build_scenario(&SourceFile::new("s.toml", text), &[], &[]);
         }
     }
 

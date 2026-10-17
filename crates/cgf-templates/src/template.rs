@@ -69,6 +69,8 @@ pub struct TemplateRead {
     /// The file's top-level `id` when it could be recovered, even if the file has errors, so the
     /// templates that extend it are not reported as having an unknown parent (ASM-054 rule 3).
     pub known_id: Option<TemplateId>,
+    /// Where `known_id` is written (so duplicates can point at a broken definition).
+    pub known_id_origin: Option<Origin>,
     /// Whether the file has syntax errors (its tree is unreliable).
     pub syntax_errors: bool,
 }
@@ -77,7 +79,11 @@ pub struct TemplateRead {
 pub fn read_template(file: &SourceFile) -> TemplateRead {
     let (table, mut diagnostics) = parse(file);
     let syntax_errors = diagnostics.iter().any(|d| d.code == DiagnosticCode::Syntax);
-    let known_id = table.as_ref().and_then(recover_id);
+    let recovered = table.as_ref().and_then(recover_id);
+    let (known_id, known_id_origin) = match recovered {
+        Some((id, origin)) => (Some(id), Some(origin)),
+        None => (None, None),
+    };
     let mut template = None;
     if !syntax_errors && let Some(table) = &table {
         let mut reader = Reader::new(file);
@@ -95,17 +101,20 @@ pub fn read_template(file: &SourceFile) -> TemplateRead {
         template,
         diagnostics,
         known_id,
+        known_id_origin,
         syntax_errors,
     }
 }
 
 /// The top-level `id` of a possibly broken file: a string with a real span that passes the ID
 /// grammar.
-fn recover_id(table: &LTable) -> Option<TemplateId> {
+fn recover_id(table: &LTable) -> Option<(TemplateId, Origin)> {
     let value = table.get("id")?;
     let span = value.origin().span();
     match value.kind() {
-        LKind::String(s) if span.start < span.end => TemplateId::new(s).ok(),
+        LKind::String(s) if span.start < span.end => TemplateId::new(s)
+            .ok()
+            .map(|id| (id, value.origin().clone())),
         _ => None,
     }
 }
