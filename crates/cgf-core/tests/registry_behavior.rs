@@ -11,14 +11,22 @@ use cgf_core::{
     BbType, ComponentId, ComponentInfo, ComponentKind, Provenance, Registry, RegistryError, Version,
 };
 use common::{
-    ActionStub, BehaviorStub, ConditionStub, SensorStub, cid, empty_registry_with_one_of_each, info,
+    ActionStub, BehaviorStub, ConditionStub, MotionStub, SensorStub, TerrainStub, cid,
+    empty_registry_with_one_of_each, info,
 };
 
-/// Duplicate IDs are rejected across all six kinds (ASM-063), in every order, first kept.
+/// Duplicate IDs are rejected across all six kinds (ASM-063): every ordered pair of kinds, first
+/// kept.
 #[test]
-fn given_id_taken_by_any_kind_when_registered_under_any_other_then_duplicate() {
+fn given_id_taken_by_any_kind_when_registered_under_any_kind_then_duplicate() {
     type Reg = fn(&mut Registry, &str) -> Result<(), RegistryError>;
-    let regs: [(ComponentKind, Reg); 4] = [
+    let regs: [(ComponentKind, Reg); 6] = [
+        (ComponentKind::MotionModel, |r, id| {
+            r.register_motion_model(MotionStub::arc(id))
+        }),
+        (ComponentKind::Terrain, |r, id| {
+            r.register_terrain(TerrainStub::arc(id))
+        }),
         (ComponentKind::Behavior, |r, id| {
             r.register_behavior(BehaviorStub::arc(id), info())
         }),
@@ -33,7 +41,7 @@ fn given_id_taken_by_any_kind_when_registered_under_any_other_then_duplicate() {
         }),
     ];
     for (first_kind, first) in &regs {
-        for (_, second) in &regs {
+        for (second_kind, second) in &regs {
             let mut r = Registry::new();
             first(&mut r, "a.b").unwrap_or_else(|e| panic!("{e}"));
             let err = second(&mut r, "a.b").err();
@@ -42,29 +50,16 @@ fn given_id_taken_by_any_kind_when_registered_under_any_other_then_duplicate() {
                 Some(RegistryError::Duplicate {
                     kind: *first_kind,
                     id: cid("a.b")
-                })
+                }),
+                "{first_kind} then {second_kind}"
             );
             assert_eq!(r.kind_of(&cid("a.b")), Some(*first_kind));
+            assert_eq!(
+                r.ids(*second_kind).len(),
+                usize::from(first_kind == second_kind)
+            );
         }
     }
-}
-
-/// Behavior-family kinds are not duplicated by a motion model or terrain with the same ID.
-#[test]
-fn given_behavior_when_motion_model_uses_same_id_then_duplicate() {
-    let mut r = Registry::new();
-    r.register_behavior(BehaviorStub::arc("a.b"), info())
-        .unwrap_or_else(|e| panic!("{e}"));
-    let err = r
-        .register_condition(ConditionStub::arc("a.b"), info())
-        .err();
-    assert!(matches!(
-        err,
-        Some(RegistryError::Duplicate {
-            kind: ComponentKind::Behavior,
-            ..
-        })
-    ));
 }
 
 /// `ids`, `param_schema`, `kind_of` and the typed getters answer per kind.
@@ -155,6 +150,12 @@ fn given_registry_when_cloned_then_factories_are_shared_and_clones_are_independe
     let c = ConditionStub::arc("a.c");
     base.register_condition(c.clone(), info())
         .unwrap_or_else(|e| panic!("{e}"));
+    let act = ActionStub::arc("a.act");
+    base.register_action(act.clone(), info())
+        .unwrap_or_else(|e| panic!("{e}"));
+    let sen = SensorStub::arc("a.sen");
+    base.register_sensor(sen.clone())
+        .unwrap_or_else(|e| panic!("{e}"));
 
     let mut copy = base.clone();
     assert!(
@@ -164,6 +165,14 @@ fn given_registry_when_cloned_then_factories_are_shared_and_clones_are_independe
     assert!(
         copy.condition(&cid("a.c"))
             .is_some_and(|x| Arc::ptr_eq(x, &c))
+    );
+    assert!(
+        copy.action(&cid("a.act"))
+            .is_some_and(|x| Arc::ptr_eq(x, &act))
+    );
+    assert!(
+        copy.sensor(&cid("a.sen"))
+            .is_some_and(|x| Arc::ptr_eq(x, &sen))
     );
     assert_eq!(copy.info(&cid("a.b")), base.info(&cid("a.b")));
 

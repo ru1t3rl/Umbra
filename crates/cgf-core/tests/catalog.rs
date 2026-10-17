@@ -7,7 +7,7 @@ mod common;
 use cgf_core::{
     BbType, Catalog, CatalogKind, ComponentInfo, NODE_TYPES, Provenance, Registry, Version,
 };
-use common::{ActionStub, BehaviorStub, ConditionStub, SensorStub, cid};
+use common::{ActionStub, BehaviorStub, ConditionStub, MotionStub, SensorStub, TerrainStub, cid};
 
 fn registry() -> Registry {
     let mut r = Registry::new();
@@ -26,6 +26,10 @@ fn registry() -> Registry {
     r.register_action(ActionStub::arc("a.action"), leaf(Provenance::Builtin))
         .unwrap_or_else(|e| panic!("{e}"));
     r.register_sensor(SensorStub::arc("a.sensor"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    r.register_motion_model(MotionStub::arc("a.motion"))
+        .unwrap_or_else(|e| panic!("{e}"));
+    r.register_terrain(TerrainStub::arc("a.terrain"))
         .unwrap_or_else(|e| panic!("{e}"));
     r
 }
@@ -134,9 +138,11 @@ fn given_behavior_with_entity_param_when_catalog_built_then_param_types_match_in
 
 /// Motion models, terrain and sensors are not catalog material.
 #[test]
-fn given_sensor_registered_when_catalog_built_then_it_is_absent() {
+fn given_sensor_motion_terrain_registered_when_catalog_built_then_they_are_absent() {
     let cat = Catalog::from_registry(&registry());
-    assert!(cat.entries().iter().all(|e| e.id != "a.sensor"));
+    for id in ["a.sensor", "a.motion", "a.terrain"] {
+        assert!(cat.entries().iter().all(|e| e.id != id), "{id}");
+    }
     assert_eq!(cat.entries().len(), NODE_TYPES.len() + 4);
 }
 

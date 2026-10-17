@@ -123,8 +123,9 @@ impl Loader<'_> {
             ComponentKind::Terrain => registry
                 .terrain(id)
                 .map_or(Ok(()), |f| f.build(params).map(drop)),
-            // No factories for these kinds until M3 (ASM-055); `Loader::new` never compiles a
-            // schema for them, so they cannot reach here registered.
+            // Placeholder from M2 (ASM-055): the registry now holds factories of these kinds, but
+            // this arm still runs no dry run for them. The real dry run for all four
+            // behavior-family kinds is M3 WI-14. Condition and Action fall into the catch-all.
             ComponentKind::Behavior | ComponentKind::Sensor => Ok(()),
             _ => Err(BuildError::new("component kind not supported")),
         }

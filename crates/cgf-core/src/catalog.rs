@@ -221,11 +221,6 @@ impl CatalogEntry {
         self
     }
 
-    fn with_result_opt(mut self, text: Option<String>) -> Self {
-        self.result = text;
-        self
-    }
-
     /// Whether editors must not change it; derived from `source` (REQ-B-13), so no stored flag can
     /// disagree.
     pub fn read_only(&self) -> bool {
@@ -289,26 +284,19 @@ impl Catalog {
             (CatalogKind::Action, ComponentKind::Action),
             (CatalogKind::Behavior, ComponentKind::Behavior),
         ] {
-            for id in registry.ids(component) {
-                let Some(info) = registry.info(id) else {
-                    continue;
-                };
-                let Some(params) = registry.param_schema(component, id) else {
-                    continue;
-                };
-                entries.push(
-                    CatalogEntry::new(
-                        kind,
-                        id.as_str(),
-                        info.description.clone(),
-                        info.source,
-                        info.version.clone(),
-                        params.clone(),
-                    )
-                    .with_param_types(info.param_types.clone())
-                    .with_outputs(info.outputs.clone())
-                    .with_result_opt(info.result.clone()),
-                );
+            for (id, params, info) in registry.described(component) {
+                let mut entry = CatalogEntry::new(
+                    kind,
+                    id.as_str(),
+                    info.description.clone(),
+                    info.source,
+                    info.version.clone(),
+                    params.clone(),
+                )
+                .with_param_types(info.param_types.clone())
+                .with_outputs(info.outputs.clone());
+                entry.result.clone_from(&info.result);
+                entries.push(entry);
             }
         }
         entries.sort_by(|a, b| (a.kind, &a.id).cmp(&(b.kind, &b.id)));
@@ -332,8 +320,12 @@ impl Catalog {
 /// One entry per node type. A schema that fails to parse would skip its entry; a `cgf-core`
 /// test guarantees all of them parse.
 fn node_type_entries() -> Vec<CatalogEntry> {
-    let version =
-        Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0));
+    const VERSION: Version = Version::new(
+        decimal(env!("CARGO_PKG_VERSION_MAJOR")),
+        decimal(env!("CARGO_PKG_VERSION_MINOR")),
+        decimal(env!("CARGO_PKG_VERSION_PATCH")),
+    );
+    let version = VERSION;
     NODE_TYPES
         .iter()
         .filter_map(|n| {
@@ -348,4 +340,21 @@ fn node_type_entries() -> Vec<CatalogEntry> {
             ))
         })
         .collect()
+}
+
+/// Parses a decimal number at compile time (Cargo guarantees the version components are
+/// digits, so a malformed one is a build error, not a run-time failure).
+const fn decimal(s: &str) -> u64 {
+    let bytes = s.as_bytes();
+    let mut n = 0u64;
+    let mut i = 0;
+    while i < bytes.len() {
+        assert!(
+            bytes[i].is_ascii_digit(),
+            "version component is not a number"
+        );
+        n = n * 10 + (bytes[i] - b'0') as u64;
+        i += 1;
+    }
+    n
 }

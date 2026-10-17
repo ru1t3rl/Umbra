@@ -60,3 +60,4 @@ returns an owned `Option<BbValue>`; `BehaviorInstance::set_input(&mut self, para
 Result<(), BlackboardError>` is a required method; `Contact`, `RouteView`, `BbType`, `BbValue` are
 `#[non_exhaustive]` (structs with `new`). Batching, fault reporting and snapshots stay additive default
 methods or fields for M4 (ASM-086). Signatures: `docs/plans/M3.md`, "`cgf-core` additions".
+- Clarification (WI-5): `register_sensor(factory)` takes no `ComponentInfo`; sensors are not catalog material.

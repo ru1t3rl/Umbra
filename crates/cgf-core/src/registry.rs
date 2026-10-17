@@ -137,6 +137,8 @@ type TerrainFactory = Arc<dyn Factory<dyn TerrainProvider>>;
 type BehaviorFactory = Arc<dyn Factory<dyn Behavior>>;
 type ConditionFactory = Arc<dyn Factory<dyn Condition>>;
 type ActionFactory = Arc<dyn Factory<dyn Action>>;
+/// A factory stored with its metadata, so one cannot exist without the other.
+type WithInfo<F> = (F, ComponentInfo);
 type SensorFactory = Arc<dyn Factory<dyn Sensor>>;
 
 /// All registered component factories, looked up by kind and ID.
@@ -148,12 +150,10 @@ pub struct Registry {
     kinds: BTreeMap<ComponentId, ComponentKind>,
     motion: BTreeMap<ComponentId, MotionFactory>,
     terrain: BTreeMap<ComponentId, TerrainFactory>,
-    behavior: BTreeMap<ComponentId, BehaviorFactory>,
-    condition: BTreeMap<ComponentId, ConditionFactory>,
-    action: BTreeMap<ComponentId, ActionFactory>,
+    behavior: BTreeMap<ComponentId, WithInfo<BehaviorFactory>>,
+    condition: BTreeMap<ComponentId, WithInfo<ConditionFactory>>,
+    action: BTreeMap<ComponentId, WithInfo<ActionFactory>>,
     sensor: BTreeMap<ComponentId, SensorFactory>,
-    /// Metadata of behaviors, conditions and actions.
-    info: BTreeMap<ComponentId, ComponentInfo>,
 }
 
 impl fmt::Debug for Registry {
@@ -166,21 +166,22 @@ impl fmt::Debug for Registry {
     }
 }
 
-/// Registers `f` in `map` unless its ID is taken under any kind.
-fn insert<T: ?Sized>(
+/// Registers `value` under `id` in `map` unless the ID is taken under any kind.
+fn insert<V>(
     kinds: &mut BTreeMap<ComponentId, ComponentKind>,
-    map: &mut BTreeMap<ComponentId, Arc<dyn Factory<T>>>,
+    map: &mut BTreeMap<ComponentId, V>,
     kind: ComponentKind,
-    f: Arc<dyn Factory<T>>,
+    id: &ComponentId,
+    value: V,
 ) -> Result<(), RegistryError> {
     use std::collections::btree_map::Entry;
-    match kinds.entry(f.id().clone()) {
+    match kinds.entry(id.clone()) {
         Entry::Occupied(e) => Err(RegistryError::Duplicate {
             kind: *e.get(),
             id: e.key().clone(),
         }),
         Entry::Vacant(e) => {
-            map.insert(e.key().clone(), f);
+            map.insert(e.key().clone(), value);
             e.insert(kind);
             Ok(())
         }
@@ -198,10 +199,12 @@ impl Registry {
     /// # Errors
     /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
     pub fn register_motion_model(&mut self, f: MotionFactory) -> Result<(), RegistryError> {
+        let id = f.id().clone();
         insert(
             &mut self.kinds,
             &mut self.motion,
             ComponentKind::MotionModel,
+            &id,
             f,
         )
     }
@@ -211,10 +214,12 @@ impl Registry {
     /// # Errors
     /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
     pub fn register_terrain(&mut self, f: TerrainFactory) -> Result<(), RegistryError> {
+        let id = f.id().clone();
         insert(
             &mut self.kinds,
             &mut self.terrain,
             ComponentKind::Terrain,
+            &id,
             f,
         )
     }
@@ -233,10 +238,9 @@ impl Registry {
             &mut self.kinds,
             &mut self.behavior,
             ComponentKind::Behavior,
-            f,
-        )?;
-        self.info.insert(id, info);
-        Ok(())
+            &id,
+            (f, info),
+        )
     }
 
     /// Registers a condition factory under its own ID with its metadata.
@@ -253,10 +257,9 @@ impl Registry {
             &mut self.kinds,
             &mut self.condition,
             ComponentKind::Condition,
-            f,
-        )?;
-        self.info.insert(id, info);
-        Ok(())
+            &id,
+            (f, info),
+        )
     }
 
     /// Registers an action factory under its own ID with its metadata.
@@ -269,9 +272,13 @@ impl Registry {
         info: ComponentInfo,
     ) -> Result<(), RegistryError> {
         let id = f.id().clone();
-        insert(&mut self.kinds, &mut self.action, ComponentKind::Action, f)?;
-        self.info.insert(id, info);
-        Ok(())
+        insert(
+            &mut self.kinds,
+            &mut self.action,
+            ComponentKind::Action,
+            &id,
+            (f, info),
+        )
     }
 
     /// Registers a sensor factory under its own ID. Sensors carry no catalog metadata.
@@ -279,22 +286,29 @@ impl Registry {
     /// # Errors
     /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
     pub fn register_sensor(&mut self, f: SensorFactory) -> Result<(), RegistryError> {
-        insert(&mut self.kinds, &mut self.sensor, ComponentKind::Sensor, f)
+        let id = f.id().clone();
+        insert(
+            &mut self.kinds,
+            &mut self.sensor,
+            ComponentKind::Sensor,
+            &id,
+            f,
+        )
     }
 
     /// The behavior factory with this ID.
     pub fn behavior(&self, id: &ComponentId) -> Option<&BehaviorFactory> {
-        self.behavior.get(id)
+        self.behavior.get(id).map(|(f, _)| f)
     }
 
     /// The condition factory with this ID.
     pub fn condition(&self, id: &ComponentId) -> Option<&ConditionFactory> {
-        self.condition.get(id)
+        self.condition.get(id).map(|(f, _)| f)
     }
 
     /// The action factory with this ID.
     pub fn action(&self, id: &ComponentId) -> Option<&ActionFactory> {
-        self.action.get(id)
+        self.action.get(id).map(|(f, _)| f)
     }
 
     /// The sensor factory with this ID.
@@ -304,7 +318,34 @@ impl Registry {
 
     /// The metadata of a behavior, condition or action (`None` for other kinds and unknown IDs).
     pub fn info(&self, id: &ComponentId) -> Option<&ComponentInfo> {
-        self.info.get(id)
+        match self.kinds.get(id)? {
+            ComponentKind::Behavior => self.behavior.get(id).map(|(_, i)| i),
+            ComponentKind::Condition => self.condition.get(id).map(|(_, i)| i),
+            ComponentKind::Action => self.action.get(id).map(|(_, i)| i),
+            _ => None,
+        }
+    }
+
+    /// Every behavior, condition or action of `kind` with its schema and metadata, in ID order.
+    /// Empty for other kinds. The factory and the metadata live in one map entry, so none can
+    /// be missing (used by `Catalog::from_registry`).
+    pub(crate) fn described(
+        &self,
+        kind: ComponentKind,
+    ) -> Vec<(&ComponentId, &ParamSchema, &ComponentInfo)> {
+        fn rows<F: ?Sized>(
+            map: &BTreeMap<ComponentId, WithInfo<Arc<dyn Factory<F>>>>,
+        ) -> Vec<(&ComponentId, &ParamSchema, &ComponentInfo)> {
+            map.iter()
+                .map(|(id, (f, info))| (id, f.param_schema(), info))
+                .collect()
+        }
+        match kind {
+            ComponentKind::Behavior => rows(&self.behavior),
+            ComponentKind::Condition => rows(&self.condition),
+            ComponentKind::Action => rows(&self.action),
+            _ => Vec::new(),
+        }
     }
 
     /// The motion model factory with this ID.
@@ -322,10 +363,10 @@ impl Registry {
         match kind {
             ComponentKind::MotionModel => self.motion.get(id).map(|f| f.param_schema()),
             ComponentKind::Terrain => self.terrain.get(id).map(|f| f.param_schema()),
-            ComponentKind::Behavior => self.behavior.get(id).map(|f| f.param_schema()),
+            ComponentKind::Behavior => self.behavior.get(id).map(|(f, _)| f.param_schema()),
             ComponentKind::Sensor => self.sensor.get(id).map(|f| f.param_schema()),
-            ComponentKind::Condition => self.condition.get(id).map(|f| f.param_schema()),
-            ComponentKind::Action => self.action.get(id).map(|f| f.param_schema()),
+            ComponentKind::Condition => self.condition.get(id).map(|(f, _)| f.param_schema()),
+            ComponentKind::Action => self.action.get(id).map(|(f, _)| f.param_schema()),
         }
     }
 

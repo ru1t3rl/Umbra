@@ -6,8 +6,9 @@ use std::sync::Arc;
 use cgf_core::{
     Action, ActionInstance, Behavior, BehaviorContext, BehaviorId, BehaviorInstance, Blackboard,
     BuildError, ComponentId, ComponentInfo, Condition, ContactBuffer, EntityView, Factory,
-    InstantiateError, Observer, ParamSchema, ParamValue, Provenance, Registry, SenseContext,
-    Sensor, Target, TickRate, Version,
+    FlatTerrain, InstantiateError, Intent, KinematicState, Meters, MotionModel, MotionModelId,
+    Observer, ParamSchema, ParamValue, Provenance, Registry, Seconds, SenseContext, Sensor, Target,
+    TerrainProvider, TickRate, Version,
 };
 
 pub fn cid(s: &str) -> ComponentId {
@@ -117,6 +118,35 @@ impl BehaviorProduct {
     }
 }
 
+pub struct MotionProduct(MotionModelId);
+impl MotionProduct {
+    fn new(id: &ComponentId) -> Self {
+        Self(MotionModelId::new(id.as_str()).unwrap_or_else(|e| panic!("{e}")))
+    }
+}
+impl MotionModel for MotionProduct {
+    fn id(&self) -> &MotionModelId {
+        &self.0
+    }
+    fn step(
+        &self,
+        state: &KinematicState,
+        _: &[Intent],
+        _: Seconds,
+        _: &dyn TerrainProvider,
+    ) -> KinematicState {
+        *state
+    }
+}
+
+fn flat(_: &ComponentId) -> FlatTerrain {
+    FlatTerrain {
+        height: Meters(0.0),
+    }
+}
+
+stub!(MotionStub, MotionModel, MotionProduct::new);
+stub!(TerrainStub, TerrainProvider, flat);
 stub!(BehaviorStub, Behavior, BehaviorProduct::new);
 stub!(ConditionStub, Condition, ConditionProduct::new);
 stub!(ActionStub, Action, ActionProduct::new);
