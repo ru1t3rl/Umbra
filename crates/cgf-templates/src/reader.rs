@@ -141,6 +141,9 @@ impl<'f> Reader<'f> {
     }
 
     fn wrong_type(&mut self, name: &str, wanted: &str, found: &LKind, at: &Origin) {
+        if matches!(found, LKind::Unsupported) {
+            return; // already reported as `unsupported_value`
+        }
         let message = format!("`{name}` must be {wanted}, found {}", found.type_name());
         self.error(DiagnosticCode::WrongType, message, at);
     }

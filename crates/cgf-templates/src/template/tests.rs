@@ -200,6 +200,38 @@ fn datetime_in_the_network_section_is_the_only_error() {
     assert_eq!(rows(&text), [("unsupported_value", 7, 8)]);
 }
 
+/// m2: a value that was already reported as unsupported causes no follow-on error.
+#[test]
+fn unsupported_values_cause_no_follow_on_errors() {
+    let huge = with("schema_version = 99999999999999999999\nid = \"a.b\"\n");
+    let datetime = with("schema_version = 1\nid = 1979-05-27\n");
+    let sensor = with("schema_version = 1\nid = \"a.b\"\nsensors = 1979-05-27\n");
+
+    assert_eq!(rows(&huge), [("unsupported_value", 1, 18)]);
+    assert_eq!(rows(&datetime), [("unsupported_value", 2, 6)]);
+    assert_eq!(rows(&sensor), [("unsupported_value", 3, 11)]);
+}
+
+/// m7: a bad version does not hide other errors in the file.
+#[test]
+fn schema_version_zero_and_an_unknown_key_are_both_reported() {
+    let text = with("schema_version = 0\nid = \"a.b\"\ncolour = 1\n");
+
+    assert_eq!(
+        rows(&text),
+        [("invalid_value", 1, 18), ("unknown_key", 3, 1)]
+    );
+}
+
+#[test]
+fn sensors_entries_are_named_by_index_in_messages() {
+    let text = with("schema_version = 1\nid = \"a.b\"\n") + "[[sensors]]\nparams = { }\n";
+
+    let message = read(&text).diagnostics[0].message.clone();
+
+    assert!(message.contains("sensors[0]"), "{message}");
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(512))]
 

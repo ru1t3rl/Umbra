@@ -125,6 +125,9 @@ pub(crate) fn check_version(reader: &mut Reader<'_>, table: &LTable) -> Version 
         return Version::Bad;
     };
     let LKind::Integer(version) = value.kind() else {
+        if matches!(value.kind(), LKind::Unsupported) {
+            return Version::Bad; // already reported as `unsupported_value`
+        }
         let message = format!(
             "`schema_version` must be an integer, found {}",
             value.kind().type_name()
@@ -222,21 +225,14 @@ pub(crate) fn component(
 }
 
 fn sensors(reader: &mut Reader<'_>, value: &LValue) -> Option<Vec<RawComponent>> {
-    let LKind::Array(items) = value.kind() else {
-        let message = format!(
-            "`sensors` must be an array, found {}",
-            value.kind().type_name()
-        );
-        reader.error(DiagnosticCode::WrongType, message, value.origin());
-        return None;
-    };
+    let items = reader.array("sensors", value)?;
     let mut out = Vec::new();
-    for item in items {
-        let Some(sensor) = component(reader, "sensors", "kind", item) else {
+    for (i, item) in items.iter().enumerate() {
+        let Some(sensor) = component(reader, &format!("sensors[{i}]"), "kind", item) else {
             continue;
         };
         if item_has_no_kind(item) {
-            let message = "missing required key `kind`".to_string();
+            let message = format!("`sensors[{i}]` is missing required key `kind`");
             reader.error(DiagnosticCode::MissingKey, message, item.origin());
         }
         out.push(sensor);
