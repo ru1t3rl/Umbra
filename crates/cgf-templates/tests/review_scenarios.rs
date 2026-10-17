@@ -334,3 +334,55 @@ mod unix {
         );
     }
 }
+
+// --- directory validation sees what `run` sees (REQ-T-6, ASM-067) ----------------------------------
+
+/// A scenario in a directory is resolved against its own `template_paths` only.
+#[test]
+fn directory_validation_does_not_show_a_scenario_templates_outside_its_template_paths() {
+    let (registry, _) = registry();
+    let dir = fixture_path("dirs/scenario_scope");
+
+    let report = loader(&registry).validate_path(&dir);
+    let run = loader(&registry).load_scenario(&dir.join("scenario.toml"));
+
+    let codes: Vec<&str> = report.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["unknown_template"]);
+    assert!(run.is_err(), "run must reject it as well");
+}
+
+/// `validate` and `run` agree on every scenario fixture: both valid or both invalid.
+#[test]
+fn validate_and_load_agree_on_every_scenario_fixture() {
+    let (registry, _) = registry();
+    let loader = loader(&registry);
+    let mut checked = 0;
+    for rel in [
+        "scenarios/relative/scenario.toml",
+        "scenarios/missing_template_dir/scenario.toml",
+        "scenarios/spelling/scenario.toml",
+        "scenarios/bad_utf8/scenario.toml",
+        "scenarios/valid/full.toml",
+        "scenarios/invalid_structure/entity_position_string.toml",
+        "scenarios/invalid_structure/entity_unknown_key.toml",
+        "scenarios/invalid_structure/missing_scenario_table.toml",
+        "scenarios/invalid_structure/tick_rate_string.toml",
+        "scenarios/invalid_structure/unknown_scenario_key.toml",
+        "dirs/with_scenario/scenario.toml",
+        "dirs/scenario_scope/scenario.toml",
+    ] {
+        let path = fixture_path(rel);
+        let valid_for_run = loader.load_scenario(&path).is_ok();
+        let valid_for_validate = loader.validate_path(&path).diagnostics.is_empty();
+        assert_eq!(valid_for_run, valid_for_validate, "{rel}");
+        checked += 1;
+    }
+    for rel in ["dirs/with_scenario", "dirs/scenario_scope"] {
+        let dir = fixture_path(rel);
+        let valid_for_run = loader.load_scenario(&dir.join("scenario.toml")).is_ok();
+        let valid_for_validate = loader.validate_path(&dir).diagnostics.is_empty();
+        assert_eq!(valid_for_run, valid_for_validate, "{rel} as a directory");
+        checked += 1;
+    }
+    assert_eq!(checked, 14);
+}

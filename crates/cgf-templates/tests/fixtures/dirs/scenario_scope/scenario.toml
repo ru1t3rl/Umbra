@@ -1,0 +1,17 @@
+# Fixture: the entity names a template that exists in the directory but not under template_paths,
+# so `run` rejects it and `validate <dir>` must too (REQ-T-6).
+# Provenance: hand-written for the M2 review fixes.
+schema_version = 1
+
+[scenario]
+name = "scope"
+seed = 1
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 5.0
+template_paths = ["templates"]
+
+[[entities]]
+template = "ss.other"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 0.0

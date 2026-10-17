@@ -1,0 +1,7 @@
+# Fixture: a template in the directory but outside the scenario's template_paths.
+# Provenance: hand-written for the M2 review fixes.
+schema_version = 1
+id = "ss.other"
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }

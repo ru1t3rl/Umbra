@@ -2,13 +2,14 @@
 //!
 //! Everything else works on in-memory [`SourceFile`]s; this module is the thin I/O layer.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, sort_and_dedup};
 use crate::loader::{Loader, ValidationReport};
+use crate::resolve::LoadedTemplates;
 use crate::scenario::Scenario;
 use crate::scenario_read::{is_scenario, template_paths};
 use crate::source::SourceFile;
@@ -98,6 +99,18 @@ fn visit(
     }
 }
 
+/// Files read so far by one validation, by identity: each file is read once, and a failure is
+/// remembered with its diagnostic.
+type SourceCache = BTreeMap<PathBuf, Result<SourceFile, Diagnostic>>;
+
+/// Reads `path` through the cache.
+fn cached(cache: &mut SourceCache, path: &Path) -> Result<SourceFile, Diagnostic> {
+    cache
+        .entry(identity(path))
+        .or_insert_with(|| read_source(path))
+        .clone()
+}
+
 /// Reads `paths` into sources; unreadable files become `io` diagnostics and are listed in `unread`.
 fn read_all(
     paths: &[PathBuf],
@@ -164,7 +177,7 @@ impl Loader<'_> {
                 files: vec![path.to_path_buf()],
             };
         }
-        let collected = collect_templates(file, &mut diagnostics);
+        let collected = collect_templates(file, &mut diagnostics, &mut SourceCache::new());
         let (scenario, own) = self.build_scenario(file, &collected.templates, &collected.unread);
         diagnostics.extend(own);
         let mut files = collected.files;
@@ -244,9 +257,10 @@ impl Loader<'_> {
             .collect()
     }
 
-    /// Template files form one set shared by every scenario of the directory; each scenario also
-    /// brings the templates under its own `template_paths`. Every file is read, parsed into a
-    /// source and built once.
+    /// The directory's own template files are validated as one set; each scenario is resolved
+    /// against exactly the templates `load_scenario` would build for it (its own `template_paths`).
+    /// Files are read once and a template set is loaded (and its components built) once, however
+    /// many scenarios or the directory itself use it.
     fn validate_directory(
         &self,
         dir: &Path,
@@ -255,26 +269,49 @@ impl Loader<'_> {
     ) {
         let paths = toml_files(dir, diagnostics);
         files.extend(paths.iter().cloned());
+        let mut cache = SourceCache::new();
+        let mut sources = Vec::new();
         let mut unread = Vec::new();
-        let sources = read_all(&paths, diagnostics, &mut unread);
-        let (scenarios, mut templates): (Vec<_>, Vec<_>) =
-            sources.into_iter().partition(is_scenario);
-        let mut seen: BTreeSet<PathBuf> = paths.iter().map(|p| identity(p)).collect();
-        for scenario in &scenarios {
-            let collected = collect_templates(scenario, diagnostics);
-            files.extend(collected.files);
-            unread.extend(collected.unread);
-            for template in collected.templates {
-                if seen.insert(identity(template.path())) {
-                    templates.push(template);
+        for path in &paths {
+            match cached(&mut cache, path) {
+                Ok(source) => sources.push(source),
+                Err(diagnostic) => {
+                    diagnostics.push(diagnostic);
+                    unread.push(path.clone());
                 }
             }
         }
-        let loaded = self.load_templates(&templates, &unread);
-        diagnostics.extend(loaded.diagnostics.iter().cloned());
+        let (scenarios, templates): (Vec<_>, Vec<_>) = sources.into_iter().partition(is_scenario);
+        let mut sets: BTreeMap<BTreeSet<PathBuf>, LoadedTemplates> = BTreeMap::new();
+        self.load_set(&templates, &unread, &mut sets, diagnostics);
         for scenario in &scenarios {
-            diagnostics.extend(self.read_scenario(scenario, &loaded, &unread).1);
+            let collected = collect_templates(scenario, diagnostics, &mut cache);
+            files.extend(collected.files);
+            let loaded = self.load_set(
+                &collected.templates,
+                &collected.unread,
+                &mut sets,
+                diagnostics,
+            );
+            diagnostics.extend(self.read_scenario(scenario, loaded, &collected.unread).1);
         }
+    }
+
+    /// The loaded set for these template sources, loading it (and recording its diagnostics)
+    /// only the first time that exact set is seen.
+    fn load_set<'s>(
+        &self,
+        templates: &[SourceFile],
+        unread: &[PathBuf],
+        sets: &'s mut BTreeMap<BTreeSet<PathBuf>, LoadedTemplates>,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) -> &'s LoadedTemplates {
+        let key: BTreeSet<PathBuf> = templates.iter().map(|t| identity(t.path())).collect();
+        sets.entry(key).or_insert_with(|| {
+            let loaded = self.load_templates(templates, unread);
+            diagnostics.extend(loaded.diagnostics.iter().cloned());
+            loaded
+        })
     }
 }
 
@@ -296,7 +333,11 @@ fn read_source(path: &Path) -> Result<SourceFile, Diagnostic> {
 
 /// Reads the template files under the scenario's `template_paths` (recursively, scenario files
 /// skipped), once per file even when reached through two spellings of its path.
-fn collect_templates(scenario: &SourceFile, diagnostics: &mut Vec<Diagnostic>) -> Collected {
+fn collect_templates(
+    scenario: &SourceFile,
+    diagnostics: &mut Vec<Diagnostic>,
+    cache: &mut SourceCache,
+) -> Collected {
     let base = scenario.path().parent().unwrap_or_else(|| Path::new(""));
     let mut paths: Vec<PathBuf> = Vec::new();
     let mut unread = Vec::new();
@@ -317,7 +358,16 @@ fn collect_templates(scenario: &SourceFile, diagnostics: &mut Vec<Diagnostic>) -
     seen.insert(identity(scenario.path()));
     paths.retain(|p| seen.insert(identity(p)));
     paths.sort();
-    let sources = read_all(&paths, diagnostics, &mut unread);
+    let mut sources = Vec::new();
+    for path in &paths {
+        match cached(cache, path) {
+            Ok(source) => sources.push(source),
+            Err(diagnostic) => {
+                diagnostics.push(diagnostic);
+                unread.push(path.clone());
+            }
+        }
+    }
     let (scenarios, templates): (Vec<_>, Vec<_>) = sources.into_iter().partition(is_scenario);
     let mut files: Vec<PathBuf> = templates
         .iter()

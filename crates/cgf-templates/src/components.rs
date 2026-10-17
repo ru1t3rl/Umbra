@@ -142,14 +142,19 @@ fn locate(params: &LTable, pointer: Option<&str>) -> Origin {
 mod tests {
     use super::*;
 
-    /// Item 5: behaviors and sensors have no registry entries in M2 (ASM-055). When M3 adds them,
-    /// `trial_build` needs real arms and this test must be updated with them.
+    /// Behaviors and sensors have no registry entries in M2 (ASM-055), so `trial_build` has no
+    /// real dry run for them. This fails the moment M3 registers one.
     #[test]
     fn behaviors_and_sensors_have_no_registry_entries_yet() {
         let registry = Registry::new();
 
-        assert_eq!(registry.ids(ComponentKind::Behavior).len(), 0);
-        assert_eq!(registry.ids(ComponentKind::Sensor).len(), 0);
+        for kind in [ComponentKind::Behavior, ComponentKind::Sensor] {
+            assert_eq!(
+                registry.ids(kind).len(),
+                0,
+                "M3: replace the Behavior|Sensor arm in trial_build with a real dry run"
+            );
+        }
     }
     use crate::source::SourceFile;
     use crate::value::parse;
