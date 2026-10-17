@@ -283,7 +283,8 @@ fn turns_by_at_most_max_turn_rate_dt() {
 }
 
 /// REQ-M-2: a destination straight ahead is reached and the entity stops there, without
-/// overshoot (the along-track distance never exceeds the destination's).
+/// overshoot (the along-track distance never exceeds the destination's) and without ever
+/// changing speed by more than twice `max_accel * dt` in one step, the last step included.
 #[test]
 fn moves_to_destination_and_stops_without_overshoot() {
     let states = run(&model(), start(0.0, 0.0), &[move_to(0.0, 300.0)], 1800);
@@ -299,6 +300,137 @@ fn moves_to_destination_and_stops_without_overshoot() {
         "final position"
     );
     assert!(speed_of(&last) < EPS, "final speed");
+    let mut prev = 0.0;
+    for (i, s) in states.iter().enumerate() {
+        let v = speed_of(s);
+        assert!(
+            (v - prev).abs() <= 2.0 * ACCEL_STEP + EPS,
+            "step {i}: {prev} -> {v}"
+        );
+        prev = v;
+    }
+}
+
+/// REQ-M-2: at full speed with the destination 0.5 m ahead the entity cannot stop in one step;
+/// it must not snap (speed 18 -> 0), it keeps decelerating at the limit.
+#[test]
+fn fast_entity_close_to_destination_does_not_snap() {
+    let from = start(0.0, MAX_SPEED);
+
+    let out = model().step(&from, &[move_to(0.0, 0.5)], DT, &flat());
+
+    assert!(
+        speed_of(&out) >= MAX_SPEED - ACCEL_STEP - EPS,
+        "speed {}",
+        speed_of(&out)
+    );
+}
+
+/// REQ-M-2: a stopped entity within 1 mm of the destination snaps onto it.
+#[test]
+fn stopped_entity_half_a_millimetre_away_snaps_onto_the_destination() {
+    let out = model().step(&start(0.0, 0.0), &[move_to(0.0, 0.0005)], DT, &flat());
+
+    assert!(horizontal_distance(&out, 0.0, 0.0005) < 1e-9);
+    assert!(speed_of(&out) < EPS);
+}
+
+/// REQ-M-2: a destination 0.3 m behind a moving entity is not snapped to.
+#[test]
+fn destination_behind_a_moving_entity_is_not_snapped_to() {
+    let out = model().step(&start(0.0, 10.0), &[move_to(0.0, -0.3)], DT, &flat());
+
+    assert!(horizontal_distance(&out, 0.0, -0.3) > 0.3, "moved forward");
+    assert!(speed_of(&out) > 1.0, "kept moving: {}", speed_of(&out));
+}
+
+/// REQ-M-2: the turning-circle term prevents orbiting. At full speed heading north with the
+/// destination 30 m east and 5 m north, the entity must slow enough to reach it.
+#[test]
+fn fast_entity_with_close_side_destination_arrives_instead_of_orbiting() {
+    let intents = [
+        move_to(30.0, 5.0),
+        Intent::SetSpeed(MetersPerSecond(MAX_SPEED)),
+    ];
+
+    let states = run(&model(), start(0.0, MAX_SPEED), &intents, 400);
+
+    let nearest = states
+        .iter()
+        .map(|s| horizontal_distance(s, 30.0, 5.0))
+        .fold(f64::MAX, f64::min);
+    assert!(nearest < 1.0, "never closer than {nearest} m");
+    assert!(horizontal_distance(&states[399], 30.0, 5.0) < 1.0, "stays");
+}
+
+/// ASM-048: a non-finite `SetSpeed` means 0; a non-finite `MoveTo` is ignored.
+#[test]
+fn non_finite_intents_are_hardened() {
+    let from = start(0.3, 8.0);
+    let terrain = flat();
+    let m = model();
+    let nan_dest = Intent::MoveTo {
+        destination: Ecef(Vec3 {
+            x: f64::NAN,
+            y: 0.0,
+            z: 0.0,
+        }),
+    };
+
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let got = m.step(
+            &from,
+            &[move_to(0.0, 1000.0), Intent::SetSpeed(MetersPerSecond(bad))],
+            DT,
+            &terrain,
+        );
+        let zero = m.step(
+            &from,
+            &[move_to(0.0, 1000.0), Intent::SetSpeed(MetersPerSecond(0.0))],
+            DT,
+            &terrain,
+        );
+        assert_eq!(got, zero, "SetSpeed({bad})");
+    }
+    assert_eq!(
+        m.step(&from, &[nan_dest], DT, &terrain),
+        m.step(&from, &[], DT, &terrain)
+    );
+}
+
+/// `MotionModel::step` precondition: a non-finite or non-positive `dt` returns the state unchanged.
+#[test]
+fn invalid_dt_returns_state_unchanged() {
+    let from = start(0.3, 8.0);
+
+    for bad in [f64::NAN, f64::INFINITY, 0.0, -0.1] {
+        let out = model().step(&from, &[move_to(0.0, 100.0)], Seconds(bad), &flat());
+        assert_eq!(out, from, "dt {bad}");
+    }
+}
+
+/// ASM-049: no pivot turns. A stopped entity that is told not to move does not rotate, even with
+/// a destination behind it.
+#[test]
+fn stopped_entity_with_destination_behind_and_zero_speed_does_not_rotate() {
+    let intents = [move_to(0.0, -100.0), Intent::SetSpeed(MetersPerSecond(0.0))];
+
+    let states = run(&model(), start(0.0, 0.0), &intents, 30);
+
+    for (i, s) in states.iter().enumerate() {
+        assert!(angle_delta(heading_of(s), 0.0).abs() < EPS, "step {i}");
+    }
+}
+
+/// ASM-049: a stopped entity with a destination behind it still accelerates and turns.
+#[test]
+fn stopped_entity_with_destination_behind_turns_while_moving() {
+    let states = run(&model(), start(0.0, 0.0), &[move_to(0.0, -300.0)], 1200);
+
+    assert!(
+        horizontal_distance(&states[1199], 0.0, -300.0) < 5.0,
+        "reached"
+    );
 }
 
 /// REQ-M-2 (ASM-030): `Hold` decelerates at the limit to a stop and keeps the heading.
@@ -472,22 +604,23 @@ fn velocity_is_horizontal_and_along_heading() {
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(48))]
 
-    /// REQ-M-2: from rest and any heading, any destination within 2 km is reached to within 5 m
-    /// in at most `ceil((d / (max_speed / 2) + 2 pi / max_turn_rate + 30 s) * hz)` ticks; the
+    /// REQ-M-2: from any initial speed and heading, any destination within 2 km is reached to within 5 m
+    /// in at most `ceil((d / (max_speed / 2) + 2 pi / max_turn_rate + max_speed / max_accel + 30 s) * hz)` ticks; the
     /// reachability term keeps the entity from orbiting the destination.
     #[test]
     fn reaches_any_destination_within_bound(
         heading in 0.0_f64..TAU,
         bearing in 0.0_f64..TAU,
         distance in 10.0_f64..2000.0,
+        speed in 0.0_f64..=MAX_SPEED,
     ) {
         let (sin_b, cos_b) = cgf_core::math::sin_cos(bearing);
         let (east, north) = (distance * sin_b, distance * cos_b);
-        let bound = ((distance / (MAX_SPEED / 2.0) + TAU / MAX_TURN + 30.0) * HZ).ceil();
+        let bound = ((distance / (MAX_SPEED / 2.0) + TAU / MAX_TURN + MAX_SPEED / MAX_ACCEL + 30.0) * HZ).ceil();
         let m = model();
         let terrain = flat();
         let intents = [move_to(east, north)];
-        let mut s = start(heading, 0.0);
+        let mut s = start(heading, speed);
 
         let mut reached = None;
         let mut tick = 0.0;
@@ -538,15 +671,13 @@ proptest! {
         east in -500.0_f64..500.0,
         north in -500.0_f64..500.0,
     ) {
-        // Close to the destination a fast entity legitimately snaps and stops (arrival step).
-        prop_assume!((east * east + north * north).sqrt() > 5.0);
         let from = start(heading, speed);
 
         let out = model().step(&from, &[move_to(east, north)], DT, &flat());
 
         let dv = speed_of(&out) - speed_of(&from);
         prop_assert!(speed_of(&out) <= MAX_SPEED + EPS);
-        // The arrival snap may stop within 2 * max_accel; all other steps obey max_accel.
+        // The arrival snap is only taken from at most 2 * max_accel * dt, all other steps obey max_accel.
         prop_assert!(dv.abs() <= 2.0 * ACCEL_STEP + EPS, "dv {dv}");
         prop_assert!(angle_delta(heading_of(&out), heading_of(&from)).abs() <= TURN_STEP + 1e-7);
         let p: Vec3 = out.position.0;

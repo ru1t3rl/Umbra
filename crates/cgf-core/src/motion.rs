@@ -34,6 +34,9 @@ pub trait MotionModel: Send + Sync {
     fn id(&self) -> &MotionModelId;
 
     /// Advances `state` by `dt` under `intents`, following `terrain` where the model is bound to it.
+    ///
+    /// Precondition: `dt` is finite and strictly positive. Implementations return `*state`
+    /// unchanged when it is not.
     fn step(
         &self,
         state: &KinematicState,

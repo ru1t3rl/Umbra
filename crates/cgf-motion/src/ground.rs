@@ -42,6 +42,9 @@ pub struct GroundKinematic {
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[non_exhaustive]
 pub enum MotionParamError {
+    /// The built-in model id was rejected by the id grammar (cannot happen with the constant).
+    #[error("the built-in motion model id is invalid")]
+    InvalidId,
     /// A limit was zero, negative, NaN or infinite.
     #[error("{name} must be finite and > 0, got {value}")]
     NotPositive {
@@ -69,13 +72,10 @@ impl GroundKinematic {
         require_positive("max_speed", params.max_speed.0)?;
         require_positive("max_turn_rate", params.max_turn_rate.0)?;
         require_positive("max_accel", params.max_accel.0)?;
-        // The constant is a valid id by construction; fall back to a parameter error rather than
-        // panic should that ever change.
+        // The constant is a valid id by construction; report an error rather than panic should
+        // that ever change.
         let id =
-            MotionModelId::new(GROUND_KINEMATIC_ID).map_err(|_| MotionParamError::NotPositive {
-                name: "id",
-                value: f64::NAN,
-            })?;
+            MotionModelId::new(GROUND_KINEMATIC_ID).map_err(|_| MotionParamError::InvalidId)?;
         Ok(Self { id, params })
     }
 
@@ -93,7 +93,8 @@ impl GroundKinematic {
             match intent {
                 Intent::Hold => hold = true,
                 Intent::MoveTo { destination: d } if is_finite_ecef(*d) => destination = Some(*d),
-                Intent::SetSpeed(v) if v.0.is_finite() => set_speed = Some(v.0),
+                // ASM-048: a non-finite speed request means "stop".
+                Intent::SetSpeed(v) => set_speed = Some(if v.0.is_finite() { v.0 } else { 0.0 }),
                 _ => {}
             }
         }
@@ -152,10 +153,15 @@ fn approach(frame: &LocalFrame, destination: Ecef, heading: f64) -> Approach {
 }
 
 impl GroundKinematic {
-    /// Desired speed toward the destination: cruise, braking distance, and turning-circle limit.
-    fn desired_speed(&self, cruise: f64, a: &Approach) -> f64 {
+    /// Desired speed toward the destination: cruise, discrete stopping speed, and turning-circle
+    /// limit.
+    ///
+    /// The stopping speed is the largest `v` from which repeated decelerations of `a * dt` stop
+    /// within `d`: `v = sqrt(h^2 + 2 a d) - h` with `h = a dt / 2`.
+    fn desired_speed(&self, cruise: f64, a: &Approach, dt: f64) -> f64 {
         let p = &self.params;
-        let braking = (2.0 * p.max_accel.0 * a.distance).sqrt();
+        let h = 0.5 * p.max_accel.0 * dt;
+        let braking = (h * h + 2.0 * p.max_accel.0 * a.distance).sqrt() - h;
         let mut v = cruise.min(braking);
         let sin_e = math::sin(a.error).abs();
         if sin_e > 0.0 {
@@ -176,10 +182,15 @@ impl MotionModel for GroundKinematic {
     ///    `SetSpeed` win; no intent decelerates to a stop; unknown variants are ignored.
     /// 2. Speed moves toward the desired speed by at most `max_accel * dt`, heading toward the
     ///    destination bearing by at most `max_turn_rate * dt`.
-    /// 3. Arrival snap: when the destination is within this step's travel (or 1 mm) and ahead,
-    ///    the entity lands on it and stops. This is the only step that may exceed the
-    ///    deceleration limit, by less than `max_accel * dt` more.
+    ///    The desired speed uses the discrete stopping speed, so a decelerating entity reaches
+    ///    the destination at about `max_accel * dt` or less. The heading changes only while the
+    ///    new speed is positive (no pivot turns, ASM-049).
+    /// 3. Arrival snap: when the destination is within this step's travel (or 1 mm), ahead, and
+    ///    the new speed is at most `2 * max_accel * dt`, the entity lands on it and stops. That
+    ///    final step changes speed by at most `2 * max_accel * dt`; a faster entity keeps moving.
     /// 4. Terrain following: the new height is `terrain.height_at`; pitch and roll are zero.
+    ///
+    /// Precondition: `dt` is finite and > 0; otherwise the state is returned unchanged.
     fn step(
         &self,
         state: &KinematicState,
@@ -187,6 +198,9 @@ impl MotionModel for GroundKinematic {
         dt: Seconds,
         terrain: &dyn TerrainProvider,
     ) -> KinematicState {
+        if !(dt.0.is_finite() && dt.0 > 0.0) {
+            return *state;
+        }
         let p = &self.params;
         let frame = LocalFrame::at(state.position.to_geodetic());
         let heading = frame.euler_from_orientation(state.orientation).heading.0;
@@ -195,20 +209,24 @@ impl MotionModel for GroundKinematic {
         let dt = dt.0;
 
         let toward = resolved.destination.map(|d| approach(&frame, d, heading));
-        let desired = toward
-            .as_ref()
-            .map_or(resolved.cruise, |a| self.desired_speed(resolved.cruise, a));
+        let desired = toward.as_ref().map_or(resolved.cruise, |a| {
+            self.desired_speed(resolved.cruise, a, dt)
+        });
         let accel_step = p.max_accel.0 * dt;
         let mut new_speed = speed + (desired - speed).clamp(-accel_step, accel_step);
         let turn_step = p.max_turn_rate.0 * dt;
-        let new_heading = toward.as_ref().map_or(heading, |a| {
-            math::wrap_pi(Radians(heading + a.error.clamp(-turn_step, turn_step))).0
-        });
+        let new_heading = match &toward {
+            Some(a) if new_speed > 0.0 => {
+                math::wrap_pi(Radians(heading + a.error.clamp(-turn_step, turn_step))).0
+            }
+            _ => heading,
+        };
 
         let travel = new_speed * dt;
         let (east, north) = match &toward {
             Some(a)
                 if a.distance <= travel.max(ARRIVAL_EPSILON_M)
+                    && new_speed <= 2.0 * accel_step
                     && a.error.abs() < core::f64::consts::FRAC_PI_2 =>
             {
                 new_speed = 0.0;
