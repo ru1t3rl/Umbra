@@ -55,11 +55,10 @@ fn two_instances_of_one_subgraph_in_one_graph_have_separate_blackboards() {
 fn two_entities_with_one_graph_share_no_node_state() {
     let bench = Bench::new();
     let mut b = B::new();
-    let first = b.act("first", &["success"]);
-    let store = b.set("store", "k", 7);
     let look = b.read("look", "k");
+    let store = b.set("store", "k", 7);
     let work = b.act("work", &["running"]);
-    let root = b.seq("root", true, &[first, store, look, work]);
+    let root = b.seq("root", true, &[look, store, work]);
     let behavior = bench.behavior_of(
         b.graph("test.graph.shared", root)
             .with_blackboard_key("k", BbType::Integer),
@@ -73,18 +72,20 @@ fn two_entities_with_one_graph_share_no_node_state() {
     let two_first = two.step();
 
     assert_eq!(
-        one_first.trace.last().map(String::as_str),
-        Some("tick:work")
+        one_first.trace,
+        lines(&[&read_line("look", None), "set:store=ok", "tick:work"])
     );
     assert_eq!(
         one_second.trace,
         lines(&["tick:work"]),
         "instance 1 resumed at the Running child"
     );
+    // A shared blackboard would show `Some(Integer(7))` here; shared node state would resume at
+    // the Running child and tick only `work`.
     assert_eq!(
-        two_first.trace[..2],
-        lines(&["tick:first", "set:store=ok"])[..],
-        "instance 2 starts at the first child"
+        two_first.trace,
+        lines(&[&read_line("look", None), "set:store=ok", "tick:work"]),
+        "instance 2 starts at the first child and reads the key unset"
     );
 }
 

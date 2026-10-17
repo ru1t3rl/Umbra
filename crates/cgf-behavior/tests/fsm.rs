@@ -254,8 +254,8 @@ fn at_most_one_guard_and_one_completion_transition_per_tick() {
         .iter()
         .map(|n| b.act(n, &["running"]))
         .collect();
-    let g_a = b.cond("g");
-    let g_b = b.cond("g");
+    let g_a = b.cond("g1");
+    let g_b = b.cond("g2");
     let def = FsmDef::new(
         0,
         nodes
@@ -266,7 +266,8 @@ fn at_most_one_guard_and_one_completion_transition_per_tick() {
     )
     .with_transition(when(0, 1, g_a))
     .with_transition(when(1, 2, g_b));
-    bench.controls.set_flag("g", true);
+    bench.controls.set_flag("g1", true);
+    bench.controls.set_flag("g2", true);
     let mut run = run_fsm(&bench, b, def);
     let guards = run.steps(3);
 

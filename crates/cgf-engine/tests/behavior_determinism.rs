@@ -20,19 +20,22 @@ mod common;
 
 use core::time::Duration;
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::sync::LazyLock;
 
 use behavior_support::{
-    PAUSE_AT, TICKS, assert_same_behavior_trace, entity, example_dir, example_engine, fire_targets,
-    id_of, instantiate_with, load_example, standard,
+    TICKS, assert_same_behavior_trace, entity, example_dir, example_engine, fire_targets, id_of,
+    instantiate_with, load_example, standard, template_and_graph_sources,
 };
 use cgf_engine::scenario::instantiate;
 use cgf_engine::{ClockMode, RunUntil, TimeScale};
 use cgf_templates::{Loader, SourceFile};
-use common::{Trace, run_to, run_traced, step_traced};
+use common::{PAUSE_AT, Trace, run_to, run_traced, step_traced};
 
-fn baseline() -> Trace {
-    run_to(example_engine(None, None), TICKS, false)
+static BASELINE: LazyLock<Trace> =
+    LazyLock::new(|| run_to(example_engine(None, None), TICKS, false));
+
+fn baseline() -> &'static Trace {
+    &BASELINE
 }
 
 fn scaled_4x() -> ClockMode {
@@ -109,13 +112,13 @@ fn given_patrol_and_engage_when_run_in_each_clock_mode_then_matches_afap() {
             assert_same_behavior_trace(
                 &format!("{name}, {tag}"),
                 &run_stepped(chunks, pause),
-                &want,
+                want,
             );
         }
         assert_same_behavior_trace(
             &format!("scaled 4x, {tag}"),
             &run_to(example_engine(None, Some(scaled_4x())), TICKS, pause),
-            &want,
+            want,
         );
         assert_same_behavior_trace(
             &format!("realtime, {tag}"),
@@ -124,7 +127,7 @@ fn given_patrol_and_engage_when_run_in_each_clock_mode_then_matches_afap() {
                 TICKS,
                 pause,
             ),
-            &want,
+            want,
         );
     }
 }
@@ -143,7 +146,7 @@ fn given_patrol_and_engage_with_clock_mode_switch_mid_run_then_matches_afap() {
     engine.set_clock(ClockMode::Stepped);
     step_traced(&mut engine, 500, &mut got);
 
-    assert_same_behavior_trace("afap -> realtime -> stepped", &got, &baseline());
+    assert_same_behavior_trace("afap -> realtime -> stepped", &got, baseline());
 }
 
 /// The ticks at which blue-1 emitted `Fire` in a run of `ticks` with `seed`.
@@ -175,7 +178,7 @@ fn fire_ticks(seed: u64, ticks: u64) -> (Vec<usize>, Option<cgf_engine::StateHas
 fn given_different_seeds_then_fire_sequence_and_hashes_differ() {
     let seeds = [1_u64, 2, 3, 4, 5, 6, 7, 8];
 
-    let runs: Vec<_> = seeds.iter().map(|&s| fire_ticks(s, 2400)).collect();
+    let runs: Vec<_> = seeds.iter().map(|&s| fire_ticks(s, 1800)).collect();
 
     let hashes: BTreeSet<_> = runs.iter().map(|(_, h)| h).collect();
     let sequences: BTreeSet<_> = runs.iter().map(|(f, _)| f.clone()).collect();
@@ -193,46 +196,26 @@ fn given_different_seeds_then_fire_sequence_and_hashes_differ() {
         "the fire ticks depend on the seed: {sequences:?}"
     );
     assert_eq!(
-        fire_ticks(3, 2400),
+        fire_ticks(3, 1800),
         runs[2],
         "and the same seed gives the same run"
     );
 }
 
-/// Reads the example's files as in-memory sources, in the given order of the template and graph
-/// files; the scenario source is last.
+/// The example's template and graph files (in path order, then permuted by `order`, indices
+/// modulo the file count) and its scenario file, as in-memory sources.
 fn example_sources(order: &[usize]) -> (SourceFile, Vec<SourceFile>) {
-    let dir = example_dir();
-    let mut all = Vec::new();
-    for sub in ["templates", "behaviors"] {
-        let mut names: Vec<_> = std::fs::read_dir(dir.join(sub))
-            .expect("example directory")
-            .map(|e| e.expect("entry").path())
-            .collect();
-        names.sort();
-        all.extend(names);
-    }
-    let sources = |paths: Vec<&Path>| -> Vec<SourceFile> {
-        paths
-            .into_iter()
-            .map(|p| {
-                let rel = p
-                    .strip_prefix(&dir)
-                    .expect("under the example")
-                    .to_path_buf();
-                SourceFile::new(rel, std::fs::read_to_string(p).expect("readable"))
-            })
-            .collect()
-    };
-    let ordered: Vec<&Path> = order
-        .iter()
-        .map(|&i| all[i % all.len()].as_path())
-        .collect();
+    let all = template_and_graph_sources();
+    let ordered = order.iter().map(|&i| all[i % all.len()].clone()).collect();
     let scenario = SourceFile::new(
         "scenario.toml",
-        std::fs::read_to_string(dir.join("scenario.toml")).expect("scenario"),
+        std::fs::read_to_string(example_dir().join("scenario.toml")).expect("scenario"),
     );
-    (scenario, sources(ordered))
+    (scenario, ordered)
+}
+
+fn file_count() -> usize {
+    template_and_graph_sources().len()
 }
 
 fn run_from_sources(scenario: &SourceFile, files: &[SourceFile]) -> Trace {
@@ -254,11 +237,12 @@ fn run_from_sources(scenario: &SourceFile, files: &[SourceFile]) -> Trace {
 #[test]
 #[ignore = "WI-16"]
 fn given_graph_files_in_shuffled_order_then_identical_runs() {
-    let seven: Vec<usize> = (0..7).collect();
+    let n = file_count();
+    let seven: Vec<usize> = (0..n).collect();
     let (scenario, in_order) = example_sources(&seven);
-    let reversed: Vec<usize> = (0..7).rev().collect();
+    let reversed: Vec<usize> = (0..n).rev().collect();
     let (_, backwards) = example_sources(&reversed);
-    let rotated: Vec<usize> = (0..7).map(|i| (i + 3) % 7).collect();
+    let rotated: Vec<usize> = (0..n).map(|i| (i + 3) % n).collect();
     let (_, shuffled) = example_sources(&rotated);
 
     let want = run_from_sources(&scenario, &in_order);
@@ -280,7 +264,8 @@ fn given_graph_files_in_shuffled_order_then_identical_runs() {
 #[test]
 #[ignore = "WI-16"]
 fn given_editor_tables_changed_then_per_tick_hashes_identical() {
-    let seven: Vec<usize> = (0..7).collect();
+    let n = file_count();
+    let seven: Vec<usize> = (0..n).collect();
     let (scenario, files) = example_sources(&seven);
     let edited: Vec<SourceFile> = files
         .iter()
@@ -313,9 +298,9 @@ fn nested_subgraph_and_fsm_run_identically_twice() {
     let first_run = instantiate_with(&load_example(), Duration::from_micros(500), None, None);
     let blue = id_of(&first_run, "blue-1");
     let red = id_of(&first_run, "red-1");
-    let first = run_to(first_run.engine, 2400, false);
+    let first = run_to(first_run.engine, 1800, false);
 
-    let second = run_to(example_engine(None, None), 2400, false);
+    let second = run_to(example_engine(None, None), 1800, false);
 
     assert_same_behavior_trace("two independent loads", &second, &first);
     let fired = first

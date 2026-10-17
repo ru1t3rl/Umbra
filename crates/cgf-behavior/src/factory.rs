@@ -1,7 +1,7 @@
 //! The factory that turns a [`GraphDef`] into a [`Behavior`] (ADR 0011, ADR 0014).
 //!
-//! M3 step 4: signatures only; the bodies are `todo!()` until WI-8 (interpreter) and WI-10
-//! (parameters, subgraphs).
+//! M3 step 4: signatures only; the bodies are `todo!()` until WI-8 (interpreter, `build`)
+//! and WI-10 (subgraph parameters).
 
 use std::sync::Arc;
 
@@ -61,17 +61,17 @@ impl GraphFactory {
     }
 }
 
-#[expect(clippy::todo, reason = "M3 WI-10 stub")]
+#[expect(clippy::todo, reason = "M3 WI-8 stub")]
 impl Factory<dyn Behavior> for GraphFactory {
     fn id(&self) -> &ComponentId {
-        todo!("M3 WI-10")
+        todo!("M3 WI-8")
     }
 
     fn param_schema(&self) -> &ParamSchema {
-        todo!("M3 WI-10")
+        todo!("M3 WI-8")
     }
 
     fn build(&self, _params: &ParamValue) -> Result<Arc<dyn Behavior>, BuildError> {
-        todo!("M3 WI-10")
+        todo!("M3 WI-8")
     }
 }

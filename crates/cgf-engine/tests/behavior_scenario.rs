@@ -69,6 +69,12 @@ waypoints = [ { lat_deg = 52.0017975, lon_deg = 3.8689651 } ]
 /// REQ-B-11, REQ-B-5: the same graph on two entities gives two independent behaviors: the near
 /// tank sees red, engages and fires; the far tank, whose contacts stay empty, never leaves its
 /// patrol, whatever the near tank's graph state is doing.
+///
+/// What this proves: behaviors and contacts are per entity through the whole stack (the far tank
+/// is not pulled into `engage` by the near one). It does NOT prove blackboard or node-state
+/// isolation, which no observable here depends on (the far tank's `enemy_in_range` fails before
+/// the shared key is read); that is proven by `cgf-behavior/tests/isolation.rs`
+/// (`two_entities_with_one_graph_share_no_node_state`).
 #[test]
 #[ignore = "WI-15"]
 fn two_entities_one_graph_diverge_by_their_own_contacts() {

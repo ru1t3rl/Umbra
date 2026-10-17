@@ -16,6 +16,7 @@ mod behavior_support;
 mod common;
 
 use core::time::Duration;
+use std::sync::LazyLock;
 
 use behavior_support::{
     FULL, entity, example_dir, fire_targets, first_tick, id_of, instantiate_with, load_example,
@@ -33,7 +34,9 @@ struct Run {
     builtin: EntityId,
 }
 
-/// Runs the whole example (140 s) once.
+/// The whole example (140 s), run once for all tests of this file.
+static FULL_RUN: LazyLock<Run> = LazyLock::new(full_run);
+
 fn full_run() -> Run {
     let run = instantiate_with(&load_example(), Duration::from_micros(500), None, None);
     let (blue, red, builtin) = (
@@ -71,7 +74,7 @@ fn approaching(e: &EntitySnapshot) -> bool {
 /// REQ-T-6, M3 acceptance 1: the example directory validates with no diagnostics (the scenario,
 /// four templates and three graphs: eight files).
 #[test]
-#[ignore = "WI-16"]
+#[ignore = "WI-15"]
 fn example_validates_with_no_diagnostics() {
     let report = validate_path(&standard(), &example_dir()).expect("registry");
 
@@ -84,7 +87,7 @@ fn example_validates_with_no_diagnostics() {
 #[test]
 #[ignore = "WI-16"]
 fn blue_follows_route_until_red_is_in_range() {
-    let run = full_run();
+    let run = &*FULL_RUN;
 
     let contact = first_tick(&run.trace, run.blue, |e| sees(e, run.red)).expect("blue sees red");
     let first_fire = first_tick(&run.trace, run.blue, |e| !fire_targets(e).is_empty());
@@ -122,7 +125,7 @@ fn blue_follows_route_until_red_is_in_range() {
 #[test]
 #[ignore = "WI-16"]
 fn blue_engages_red() {
-    let run = full_run();
+    let run = &*FULL_RUN;
     let approach = first_tick(&run.trace, run.blue, approaching).expect("blue approaches");
     let fire =
         first_tick(&run.trace, run.blue, |e| !fire_targets(e).is_empty()).expect("blue fires");
@@ -161,7 +164,7 @@ fn blue_engages_red() {
 #[test]
 #[ignore = "WI-16"]
 fn blue_resumes_patrol_when_red_leaves_range() {
-    let run = full_run();
+    let run = &*FULL_RUN;
     let last_fire = run
         .trace
         .snapshots
@@ -197,7 +200,7 @@ fn blue_resumes_patrol_when_red_leaves_range() {
 #[test]
 #[ignore = "WI-16"]
 fn builtin_patrol_and_engage_entity_engages_too() {
-    let run = full_run();
+    let run = &*FULL_RUN;
 
     let first = entity(&run.trace.snapshots[0], run.builtin);
     assert_eq!(
@@ -220,7 +223,7 @@ fn builtin_patrol_and_engage_entity_engages_too() {
 #[test]
 #[ignore = "WI-16"]
 fn attack_subgraph_receives_target_through_binding() {
-    let run = full_run();
+    let run = &*FULL_RUN;
 
     let shots: Vec<EntityId> = run
         .trace

@@ -951,6 +951,90 @@ fn three_graph_cycle_reported_at_smallest_id() {
     }
 }
 
+/// ASM-092: a cycle is reported once per strongly connected component, not once per cycle. Here
+/// `a -> b -> a` and `a -> c -> a` share the component {a, b, c}: one diagnostic, at the first
+/// ref of the smallest ID, printing the shortest cycle through it (ties broken by target ID).
+#[test]
+#[ignore = "WI-13"]
+fn two_cycles_in_one_component_are_reported_once() {
+    let a = lines(&[
+        "schema_version = 1",
+        "id = \"test.graph.a\"",
+        "version = \"1.0.0\"",
+        "root = \"s\"",
+        "[nodes.s]",
+        "type = \"sequence\"",
+        "children = [\"to_b\", \"to_c\"]",
+        "[nodes.to_b]",
+        "type = \"subgraph\"",
+        "ref = \"test.graph.b\"",
+        "[nodes.to_c]",
+        "type = \"subgraph\"",
+        "ref = \"test.graph.c\"",
+    ]);
+    let b = calls("test.graph.b", "test.graph.a");
+    let c = calls("test.graph.c", "test.graph.a");
+
+    let d = found(&[("a", &a), ("b", &b), ("c", &c)]);
+
+    assert_eq!(
+        rows(&d),
+        [row(
+            "subgraph_cycle",
+            path("a"),
+            pos_of(&a, "\"test.graph.b\"")
+        )]
+    );
+    assert_eq!(
+        d[0].message,
+        "subgraph cycle: `test.graph.a` -> `test.graph.b` -> `test.graph.a`"
+    );
+}
+
+/// REQ-B-12: a graph that calls itself from under an FSM state or under a decorator is still a
+/// `subgraph_cycle`, at that ref (a guard cannot hold a subgraph: ADR 0012 allows only
+/// conditions, inverters, sequences and selectors there).
+#[test]
+#[ignore = "WI-13"]
+fn self_call_under_fsm_state_or_inverter_is_subgraph_cycle() {
+    let under_fsm = lines(&[
+        "schema_version = 1",
+        "id = \"test.graph.me\"",
+        "version = \"1.0.0\"",
+        "root = \"m\"",
+        "[nodes.m]",
+        "type = \"fsm\"",
+        "initial = \"a\"",
+        "states = { a = \"call\" }",
+        "[nodes.call]",
+        "type = \"subgraph\"",
+        "ref = \"test.graph.me\"",
+    ]);
+    let under_inverter = lines(&[
+        "schema_version = 1",
+        "id = \"test.graph.me\"",
+        "version = \"1.0.0\"",
+        "root = \"i\"",
+        "[nodes.i]",
+        "type = \"inverter\"",
+        "child = \"call\"",
+        "[nodes.call]",
+        "type = \"subgraph\"",
+        "ref = \"test.graph.me\"",
+    ]);
+
+    for text in [&under_fsm, &under_inverter] {
+        assert_eq!(
+            rows_of(&[("me", text)]),
+            [row(
+                "subgraph_cycle",
+                path("me"),
+                pos_of_nth(text, "\"test.graph.me\"", 1)
+            )]
+        );
+    }
+}
+
 /// ASM-056: a graph that only calls a graph on a cycle gets no error of its own.
 #[test]
 #[ignore = "WI-13"]

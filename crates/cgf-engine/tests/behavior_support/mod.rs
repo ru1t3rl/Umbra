@@ -1,6 +1,11 @@
 //! Shared helpers for the M3 `cgf-engine` behavior tests (new in M3; the M2 helpers in
 //! `tests/common/mod.rs` are reused unchanged through `crate::common`).
 //!
+//! The path and loader helpers repeat the M2 ones (`common::example_dir`, `load_example`,
+//! `instantiate_with`) because those are fixed to the walking skeleton and the built-in registry
+//! and `tests/common` may not be edited (A-001); only `PAUSE_AT`, `options`, `Trace` and the run
+//! helpers are shared.
+//!
 //! Everything here goes through the standard registry (`standard_registry()`: the M2 built-ins,
 //! the built-in leaves, `builtin.visual` and the built-in graphs) and the scenario in
 //! `examples/scenarios/patrol_and_engage`.
@@ -26,8 +31,6 @@ use super::common::{self, Trace};
 pub const TICKS: u64 = 1500;
 /// The scenario's own length in ticks (140 s at 30 Hz).
 pub const FULL: u64 = 4200;
-/// Pause and resume at this tick.
-pub const PAUSE_AT: u64 = 100;
 
 pub fn standard() -> Registry {
     standard_registry().expect("the standard registry builds")

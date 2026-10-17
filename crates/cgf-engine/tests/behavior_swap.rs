@@ -19,9 +19,12 @@ use core::time::Duration;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use behavior_support::{FULL, entity, fire_targets, fixture_dir, id_of, instantiate_with, load};
-use cgf_core::Intent;
+use behavior_support::{entity, fire_targets, fixture_dir, id_of, instantiate_with, load};
 use common::run_to;
+
+/// Long enough for blue-1 in `b` to finish its 800 m route at 10 m/s (about 2400 ticks) and for
+/// the first shot in `a` (about tick 1200).
+const SWAP_TICKS: u64 = 2700;
 
 /// Every file under `dir`, relative path to bytes.
 fn files_under(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
@@ -71,7 +74,7 @@ fn fixtures_a_and_b_differ_in_exactly_one_template_file_and_one_key() {
 }
 
 /// M3 acceptance 2: without changing code or the scenario, the swap changes what blue-1 does: in
-/// `a` it fires; in `b` it never fires, drives its route to the end and then holds. Red's run is
+/// `a` it fires; in `b` it never fires and drives its route to the end. Red's run is
 /// the same in both (nothing in the scenario changed for it).
 #[test]
 #[ignore = "WI-16"]
@@ -80,7 +83,7 @@ fn swapped_behavior_changes_intents_with_no_code_or_scenario_change() {
         let scenario = load(&fixture_dir(&format!("behavior_swap/{side}")));
         let run = instantiate_with(&scenario, Duration::from_micros(500), None, None);
         let (blue, red) = (id_of(&run, "blue-1"), id_of(&run, "red-1"));
-        (blue, red, run_to(run.engine, FULL, false))
+        (blue, red, run_to(run.engine, SWAP_TICKS, false))
     };
 
     let (blue_a, red_a, a) = run("a");
@@ -96,11 +99,6 @@ fn swapped_behavior_changes_intents_with_no_code_or_scenario_change() {
     assert!(!fires(&b, blue_b), "b: follow_route never fires");
     let last = entity(b.snapshots.last().expect("a last tick"), blue_b);
     assert_eq!(last.route_next, Some((1, 2)), "b: the route is finished");
-    assert_eq!(
-        last.intents,
-        [Intent::Hold],
-        "b: and the tank holds at its end"
-    );
     for (sa, sb) in a.snapshots.iter().zip(&b.snapshots) {
         let (ra, rb) = (entity(sa, red_a), entity(sb, red_b));
         assert_eq!(

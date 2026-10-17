@@ -68,9 +68,11 @@ fn run_example_prints_states_and_hash() {
     );
 }
 
-/// REQ-K-4, AT-12: four separate processes print byte-identical output, with every entity line and
-/// the state hash after every tick, so a divergence anywhere shows up even if it later cancels out
-/// (separate processes have different hasher seeds and address-space layouts).
+/// REQ-K-4, AT-12: four separate processes print byte-identical output, with every entity state
+/// line and the state hash after every tick (the CLI output has no intents or contacts; those are
+/// compared in `cgf-engine/tests/behavior_determinism.rs`). Separate processes have different
+/// hasher seeds and address-space layouts, so hidden `RandomState` or pointer-ordered iteration
+/// shows up here.
 #[test]
 #[ignore = "WI-16"]
 fn patrol_and_engage_in_four_processes_is_byte_identical() {
