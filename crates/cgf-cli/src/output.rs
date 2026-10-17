@@ -1,9 +1,10 @@
 //! Text and JSON Lines output of `run` (REQ-X-2, ASM-062) and the `validate` report.
 
+use std::collections::BTreeMap;
 use std::io::{self, Write};
 
 use cgf_engine::scenario::{Diagnostic, EntityInfo, Location};
-use cgf_engine::{EntityDisplay, Snapshot, StateHash};
+use cgf_engine::{EntityDisplay, EntityId, Snapshot, StateHash};
 use serde_json::json;
 
 /// Output format.
@@ -36,12 +37,33 @@ fn waypoint_text(d: &EntityDisplay) -> String {
         .map_or_else(|| "-".to_string(), |(next, len)| format!("{next}/{len}"))
 }
 
-/// Writes one line per entity of `snapshot`; `infos` supplies the entity names.
+/// Entity names by id, for the state lines.
+pub fn name_map(infos: &[EntityInfo]) -> BTreeMap<EntityId, String> {
+    infos
+        .iter()
+        .filter_map(|i| i.name.clone().map(|n| (i.id, n)))
+        .collect()
+}
+
+/// A name for a `key=value` text line: bare when it is plain, quoted (Rust escapes) otherwise.
+fn text_name(name: &str) -> String {
+    let plain = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| !c.is_whitespace() && !c.is_control() && c != '=' && c != '"' && c != '\\');
+    if plain {
+        name.to_string()
+    } else {
+        format!("{name:?}")
+    }
+}
+
+/// Writes one line per entity of `snapshot`; `names` supplies the entity names.
 pub fn write_entities(
     out: &mut impl Write,
     format: Format,
     snapshot: &Snapshot,
-    infos: &[EntityInfo],
+    names: &BTreeMap<EntityId, String>,
 ) -> io::Result<()> {
     let tick = snapshot.time.tick();
     let t = snapshot.time.as_seconds().0;
@@ -49,16 +71,13 @@ pub fn write_entities(
         let mut d = EntityDisplay::from_snapshot(entity);
         d.heading_deg = heading_for_display(d.heading_deg);
         d.height_m = height_for_display(d.height_m);
-        let name = infos
-            .iter()
-            .find(|i| i.id == d.id)
-            .and_then(|i| i.name.as_deref());
+        let name = names.get(&d.id).map(String::as_str);
         match format {
             Format::Text => writeln!(
                 out,
                 "tick={tick} t={t:.3}s id={}{} lat={:.7} lon={:.7} h={:.3} heading_deg={:.2} speed_mps={:.2} waypoint={}",
                 d.id,
-                name.map_or_else(String::new, |n| format!(" name={n}")),
+                name.map_or_else(String::new, |n| format!(" name={}", text_name(n))),
                 d.lat_deg,
                 d.lon_deg,
                 d.height_m,
@@ -96,11 +115,15 @@ pub fn write_tick_hash(
 ) -> io::Result<()> {
     match format {
         Format::Text => writeln!(out, "tick={tick} hash={hash}"),
-        Format::Json => write_final(out, format, tick, hash),
+        Format::Json => writeln!(
+            out,
+            "{}",
+            json!({"tick": tick, "state_hash": hash.to_string()})
+        ),
     }
 }
 
-/// Writes the final line: the state hash after `tick` ticks.
+/// Writes the final line: the state hash after `tick` ticks (JSON: marked `"final": true`).
 pub fn write_final(
     out: &mut impl Write,
     format: Format,
@@ -112,7 +135,7 @@ pub fn write_final(
         Format::Json => writeln!(
             out,
             "{}",
-            json!({"tick": tick, "state_hash": hash.to_string()})
+            json!({"tick": tick, "state_hash": hash.to_string(), "final": true})
         ),
     }
 }
@@ -195,5 +218,19 @@ mod tests {
         assert_eq!(format!("{:.3}", height_for_display(-0.0004)), "0.000");
         assert_eq!(format!("{:.3}", height_for_display(-0.002)), "-0.002");
         assert_eq!(format!("{:.3}", height_for_display(120.0)), "120.000");
+    }
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::text_name;
+
+    #[test]
+    fn plain_names_are_bare_and_odd_ones_are_quoted() {
+        assert_eq!(text_name("base-1"), "base-1");
+        assert_eq!(text_name("my tank"), "\"my tank\"");
+        assert_eq!(text_name("a=b"), "\"a=b\"");
+        assert_eq!(text_name("say \"hi\""), "\"say \\\"hi\\\"\"");
+        assert_eq!(text_name(""), "\"\"");
     }
 }

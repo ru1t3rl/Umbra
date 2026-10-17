@@ -23,7 +23,7 @@ use tracing_subscriber::filter::LevelFilter;
 use args::{Cli, Command, RunArgs, SchemaArgs, SchemaKind, ValidateArgs};
 use cgf_engine::builtins::builtin_registry;
 use cgf_engine::scenario::{
-    Diagnostic, RunOptions, ScenarioError, instantiate, load_scenario, validate_path,
+    Diagnostic, Diagnostics, RunOptions, ScenarioError, instantiate, load_scenario, validate_path,
 };
 use cgf_engine::{
     ComponentId, ComponentKind, SCENARIO_FILE_SCHEMA, StdWallClock, TEMPLATE_FILE_SCHEMA,
@@ -93,14 +93,14 @@ fn run(args: &RunArgs) -> Result<ExitCode> {
     let mut write_error: Option<io::Error> = None;
     let (print_every, hash_every) = (args.print_every, args.hash_every);
     let due = |tick: u64, every: u64| every != 0 && tick.is_multiple_of(every);
-    let infos = run.entities.clone();
+    let names = output::name_map(&run.entities);
     // A write error (for example a closed pipe) stops the run (ControlFlow::Break).
     run.engine
         .step(ticks, |view| {
             let tick = view.report.time.tick();
             let mut write = || -> io::Result<()> {
                 if due(tick, print_every) {
-                    output::write_entities(&mut out, format, &view.snapshot(), &infos)?;
+                    output::write_entities(&mut out, format, &view.snapshot(), &names)?;
                 }
                 if due(tick, hash_every) {
                     output::write_tick_hash(&mut out, format, tick, view.state_hash())?;
@@ -139,7 +139,10 @@ fn validate(args: &ValidateArgs) -> Result<ExitCode> {
         files.extend(report.files_checked);
         diagnostics.extend(report.diagnostics);
     }
+    // Overlapping paths (a directory and a file in it) must not double-count.
+    files.sort();
     files.dedup();
+    let diagnostics = Diagnostics::new(diagnostics).map_or_else(Vec::new, Diagnostics::into_vec);
     let mut out = io::stdout().lock();
     if args.json {
         writeln!(out, "{}", output::validation_json(&files, &diagnostics))

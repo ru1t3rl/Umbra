@@ -273,3 +273,33 @@ fn given_child_template_file_with_its_parent_in_the_same_directory_then_exit_0()
     assert_eq!(out.status.code(), Some(0), "stdout: {}", stdout(&out));
     assert_eq!(stdout(&out).lines().last(), Some("ok: 1 files checked"));
 }
+
+/// Overlapping paths (a directory and a file in it) count each file and diagnostic once.
+#[test]
+fn given_overlapping_paths_then_files_and_diagnostics_are_counted_once() {
+    let file = format!("{BAD}/d_params.toml");
+    let alone = cli(&["validate", BAD]);
+
+    let both = cli(&["validate", BAD, &file]);
+    let json = json_of(&cli(&["validate", "--json", BAD, &file]));
+
+    assert_eq!(stdout(&both), stdout(&alone));
+    assert_eq!(json["diagnostics"].as_array().map(Vec::len), Some(7));
+    assert_eq!(
+        json["files"],
+        json_of(&cli(&["validate", "--json", BAD]))["files"]
+    );
+}
+
+#[test]
+fn given_overlapping_valid_paths_then_each_file_is_counted_once() {
+    let out = cli(&[
+        "validate",
+        &example(),
+        &example_dir().to_string_lossy(),
+        &example_dir().join("templates").to_string_lossy(),
+    ]);
+
+    assert_eq!(out.status.code(), Some(0), "stdout: {}", stdout(&out));
+    assert_eq!(stdout(&out).lines().last(), Some("ok: 4 files checked"));
+}

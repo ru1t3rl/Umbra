@@ -60,11 +60,17 @@ fn given_example_when_run_in_four_processes_then_stdout_is_byte_identical() {
     for r in &runs {
         assert_eq!(r.status.code(), Some(0), "stderr: {}", stderr(r));
     }
-    let hash_lines = stdout(&runs[0])
+    let text = stdout(&runs[0]);
+    let hash_lines = text
         .lines()
-        .filter(|l| l.starts_with("{\"state_hash\""))
+        .filter(|l| l.contains("\"state_hash\""))
+        .count();
+    let final_lines = text
+        .lines()
+        .filter(|l| l.contains("\"final\":true"))
         .count();
     assert_eq!(hash_lines, 301, "one hash per tick plus the final line");
+    assert_eq!(final_lines, 1, "only the last hash line is marked final");
     for r in &runs[1..] {
         assert_eq!(r.stdout, runs[0].stdout);
     }
@@ -347,4 +353,31 @@ fn given_closed_stdout_pipe_then_the_run_stops_with_exit_1() {
         "stderr: {}",
         stderr(&out)
     );
+}
+
+/// JSON mode marks the last line as the run's final state hash, and only that line.
+#[test]
+fn given_json_hash_every_then_only_the_last_hash_line_is_marked_final() {
+    let out = run(&[
+        "--ticks",
+        "30",
+        "--json",
+        "--hash-every",
+        "10",
+        "--print-every",
+        "0",
+    ]);
+
+    let lines: Vec<serde_json::Value> = stdout(&out)
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("{l:?}: {e}")))
+        .collect();
+
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    assert_eq!(lines.len(), 4);
+    for line in &lines[..3] {
+        assert!(line.get("final").is_none(), "{line}");
+    }
+    assert_eq!(lines[3]["final"], true);
+    assert_eq!(lines[3]["tick"], 30);
 }
