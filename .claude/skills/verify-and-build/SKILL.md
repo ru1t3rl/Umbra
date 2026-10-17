@@ -23,7 +23,7 @@ cargo xtask gen-header --check                               # cgf_plugin_api.h 
 cargo build --workspace --release --locked
 cargo xtask build-plugins --release                          # examples/plugins/* (from M4)
 cargo test -p cgf-plugin-host --test plugin_failures         # plugin failure matrix (from M4)
-cargo bench -p cgf-kernel --no-run --locked                           # benches compile; full runs are manual
+cargo bench -p cgf-kernel --bench tick --no-run --locked                         # benches compile; full runs are manual
 # GUI (from M8; details in the verify-frontend skill)
 (cd gui && bun install --frozen-lockfile && bun run gen:api --check && bun run typecheck && bun run lint && bun run check:deps && bun test && bun run build)
 (cd gui && bun run tauri build)                              # Windows bundle, on Windows

@@ -18,4 +18,13 @@ tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 workspace = true
 
 [dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 proptest.workspace = true
+
+[lib]
+# Criterion's harness replaces libtest for the bench target; the lib has no benches.
+bench = false
+
+[[bench]]
+name = "tick"
+harness = false
