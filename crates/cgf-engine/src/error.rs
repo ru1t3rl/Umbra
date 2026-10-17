@@ -1,6 +1,7 @@
 //! Engine errors.
 
-use cgf_kernel::KernelError;
+use cgf_core::{BuildError, ComponentId, ComponentKind};
+use cgf_kernel::{ClockError, KernelError};
 use cgf_motion::MotionParamError;
 
 /// Which spawn parameter was invalid.
@@ -25,13 +26,35 @@ pub enum EngineError {
     /// A spawn parameter was invalid.
     #[error("invalid spawn parameter: {0:?}")]
     InvalidSpawn(SpawnParam),
-    /// The configured terrain height is not finite.
-    #[error("terrain height must be finite")]
-    InvalidTerrainHeight,
     /// The demo scenario has no entity with this index.
     #[error("the demo scenario has no entity {0}")]
     DemoLayout(usize),
     /// Invalid motion model parameters.
     #[error(transparent)]
     Motion(#[from] MotionParamError),
+    /// A scenario clock setting the kernel rejects (not expected after validation).
+    #[error(transparent)]
+    Clock(#[from] ClockError),
+    /// A component named by the scenario is not in the registry (not expected after validation).
+    #[error("{kind} {id} is not registered")]
+    UnknownComponent {
+        /// Kind of the missing component.
+        kind: ComponentKind,
+        /// Its ID.
+        id: ComponentId,
+    },
+    /// A motion model factory rejected the parameters of a placement (not expected after
+    /// validation).
+    #[error("entity {entity}: {source}")]
+    Build {
+        /// Index of the placement in file order, 0-based.
+        entity: usize,
+        /// The factory's error.
+        #[source]
+        source: BuildError,
+    },
+    /// The terrain factory rejected the scenario's terrain parameters (not expected after
+    /// validation).
+    #[error("terrain: {0}")]
+    TerrainBuild(BuildError),
 }

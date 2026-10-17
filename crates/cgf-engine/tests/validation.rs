@@ -12,17 +12,22 @@ use cgf_engine::{Engine, EngineConfig, EngineError, SpawnParam, SpawnSpec, demo}
 use cgf_kernel::{ClockMode, ManualWallClock};
 use cgf_motion::GroundKinematic;
 
-fn config(terrain: f64) -> EngineConfig {
+fn config() -> EngineConfig {
     EngineConfig {
         seed: 1,
         tick_rate: TickRate::new(30).expect("non-zero rate"),
         clock: ClockMode::AsFastAsPossible,
-        terrain_height: Meters(terrain),
     }
 }
 
 fn engine() -> Engine {
-    Engine::with_wall_clock(config(0.0), Box::new(ManualWallClock::new())).expect("valid config")
+    Engine::with_wall_clock(
+        config(),
+        Arc::new(cgf_core::FlatTerrain {
+            height: Meters(0.0),
+        }),
+        Box::new(ManualWallClock::new()),
+    )
 }
 
 fn spec() -> SpawnSpec {
@@ -35,19 +40,6 @@ fn spec() -> SpawnSpec {
         ownership: Ownership::Owned,
         motion: model,
         route: None,
-    }
-}
-
-/// A non-finite terrain height is rejected when the engine is built.
-#[test]
-fn non_finite_terrain_height_is_rejected() {
-    for bad in [f64::NAN, f64::INFINITY] {
-        let got = Engine::with_wall_clock(config(bad), Box::new(ManualWallClock::new()));
-
-        assert!(
-            matches!(got, Err(EngineError::InvalidTerrainHeight)),
-            "{bad}"
-        );
     }
 }
 

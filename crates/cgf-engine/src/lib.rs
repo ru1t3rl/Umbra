@@ -20,8 +20,8 @@ pub mod error;
 pub mod scenario;
 
 pub use cgf_core::{
-    ComponentId, ComponentKind, EntityId, Geodetic, Meters, ParamSchema, ParamValue, Position,
-    Radians, Registry, SimTime, StateHash, TickRate, TimeError,
+    ComponentId, ComponentKind, EntityId, FlatTerrain, Geodetic, Meters, ParamSchema, ParamValue,
+    Position, Radians, Registry, SimTime, StateHash, TerrainProvider, TickRate, TimeError,
 };
 pub use cgf_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, TickReport, TimeScale,

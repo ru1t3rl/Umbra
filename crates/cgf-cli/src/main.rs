@@ -13,13 +13,15 @@ mod args;
 mod output;
 
 use std::io::{self, Write};
+use std::ops::ControlFlow;
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::Parser;
 use tracing_subscriber::filter::LevelFilter;
 
 use args::{Cli, Command, DemoArgs};
-use cgf_engine::{Engine, EngineConfig, Meters, demo};
+use cgf_engine::{Engine, EngineConfig, FlatTerrain, Meters, demo};
 use output::Format;
 
 fn main() -> Result<()> {
@@ -44,13 +46,17 @@ fn run_demo(args: &DemoArgs) -> Result<()> {
     } else {
         Format::Text
     };
-    let mut engine = Engine::new(EngineConfig {
-        seed: args.seed,
-        tick_rate: args.rate,
-        clock: args.clock,
-        terrain_height: Meters(0.0),
-    })
-    .context("building the engine")?;
+    let terrain = Arc::new(FlatTerrain {
+        height: Meters(0.0),
+    });
+    let mut engine = Engine::new(
+        EngineConfig {
+            seed: args.seed,
+            tick_rate: args.rate,
+            clock: args.clock,
+        },
+        terrain,
+    );
     demo::spawn_walking_skeleton(&mut engine).context("spawning the demo scenario")?;
 
     let stdout = io::stdout();
@@ -64,7 +70,7 @@ fn run_demo(args: &DemoArgs) -> Result<()> {
         .step(args.ticks, |view| {
             let tick = view.report.time.tick();
             if write_error.is_some() {
-                return;
+                return ControlFlow::Continue(());
             }
             let mut write = || -> io::Result<()> {
                 if due(tick, print_every) {
@@ -78,6 +84,7 @@ fn run_demo(args: &DemoArgs) -> Result<()> {
             if let Err(e) = write() {
                 write_error = Some(e);
             }
+            ControlFlow::Continue(())
         })
         .context("running the demo")?;
     if let Some(e) = write_error {

@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
 
+use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use cgf_core::{
@@ -21,9 +22,14 @@ fn engine() -> Engine {
         seed: 1,
         tick_rate: TickRate::new(30).expect("non-zero rate"),
         clock: ClockMode::AsFastAsPossible,
-        terrain_height: Meters(0.0),
     };
-    Engine::with_wall_clock(config, Box::new(ManualWallClock::new())).expect("valid config")
+    Engine::with_wall_clock(
+        config,
+        Arc::new(cgf_core::FlatTerrain {
+            height: Meters(0.0),
+        }),
+        Box::new(ManualWallClock::new()),
+    )
 }
 
 fn model() -> Arc<dyn MotionModel> {
@@ -105,6 +111,7 @@ fn given_geodetic_route_then_entity_reaches_each_waypoint() {
         if reached < targets.len() && p.distance(targets[reached]).0 <= 5.0 + 1e-6 {
             reached += 1;
         }
+        ControlFlow::Continue(())
     })
     .expect("run");
 

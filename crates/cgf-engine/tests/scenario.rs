@@ -12,6 +12,7 @@
 mod common;
 
 use core::time::Duration;
+use std::ops::ControlFlow;
 
 use cgf_core::{Geodetic, TerrainProvider};
 use cgf_engine::scenario::{ScenarioError, instantiate, load_scenario, validate_path};
@@ -190,6 +191,7 @@ fn override_reaches_the_motion_model() {
             for (i, e) in view.snapshot().entities.iter().enumerate() {
                 peak[i] = peak[i].max(e.state.velocity.norm());
             }
+            ControlFlow::Continue(())
         })
         .expect("run");
 
@@ -415,4 +417,29 @@ fn flat_terrain_from_the_registry_reports_its_height() {
 
     let at = Geodetic::from_degrees(52.0, 4.0, 0.0).expect("geodetic");
     assert_eq!(terrain.height_at(at).0, 12.5);
+}
+
+/// ASM-062: a callback that returns `Break` stops the run and says so in the summary.
+#[test]
+fn run_callback_break_stops_the_run_and_sets_stopped_early() {
+    let mut engine = run_with(&load_example()).engine;
+    let mut seen = 0_u64;
+
+    let summary = engine
+        .run(RunUntil::Ticks(900), |_| {
+            seen += 1;
+            if seen == 5 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .expect("run");
+
+    assert_eq!((summary.ticks_run, summary.stopped_early), (5, true));
+    assert_eq!(engine.now().tick(), 5);
+    let full = engine
+        .run(RunUntil::Ticks(10), |_| ControlFlow::Continue(()))
+        .expect("run");
+    assert_eq!((full.ticks_run, full.stopped_early), (5, false));
 }

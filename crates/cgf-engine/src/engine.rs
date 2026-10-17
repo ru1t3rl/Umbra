@@ -3,13 +3,14 @@
 //! `Engine` wraps a [`Kernel`], converts user-facing placement (ECEF or lat/lon/alt) to the
 //! canonical ECEF state exactly once, and drives the kernel according to its clock.
 
+use std::ops::ControlFlow;
 use std::sync::Arc;
 
+use cgf_core::Enu;
 use cgf_core::{
     EntityId, Euler, KinematicState, LocalFrame, Meters, MetersPerSecond, MotionModel, Ownership,
-    Position, Radians, SimRng, SimTime, StateHash, TickRate, Vec3, math,
+    Position, Radians, SimRng, SimTime, StateHash, TerrainProvider, TickRate, Vec3, math,
 };
-use cgf_core::{Enu, FlatTerrain};
 use cgf_kernel::{
     ClockMode, EntityInit, Kernel, KernelConfig, Pace, RouteInit, Snapshot, StdWallClock,
     TickReport, WallClock,
@@ -26,8 +27,6 @@ pub struct EngineConfig {
     pub tick_rate: TickRate,
     /// Initial clock mode.
     pub clock: ClockMode,
-    /// Height of the flat terrain above the WGS-84 ellipsoid (M1 has only flat terrain).
-    pub terrain_height: Meters,
 }
 
 /// When [`Engine::run`] returns.
@@ -95,6 +94,8 @@ impl TickView<'_> {
 pub struct RunSummary {
     /// Ticks run during the call.
     pub ticks_run: u64,
+    /// Whether the callback stopped the run with [`ControlFlow::Break`].
+    pub stopped_early: bool,
 }
 
 /// The embeddable, synchronous engine.
@@ -103,36 +104,25 @@ pub struct Engine {
 }
 
 impl Engine {
-    /// An engine paced by the real wall clock.
-    ///
-    /// # Errors
-    /// [`EngineError::InvalidTerrainHeight`] if the terrain height is not finite.
-    pub fn new(config: EngineConfig) -> Result<Self, EngineError> {
-        Self::with_wall_clock(config, Box::new(StdWallClock::new()))
+    /// An engine paced by the real wall clock, on the given terrain (REQ-C-6).
+    pub fn new(config: EngineConfig, terrain: Arc<dyn TerrainProvider>) -> Self {
+        Self::with_wall_clock(config, terrain, Box::new(StdWallClock::new()))
     }
 
     /// An engine paced by the given wall clock (tests and embedding use a manual one).
-    ///
-    /// # Errors
-    /// [`EngineError::InvalidTerrainHeight`] if the terrain height is not finite.
     pub fn with_wall_clock(
         config: EngineConfig,
+        terrain: Arc<dyn TerrainProvider>,
         wall: Box<dyn WallClock>,
-    ) -> Result<Self, EngineError> {
-        if !config.terrain_height.0.is_finite() {
-            return Err(EngineError::InvalidTerrainHeight);
-        }
+    ) -> Self {
         let kernel_config = KernelConfig {
             tick_rate: config.tick_rate,
             seed: config.seed,
             clock: config.clock,
         };
-        let terrain = FlatTerrain {
-            height: config.terrain_height,
-        };
-        Ok(Self {
+        Self {
             kernel: Kernel::new(kernel_config, Box::new(terrain), wall),
-        })
+        }
     }
 
     /// The master random source, for scenario-level randomness (ADR 0006).
@@ -187,16 +177,18 @@ impl Engine {
     }
 
     /// Drives the kernel by its clock: polls, ticks or waits, and calls `on_tick` after every
-    /// tick, until `until` is reached or the clock is idle.
+    /// tick, until `until` is reached, the clock is idle, or the callback returns
+    /// [`ControlFlow::Break`] (then [`RunSummary::stopped_early`] is set).
     ///
     /// # Errors
     /// [`EngineError::Kernel`] if a tick fails (time overflow).
     pub fn run(
         &mut self,
         until: RunUntil,
-        mut on_tick: impl FnMut(&TickView<'_>),
+        mut on_tick: impl FnMut(&TickView<'_>) -> ControlFlow<()>,
     ) -> Result<RunSummary, EngineError> {
         let mut ticks_run = 0_u64;
+        let mut stopped_early = false;
         loop {
             if let RunUntil::Ticks(limit) = until
                 && self.kernel.now().tick() >= limit
@@ -207,16 +199,23 @@ impl Engine {
                 Pace::Tick => {
                     let report = self.kernel.tick()?;
                     ticks_run += 1;
-                    on_tick(&TickView {
+                    let view = TickView {
                         report: &report,
                         kernel: &self.kernel,
-                    });
+                    };
+                    if on_tick(&view).is_break() {
+                        stopped_early = true;
+                        break;
+                    }
                 }
                 Pace::WaitUntil(deadline) => self.kernel.clock().wait_until(deadline),
                 Pace::Idle => break,
             }
         }
-        Ok(RunSummary { ticks_run })
+        Ok(RunSummary {
+            ticks_run,
+            stopped_early,
+        })
     }
 
     /// Runs `n` more ticks. In stepped mode this requests `n` steps first; in other modes it
@@ -227,7 +226,7 @@ impl Engine {
     pub fn step(
         &mut self,
         n: u64,
-        on_tick: impl FnMut(&TickView<'_>),
+        on_tick: impl FnMut(&TickView<'_>) -> ControlFlow<()>,
     ) -> Result<RunSummary, EngineError> {
         if self.kernel.clock().mode() == ClockMode::Stepped {
             self.kernel.clock_mut().request_steps(n);

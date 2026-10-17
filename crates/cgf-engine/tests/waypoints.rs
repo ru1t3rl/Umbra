@@ -9,6 +9,9 @@
 
 use core::f64::consts::{PI, TAU};
 
+use std::ops::ControlFlow;
+use std::sync::Arc;
+
 use cgf_core::{Ecef, Euler, KinematicState, LocalFrame, Meters, TickRate};
 use cgf_engine::{Engine, EngineConfig, RunUntil, demo};
 use cgf_kernel::{ClockMode, ManualWallClock};
@@ -38,10 +41,14 @@ fn entity_1_trace(seed: u64) -> (Vec<KinematicState>, Vec<Option<(usize, usize)>
         seed,
         tick_rate: TickRate::new(30).expect("non-zero rate"),
         clock: ClockMode::AsFastAsPossible,
-        terrain_height: Meters(0.0),
     };
-    let mut engine =
-        Engine::with_wall_clock(config, Box::new(ManualWallClock::new())).expect("valid config");
+    let mut engine = Engine::with_wall_clock(
+        config,
+        Arc::new(cgf_core::FlatTerrain {
+            height: Meters(0.0),
+        }),
+        Box::new(ManualWallClock::new()),
+    );
     assert!(demo::spawn_walking_skeleton(&mut engine).is_ok());
     let first = engine.snapshot().entities[0].clone();
     let mut states = vec![first.state];
@@ -51,6 +58,7 @@ fn entity_1_trace(seed: u64) -> (Vec<KinematicState>, Vec<Option<(usize, usize)>
             let e = v.snapshot().entities[0].clone();
             states.push(e.state);
             nexts.push(e.route_next);
+            ControlFlow::Continue(())
         })
         .expect("run");
     (states, nexts)
@@ -107,10 +115,14 @@ fn given_demo_when_spawned_then_ids_are_1_2_3_in_order() {
         seed: 1,
         tick_rate: TickRate::new(30).expect("non-zero rate"),
         clock: ClockMode::AsFastAsPossible,
-        terrain_height: Meters(0.0),
     };
-    let mut engine =
-        Engine::with_wall_clock(config, Box::new(ManualWallClock::new())).expect("valid config");
+    let mut engine = Engine::with_wall_clock(
+        config,
+        Arc::new(cgf_core::FlatTerrain {
+            height: Meters(0.0),
+        }),
+        Box::new(ManualWallClock::new()),
+    );
 
     let ids = demo::spawn_walking_skeleton(&mut engine);
 
@@ -254,14 +266,20 @@ fn given_demo_when_run_then_all_three_entities_move() {
         seed: 5,
         tick_rate: TickRate::new(30).expect("non-zero rate"),
         clock: ClockMode::AsFastAsPossible,
-        terrain_height: Meters(0.0),
     };
-    let mut engine =
-        Engine::with_wall_clock(config, Box::new(ManualWallClock::new())).expect("valid config");
+    let mut engine = Engine::with_wall_clock(
+        config,
+        Arc::new(cgf_core::FlatTerrain {
+            height: Meters(0.0),
+        }),
+        Box::new(ManualWallClock::new()),
+    );
     assert!(demo::spawn_walking_skeleton(&mut engine).is_ok());
     let before = engine.snapshot();
 
-    engine.run(RunUntil::Ticks(300), |_| {}).expect("run");
+    engine
+        .run(RunUntil::Ticks(300), |_| ControlFlow::Continue(()))
+        .expect("run");
 
     let after = engine.snapshot();
     for (b, a) in before.entities.iter().zip(&after.entities) {

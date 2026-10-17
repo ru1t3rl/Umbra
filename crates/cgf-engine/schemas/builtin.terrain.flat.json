@@ -1,0 +1,19 @@
+{
+  "title": "builtin.terrain.flat parameters",
+  "description": "Flat terrain at a constant height above the WGS-84 ellipsoid.",
+  "type": "object",
+  "properties": {
+    "height_m": {
+      "type": "number",
+      "minimum": -1000,
+      "maximum": 10000,
+      "description": "Terrain height above the WGS-84 ellipsoid in meters."
+    }
+  },
+  "required": ["height_m"],
+  "additionalProperties": false,
+  "examples": [
+    { "height_m": 0.0 },
+    { "height_m": 100.0 }
+  ]
+}

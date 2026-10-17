@@ -2,8 +2,8 @@
 //! built-in registry, instantiation with a manual wall clock, and per-tick traces.
 //!
 //! All engine access that depends on the callback signature of `Engine::run`/`Engine::step` goes
-//! through `run_traced`, `step_traced` and `run_silent` below. WI-9 changes that signature to
-//! return `ControlFlow<()>`; only the three closures in this file need to follow.
+//! through `run_traced`, `step_traced` and `run_silent` below (the callback returns
+//! `ControlFlow<()>`).
 //!
 //! Each test binary uses a subset of the helpers.
 #![expect(
@@ -13,6 +13,7 @@
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
 
 use core::time::Duration;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 
 use cgf_core::{Registry, StateHash};
@@ -107,15 +108,27 @@ impl Trace {
 }
 
 pub fn run_traced(engine: &mut Engine, until: RunUntil, trace: &mut Trace) {
-    engine.run(until, |v| trace.record(v)).expect("run");
+    engine
+        .run(until, |v| {
+            trace.record(v);
+            ControlFlow::Continue(())
+        })
+        .expect("run");
 }
 
 pub fn step_traced(engine: &mut Engine, n: u64, trace: &mut Trace) {
-    engine.step(n, |v| trace.record(v)).expect("step");
+    engine
+        .step(n, |v| {
+            trace.record(v);
+            ControlFlow::Continue(())
+        })
+        .expect("step");
 }
 
 pub fn run_silent(engine: &mut Engine, until: RunUntil) {
-    engine.run(until, |_| {}).expect("run");
+    engine
+        .run(until, |_| ControlFlow::Continue(()))
+        .expect("run");
 }
 
 /// Runs to `ticks` with `run`, optionally pausing and resuming at `PAUSE_AT`.

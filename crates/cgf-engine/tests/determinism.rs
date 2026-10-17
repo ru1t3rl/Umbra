@@ -12,6 +12,9 @@
 
 use core::time::Duration;
 
+use std::ops::ControlFlow;
+use std::sync::Arc;
+
 use cgf_core::{Meters, StateHash, TickRate};
 use cgf_engine::{Engine, EngineConfig, RunUntil, TickView, demo};
 use cgf_kernel::{ClockMode, EntitySnapshot, ManualWallClock, Snapshot, TimeScale};
@@ -28,9 +31,10 @@ struct Trace {
 }
 
 impl Trace {
-    fn record(&mut self, view: &TickView<'_>) {
+    fn record(&mut self, view: &TickView<'_>) -> ControlFlow<()> {
         self.hashes.push(view.state_hash());
         self.snapshots.push(view.snapshot());
+        ControlFlow::Continue(())
     }
 
     fn len(&self) -> u64 {
@@ -43,7 +47,6 @@ fn config(seed: u64, clock: ClockMode) -> EngineConfig {
         seed,
         tick_rate: TickRate::new(30).expect("non-zero rate"),
         clock,
-        terrain_height: Meters(0.0),
     }
 }
 
@@ -56,8 +59,13 @@ fn demo_engine(seed: u64, clock: ClockMode) -> Engine {
 /// costs give different wall-time scripts for the same simulation.
 fn demo_engine_with_wall(seed: u64, clock: ClockMode, read_cost: Duration) -> Engine {
     let wall = ManualWallClock::with_auto_advance(read_cost);
-    let mut engine =
-        Engine::with_wall_clock(config(seed, clock), Box::new(wall)).expect("valid config");
+    let mut engine = Engine::with_wall_clock(
+        config(seed, clock),
+        Arc::new(cgf_core::FlatTerrain {
+            height: Meters(0.0),
+        }),
+        Box::new(wall),
+    );
     let ids = demo::spawn_walking_skeleton(&mut engine).expect("spawn demo");
     assert_eq!(ids.len(), 3);
     engine
@@ -243,7 +251,12 @@ fn given_demo_when_run_twice_afap_then_per_tick_hashes_are_identical() {
 /// wall clock; wall time never reaches the state.
 #[test]
 fn given_demo_when_run_on_std_wall_clock_then_hashes_match_manual_wall_clock() {
-    let mut engine = Engine::new(config(SEED, ClockMode::AsFastAsPossible)).expect("valid config");
+    let mut engine = Engine::new(
+        config(SEED, ClockMode::AsFastAsPossible),
+        Arc::new(cgf_core::FlatTerrain {
+            height: Meters(0.0),
+        }),
+    );
     assert!(demo::spawn_walking_skeleton(&mut engine).is_ok());
     let got = run_to_end(engine, false);
 
