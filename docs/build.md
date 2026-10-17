@@ -25,7 +25,7 @@ There is no CI gate: this list, run in this order, is the definition of done (CL
 | 11 | C header drift | `cargo xtask gen-header --check` | from M4 |
 | 12 | Plugin build | `cargo xtask build-plugins --release` | from M4 |
 | 13 | Plugin failure matrix | `cargo test -p cgf-plugin-host --test plugin_failures` | from M4 |
-| 14 | Benchmarks compile | `cargo bench -p cgf-kernel --no-run` | from M1 |
+| 14 | Benchmarks compile | `cargo bench -p cgf-kernel --no-run --locked` | from M1 |
 | 15 | GUI | `(cd gui && bun install --frozen-lockfile && bun run gen:api --check && bun run typecheck && bun run lint && bun run check:deps && bun test && bun run build)`, then `bun run tauri build` on Windows | from M8 (see the `verify-frontend` skill) |
 
 Rows marked "from Mn" are skipped, and reported as skipped, before that milestone exists. `--locked` is used on every cargo command that supports it (`cargo deny` and `cargo audit` read the lockfile as is; the `cargo xtask` alias builds with `--locked`, and `check-deps` runs `cargo metadata --locked`). Any non-zero exit fails the gate; in particular exit 2 from `cargo xtask check-deps` (load error, for example no resolved graph) fails it and is not a skip. `--locked` requires `Cargo.lock` to be committed and current. Text files use LF (`.gitattributes`, ASM-014).
