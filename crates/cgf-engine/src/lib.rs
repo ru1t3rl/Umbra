@@ -12,18 +12,22 @@
 
 #![forbid(unsafe_code)]
 
+pub mod builtins;
 pub mod demo;
 pub mod display;
 pub mod engine;
 pub mod error;
+pub mod scenario;
 
 pub use cgf_core::{
-    EntityId, Geodetic, Meters, Position, Radians, SimTime, StateHash, TickRate, TimeError,
+    ComponentId, ComponentKind, EntityId, Geodetic, Meters, ParamSchema, ParamValue, Position,
+    Radians, Registry, SimTime, StateHash, TickRate, TimeError,
 };
 pub use cgf_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, TickReport, TimeScale,
     WallClock,
 };
+pub use cgf_templates::{SCENARIO_FILE_SCHEMA, TEMPLATE_FILE_SCHEMA};
 pub use display::EntityDisplay;
 pub use engine::{Engine, EngineConfig, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView};
 pub use error::{EngineError, SpawnParam};

@@ -1,0 +1,7 @@
+# Fixture: a template found by recursive search under template_paths.
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "rel.veh"
+[motion]
+model = "stub.motion.alpha"
+params = { a = 4.0 }

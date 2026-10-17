@@ -1,0 +1,21 @@
+# Fixture: structurally valid, but behavior and sensor IDs are unknown in M2 (ASM-055), so the
+# reader reports unknown_id for them; the file schemas accept it. Not used for load-without-error.
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "fx.full"
+description = "All sections"
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }
+
+[behavior]
+ref = "builtin.fsm.patrol_and_engage"
+params = { aggression = 0.7 }
+
+[[sensors]]
+kind = "builtin.visual"
+params = { range_m = 3000.0, fov_deg = 120.0 }
+
+[[sensors]]
+kind = "builtin.radar"

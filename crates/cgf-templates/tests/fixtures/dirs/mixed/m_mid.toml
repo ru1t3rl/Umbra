@@ -1,0 +1,7 @@
+# Fixture: a valid template at the top of a directory tree (validate_path, discovery order).
+# Provenance: hand-written for M2 step 4 (test discover.rs).
+schema_version = 1
+id = "dir.mid"
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }

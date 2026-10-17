@@ -1,0 +1,73 @@
+# The M1 walking skeleton as a scenario file (ASM-061): three ground entities near 52 N 4 E on flat
+# terrain, one per template, each following a square route of four 500 m legs.
+#
+# The corner and waypoint numbers were generated with `LocalFrame::at(corner).from_enu(..)` as the M1
+# demo did (corners at 52.00, 52.02 and 52.04 N, 4 E, height 0), then rounded: lat/lon to 7
+# decimals (about 1 cm), ECEF to the millimetre. Cruise speeds are fixed (no demo RNG jitter).
+schema_version = 1
+
+[scenario]
+name = "walking_skeleton"
+seed = 42
+tick_rate_hz = 30
+clock = "afap"                    # afap | realtime | stepped | scaled (then time_scale = 4.0)
+duration_s = 240.0                # run length; `cgf-cli run --ticks N` overrides it
+template_paths = ["templates"]    # relative to this file; searched recursively for *.toml
+
+[terrain]                         # optional; this is the default
+provider = "builtin.terrain.flat"
+params = { height_m = 0.0 }
+
+# Entity 1: east first, clockwise (M1 demo entity 1).
+[[entities]]
+template = "ground_vehicle.base"
+name = "base-1"
+group = "alpha"
+position = { lat_deg = 52.0, lon_deg = 4.0 }          # alt_m defaults to 0 (above the WGS-84 ellipsoid)
+heading_deg = 90.0
+speed_mps = 0.0
+[entities.route]
+arrival_radius_m = 5.0
+cruise_speed_mps = 15.0
+waypoints = [
+  { lat_deg = 51.9999998, lon_deg = 4.0072804 },
+  { lat_deg = 52.0044935, lon_deg = 4.0072811 },
+  { lat_deg = 52.0044937, lon_deg = 4.0 },
+  { lat_deg = 52.0,       lon_deg = 4.0 },
+]
+
+# Entity 2: north first, counter-clockwise; a per-entity parameter override.
+[[entities]]
+template = "tank.mbt_generic"
+name = "tank-1"
+group = "alpha"
+position = { lat_deg = 52.02, lon_deg = 4.0, alt_m = 0.0 }
+heading_deg = 0.0
+[entities.overrides.motion.params]
+max_speed_mps = 16.0
+[entities.route]
+arrival_radius_m = 5.0
+cruise_speed_mps = 14.5
+waypoints = [
+  { lat_deg = 52.0244937, lon_deg = 4.0 },
+  { lat_deg = 52.0244934, lon_deg = 4.0072843 },
+  { lat_deg = 52.0199998, lon_deg = 4.0072836 },
+  { lat_deg = 52.02,      lon_deg = 4.0 },
+]
+
+# Entity 3: placed by ECEF (both forms are accepted everywhere, ASM-044).
+[[entities]]
+template = "truck.cargo"
+name = "truck-1"
+group = "bravo"
+position = { ecef_m = [3921875.483, 274244.249, 5005542.251] }   # 52.04 N 4 E, height 0
+heading_deg = 90.0
+[entities.route]
+arrival_radius_m = 5.0
+cruise_speed_mps = 17.0
+waypoints = [
+  { lat_deg = 52.0399998, lon_deg = 4.0072868 },
+  { lat_deg = 52.0355061, lon_deg = 4.0072861 },
+  { lat_deg = 52.0355063, lon_deg = 4.0 },
+  { ecef_m = [3921875.483, 274244.249, 5005542.251] },
+]

@@ -1,0 +1,11 @@
+# Fixture: structurally invalid, a network entry is not a table (reader: wrong_type).
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "fx.bad"
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }
+
+[network]
+dis = 5

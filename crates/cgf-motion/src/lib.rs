@@ -8,6 +8,8 @@
 
 #![forbid(unsafe_code)]
 
+pub mod factory;
 pub mod ground;
 
+pub use factory::{GroundKinematicFactory, register_builtins};
 pub use ground::{GROUND_KINEMATIC_ID, GroundKinematic, GroundKinematicParams, MotionParamError};

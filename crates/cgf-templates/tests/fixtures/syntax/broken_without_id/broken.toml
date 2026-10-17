@@ -1,0 +1,8 @@
+# Fixture: syntax error before the id, so no id can be recovered (ASM-054 rule 3, note variant).
+# Provenance: hand-written for M2 step 4; used with child.toml in this directory.
+schema_version = 1
+id = $
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }

@@ -1,0 +1,7 @@
+# Fixture (missing and wrong-type params): missing_param at 7:10, param_wrong_type at 7:28.
+# Provenance: hand-written for M2 step 4; built-in component IDs.
+schema_version = 1
+id = "cli.params"
+[motion]
+model = "builtin.ground.kinematic"
+params = { max_speed_mps = "fast", max_turn_rate_dps = 40.0 }

@@ -1,0 +1,7 @@
+# Fixture: structurally invalid, `motion.model` is a number (reader: wrong_type).
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "fx.bad"
+
+[motion]
+model = 5

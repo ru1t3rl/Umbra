@@ -1,0 +1,8 @@
+# Fixture (inheritance cycle with b_cycle.toml, error at 5:11): see crates/cgf-cli/tests/cli_validate.rs for the expected diagnostic.
+# Provenance: hand-written for M2 step 4; built-in component IDs.
+schema_version = 1
+id = "cli.cycle_a"
+extends = "cli.cycle_b"
+[motion]
+model = "builtin.ground.kinematic"
+params = { max_speed_mps = 18.0, max_turn_rate_dps = 40.0, max_accel_mps2 = 2.5 }

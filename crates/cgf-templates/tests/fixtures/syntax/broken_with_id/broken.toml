@@ -1,0 +1,8 @@
+# Fixture: syntax error in the file, but the top-level id is recoverable (ASM-054 rule 3).
+# Provenance: hand-written for M2 step 4; used with child.toml in this directory.
+schema_version = 1
+id = "syntax.parent"
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = $ }

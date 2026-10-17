@@ -1,0 +1,11 @@
+# Fixture: two bad elements in one array (ASM-054 rule 1).
+# Provenance: hand-written for M2 step 4; expected parser output verified against toml 1.1.8.
+schema_version = 1
+id = "syntax.array_two_bad"
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }
+
+[network.dis]
+markings = [1, $, 3, $]

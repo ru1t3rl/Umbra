@@ -43,3 +43,26 @@ Written against `todo!()` stubs (step 4); every row is `failing (stub until WI-n
 | AT-15 | ASM-044, D-15 | integration | `crates/cgf-core/tests/coords.rs` (`position_*`), `crates/cgf-engine/tests/placement.rs` (5) | core part passing (WI-4); engine part failing (WI-13) |
 
 Gaps: the archetype-order variant of `hash_walks_entities_in_id_order` cannot be expressed through the public kernel API (no despawn); `state_hash_equals_the_reference_encoding` (hand-built ADR 0007 encoding, mixed archetypes) pins the walk order instead, and `entity_rng_stream_is_independent_of_other_spawns` is a unit test in `crates/cgf-kernel/src/world.rs` (no public rng accessor). Intents are not directly observable in the hash test.
+
+## M2
+
+Written against `todo!()` stubs (step 4, commit "test(M2): failing acceptance tests"); every row is `failing (stub until WI-n)` except where marked passing. Counts are tests per file. `crates/cgf-templates/tests/toml_pin.rs` (12) passes already: it pins the behaviour of `toml` 1.1.8 that ASM-054 depends on (message text, spans, partial tree) and fails loudly on an upgrade. Every fixture documents its provenance in its header comment; the ASM-054 fixtures under `crates/cgf-templates/tests/fixtures/syntax/` were verified against the real `toml` 1.1.8 `DeTable::parse_recoverable`.
+
+| AT | REQ-ID | Type | Test file(s) | Status |
+|---|---|---|---|---|
+| AT-1 | REQ-T-1, ASM-055 | unit | `crates/cgf-templates/tests/resolve.rs` (registered ID, empty registry, two stub factories, unknown motion model, behavior, sensors, terrain via `scenario_file.rs`) | failing (WI-7, WI-8) |
+| AT-2 | REQ-T-2, ASM-054, ASM-056 | unit + proptest | `crates/cgf-templates/tests/{source (14), value (19), template_file (35), resolve (set rows), resolve_prop (3)}.rs`; fixtures `tests/fixtures/syntax/`; ASM-054 cases: two bad values in one inline table, two bad array elements, duplicate key plus bad value, unclosed array and inline table (one error at the opening bracket, independent error before it kept), recovered id (no `unknown_template`), unrecoverable id (note variant) | failing (WI-4, WI-6, WI-7); `new_keeps_path_and_text` and `diagnostic_codes_have_stable_snake_case_names` pass |
+| AT-3 | REQ-T-3, ADR 0009 | unit | `crates/cgf-templates/tests/schema.rs` (55), `resolve.rs` (`..._schema_outside_subset_...`), `crates/cgf-engine/tests/builtin_schemas.rs` (6), `crates/cgf-motion/tests/factory.rs` (14; also run green against a throwaway reference factory) | failing (WI-3, WI-5, WI-9) |
+| AT-4 | REQ-T-4 | unit | `crates/cgf-templates/tests/resolve.rs` (network preserved, replaced per adapter, inherited, must be table, datetime, adapter name; ADR 0010 merge rules) | failing (WI-6, WI-7) |
+| AT-5 | REQ-T-5, ASM-057 | unit | `crates/cgf-templates/tests/{template_file,scenario_file}.rs` (accepted, newer, missing, zero, negative, string, hides-nothing) | failing (WI-6, WI-8) |
+| AT-6 | REQ-T-6 | integration + process | `crates/cgf-templates/tests/discover.rs` (13; fixtures `dirs/mixed`, `scenarios/relative`), `crates/cgf-cli/tests/cli_validate.rs` (18; fixtures `tests/fixtures/bad/`, exact expected list of 7 diagnostics, `--json`) | failing (WI-8, WI-10) |
+| AT-7 | REQ-C-3, ASM-044, ASM-060 | unit + integration | `crates/cgf-templates/tests/scenario_file.rs` (64; fixtures `scenarios/{relative,missing_template_dir}`), `crates/cgf-engine/tests/scenario.rs` (16; fixture `bad_scenario/`) | failing (WI-8, WI-9) |
+| AT-8 | M2 acceptance 2, REQ-S-1, REQ-K-4 | integration (gate 4 successor) + process | `crates/cgf-engine/tests/{example_determinism,example_waypoints}.rs` (11 + 11; WI-11 renames them over `determinism.rs`/`waypoints.rs`), `crates/cgf-cli/tests/cli_run.rs` (19; WI-11 deletes the demo-based `cli.rs`); example files `examples/scenarios/walking_skeleton/` | failing (WI-9, WI-10, WI-11) |
+| AT-9 | REQ-K-4, NFR-2 | unit + proptest | `resolve.rs` (`shuffled_source_order_...` all 24 permutations), `resolve_prop.rs` (file order), `discover.rs` (`discovery_returns_sorted_paths`), `value.rs` (`parse_never_panics`, 2 proptests) | failing (WI-4, WI-7, WI-8) |
+| AT-10 | D-14, REQ-X-2 `schema` | unit + process | `crates/cgf-templates/tests/file_schemas.rs` (8; fixtures `templates/{valid,invalid_structure}`, `scenarios/{valid,invalid_structure}`), `crates/cgf-cli/tests/cli_schema.rs` (9) | failing (WI-12) |
+| AT-11 | gates | manual | mutations recorded in WI PRs (no implementation exists yet to mutate) | manual |
+
+Written but deferred to their work item (need an API that the stubs cannot express): `RunSummary.stopped_early` on `ControlFlow::Break` (WI-9, changes the `Engine::run` signature; the new engine tests reach `run`/`step` only through `crates/cgf-engine/tests/common/mod.rs`), a CLI write-error test (closed pipe, WI-10), REQ-T-7 (hot reload, deferred to M5).
+
+Gaps and notes: the plan's `validate_path_never_builds_an_engine` is `validate_path_builds_exactly_as_often_as_load_scenario` (a registry stub cannot observe an engine; the property that validation and loading share one dry-run pipeline is observable). Tests that pin only code and file (location of an absent key is not specified): missing `schema_version`, `id`, motion model; `io` for a missing `template_paths` directory; `not_a_scenario`.
+

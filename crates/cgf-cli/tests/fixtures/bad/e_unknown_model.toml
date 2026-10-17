@@ -1,0 +1,7 @@
+# Fixture (unknown motion model): unknown_id at 6:9.
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "cli.wheeled"
+[motion]
+model = "builtin.ground.wheeled"
+params = { }

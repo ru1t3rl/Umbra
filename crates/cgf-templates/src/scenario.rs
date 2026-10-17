@@ -1,0 +1,75 @@
+//! A loaded scenario (ADR 0010, ASM-060). Data types are real; reading is STUB (WI-8).
+
+use std::path::PathBuf;
+
+use cgf_core::{Meters, MetersPerSecond, Position, Radians, TemplateId, TickRate};
+
+use crate::resolve::{ComponentRef, TemplateSet};
+
+/// The clock a scenario asks for; mirrors `cgf_kernel::TimeScale` bounds (ASM-060).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ClockSetting {
+    /// As fast as possible.
+    AsFastAsPossible,
+    /// Real time.
+    RealTime,
+    /// Stepped.
+    Stepped,
+    /// Scaled by a factor in `[1e-3, 1e6]`.
+    Scaled(f64),
+}
+
+/// An entity's initial route.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RoutePlan {
+    /// Waypoints in visiting order; at least one.
+    pub waypoints: Vec<Position>,
+    /// Arrival radius.
+    pub arrival_radius: Meters,
+    /// Cruise speed.
+    pub cruise_speed: MetersPerSecond,
+}
+
+/// One entity to spawn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Placement {
+    /// The template.
+    pub template: TemplateId,
+    /// Optional unique name.
+    pub name: Option<String>,
+    /// Optional group.
+    pub group: Option<String>,
+    /// Where it starts.
+    pub position: Position,
+    /// Initial heading.
+    pub heading: Radians,
+    /// Initial speed.
+    pub speed: MetersPerSecond,
+    /// The template's motion parameters merged with the overrides.
+    pub motion: ComponentRef,
+    /// The initial route.
+    pub route: Option<RoutePlan>,
+}
+
+/// A scenario with its templates resolved.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Scenario {
+    /// Scenario name.
+    pub name: String,
+    /// The scenario file.
+    pub source: PathBuf,
+    /// Master seed.
+    pub seed: u64,
+    /// Ticks per second.
+    pub tick_rate: TickRate,
+    /// Requested clock.
+    pub clock: ClockSetting,
+    /// `ceil(duration_s * hz)`.
+    pub duration_ticks: u64,
+    /// The terrain provider and parameters.
+    pub terrain: ComponentRef,
+    /// All templates found.
+    pub templates: TemplateSet,
+    /// Entities in file order (spawn order).
+    pub entities: Vec<Placement>,
+}

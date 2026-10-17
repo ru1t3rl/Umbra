@@ -1,0 +1,38 @@
+# Fixture: a scenario using every v1 key (file-format drift guard, WI-12).
+# Provenance: hand-written for M2 step 4 (test file_schemas.rs); stub component IDs.
+schema_version = 1
+
+[scenario]
+name = "full"
+seed = 42
+tick_rate_hz = 30
+clock = "scaled"
+time_scale = 4.0
+duration_s = 60.0
+template_paths = ["templates", "../shared"]
+
+[terrain]
+provider = "builtin.terrain.flat"
+params = { height_m = 3.0 }
+
+[[entities]]
+template = "fx.minimal"
+name = "one"
+group = "alpha"
+position = { lat_deg = 52.0, lon_deg = 4.0, alt_m = 10.0 }
+heading_deg = 90.0
+speed_mps = 2.0
+[entities.overrides.motion.params]
+a = 3.0
+[entities.route]
+arrival_radius_m = 5.0
+cruise_speed_mps = 15.0
+waypoints = [
+  { lat_deg = 52.0, lon_deg = 4.01 },
+  { ecef_m = [3925375.0, 274488.0, 5002803.0] },
+]
+
+[[entities]]
+template = "fx.minimal"
+position = { ecef_m = [3925375.0, 274488.0, 5002803.0] }
+heading_deg = 0.0

@@ -1,0 +1,9 @@
+# Fixture: two bad values in one inline table on one line (ASM-054 rule 1).
+# Provenance: hand-written for M2 step 4; expected parser output verified against toml 1.1.8
+# DeTable::parse_recoverable (see tests/value.rs and tests/toml_pin.rs). Lines are significant.
+schema_version = 1
+id = "syntax.inline_two_bad"
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = $, b = $ }

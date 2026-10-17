@@ -1,0 +1,16 @@
+# Fixture: a scenario with two errors (tick_rate_hz = 0 at 8:16, unknown template at 14:12).
+# Provenance: hand-written for M2 step 4 (test scenario.rs); built-in component IDs.
+schema_version = 1
+
+[scenario]
+name = "bad"
+seed = 1
+tick_rate_hz = 0
+clock = "afap"
+duration_s = 5.0
+template_paths = ["templates"]
+
+[[entities]]
+template = "no.such"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 0.0

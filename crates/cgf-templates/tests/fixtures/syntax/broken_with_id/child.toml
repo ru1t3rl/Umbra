@@ -1,0 +1,5 @@
+# Fixture: a valid child of syntax.parent, which is defined in broken.toml (syntax error there).
+# Provenance: hand-written for M2 step 4. Must not get unknown_template (ASM-054 rule 3).
+schema_version = 1
+id = "syntax.child"
+extends = "syntax.parent"

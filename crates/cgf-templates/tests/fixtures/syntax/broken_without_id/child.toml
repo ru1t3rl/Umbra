@@ -1,0 +1,5 @@
+# Fixture: a valid child of syntax.lost, which would be defined in broken.toml (unrecoverable id).
+# Provenance: hand-written for M2 step 4. Gets unknown_template with a note naming broken.toml.
+schema_version = 1
+id = "syntax.orphan"
+extends = "syntax.lost"

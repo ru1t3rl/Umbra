@@ -154,6 +154,8 @@ dependencies = [
  "cgf-core",
  "cgf-kernel",
  "cgf-motion",
+ "cgf-templates",
+ "serde_json",
  "thiserror",
 ]
 
@@ -175,6 +177,7 @@ version = "0.1.0"
 dependencies = [
  "cgf-core",
  "proptest",
+ "serde_json",
  "thiserror",
 ]
 
@@ -183,6 +186,7 @@ name = "cgf-templates"
 version = "0.1.0"
 dependencies = [
  "cgf-core",
+ "proptest",
  "serde_json",
  "thiserror",
  "toml",

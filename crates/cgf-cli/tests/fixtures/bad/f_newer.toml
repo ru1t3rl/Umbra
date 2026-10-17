@@ -1,0 +1,4 @@
+# Fixture (newer schema_version): unsupported_schema_version at 3:18.
+# Provenance: hand-written for M2 step 4.
+schema_version = 2
+id = "cli.newer"

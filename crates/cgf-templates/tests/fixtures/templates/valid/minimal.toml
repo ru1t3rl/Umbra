@@ -1,0 +1,8 @@
+# Fixture: the smallest valid template (file-format drift guard, WI-12).
+# Provenance: hand-written for M2 step 4 (test file_schemas.rs); stub component IDs.
+schema_version = 1
+id = "fx.minimal"
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }

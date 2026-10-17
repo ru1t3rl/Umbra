@@ -1,0 +1,5 @@
+# Fixture: a template in a subdirectory of template_paths (searched recursively).
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "rel.deeper"
+extends = "rel.veh"

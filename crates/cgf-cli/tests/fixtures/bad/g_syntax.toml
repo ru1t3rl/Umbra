@@ -1,0 +1,7 @@
+# Fixture (syntax error): syntax at 7:16 (toml 1.1.8: string values must be quoted).
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "cli.syntax"
+[motion]
+model = "builtin.ground.kinematic"
+params = { a = $ }

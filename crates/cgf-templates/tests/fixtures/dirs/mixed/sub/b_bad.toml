@@ -1,0 +1,8 @@
+# Fixture: a template with one structural error (unknown key `colour`, line 5).
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "dir.sub_bad"
+colour = "red"
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }

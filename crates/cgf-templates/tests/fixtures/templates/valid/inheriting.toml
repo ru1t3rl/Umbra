@@ -1,0 +1,19 @@
+# Fixture: a child template with header-style params and opaque network sections.
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "fx.inheriting"
+extends = "fx.minimal"
+description = "Overrides one parameter"
+
+[motion.params]
+a = 2.5
+
+[network.dis]
+entity_type = "1.1.225.1.1.1.0"
+mixed = [1, "two", 3.0]
+
+[network.dis.nested]
+deep = { k = "v" }
+
+[network.hla]
+fom_module = "fom.xml"

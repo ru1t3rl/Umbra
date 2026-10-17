@@ -1,0 +1,16 @@
+# Fixture: template_paths names a directory that does not exist (io diagnostic).
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+
+[scenario]
+name = "missing"
+seed = 1
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 5.0
+template_paths = ["no_such_dir"]
+
+[[entities]]
+template = "rel.veh"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 0.0

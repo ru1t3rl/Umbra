@@ -1,0 +1,8 @@
+# Fixture: structurally invalid, no [scenario] table (reader: not_a_scenario or missing_key).
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+
+[[entities]]
+template = "fx.minimal"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 0.0

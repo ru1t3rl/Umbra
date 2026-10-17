@@ -1,0 +1,7 @@
+# Fixture: a valid template whose name sorts after the subdirectory `sub` (discovery order).
+# Provenance: hand-written for M2 step 4.
+schema_version = 1
+id = "dir.last"
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }

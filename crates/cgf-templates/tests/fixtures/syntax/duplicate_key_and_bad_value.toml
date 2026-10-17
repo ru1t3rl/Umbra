@@ -1,0 +1,8 @@
+# Fixture: a duplicate key plus a bad value in one inline table (ASM-054 rule 1).
+# Provenance: hand-written for M2 step 4; expected parser output verified against toml 1.1.8.
+schema_version = 1
+id = "syntax.duplicate_and_bad"
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0, a = 2.0, b = $ }

@@ -1,0 +1,10 @@
+schema_version = 1
+id = "tank.mbt_generic"
+extends = "ground_vehicle.base"
+description = "Generic main battle tank"
+
+[motion.params]
+max_turn_rate_dps = 30.0          # overrides one key; the others come from ground_vehicle.base
+
+[network.dis]                     # opaque to the engine, handed to the `dis` adapter in M6
+entity_type = "1.1.225.1.1.1.0"

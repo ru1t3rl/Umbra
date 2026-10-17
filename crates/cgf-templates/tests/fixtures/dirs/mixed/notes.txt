@@ -1,0 +1,2 @@
+Not a TOML file: discovery ignores files without the .toml extension (ASM-053).
+Provenance: hand-written for M2 step 4.

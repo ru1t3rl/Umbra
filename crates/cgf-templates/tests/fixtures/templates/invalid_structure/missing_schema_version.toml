@@ -1,0 +1,7 @@
+# Fixture: structurally invalid, no `schema_version` (reader: missing_key).
+# Provenance: hand-written for M2 step 4.
+id = "fx.bad"
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }

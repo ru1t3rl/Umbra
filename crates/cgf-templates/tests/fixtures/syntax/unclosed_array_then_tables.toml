@@ -1,0 +1,14 @@
+# Fixture: an unclosed array followed by tables (ASM-054 rule 2), with an independent error before it.
+# Provenance: hand-written for M2 step 4; expected parser output verified against toml 1.1.8.
+schema_version = 1
+id = "syntax.unclosed_array"
+early_bad = $
+tags = [1, 2
+
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }
+
+[network.dis]
+entity_type = "1.1.225.1.1.1.0"
+cascade_victim = $
