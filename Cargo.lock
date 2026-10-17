@@ -86,6 +86,7 @@ name = "cgf-cli"
 version = "0.1.0"
 dependencies = [
  "cgf-engine",
+ "serde_json",
 ]
 
 [[package]]
@@ -103,6 +104,7 @@ dependencies = [
  "cgf-core",
  "cgf-kernel",
  "cgf-motion",
+ "thiserror",
 ]
 
 [[package]]
@@ -110,6 +112,8 @@ name = "cgf-kernel"
 version = "0.1.0"
 dependencies = [
  "cgf-core",
+ "proptest",
+ "thiserror",
 ]
 
 [[package]]
@@ -117,6 +121,8 @@ name = "cgf-motion"
 version = "0.1.0"
 dependencies = [
  "cgf-core",
+ "proptest",
+ "thiserror",
 ]
 
 [[package]]

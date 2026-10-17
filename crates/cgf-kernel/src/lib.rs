@@ -8,3 +8,15 @@
 //! `cgf-motion`, `cgf-engine` or `cgf-cli`. It contains no `unsafe` code.
 
 #![forbid(unsafe_code)]
+
+pub mod clock;
+pub mod error;
+pub mod kernel;
+pub mod pipeline;
+
+pub use clock::{
+    Clock, ClockError, ClockMode, ManualWallClock, Pace, StdWallClock, TimeScale, WallClock,
+};
+pub use error::KernelError;
+pub use kernel::{EntityInit, EntitySnapshot, Kernel, KernelConfig, RouteInit, Snapshot};
+pub use pipeline::{Phase, TickContext, TickReport};

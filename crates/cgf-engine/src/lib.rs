@@ -7,3 +7,10 @@
 //! no `unsafe` code.
 
 #![forbid(unsafe_code)]
+
+pub mod demo;
+pub mod engine;
+pub mod error;
+
+pub use engine::{Engine, EngineConfig, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView};
+pub use error::EngineError;

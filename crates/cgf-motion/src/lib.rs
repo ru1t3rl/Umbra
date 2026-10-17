@@ -7,3 +7,7 @@
 //! `cgf-kernel`. It contains no `unsafe` code.
 
 #![forbid(unsafe_code)]
+
+pub mod ground;
+
+pub use ground::{GROUND_KINEMATIC_ID, GroundKinematic, GroundKinematicParams, MotionParamError};

@@ -12,11 +12,28 @@
 
 #![forbid(unsafe_code)]
 
+pub mod coords;
+pub mod geo;
+pub mod hash;
 pub mod id;
+pub mod intent;
+pub mod math;
+pub mod motion;
+pub mod ownership;
+pub mod rng;
+pub mod terrain;
 pub mod time;
 pub mod units;
 
+pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
+pub use geo::{Euler, Quaternion, Vec3};
+pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher, fnv1a64};
 pub use id::{BehaviorId, EntityId, IdError, MAX_ID_LEN, MotionModelId, PluginId, TemplateId};
+pub use intent::Intent;
+pub use motion::{KinematicState, MotionModel};
+pub use ownership::{Ownership, RemoteSource};
+pub use rng::{RngStream, SimRng, SplitMix64, StreamKey};
+pub use terrain::{FlatTerrain, TerrainProvider};
 pub use time::{SimTime, TickRate, TimeError};
 pub use units::{
     Kilograms, Meters, MetersPerSecond, MetersPerSecondSquared, Radians, RadiansPerSecond, Seconds,

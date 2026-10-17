@@ -12,6 +12,7 @@ repository.workspace = true
 cgf-core = { path = "../cgf-core" }
 cgf-kernel = { path = "../cgf-kernel" }
 cgf-motion = { path = "../cgf-motion" }
+thiserror.workspace = true
 
 [lints]
 workspace = true
