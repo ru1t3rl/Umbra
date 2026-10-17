@@ -9,11 +9,13 @@
 #     files are allowed, M3 adds fixtures).
 # 2.  No M1/M2 test or benchmark file modified, deleted or renamed.
 # 2b. In an M2-era `src` file, no line from the first `#[cfg(test)]` onward (the whole file for
-#     `tests.rs`) is removed or changed; the one allowlisted change is the approved edit of
+#     `tests.rs`) is removed, changed or added to (an inserted `#[ignore]` or early `return;`
+#     would disable a test): no line may be removed or inserted there; the one allowlisted change is the approved edit of
 #     `all_lists_every_kind_once` in crates/cgf-core/src/registry.rs (ADR 0011).
 # 3.  The M2 test-name baseline, regenerated from the tag in a scratch worktree under target/ (the
 #     default target directory, never /tmp), is a subset of the test names now, keyed by
-#     package, test binary and name; the baseline build must succeed and list >= 900 tests.
+#     package, test binary and name; the baseline build must succeed and list >= 900 tests. A
+#     test that was not ignored at the tag must not be ignored now (`--list --ignored` compared).
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -38,7 +40,10 @@ cleanup() {
     git worktree prune
     if [ "$keep" -eq 0 ]; then rm -rf "$work/baseline-target"; fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM
+
+git rev-parse --verify -q "$tag^{commit}" >/dev/null || { echo "FAIL: unknown tag $tag"; exit 1; }
 
 # check_1_2 TAG: prints failures, returns 1 on any. Runs in the current directory (a git tree).
 check_1_2() {
@@ -78,11 +83,57 @@ check_2b() {
         _out=$(git diff -U0 "$_tag" -- "$f" | awk -v start="$start" -v allow_s="$1" -v allow_e="$2" -v file="$f" '
             /^@@/ { split($2, a, ","); old = substr(a[1], 2) + 0; if (a[2] == "0") old++; next }
             /^---/ || /^\+\+\+/ { next }
-            /^-/ { if (old >= start && !(old >= allow_s && old <= allow_e)) print file ":" old ": " $0; old++ }')
-        if [ -n "$_out" ]; then echo "FAIL: changed test-region lines:"; echo "$_out"; _bad=1; fi
+            /^-/ { if (old >= start && !(old >= allow_s && old <= allow_e)) print file ":" old ": " $0; old++; next }
+            /^\+/ { if (old > start && !(old > allow_s && old <= allow_e)) print file ":" old ": " $0 }')
+        if [ -n "$_out" ]; then echo "FAIL: changed or added test-region lines:"; echo "$_out"; _bad=1; fi
     done
     [ "$_bad" -eq 0 ] && echo ok
     return "$_bad"
+}
+
+# list_pkg DIR TARGET_DIR PKG RAW [ARGS...]: raw `--list` output of one package; fails if cargo does.
+list_pkg() {
+    (
+        cd "$1"
+        _target=$2; _pkg=$3; _raw=$4; shift 4
+        CARGO_TARGET_DIR="$_target" cargo test -p "$_pkg" --locked -- --list "$@" > "$_raw" 2>&1 \
+            || { echo "FAIL: cargo test -p $_pkg --list failed in $1"; tail -n 20 "$_raw"; return 1; }
+    )
+}
+
+# list DIR TARGET_DIR OUTFILE [ARGS...]: "<package>::<binary>::<test>" for every listed test.
+list() {
+    _dir=$1; _target=$2; _out=$3; shift 3
+    : > "$_out"
+    for pkg in $(cd "$_dir" && ls crates) xtask; do
+        list_pkg "$_dir" "$_target" "$pkg" "$_out.raw" "$@" || return 1
+        awk -v pkg="$pkg" '
+            /^ *(Running|Doc-tests) / {
+                bin = $0
+                sub(/^ *Running .*deps\//, "", bin)
+                sub(/-[0-9a-f]+\)$/, "", bin)
+                if ($1 == "Doc-tests") { bin = "doctest" }
+                next
+            }
+            /: test$/ {
+                name = $0
+                sub(/: test$/, "", name)
+                sub(/ \(line [0-9]+\)$/, "", name)   # doctests are named by source line
+                print pkg "::" bin "::" name
+            }' "$_out.raw" >> "$_out"
+    done
+    sort -u "$_out" -o "$_out"
+    rm -f "$_out.raw"
+}
+
+check_floor() { # check_floor COUNT
+    if [ "$1" -lt 900 ]; then echo "FAIL: baseline lists fewer than 900 tests"; return 1; fi
+}
+
+# check_ignored M2_TESTS M2_IGNORED NOW_IGNORED: no test of the tag is ignored now unless it was then.
+check_ignored() {
+    _new=$(comm -12 "$3" "$1" | comm -23 - "$2")
+    if [ -n "$_new" ]; then echo "FAIL: tests ignored now that were not ignored at the tag:"; echo "$_new"; return 1; fi
 }
 
 if [ "$self_test" -eq 1 ]; then
@@ -116,8 +167,33 @@ if [ "$self_test" -eq 1 ]; then
     sed -i '$ s/}$/} \/\/ mutation/' crates/cgf-templates/src/diagnostic.rs
     expect FAIL "changed line in an inline test region" check_2b "$tag"
     git checkout -q -- .
-    echo "// addition only" >> crates/cgf-templates/src/diagnostic.rs
-    expect PASS "addition at the end of a test region is allowed" check_2b "$tag"
+    git checkout -q -- .
+    # 2b rejects additions too: an inserted #[ignore] or an early return disables an M2 inline test.
+    sed -i '0,/^    #\[test\]$/s//    #[test]\n    #[ignore]/' crates/cgf-templates/src/diagnostic.rs
+    expect FAIL "#[ignore] inserted mid-module in an M2 inline test" check_2b "$tag"
+    git checkout -q -- .
+    sed -i '0,/fn display_is_path_line_col_error_code_message_then_notes() {/s//&\n        return;/' crates/cgf-templates/src/diagnostic.rs
+    expect FAIL "return; inserted into an M2 inline test body" check_2b "$tag"
+    git checkout -q -- .
+    echo "// addition at the end of the test module" >> crates/cgf-templates/src/diagnostic.rs
+    expect FAIL "line appended to an M2 inline test region" check_2b "$tag"
+    git checkout -q -- .
+    sed -i '0,/^#\[test\]$/s//#[test]\n#[ignore]/' crates/cgf-core/tests/ids.rs
+    expect FAIL "M2 integration test newly marked #[ignore]" check_1_2 "$tag"
+    git checkout -q -- .
+    # Check 3 failure paths.
+    expect FAIL "list of a missing package" list_pkg "$work/selftest" "$work/selftest-target" no-such-package "$work/selftest.raw"
+    expect FAIL "baseline below the floor" check_floor 10
+    expect PASS "baseline at the floor" check_floor 900
+    printf 'p::b::kept\np::b::gone\n' | sort > "$work/st-m2.txt"
+    : > "$work/st-m2-ignored.txt"
+    printf 'p::b::gone\n' > "$work/st-now-ignored.txt"
+    expect FAIL "M2 test ignored now but not at the tag" check_ignored "$work/st-m2.txt" "$work/st-m2-ignored.txt" "$work/st-now-ignored.txt"
+    cp "$work/st-now-ignored.txt" "$work/st-m2-ignored.txt"
+    expect PASS "test already ignored at the tag" check_ignored "$work/st-m2.txt" "$work/st-m2-ignored.txt" "$work/st-now-ignored.txt"
+    printf 'p::b::new_m3_test\n' > "$work/st-now-ignored.txt"
+    : > "$work/st-m2-ignored.txt"
+    expect PASS "new M3 test ignored" check_ignored "$work/st-m2.txt" "$work/st-m2-ignored.txt" "$work/st-now-ignored.txt"
     exit "$st"
 fi
 
@@ -125,51 +201,26 @@ status=0
 check_1_2 "$tag" || status=1
 check_2b "$tag" || status=1
 
-echo "== 3. every test name of $tag still exists"
+echo "== 3. every test name of $tag still exists and is not newly ignored"
 mkdir -p "$work"
 git worktree prune
 rm -rf "$work/tree"
 git worktree add --detach "$work/tree" "$tag"
 
-# list DIR TARGET_DIR OUTFILE: "<package>::<binary>::<test>" for every listed test.
-list() {
-    (
-        cd "$1"
-        : > "$3"
-        for pkg in $(ls crates) xtask; do
-            CARGO_TARGET_DIR="$2" cargo test -p "$pkg" --locked -- --list > "$3.raw" 2>&1 \
-                || { echo "FAIL: cargo test -p $pkg --list failed in $1"; tail -n 20 "$3.raw"; return 1; }
-            awk -v pkg="$pkg" '
-                /^ *(Running|Doc-tests) / {
-                    bin = $0
-                    sub(/^ *Running .*deps\//, "", bin)
-                    sub(/-[0-9a-f]+\)$/, "", bin)
-                    if ($1 == "Doc-tests") { bin = "doctest" }
-                    next
-                }
-                /: test$/ {
-                    name = $0
-                    sub(/: test$/, "", name)
-                    sub(/ \(line [0-9]+\)$/, "", name)   # doctests are named by source line
-                    print pkg "::" bin "::" name
-                }' "$3.raw" >> "$3"
-        done
-        sort -u "$3" -o "$3"
-        rm -f "$3.raw"
-    )
-}
-
 list "$work/tree" "$work/baseline-target" "$work/m2-tests.txt" || status=1
+list "$work/tree" "$work/baseline-target" "$work/m2-ignored.txt" --ignored || status=1
 list "$root" "$root/target" "$work/now-tests.txt" || status=1
+list "$root" "$root/target" "$work/now-ignored.txt" --ignored || status=1
 
 base=$(wc -l < "$work/m2-tests.txt")
 echo "baseline: $base tests, now: $(wc -l < "$work/now-tests.txt") tests"
-if [ "$base" -lt 900 ]; then echo "FAIL: baseline lists fewer than 900 tests"; status=1; fi
+check_floor "$base" || status=1
 missing=$(comm -23 "$work/m2-tests.txt" "$work/now-tests.txt")
 if [ -n "$missing" ]; then
     echo "FAIL: tests of $tag missing now:"; echo "$missing"; status=1
 else
     echo "ok (only additions)"
 fi
+check_ignored "$work/m2-tests.txt" "$work/m2-ignored.txt" "$work/now-ignored.txt" || status=1
 
 exit "$status"
