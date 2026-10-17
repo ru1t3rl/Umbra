@@ -86,7 +86,9 @@ impl ManualWallClock {
     }
 
     /// A clock where every read of [`now`](WallClock::now) moves the time forward by `step`
-    /// afterwards (the read returns the time before the move). Models work that takes wall time.
+    /// afterwards (the read returns the time before the move). Models work that takes wall time:
+    /// elapsed time scales with the number of reads, so a run that reads more often (for
+    /// example with phase timing) sees more elapsed time.
     pub fn with_auto_advance(step: Duration) -> Self {
         Self {
             time: Arc::new(Mutex::new(Duration::ZERO)),

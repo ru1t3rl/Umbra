@@ -20,17 +20,23 @@ use crate::error::KernelError;
 
 pub use wall::{ManualWallClock, StdWallClock, WallClock};
 
-/// A positive, finite wall-time speed-up factor (`2.0` = twice as fast as real time).
+/// A wall-time speed-up factor in `[1e-3, 1e6]` (`2.0` = twice as fast as real time).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TimeScale(f64);
 
 impl TimeScale {
+    /// The smallest accepted factor.
+    pub const MIN: f64 = 1e-3;
+    /// The largest accepted factor.
+    pub const MAX: f64 = 1e6;
+
     /// Validates the factor.
     ///
     /// # Errors
-    /// [`ClockError::InvalidScale`] unless `s` is finite and strictly positive.
+    /// [`ClockError::InvalidScale`] unless `s` is finite and within `[MIN, MAX]`
+    /// (`[1e-3, 1e6]`).
     pub fn new(s: f64) -> Result<Self, ClockError> {
-        if s.is_finite() && s > 0.0 {
+        if (Self::MIN..=Self::MAX).contains(&s) {
             Ok(Self(s))
         } else {
             Err(ClockError::InvalidScale)
@@ -48,7 +54,7 @@ impl TimeScale {
 #[non_exhaustive]
 pub enum ClockError {
     /// A time scale was zero, negative, NaN or infinite.
-    #[error("time scale must be finite and > 0")]
+    #[error("time scale must be finite and within [0.001, 1000000]")]
     InvalidScale,
 }
 
@@ -116,8 +122,16 @@ impl Clock {
         self.mode
     }
 
-    /// Switches mode and re-anchors the real-time schedule. Pending steps are kept.
+    /// Switches mode and re-anchors the real-time schedule. Setting the current mode again does
+    /// nothing. Leaving stepped mode drops its pending steps, so they cannot fire after a later
+    /// return to it.
     pub fn set_mode(&mut self, m: ClockMode) {
+        if m == self.mode {
+            return;
+        }
+        if self.mode == ClockMode::Stepped {
+            self.pending_steps = 0;
+        }
         self.mode = m;
         self.anchor = None;
     }
@@ -175,6 +189,9 @@ impl Clock {
             .now
             .checked_next()
             .ok_or(KernelError::TimeOverflow(self.now.tick()))?;
+        if self.scale().is_some() && !self.paused {
+            self.anchor_now();
+        }
         if self.mode == ClockMode::Stepped {
             self.pending_steps = self.pending_steps.saturating_sub(1);
         }
@@ -182,18 +199,17 @@ impl Clock {
         Ok(next)
     }
 
-    /// In real-time and scaled modes: how far the wall clock is past the next tick's deadline,
-    /// when that lag exceeds one (wall) tick period (REQ-K-8). `None` otherwise, also before the
-    /// first poll and while paused.
+    /// In real-time and scaled modes: how far the wall clock is past the deadline of the tick
+    /// just run, when that lag exceeds one (wall) tick period (REQ-K-8). Call it after
+    /// [`advance`](Self::advance). `None` otherwise, also while paused or before any tick since
+    /// the last anchor.
     pub fn behind(&self) -> Option<Duration> {
         let (anchor_wall, anchor_tick) = self.anchor?;
         let scale = self.scale()?;
         let hz = self.now.rate().hz();
-        let due = anchor_wall.saturating_add(wall_offset(
-            self.now.tick().saturating_sub(anchor_tick),
-            hz,
-            scale,
-        ));
+        let last_run = self.now.tick().checked_sub(1)?;
+        let ticks = last_run.checked_sub(anchor_tick)?;
+        let due = anchor_wall.saturating_add(wall_offset(ticks, hz, scale));
         let lag = self.wall.now().saturating_sub(due);
         (lag > wall_offset(1, hz, scale)).then_some(lag)
     }
@@ -217,12 +233,16 @@ impl Clock {
         }
     }
 
+    /// Sets the anchor to (wall now, current tick) unless one exists.
+    fn anchor_now(&mut self) -> (Duration, u64) {
+        *self
+            .anchor
+            .get_or_insert_with(|| (self.wall.now(), self.now.tick()))
+    }
+
     /// Wall time at which the tick `now` is due, anchoring the schedule first if necessary.
     fn next_deadline(&mut self) -> Duration {
-        let anchor = *self
-            .anchor
-            .get_or_insert_with(|| (self.wall.now(), self.now.tick()));
-        let (anchor_wall, anchor_tick) = anchor;
+        let (anchor_wall, anchor_tick) = self.anchor_now();
         let scale = self.scale().unwrap_or(1.0);
         let ticks = self.now.tick().saturating_sub(anchor_tick);
         anchor_wall.saturating_add(wall_offset(ticks, self.now.rate().hz(), scale))

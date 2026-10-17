@@ -244,15 +244,141 @@ fn behind_schedule_catches_up_without_skipping_and_reports_behind() {
     assert_eq!(c.behind(), None, "caught up");
 }
 
-/// REQ-K-8: lag within one period is not reported.
+/// REQ-K-8: lag is measured against the deadline of the tick just run. Tick 0 was due at the
+/// anchor, so 150 ms later (one 100 ms period plus 50 ms) the clock is behind.
 #[test]
-fn lag_within_one_period_is_not_behind() {
+fn tick_finished_more_than_one_period_late_is_behind() {
     let (mut c, wall) = clock(ClockMode::RealTime);
     tick(&mut c);
 
     wall.advance(Duration::from_millis(150));
 
-    assert_eq!(c.behind(), None);
+    assert_eq!(c.behind(), Some(Duration::from_millis(150)));
+}
+
+/// REQ-K-8: the boundary is one period: P + 1 ms is behind, P - 1 ms and P are not.
+#[test]
+fn behind_boundary_is_one_period() {
+    for (ms, behind) in [(101, true), (100, false), (99, false)] {
+        let (mut c, wall) = clock(ClockMode::RealTime);
+        tick(&mut c);
+
+        wall.advance(Duration::from_millis(ms));
+
+        assert_eq!(c.behind().is_some(), behind, "{ms} ms");
+    }
+}
+
+/// REQ-K-8: the same boundary on a later tick of a schedule (tick 1 was due at 100 ms).
+#[test]
+fn behind_boundary_holds_on_later_ticks() {
+    for (ms, behind) in [(201, true), (199, false)] {
+        let (mut c, wall) = clock(ClockMode::RealTime);
+        tick(&mut c);
+        wall.advance(PERIOD);
+        tick(&mut c);
+
+        wall.advance(Duration::from_millis(ms - 100));
+
+        assert_eq!(c.behind().is_some(), behind, "wall at {ms} ms");
+    }
+}
+
+/// REQ-K-8: scaled clocks measure against the scaled period (25 ms at 4x): a 30 ms lag is
+/// reported, a 20 ms lag is not.
+#[test]
+fn scaled_clock_reports_lag_beyond_the_scaled_period() {
+    for (ms, behind) in [(30, true), (20, false)] {
+        let (mut c, wall) = clock(ClockMode::Scaled(scale(4.0)));
+        tick(&mut c);
+
+        wall.advance(Duration::from_millis(ms));
+
+        assert_eq!(c.behind().is_some(), behind, "{ms} ms");
+    }
+}
+
+/// REQ-K-8: `behind` also works when the driver advanced without polling first (`advance`
+/// anchors the schedule if needed).
+#[test]
+fn behind_works_without_a_prior_poll() {
+    let (mut c, wall) = clock(ClockMode::RealTime);
+    assert!(c.advance().is_ok());
+
+    wall.advance(Duration::from_millis(150));
+
+    assert!(c.behind().is_some());
+}
+
+/// REQ-K-3: switching from real time to a scaled mode after a long wall gap re-anchors: exactly
+/// one tick is due, then the next wait is one scaled period away.
+#[test]
+fn switching_to_scaled_after_a_gap_does_not_burst() {
+    let (mut c, wall) = clock(ClockMode::RealTime);
+    for _ in 0..3 {
+        wall.advance(PERIOD);
+        tick(&mut c);
+    }
+    wall.advance(Duration::from_secs(10));
+
+    c.set_mode(ClockMode::Scaled(scale(4.0)));
+    let (ticks, then) = drain_ticks(&mut c, 1000);
+
+    assert_eq!(ticks, 1);
+    let Pace::WaitUntil(next) = then else {
+        panic!("expected a wait, got {then:?}");
+    };
+    assert!(near(next, Duration::from_millis(10_300 + 25)), "{next:?}");
+}
+
+/// REQ-K-3: leaving stepped mode drops pending steps, so they cannot fire after a later return;
+/// setting the current mode again keeps them.
+#[test]
+fn set_mode_away_from_stepped_clears_pending_steps() {
+    let (mut c, _wall) = clock(ClockMode::Stepped);
+    c.request_steps(5);
+    c.set_mode(ClockMode::Stepped);
+    assert_eq!(c.poll(), Pace::Tick, "same mode keeps the steps");
+
+    c.set_mode(ClockMode::AsFastAsPossible);
+    c.set_mode(ClockMode::Stepped);
+
+    assert_eq!(c.poll(), Pace::Idle);
+}
+
+/// REQ-K-3: setting the current mode again does not re-anchor the schedule.
+#[test]
+fn set_mode_to_the_current_mode_keeps_the_schedule() {
+    let (mut c, wall) = clock(ClockMode::RealTime);
+    tick(&mut c);
+    wall.advance(Duration::from_millis(500));
+
+    c.set_mode(ClockMode::RealTime);
+
+    assert!(c.behind().is_some(), "still 400 ms late");
+}
+
+/// REQ-K-3: a time scale is limited to [1e-3, 1e6].
+#[test]
+fn time_scale_is_limited_to_a_sane_range() {
+    for bad in [0.0009, 1e-4, 1_000_001.0, 1e7] {
+        assert!(TimeScale::new(bad).is_err(), "{bad}");
+    }
+    for ok in [1e-3, 1.0, 1e6] {
+        assert!(TimeScale::new(ok).is_ok(), "{ok}");
+    }
+}
+
+/// ASM-035: a read returns the time before the auto-advance step is applied.
+#[test]
+fn manual_wall_clock_auto_advance_reads_then_advances() {
+    let wall = ManualWallClock::with_auto_advance(Duration::from_millis(10));
+
+    let first = wall.now();
+    let second = wall.now();
+
+    assert_eq!(first, Duration::ZERO);
+    assert_eq!(second, Duration::from_millis(10));
 }
 
 /// REQ-K-8: modes without a wall schedule are never behind.
