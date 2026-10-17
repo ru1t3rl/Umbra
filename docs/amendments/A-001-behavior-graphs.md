@@ -1,6 +1,6 @@
 # Amendment A-001: Behavior graphs, subgraphs and the behavior editor
 
-Status: Accepted. Spec version: v0.1 -> v0.2. Decisions: D-18, D-19.
+Status: Accepted. Spec version: v0.1 -> v0.2. Decisions: D-26, D-27 (published as D-18/D-19; renumbered 2026-10-17 because the v0.1-based patch dropped the project's existing D-18..D-25, which were restored).
 
 ## Decision
 - The primary declarative behavior format is a **behavior tree** with two extra node types: **`fsm`** (embedded finite state machine, optionally hierarchical) and **`subgraph`** (reference to another graph by ID).

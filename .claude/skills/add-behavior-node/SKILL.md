@@ -5,7 +5,7 @@ description: Add a new node type, condition or action to the behavior graph runt
 
 # Add a behavior node type, condition or action
 
-Requirements: REQ-B-1, B-6..17, REQ-T-3, D-18, amendment A-001. Owner: `rust-engineer`.
+Requirements: REQ-B-1, B-6..17, REQ-T-3, D-26, amendment A-001. Owner: `rust-engineer`.
 
 1. **Decide the kind**: new node *type* (changes the format; needs an ADR and a `schema_version` consideration) vs new *condition/action* (a catalog entry; no format change). Prefer a condition/action.
 2. **Contract**: pure read of state and perception; writes intents only (REQ-B-1). Define the result (Success/Failure/Running) for every input, including missing perception data.

@@ -10,7 +10,7 @@ Source of truth: `docs/SPEC.md` (export of the "CGF Engine: Software Specificati
 5. `unsafe` only in `cgf-plugin-api`, `cgf-plugin-host`, `cgf-sdk`; every block has `// SAFETY:` and a test. Everywhere else `#![forbid(unsafe_code)]`.
 6. No `unwrap`/`expect` on external input. `thiserror` in libraries, `anyhow` only in binaries.
 7. Determinism (REQ-K-4): no wall clock, no `HashMap` iteration order, no ad-hoc randomness inside simulation logic. Use `Clock` and `SimRng`.
-8. Definition of done for any change: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, determinism test, dependency-rule check all pass; docs and tests updated; commit references requirement IDs.
+8. Definition of done for any change: every gate in the ordered local gate list in `docs/build.md` passes (it is canonical; there is no CI, see ADR 0004 / D-19); docs and tests updated; commit references requirement IDs.
 
 ## Team (subagents in `.claude/agents/`)
 | Agent | Use for |
@@ -60,4 +60,9 @@ Rules:
 - Never set `CLAUDE_CODE_SUBAGENT_MODEL`; it overrides every agent's `model:` and defeats this policy.
 - Escalation: if a Sonnet agent fails twice on the same task (hard determinism bug, tricky protocol issue), re-run that task with a per-invocation model override to Opus. Do not permanently upgrade the agent.
 - Skills run in the main session's model. Use Opus (`/model`) when planning or orchestrating a milestone, Sonnet for routine execution.
-- Verify with `/agents` after changing any frontmatter.
+- Verify after changing any frontmatter: ask Claude "list the project subagents and their models" or open the files in `.claude/agents/`. (The `/agents` wizard was removed in Claude Code v2.1.198.) Restart Claude Code if a new or edited agent is not picked up.
+
+## Amendments
+`docs/amendments/` holds accepted spec amendments; they override `docs/SPEC.md` text where they differ until SPEC.md is updated.
+- A-001 (behavior graphs, subgraphs, editor; decisions D-26, D-27): see docs/amendments/A-001-behavior-graphs.md. M0-M2 are frozen: additive changes only; M2 fixtures must keep passing; a breaking change requires an ADR with a migration plan.
+Skills: `add-subgraph`, `add-behavior-node`.

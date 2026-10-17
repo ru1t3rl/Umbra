@@ -19,10 +19,12 @@ Companion to spec sections 12-13 and `gui/CLAUDE.md`. Defines how the GUI is org
 | `@cgf/template-browser` | feature | domain | Browse templates, render param forms from JSON Schema |
 | `@cgf/plugin-status` | feature | domain | Plugins, capabilities, adapters, faults |
 | `@cgf/log-view` | feature | domain | Engine log stream |
+| `@cgf/behavior-editor` | feature | domain | Node-and-arrow graph canvas (xyflow/React Flow behind an interface), property forms from catalog JSON Schemas, validation display, subgraph library panel, convert-selection-to-subgraph, `[editor]` layout persistence (A-001, M8b) |
 | `@cgf/shell-dashboard` | shell | | Map + controls + inspector |
 | `@cgf/shell-templates` | shell | | Template browser page |
 | `@cgf/shell-plugins` | shell | | Plugin/adapter status page |
 | `@cgf/shell-settings` | shell | | Engine connection and app settings |
+| `@cgf/shell-behaviors` | shell | | Behavior list, editor, validation and (later) live preview page (A-001, M8b) |
 
 ## 3. Dependency graph
 ```

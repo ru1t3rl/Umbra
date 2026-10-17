@@ -5,7 +5,7 @@ description: Create a reusable behavior subgraph (declarative file, built-in, or
 
 # Add a subgraph
 
-Requirements: REQ-B-6..17, D-18, amendment A-001. Owner: `rust-engineer` (declarative/built-in) or `plugin-abi-engineer` (plugin-provided).
+Requirements: REQ-B-6..17, D-26, amendment A-001. Owner: `rust-engineer` (declarative/built-in) or `plugin-abi-engineer` (plugin-provided).
 
 1. **Purpose and interface first.** One responsibility ("suppress target", "move to cover"). Define `[interface]`: typed params (JSON Schema, with defaults), named outputs if any, and what Success, Failure and Running mean. Keep the interface small; it is a public contract (REQ-B-10, B-14).
 2. **File**: `<namespace>.<name>.behavior.toml` with `id`, `schema_version`, `version` (semver), `[interface]`, `root`, nodes. No hidden shared state: use only params and the instance's scoped blackboard (REQ-B-11). Randomness only via `SimRng`, time only via `SimTime` (REQ-B-16).

@@ -2,7 +2,7 @@
 
 *Computer Generated Forces engine: headless Rust simulation core, plugin SDK, optional control API and GUI.*
 
-> **Changelog v0.1 -> v0.2 (amendment A-001, behavior graphs and subgraphs).** Adds D-18, D-19, section 8.1 (REQ-B-6..17), REQ-X-10..12, `condition`/`action` plugin kinds, and milestone changes to M3, M5, M7 and new M8b. **Compatibility:** M0-M2 deliverables are frozen and unchanged. Existing template and scenario files stay valid; behavior graphs reuse the M2 loader, registry and validation pipeline. Details: `docs/amendments/A-001-behavior-graphs.md`.
+> **Changelog v0.1 -> v0.2 (amendment A-001, behavior graphs and subgraphs).** Adds D-26, D-27, section 8.1 (REQ-B-6..17), REQ-X-10..12, `condition`/`action` plugin kinds, and milestone changes to M3, M5, M7 and new M8b. **Compatibility:** M0-M2 deliverables are frozen and unchanged. Existing template and scenario files stay valid; behavior graphs reuse the M2 loader, registry and validation pipeline. Details: `docs/amendments/A-001-behavior-graphs.md`.
 
 > Note: GUI structure and tooling are further specified in `gui/CLAUDE.md` and `docs/frontend-architecture.md`, which supersede section 13 where they differ.
 
@@ -61,8 +61,16 @@ A Computer Generated Force (CGF) simulates many autonomous entities (vehicles, a
 | D-15 | **f64 positions; ECEF/WGS-84 canonical frame**, local ENU/NED for motion math | Matches DIS; avoids precision loss globally | f32, flat-earth only |
 | D-16 | **Owned vs. remote (ghost) entities are distinct** | Ghosts are dead-reckoned only; avoids running behavior on others' entities and echo loops | Treating all entities the same |
 | D-17 | **Declarative behaviors (FSM/behavior tree) in data first; native plugins for complex logic; scripting optional later** | Most users need no code; layering by complexity | Plugins as the only way |
-| D-18 | **Behavior graphs: behavior tree as the primary format, with `fsm` and `subgraph` as node types** (A-001) | In a tree a subtree is just a node, so reuse of pre-built pieces (own, built-in, plugin, third-party) needs only a simple result interface; FSM nodes cover mode-based logic; both emit the same intents, so the engine core is unchanged; visual authoring stays simple | FSM-only (reuse needs exit-point design, nested transitions get tangled), tree-only (modal logic awkward), free-form scripting (determinism and test surface) |
-| D-19 | **Visual behavior editor is part of the GUI**, driven by an engine **catalog** and **validation** API (A-001) | No second client to build and package; plugins extend the editor automatically; one validation pipeline | Separate editor application; hard-coded node palette in the GUI |
+| D-18 | **License: `MIT OR Apache-2.0` for the whole workspace**, plugin API and SDK included (ADR 0001) | Rust ecosystem norm; permissive enough that third parties can ship closed-source plugins, so the SDK needs no separate license | MPL-2.0 engine, proprietary, separate SDK license |
+| D-19 | **No hosted CI; the local `verify-and-build` run is the quality gate** (ADR 0004). Read "CI" in this spec as that run. M0 acceptance 1 is waived | The project has no remote and will not use CI; all gates stay scripted commands | GitHub Actions as specified |
+| D-20 | **ECS is `hecs`, kernel-internal only** (ADR 0005); entities addressed by `EntityId`, iteration in `EntityId` order | No scheduler of its own (our phase pipeline orders work), small dependency tree, deterministic use is easy to enforce | `bevy_ecs` (multi-threaded executor by default, frequent breaking releases), own ECS |
+| D-21 | **`SimRng` is hand-rolled Xoshiro256\*\* with SplitMix64 key expansion; streams keyed by (domain, id)** (ADR 0006) | A dependency bump can never change what a seed produces; per-entity streams keep results independent of iteration and spawn order | `rand`/`rand_chacha`, one global stream |
+| D-22 | **State hash is FNV-1a 64 over a versioned little-endian canonical encoding, walked in `EntityId` order; -0.0 and NaN canonicalised; v2 includes route content (ADR 0007 amendment)** (ADR 0007) | Stable by construction, no dependency, cheap; hashes are for equality checks, not security | xxHash/BLAKE3 crates, hashing `Debug` output |
+| D-23 | **Component registry and generic `Factory<T>` live in `cgf-core`; component parameters are `serde_json::Value` with hand-written JSON Schemas; no serde derives on domain types** (ADR 0008) | `cgf-templates` may only see `cgf-core` (section 4); one registry for built-ins and plugins (REQ-T-1, D-8); schemas are the component's contract (REQ-T-3) | Registry in `cgf-engine`, `schemars`, serde derives on core types |
+| D-24 | **Hand-rolled validator for a documented JSON Schema keyword subset; schemas using other keywords are rejected** (ADR 0009) | Small, deterministic, no heavy dependency; fail-closed | `jsonschema` crate |
+| D-25 | **Template and scenario file format v1** (ADR 0010): keys, merge rules, initial routes in placements, `schema_version` policy (adding keys does not bump it), diagnostics `path:line:col: error[code]: message` | REQ-T-1..6, D-14 | Ad-hoc per-milestone formats |
+| D-26 | **Behavior graphs: behavior tree as the primary format, with `fsm` and `subgraph` as node types** (A-001) | In a tree a subtree is just a node, so reuse of pre-built pieces (own, built-in, plugin, third-party) needs only a simple result interface; FSM nodes cover mode-based logic; both emit the same intents, so the engine core is unchanged; visual authoring stays simple | FSM-only (reuse needs exit-point design, nested transitions get tangled), tree-only (modal logic awkward), free-form scripting (determinism and test surface) |
+| D-27 | **Visual behavior editor is part of the GUI**, driven by an engine **catalog** and **validation** API (A-001) | No second client to build and package; plugins extend the editor automatically; one validation pipeline | Separate editor application; hard-coded node palette in the GUI |
 
 ## 3. System overview
 
@@ -336,9 +344,9 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 
 ## 19. Open questions (resolve before or during the named milestone)
 
-1. **M0:** Project license, and whether the SDK/plugin API gets a more permissive license than the engine.
-2. **M1:** Confirm A-1 (scale) and A-2 (determinism). Changes affect the scheduler and plugin RNG rules.
-3. ~~M3: Behavior trees vs FSM~~ **Resolved (A-001, D-18):** behavior tree primary, with `fsm` and `subgraph` as node types.
+1. **M0 (resolved 2026-10-17, D-18):** ~~Project license, and whether the SDK/plugin API gets a more permissive license than the engine.~~ `MIT OR Apache-2.0` everywhere.
+2. **M1 (resolved 2026-10-17):** ~~Confirm A-1 (scale) and A-2 (determinism). Changes affect the scheduler and plugin RNG rules.~~ Both confirmed by the human as written; A-2 scope is same-OS (ADR 0003).
+3. ~~M3: Behavior trees vs FSM~~ **Resolved (A-001, D-26):** behavior tree primary, with `fsm` and `subgraph` as node types.
 4. **M5:** Is command access control needed (more than one operator)? Currently out of scope.
 5. **M6:** Reuse an existing DIS crate or implement PDUs in-house (depends on license and coverage).
 6. **M8:** Map library (MapLibre 2D vs Cesium 3D).
