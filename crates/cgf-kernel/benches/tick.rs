@@ -21,7 +21,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 const A: f64 = 6_378_137.0;
 
-/// Moves the entity at a constant ECEF velocity of 1 m/s east-ish; ignores intents.
+/// Moves the entity at a constant ECEF velocity of 1 m/s along +y (east at longitude 0); ignores intents.
 struct ConstantVelocity {
     id: MotionModelId,
 }

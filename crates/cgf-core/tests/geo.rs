@@ -184,3 +184,29 @@ fn from_rotation_matrix_of_half_turn_about_x_flips_y_and_z() {
     assert!(near(q.rotate(v(0.0, 1.0, 0.0)), v(0.0, -1.0, 0.0)));
     assert!(near(q.rotate(v(0.0, 0.0, 1.0)), v(0.0, 0.0, -1.0)));
 }
+
+/// ASM-033: Euler angles are reported in `(-pi, pi]`: a heading or roll of exactly `-pi` comes back
+/// as `+pi`.
+#[test]
+fn euler_heading_and_roll_wrap_minus_pi_to_pi() {
+    use core::f64::consts::PI;
+
+    use cgf_core::Euler;
+
+    for (heading, roll) in [(-PI, 0.0), (0.0, -PI)] {
+        let q = Euler {
+            heading: Radians(heading),
+            pitch: Radians(0.0),
+            roll: Radians(roll),
+        }
+        .to_quaternion();
+
+        let back = Euler::from_quaternion(q);
+
+        if heading != 0.0 {
+            assert_eq!(back.heading.0, PI, "heading {heading}");
+        } else {
+            assert_eq!(back.roll.0, PI, "roll {roll}");
+        }
+    }
+}
