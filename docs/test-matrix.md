@@ -7,7 +7,7 @@ Files: `xtask/tests/check_rules.rs` (R), `xtask/tests/check_deps.rs` (D), `crate
 
 | AT | REQ-ID | Type | Test names (file) | Status |
 |---|---|---|---|---|
-| AT-1 | M0 acceptance 1, NFR-3 | CI evidence | CI run URL on M0 head: fmt, clippy, test, check-deps, deny, audit on ubuntu and windows | pending (needs remote, WI-2) |
+| AT-1 | M0 acceptance 1, NFR-3 | CI evidence | CI run URL on M0 head: fmt, clippy, test, check-deps, deny, audit on ubuntu and windows | waived (ADR 0004, no CI); replaced by the local gate passing on Linux at e785518 |
 | AT-2 | REQ-A-1 | unit | `given_core_depends_on_kernel_when_checked_then_req_a1_violation`, `given_core_with_only_external_dep_when_checked_then_no_violation` (R) | failing (WI-3) |
 | AT-3 | REQ-A-2 | unit | `given_kernel_depends_on_server_when_checked_then_req_a2_violation`, `given_kernel_depends_on_net_dis_when_checked_then_req_a2_violation`, `given_kernel_depends_on_core_when_checked_then_no_violation` (R) | failing (WI-3) |
 | AT-4 | REQ-A-3, section 4 | unit | `given_sdk_depends_on_core_when_checked_then_req_a3_violation`, `given_sdk_depends_on_plugin_api_when_checked_then_no_violation`, `given_plugin_api_has_external_dep_when_checked_then_violation`, `..._external_build_dep_...`, `..._external_dev_dep_...no_violation` (R) | failing (WI-3) |
@@ -17,6 +17,6 @@ Files: `xtask/tests/check_rules.rs` (R), `xtask/tests/check_deps.rs` (D), `crate
 | AT-8 | REQ-C-1, D-5 | unit + proptest | all tests in `time.rs` incl. `next_strictly_increases_tick_and_never_decreases_seconds`, `as_seconds_is_bitwise_tick_over_hz` | passing (18 tests, WI-6) |
 | AT-9 | REQ-C-2, ADR 0002 | unit + proptest | all tests in `ids.rs` incl. `display_then_parse_round_trips`, `validator_matches_reference_grammar` | passing (29 tests, WI-7) |
 | AT-10 | REQ-C-4 | unit + proptest | all tests in `units.rs` incl. `degrees_to_radians_and_back_round_trips`; 3 `compile_fail` doctests | passing (14 tests + 3 doctests, WI-5) |
-| AT-11 | NFR-2, NFR-4, REQ-K-4 | manual mutation | clippy fails on `Instant::now`/`HashMap` (WI-1, done); `cargo deny` fails on GPL dep (WI-4); fmt job fails on bad format (WI-2) | manual, recorded in PRs |
+| AT-11 | NFR-2, NFR-4, REQ-K-4 | manual mutation | clippy fails on `Instant::now`/`HashMap` (WI-1, done); `cargo deny` fails on GPL dep (WI-4); ~~fmt job fails on bad format (WI-2)~~ dropped (ADR 0004) | done; evidence in the M0 running log (incl. dev-dep GPL with `include-dev`) |
 
 Uncovered in M0 (by design): REQ-A-4 (M8, ASM-021), REQ-K-4 determinism gate (M1, ASM-019), NFR-1 benchmarks (later).
