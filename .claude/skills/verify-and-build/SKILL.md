@@ -14,7 +14,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo test -p cgf-engine --test determinism --locked        # determinism gate (from M1; skipped in M0, ASM-019)
-cargo xtask check-deps                                       # REQ-A-1..4 dependency rules
+cargo xtask check-deps                                       # REQ-A-1..3 dependency rules + NFR-2 (REQ-A-4 is the GUI check, from M8)
 cargo deny check                                             # licenses, bans, sources, advisories
 cargo audit                                                  # vulnerabilities in Cargo.lock
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked

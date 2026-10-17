@@ -5,16 +5,18 @@ and `unsafe_targets` fixtures were added by the build-engineer from the reviewer
 0a25b26). Each directory is a self-contained mini-workspace (own `[workspace]` table) so the parent
 workspace does not absorb it. Package names reuse the real crate names so the real rule table applies.
 
-Every fixture has a committed `Cargo.lock`, because `check-deps` also runs
+Every fixture except `resolve_fails` has a committed `Cargo.lock`, because `check-deps` also runs
 `cargo metadata --offline --locked --all-features` (resolved pass, ASM-005). Everything is offline:
 non-member packages are local directories excluded from the fixture workspace. To regenerate a lockfile
 after editing a fixture, run `cargo generate-lockfile --offline` inside the fixture directory.
 
-`fake_external` stands for any external dependency (ASM-006). Members declare it as a **registry**
-dependency (`fake_external = "0.1"`), so the `--no-deps` pass sees an external edge. The fixture root
-has `[patch.crates-io] fake_external = { path = "fake_external" }` only so the resolved pass can
-resolve it offline; it has no dependencies, so the resolved pass finds nothing wrong with it. There is
-no allow-list for path dependencies in the production rule table.
+`fake_external` stands for any external dependency (ASM-006). Members of `violating` and `conforming`
+declare it as a **registry** dependency (`fake_external = "0.1"`), so the `--no-deps` pass sees an
+external edge. Their `.cargo/config.toml` replaces crates.io with the directory source `vendor/`, and
+`vendor/fake_external/.cargo-checksum.json` is `{"files":{},"package":null}`. So the resolved pass
+sees a package with a crates.io source (not a path package) and resolves it offline. Do not use
+`[patch]` for this: a patched path package is itself a violation (`NonMemberPathPackage`). There is no
+allow-list for path packages in the production rule table.
 
 ## violating (expected violations, see xtask/tests/check_deps.rs)
 | Edge | Kind | Rule |
@@ -27,7 +29,7 @@ no allow-list for path dependencies in the production rule table.
 | cgf-plugin-api -> fake_external | normal and build (registry dependency) | section 4 / ASM-009 |
 | cgf-motion -> cgf-kernel | normal, renamed `k = { package = "cgf-kernel" }` | section 4 |
 | cgf-mystery | not in rule table | unknown crate |
-| cgf-cli -> shim | normal, path dependency outside the workspace (`shim` depends on `cgf-kernel`, which is in `cgf-cli`'s allowed closure, so only the direct pass reports it) | non-member path dependency (ASM-006) |
+| cgf-cli -> shim | normal, path dependency outside the workspace (`shim` depends on `cgf-kernel`, which is in `cgf-cli`'s allowed closure, so there is no indirect violation) | `NonMemberPathDep` and `NonMemberPathPackage` (ASM-006) |
 | cgf-net-dis | no `[lints] workspace = true` | ASM-024 |
 
 The resolved pass reports the same direct member edges; `check_workspace` removes the duplicates.
@@ -45,6 +47,16 @@ externals are forbidden there).
 | `launder_config_patch` | the same `shim` patch in `.cargo/config.toml` of the fixture (applied because cargo runs in the fixture directory) | `REQ-A-3: cgf-sdk -> shim -> cgf-kernel (resolved)` |
 | `launder_same_name` | `cgf-sdk -> cgf-plugin-api = { path = "../../impostor" }`, a non-member named `cgf-plugin-api` 9.0.0 that depends on `cgf-kernel` | `NonMemberPathDep`, `ImpostorPackage`, `cgf-sdk -> cgf-plugin-api -> cgf-kernel (resolved)` |
 | `launder_fake_external` | `cgf-sdk -> fake_external = { path = ... }` that depends on `cgf-kernel` (the former allow-list name) | `NonMemberPathDep`, `cgf-sdk -> fake_external -> cgf-kernel (resolved)` |
+| `launder_unsafe_patch` | root `[patch.crates-io]`: `cgf-core -> shim = "1"` is patched to `./shim`, a non-member with `unsafe` code and no `forbid` | `NonMemberPathPackage` for `shim` only |
+
+Every `launder_*` fixture also reports its non-member path package (`shim`, `impostor`,
+`fake_external`) as `NonMemberPathPackage`, and `launder_patch` reports the registry-named
+`cgf-kernel = "0.1"` of `cgf-net-dis` as `ImpostorDep`.
+
+## resolve_fails (no `Cargo.lock` on purpose)
+`cgf-sdk -> cgf-kernel = { git = "https://example.invalid/..." }` cannot be resolved offline. The
+binary prints the declared-pass violations (`REQ-A-1: cgf-core -> cgf-kernel`, `ImpostorDep` for the
+git `cgf-kernel`), then the resolved-graph error, and exits 2.
 
 Git-source laundering is covered by the same resolved check (it is source-agnostic) but has no
 fixture, because a git dependency cannot be resolved offline without an absolute `file://` URL.
@@ -55,7 +67,8 @@ Every target root except those of `cgf-plugin-api`, `cgf-plugin-host` and `cgf-s
 empty `lib.rs` (expected `MissingForbidUnsafe`). The FFI crates present in each fixture
 (`cgf-plugin-api` and `cgf-sdk` in both, `cgf-plugin-host` only in `conforming`) stay empty to prove
 they are exempt. Every member has `[lints] workspace = true`, except `violating/crates/cgf-net-dis`.
-Non-member packages (`shim`, `impostor`, `fake_external`) are not checked.
+Non-member packages (`shim`, `impostor`, `fake_external`) are not scanned; as path packages they are
+violations themselves.
 
 ## single-violation fixtures
 - `unsafe_only`: one crate, `cgf-core`, whose only problem is a missing `#![forbid(unsafe_code)]`.

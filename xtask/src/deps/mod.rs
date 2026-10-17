@@ -122,6 +122,26 @@ pub enum Violation {
         /// Cargo package id (shows the source).
         id: String,
     },
+    /// A declared dependency uses the name of a workspace or rule-table crate but is not a path
+    /// dependency on that member, for example a git or registry `cgf-kernel` (ASM-006).
+    ImpostorDep {
+        /// Depending crate.
+        from: String,
+        /// Dependency name.
+        to: String,
+        /// Edge kind.
+        kind: DepKind,
+    },
+    /// A resolved non-member package comes from a local path (path dependency, `[patch]` or
+    /// `[replace]`), so its code escapes the forbid and lints checks (ASM-006, NFR-2).
+    NonMemberPathPackage {
+        /// Package name.
+        name: String,
+        /// Package version.
+        version: String,
+        /// Cargo package id.
+        id: String,
+    },
     /// A crate root or manifest could not be parsed, so it cannot be verified (ASM-024).
     UnparsableSource {
         /// Package name.
@@ -210,6 +230,13 @@ impl Violation {
             Violation::ImpostorPackage { name, version, id } => format!(
                 "ASM-006: package {name} {version} ({id}) has a workspace crate name but is not that workspace member"
             ),
+            Violation::ImpostorDep { from, to, kind } => format!(
+                "ASM-006: {from} -> {to} ({}) uses the name of a workspace crate but is not a path dependency on that member",
+                kind.label()
+            ),
+            Violation::NonMemberPathPackage { name, version, id } => format!(
+                "ASM-006: package {name} {version} ({id}) is a path package outside the workspace (path dependency, [patch] or [replace]); its code is not checked"
+            ),
             Violation::UnparsableSource {
                 package,
                 file,
@@ -253,6 +280,12 @@ pub fn check(graph: &WorkspaceGraph, rules: &RuleSet) -> Vec<Violation> {
                 to: e.to.clone(),
                 kind: e.kind,
             });
+        } else if graph.members.contains(&e.to) || rules.get(&e.to).is_some() {
+            out.insert(Violation::ImpostorDep {
+                from: e.from.clone(),
+                to: e.to.clone(),
+                kind: e.kind,
+            });
         } else if !rule.allow_external_deps && e.kind != DepKind::Dev {
             out.insert(Violation::ExternalDepNotAllowed {
                 from: e.from.clone(),
@@ -272,13 +305,22 @@ pub fn check(graph: &WorkspaceGraph, rules: &RuleSet) -> Vec<Violation> {
 /// - a member reached through non-member packages must be in the transitive closure of its
 ///   allow-list. Members are not expanded: their own edges are checked from their side.
 ///
-/// Every non-member package that has the name of a member or a rule-table crate is reported.
+/// Every non-member package that has the name of a member or a rule-table crate is reported, and
+/// so is every non-member package without a source (a local path package, however it got into the
+/// graph: path dependency, `[patch]` or `[replace]`). There is no allow-list (ASM-006).
 #[must_use]
 pub fn check_resolved(graph: &ResolvedGraph, rules: &RuleSet) -> Vec<Violation> {
     let mut out = BTreeSet::new();
     let name = |id| graph.name(id);
     let member_names: BTreeSet<&str> = graph.members.iter().map(|id| name(id)).collect();
     for (id, p) in &graph.packages {
+        if !graph.members.contains(id) && p.source.is_none() {
+            out.insert(Violation::NonMemberPathPackage {
+                name: p.name.clone(),
+                version: p.version.clone(),
+                id: id.clone(),
+            });
+        }
         let taken = member_names.contains(p.name.as_str()) || rules.get(&p.name).is_some();
         if !graph.members.contains(id) && taken {
             out.insert(Violation::ImpostorPackage {
@@ -427,8 +469,8 @@ pub fn check_workspace_lints(manifests: &[Manifest]) -> Vec<Violation> {
 pub struct Workspace {
     /// Members and declared direct dependency edges.
     pub graph: WorkspaceGraph,
-    /// Resolved graph by package id.
-    pub resolved: ResolvedGraph,
+    /// Resolved graph by package id; `None` until loaded (see [`Workspace::load_declared`]).
+    pub resolved: Option<ResolvedGraph>,
     /// Crate roots of all members.
     pub roots: Vec<CrateRoot>,
     /// Member manifests.
@@ -436,25 +478,36 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    /// Loads the workspace (with `None`, cargo searches upward from the working directory).
+    /// Loads both passes (with `None`, cargo searches upward from the working directory).
     /// Fails, rather than skipping the resolved pass, when the resolved graph cannot be loaded.
     pub fn load(manifest_path: Option<&std::path::Path>) -> Result<Self, LoadError> {
+        let mut ws = Self::load_declared(manifest_path)?;
+        ws.resolved = Some(ResolvedGraph::load(manifest_path)?);
+        Ok(ws)
+    }
+
+    /// Loads only the declared pass (`cargo metadata --no-deps`); `resolved` is `None`. The
+    /// binary uses this to print declared diagnostics even when resolution fails.
+    pub fn load_declared(manifest_path: Option<&std::path::Path>) -> Result<Self, LoadError> {
         let meta = load::Metadata::load(manifest_path)?;
         Ok(Self {
             graph: meta.graph()?,
-            resolved: ResolvedGraph::load(manifest_path)?,
+            resolved: None,
             roots: meta.crate_roots()?,
             manifests: meta.manifests()?,
         })
     }
 }
 
-/// All `check-deps` checks; the result is sorted and free of duplicates (both passes report a
-/// forbidden direct member edge identically).
+/// All `check-deps` checks on what is loaded; the result is sorted and free of duplicates (both
+/// passes report a forbidden direct member edge identically). Without a resolved graph only the
+/// declared checks run, which is not a complete check.
 #[must_use]
 pub fn check_workspace(ws: &Workspace, rules: &RuleSet) -> Vec<Violation> {
     let mut violations = check(&ws.graph, rules);
-    violations.extend(check_resolved(&ws.resolved, rules));
+    if let Some(resolved) = &ws.resolved {
+        violations.extend(check_resolved(resolved, rules));
+    }
     violations.extend(check_forbid_unsafe(&ws.roots));
     violations.extend(check_workspace_lints(&ws.manifests));
     violations.sort();

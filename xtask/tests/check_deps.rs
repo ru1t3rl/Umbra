@@ -47,10 +47,28 @@ fn load_graph(manifest: &Path) -> WorkspaceGraph {
     reason = "test helper: a fixture that fails to load is a test error"
 )]
 fn workspace_violations(name: &str) -> Vec<Violation> {
-    check_workspace(
+    let mut v = check_workspace(
         &Workspace::load(Some(&fixture(name))).expect("load"),
         &RULES,
-    )
+    );
+    // Package ids contain absolute paths; tests compare them as `<id>`.
+    for x in &mut v {
+        if let Violation::NonMemberPathPackage { id, .. } | Violation::ImpostorPackage { id, .. } =
+            x
+        {
+            *id = "<id>".to_string();
+        }
+    }
+    v.sort();
+    v
+}
+
+fn path_pkg(name: &str, version: &str) -> Violation {
+    Violation::NonMemberPathPackage {
+        name: name.into(),
+        version: version.into(),
+        id: "<id>".into(),
+    }
 }
 
 fn combined(out: &Output) -> String {
@@ -481,6 +499,12 @@ fn given_root_patch_launder_when_checked_then_exact_violations() {
             requirement: "section 4",
         },
         indirect("cgf-sdk", "shim", "cgf-kernel"),
+        Violation::ImpostorDep {
+            from: "cgf-net-dis".into(),
+            to: "cgf-kernel".into(),
+            kind: DepKind::Normal,
+        },
+        path_pkg("shim", "0.1.0"),
     ];
     expected.sort();
 
@@ -491,10 +515,13 @@ fn given_root_patch_launder_when_checked_then_exact_violations() {
 /// the checked workspace's directory.
 #[test]
 fn given_config_patch_launder_when_checked_then_exact_violations() {
-    assert_eq!(
-        workspace_violations("launder_config_patch"),
-        vec![indirect("cgf-sdk", "shim", "cgf-kernel")]
-    );
+    let mut expected = vec![
+        indirect("cgf-sdk", "shim", "cgf-kernel"),
+        path_pkg("shim", "0.1.0"),
+    ];
+    expected.sort();
+
+    assert_eq!(workspace_violations("launder_config_patch"), expected);
 }
 
 /// Finding 2 (library level): direct non-member path edge, the impostor and the laundered edge.
@@ -520,6 +547,7 @@ fn given_same_name_impostor_when_checked_then_exact_violations() {
             kind: DepKind::Normal,
         },
         indirect("cgf-sdk", "cgf-plugin-api", "cgf-kernel"),
+        path_pkg("cgf-plugin-api", "9.0.0"),
     ];
     expected.sort();
     assert_eq!(rest, expected);
@@ -549,6 +577,7 @@ fn given_fake_external_path_launder_when_checked_then_exact_violations() {
             kind: DepKind::Normal,
         },
         indirect("cgf-sdk", "fake_external", "cgf-kernel"),
+        path_pkg("fake_external", "0.1.0"),
     ];
     expected.sort();
 
@@ -586,4 +615,74 @@ fn given_workspace_without_lockfile_when_check_deps_runs_then_exit_code_2() {
     let _ = std::fs::remove_dir_all(&dir);
 
     assert_eq!(out.status.code(), Some(2), "output:\n{}", combined(&out));
+}
+
+// ---------------------------------------------------------------- re-review of 341eca7
+
+/// M1 (NFR-2, ASM-006): `[patch.crates-io] shim = { path = "shim" }` brings a non-member path
+/// package with unchecked `unsafe` code into the build. Every non-member path package in the
+/// resolved graph is a violation, however it got there.
+#[test]
+fn given_patch_to_unchecked_path_package_when_check_deps_runs_then_it_is_reported() {
+    assert_rejected_with(
+        "launder_unsafe_patch",
+        &[
+            "ASM-006: package shim 1.0.0 (",
+            "is a path package outside the workspace",
+        ],
+    );
+}
+
+/// m1: when the resolved graph cannot be loaded, the declared-pass diagnostics are still printed
+/// and the run exits 2 (the gate fails; it is not a skip).
+#[test]
+fn given_unresolvable_workspace_when_check_deps_runs_then_declared_violations_and_exit_2() {
+    let out = run_check_deps(&fixture("resolve_fails"));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+
+    assert_eq!(out.status.code(), Some(2), "output:\n{}", combined(&out));
+    for needle in [
+        "REQ-A-1: cgf-core -> cgf-kernel (normal) not allowed",
+        "ASM-006: cgf-sdk -> cgf-kernel (normal) uses the name of a workspace crate",
+    ] {
+        assert!(
+            stdout.contains(needle),
+            "missing `{needle}` in stdout:\n{stdout}"
+        );
+    }
+    assert!(stderr.contains("resolved graph"), "stderr:\n{stderr}");
+}
+
+/// M1 (library level): the patched path package is the only violation.
+#[test]
+fn given_patch_to_unchecked_path_package_when_checked_then_exact_violation() {
+    assert_eq!(
+        workspace_violations("launder_unsafe_patch"),
+        vec![path_pkg("shim", "1.0.0")]
+    );
+}
+
+/// M1: the fixtures' external crate comes from a vendored directory source, so it has a
+/// crates.io source and is not a path package; in the violating fixture the only path package is
+/// the seeded `shim` (`cgf-cli -> shim`).
+#[test]
+fn given_vendored_registry_dep_when_checked_then_only_seeded_path_package_is_reported() {
+    let ws = Workspace::load(Some(&fixture("violating"))).expect("load");
+    let resolved = ws.resolved.as_ref().expect("resolved");
+    let fake = resolved
+        .packages
+        .values()
+        .find(|p| p.name == "fake_external")
+        .expect("fake_external");
+    assert_eq!(
+        fake.source.as_deref(),
+        Some("registry+https://github.com/rust-lang/crates.io-index")
+    );
+
+    let path_pkgs: Vec<Violation> = workspace_violations("violating")
+        .into_iter()
+        .filter(|v| matches!(v, Violation::NonMemberPathPackage { .. }))
+        .collect();
+    assert_eq!(path_pkgs, vec![path_pkg("shim", "0.1.0")]);
 }

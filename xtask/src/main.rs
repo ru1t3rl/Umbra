@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
-use xtask::deps::{RULES, Workspace, check_workspace};
+use xtask::deps::{RULES, ResolvedGraph, Violation, Workspace, check_workspace};
 
 fn main() -> ExitCode {
     match run() {
@@ -62,15 +62,27 @@ fn check_deps(mut args: impl Iterator<Item = OsString>) -> Result<bool> {
             bail!("--manifest-path given more than once");
         }
     }
-    let ws = Workspace::load(manifest.as_deref())?;
-    let violations = check_workspace(&ws, &RULES);
-    for v in &violations {
-        println!("{}", v.render(&RULES));
+    // Declared pass first, so its diagnostics are printed even if resolution fails (exit 2).
+    let mut ws = Workspace::load_declared(manifest.as_deref())?;
+    match ResolvedGraph::load(manifest.as_deref()) {
+        Ok(resolved) => ws.resolved = Some(resolved),
+        Err(e) => {
+            print_violations(&check_workspace(&ws, &RULES));
+            return Err(e).context("resolved graph could not be loaded, check incomplete");
+        }
     }
+    let violations = check_workspace(&ws, &RULES);
+    print_violations(&violations);
     if violations.is_empty() {
         println!("check-deps: ok ({} crates)", ws.graph.members.len());
     } else {
         println!("check-deps: {} violation(s)", violations.len());
     }
     Ok(violations.is_empty())
+}
+
+fn print_violations(violations: &[Violation]) {
+    for v in violations {
+        println!("{}", v.render(&RULES));
+    }
 }

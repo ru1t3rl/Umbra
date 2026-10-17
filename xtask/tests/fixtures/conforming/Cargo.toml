@@ -1,12 +1,7 @@
 # Fixture workspace, see ../README.md
 [workspace]
 members = ["crates/*"]
-exclude = ["fake_external"]
 resolver = "3"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
-
-# Resolves the registry dependency `fake_external = "0.1"` offline (README).
-[patch.crates-io]
-fake_external = { path = "fake_external" }

@@ -1,0 +1,11 @@
+[package]
+name = "cgf-sdk"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+cgf-kernel = { git = "https://example.invalid/cgf-kernel" }
+
+[lints]
+workspace = true

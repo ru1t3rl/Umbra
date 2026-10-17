@@ -533,6 +533,8 @@ fn resolved(nodes: &[(&str, &str, bool)], edges: &[(&str, &str, DepKind)]) -> Re
             ResolvedPackage {
                 name: (*name).to_string(),
                 version: "0.1.0".to_string(),
+                // Members are path packages; synthetic non-members come from a registry.
+                source: (!*member).then(|| "registry+https://example.invalid/index".to_string()),
             },
         );
         if *member {
@@ -742,4 +744,57 @@ fn rules_closure_matches_table_closure() {
         assert_eq!(RULES.closure(c.name), closure(c.name), "{}", c.name);
     }
     assert!(RULES.closure("not-a-crate").is_empty());
+}
+
+// ---------------------------------------------------------------- re-review of 341eca7
+
+/// M1 (ASM-006, NFR-2): a non-member path package in the resolved graph is reported even when no
+/// rule is broken otherwise (it arrived through `[patch]`, so the declared pass saw a registry
+/// dependency).
+#[test]
+fn given_non_member_path_package_when_resolved_checked_then_violation() {
+    let mut g = resolved(
+        &[("core", "cgf-core", true), ("s", "shim", false)],
+        &[("core", "s", DepKind::Normal)],
+    );
+    if let Some(p) = g.packages.get_mut("s") {
+        p.source = None;
+    }
+
+    assert_eq!(
+        check_resolved(&g, &RULES),
+        vec![Violation::NonMemberPathPackage {
+            name: "shim".to_string(),
+            version: "0.1.0".to_string(),
+            id: "s".to_string()
+        }]
+    );
+}
+
+/// M1: registry and git packages (with a source) are not path packages.
+#[test]
+fn given_non_member_with_source_when_resolved_checked_then_no_violation() {
+    let g = resolved(
+        &[("core", "cgf-core", true), ("t", "thiserror", false)],
+        &[("core", "t", DepKind::Normal)],
+    );
+
+    assert_eq!(check_resolved(&g, &RULES), Vec::<Violation>::new());
+}
+
+/// m1 / ASM-006: a declared non-path dependency named like a workspace or rule-table crate (for
+/// example `cgf-kernel = { git = ... }`) is reported by the declared pass.
+#[test]
+fn given_non_path_dep_with_reserved_name_when_checked_then_impostor_dep() {
+    let mut e = edge("cgf-sdk", "cgf-kernel", DepKind::Normal);
+    e.is_workspace = false;
+
+    assert_eq!(
+        check(&graph(vec![e]), &RULES),
+        vec![Violation::ImpostorDep {
+            from: "cgf-sdk".to_string(),
+            to: "cgf-kernel".to_string(),
+            kind: DepKind::Normal
+        }]
+    );
 }

@@ -92,6 +92,8 @@ pub struct ResolvedPackage {
     pub name: String,
     /// Package version.
     pub version: String,
+    /// Cargo source (`registry+...`, `git+...`); `None` for a local path package.
+    pub source: Option<String>,
 }
 
 /// One resolved dependency edge.
@@ -258,6 +260,7 @@ impl ResolvedGraph {
                 ResolvedPackage {
                     name: str_field(p, "name")?.to_string(),
                     version: str_field(p, "version")?.to_string(),
+                    source: p.get("source").and_then(Value::as_str).map(str::to_string),
                 },
             );
         }
