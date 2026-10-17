@@ -8,9 +8,6 @@
 //!
 //! Dependency rule (spec section 4, REQ-A-1): depends on `cgf-core` only among workspace crates; never on
 //! `cgf-kernel` or `cgf-motion`. It contains no `unsafe` code.
-//!
-//! STUB (M2 step 4): the module signatures exist so the acceptance tests compile; the logic
-//! arrives in WI-4..WI-8 and WI-12 (`todo!()` bodies).
 
 #![forbid(unsafe_code)]
 
@@ -39,8 +36,8 @@ pub use value::{LTable, LValue};
 /// Schema version of template and scenario files (ADR 0010, ASM-057).
 pub const SCHEMA_VERSION: u32 = 1;
 
-/// The JSON Schema of template files (WI-12; the stub is empty so the drift tests fail).
-pub const TEMPLATE_FILE_SCHEMA: &str = "";
+/// The JSON Schema of template files (format v1, ADR 0010), in the ADR 0009 subset.
+pub const TEMPLATE_FILE_SCHEMA: &str = include_str!("../schemas/template.v1.schema.json");
 
-/// The JSON Schema of scenario files (WI-12; the stub is empty so the drift tests fail).
-pub const SCENARIO_FILE_SCHEMA: &str = "";
+/// The JSON Schema of scenario files (format v1, ADR 0010), in the ADR 0009 subset.
+pub const SCENARIO_FILE_SCHEMA: &str = include_str!("../schemas/scenario.v1.schema.json");
