@@ -14,6 +14,9 @@
 //! - [`rng`]: [`SimRng`] and derived streams (ADR 0006).
 //! - [`params`], [`registry`]: [`ParamValue`], [`ParamSchema`] and the single component
 //!   [`Registry`] of [`Factory`] objects (REQ-T-1, REQ-T-3, D-8, ADR 0008).
+//! - [`behavior`], [`perception`]: the [`Behavior`], [`Condition`], [`Action`] and [`Sensor`]
+//!   traits, the typed [`Blackboard`], [`Force`] and [`Contact`] (REQ-B-1, REQ-B-5, REQ-B-11,
+//!   ADR 0013-0015).
 //! - [`intent`], [`ownership`], [`terrain`], [`motion`]: [`Intent`], [`Ownership`],
 //!   [`TerrainProvider`], [`KinematicState`] and the [`MotionModel`] trait (REQ-B-2, REQ-K-5,
 //!   REQ-C-6, REQ-M-1).
@@ -23,6 +26,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod behavior;
 pub mod coords;
 pub mod geo;
 pub mod hash;
@@ -32,12 +36,17 @@ pub mod math;
 pub mod motion;
 pub mod ownership;
 pub mod params;
+pub mod perception;
 pub mod registry;
 pub mod rng;
 pub mod terrain;
 pub mod time;
 pub mod units;
 
+pub use behavior::{
+    Action, ActionInstance, BbType, BbValue, Behavior, BehaviorContext, BehaviorInstance,
+    Blackboard, BlackboardError, Condition, EntityView, IntentBuffer, RouteView, Status,
+};
 pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
 pub use geo::{Euler, Quaternion, Vec3};
 pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher};
@@ -49,6 +58,7 @@ pub use intent::{INTENT_SET_VERSION, Intent};
 pub use motion::{KinematicState, MotionModel};
 pub use ownership::{Ownership, RemoteSource};
 pub use params::{ParamSchema, ParamSchemaError, ParamValue};
+pub use perception::{Contact, Force, ForceError, Observer, Sensor, Target, hostile};
 pub use registry::{BuildError, ComponentKind, Factory, Registry, RegistryError};
 pub use rng::{RngStream, SimRng, SplitMix64, StreamKey};
 pub use terrain::{FlatTerrain, TerrainProvider};
