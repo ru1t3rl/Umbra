@@ -4,6 +4,7 @@
 //! a plugin is invisible to lookups (REQ-T-1). Iteration is in ID order (REQ-K-4).
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::Arc;
 
 use crate::id::ComponentId;
@@ -26,6 +27,14 @@ pub enum ComponentKind {
 }
 
 impl ComponentKind {
+    /// Every kind, in declaration order.
+    pub const ALL: &[ComponentKind] = &[
+        Self::MotionModel,
+        Self::Terrain,
+        Self::Behavior,
+        Self::Sensor,
+    ];
+
     /// Human-readable singular noun for messages.
     pub fn noun(self) -> &'static str {
         match self {
@@ -37,14 +46,39 @@ impl ComponentKind {
     }
 }
 
+impl fmt::Display for ComponentKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.noun())
+    }
+}
+
 /// A factory failed to build a component from its parameters.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[error("{message}")]
+#[non_exhaustive]
 pub struct BuildError {
     /// What is wrong.
     pub message: String,
-    /// The top-level parameter key at fault, if one is, for error location.
+    /// The parameter at fault as an RFC 6901 JSON pointer relative to the params root (for
+    /// example `/max_speed_mps`), for error location.
     pub param: Option<String>,
+}
+
+impl BuildError {
+    /// An error that is not tied to one parameter.
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            param: None,
+        }
+    }
+
+    /// Ties the error to the parameter at JSON pointer `pointer` (for example `/max_speed_mps`).
+    #[must_use]
+    pub fn at(mut self, pointer: impl Into<String>) -> Self {
+        self.param = Some(pointer.into());
+        self
+    }
 }
 
 /// Builds one kind of component from parameters. Built-ins and plugin bridges implement it
@@ -66,6 +100,9 @@ pub trait Factory<T: ?Sized>: Send + Sync {
 
     /// Builds the component. `params` has passed [`Factory::param_schema`]; the factory may
     /// still reject semantic combinations.
+    ///
+    /// Must not panic for any `params`: return a [`BuildError`] instead. The product's own ID
+    /// must equal [`Factory::id`].
     fn build(&self, params: &ParamValue) -> Result<Arc<T>, BuildError>;
 }
 
@@ -73,11 +110,12 @@ pub trait Factory<T: ?Sized>: Send + Sync {
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[non_exhaustive]
 pub enum RegistryError {
-    /// A component of this kind with this ID is already registered; the first one is kept.
+    /// A component with this ID is already registered, under any kind (IDs are unique across
+    /// kinds, ASM-063); the first one is kept.
     #[error("{kind} {id} is already registered")]
     Duplicate {
-        /// Noun of the kind ([`ComponentKind::noun`]).
-        kind: &'static str,
+        /// Kind of the component already holding the ID.
+        kind: ComponentKind,
         /// The duplicate ID.
         id: ComponentId,
     },
@@ -89,23 +127,37 @@ type TerrainFactory = Arc<dyn Factory<dyn TerrainProvider>>;
 /// All registered component factories, looked up by kind and ID.
 #[derive(Default)]
 pub struct Registry {
+    kinds: BTreeMap<ComponentId, ComponentKind>,
     motion: BTreeMap<ComponentId, MotionFactory>,
     terrain: BTreeMap<ComponentId, TerrainFactory>,
 }
 
+impl fmt::Debug for Registry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut d = f.debug_struct("Registry");
+        for &kind in ComponentKind::ALL {
+            d.field(kind.noun(), &self.ids(kind));
+        }
+        d.finish()
+    }
+}
+
+/// Registers `f` in `map` unless its ID is taken under any kind.
 fn insert<T: ?Sized>(
+    kinds: &mut BTreeMap<ComponentId, ComponentKind>,
     map: &mut BTreeMap<ComponentId, Arc<dyn Factory<T>>>,
     kind: ComponentKind,
     f: Arc<dyn Factory<T>>,
 ) -> Result<(), RegistryError> {
     use std::collections::btree_map::Entry;
-    match map.entry(f.id().clone()) {
+    match kinds.entry(f.id().clone()) {
         Entry::Occupied(e) => Err(RegistryError::Duplicate {
-            kind: kind.noun(),
+            kind: *e.get(),
             id: e.key().clone(),
         }),
         Entry::Vacant(e) => {
-            e.insert(f);
+            map.insert(e.key().clone(), f);
+            e.insert(kind);
             Ok(())
         }
     }
@@ -122,7 +174,12 @@ impl Registry {
     /// # Errors
     /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
     pub fn register_motion_model(&mut self, f: MotionFactory) -> Result<(), RegistryError> {
-        insert(&mut self.motion, ComponentKind::MotionModel, f)
+        insert(
+            &mut self.kinds,
+            &mut self.motion,
+            ComponentKind::MotionModel,
+            f,
+        )
     }
 
     /// Registers a terrain provider factory under its own ID.
@@ -130,7 +187,12 @@ impl Registry {
     /// # Errors
     /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
     pub fn register_terrain(&mut self, f: TerrainFactory) -> Result<(), RegistryError> {
-        insert(&mut self.terrain, ComponentKind::Terrain, f)
+        insert(
+            &mut self.kinds,
+            &mut self.terrain,
+            ComponentKind::Terrain,
+            f,
+        )
     }
 
     /// The motion model factory with this ID.
@@ -149,7 +211,7 @@ impl Registry {
         match kind {
             ComponentKind::MotionModel => self.motion.get(id).map(|f| f.param_schema()),
             ComponentKind::Terrain => self.terrain.get(id).map(|f| f.param_schema()),
-            _ => None,
+            ComponentKind::Behavior | ComponentKind::Sensor => None,
         }
     }
 
@@ -158,7 +220,7 @@ impl Registry {
         match kind {
             ComponentKind::MotionModel => self.motion.keys().collect(),
             ComponentKind::Terrain => self.terrain.keys().collect(),
-            _ => Vec::new(),
+            ComponentKind::Behavior | ComponentKind::Sensor => Vec::new(),
         }
     }
 }
@@ -232,7 +294,7 @@ mod tests {
         assert_eq!(
             err,
             RegistryError::Duplicate {
-                kind: "terrain provider",
+                kind: ComponentKind::Terrain,
                 id: cid("a.b")
             }
         );
@@ -279,5 +341,102 @@ mod tests {
     fn kind_nouns() {
         assert_eq!(ComponentKind::MotionModel.noun(), "motion model");
         assert_eq!(ComponentKind::Sensor.noun(), "sensor");
+    }
+
+    #[test]
+    fn all_lists_every_kind_once() {
+        // The exhaustive match fails to compile when a variant is added without updating it.
+        let index = |k: ComponentKind| match k {
+            ComponentKind::MotionModel => 0,
+            ComponentKind::Terrain => 1,
+            ComponentKind::Behavior => 2,
+            ComponentKind::Sensor => 3,
+        };
+        let variants = 4;
+        assert_eq!(ComponentKind::ALL.len(), variants);
+        let mut seen: Vec<usize> = ComponentKind::ALL.iter().map(|&k| index(k)).collect();
+        seen.sort_unstable();
+        assert_eq!(seen, [0, 1, 2, 3]);
+        assert_eq!(ComponentKind::Terrain.to_string(), "terrain provider");
+    }
+
+    #[test]
+    fn debug_lists_ids_per_kind() {
+        let mut r = Registry::new();
+        r.register_terrain(FlatFactory::arc("a.b")).unwrap();
+        let text = format!("{r:?}");
+        assert!(
+            text.contains("terrain provider: [ComponentId(\"a.b\")]"),
+            "{text}"
+        );
+        assert!(text.contains("motion model: []"), "{text}");
+    }
+
+    #[test]
+    fn id_is_unique_across_kinds() {
+        let mut r = Registry::new();
+        r.register_terrain(FlatFactory::arc("a.b")).unwrap();
+        let err = r
+            .register_motion_model(MotionStub::arc("a.b"))
+            .err()
+            .unwrap();
+        assert_eq!(
+            err,
+            RegistryError::Duplicate {
+                kind: ComponentKind::Terrain,
+                id: cid("a.b")
+            }
+        );
+        assert!(r.motion_model(&cid("a.b")).is_none());
+        assert_eq!(r.ids(ComponentKind::MotionModel).len(), 0);
+        assert!(r.terrain(&cid("a.b")).is_some());
+    }
+
+    #[test]
+    fn registering_a_motion_model_leaves_behavior_and_sensor_empty() {
+        let mut r = Registry::new();
+        r.register_motion_model(MotionStub::arc("a.motion"))
+            .unwrap();
+        let id = cid("a.motion");
+        assert_eq!(r.ids(ComponentKind::Behavior).len(), 0);
+        assert_eq!(r.ids(ComponentKind::Sensor).len(), 0);
+        assert!(r.param_schema(ComponentKind::Behavior, &id).is_none());
+        assert!(r.param_schema(ComponentKind::Sensor, &id).is_none());
+        assert!(r.param_schema(ComponentKind::MotionModel, &id).is_some());
+    }
+
+    #[test]
+    fn build_error_constructors() {
+        let e = BuildError::new("nope");
+        assert_eq!((e.message.as_str(), e.param.as_deref()), ("nope", None));
+        let e = e.at("/max_speed_mps");
+        assert_eq!(e.param.as_deref(), Some("/max_speed_mps"));
+        assert_eq!(e.to_string(), "nope");
+    }
+
+    struct MotionStub {
+        id: ComponentId,
+        schema: ParamSchema,
+    }
+
+    impl MotionStub {
+        fn arc(id: &str) -> Arc<dyn Factory<dyn MotionModel>> {
+            Arc::new(Self {
+                id: cid(id),
+                schema: ParamSchema::from_json_str(r#"{"type":"object"}"#).unwrap(),
+            })
+        }
+    }
+
+    impl Factory<dyn MotionModel> for MotionStub {
+        fn id(&self) -> &ComponentId {
+            &self.id
+        }
+        fn param_schema(&self) -> &ParamSchema {
+            &self.schema
+        }
+        fn build(&self, _: &ParamValue) -> Result<Arc<dyn MotionModel>, BuildError> {
+            Err(BuildError::new("stub"))
+        }
     }
 }

@@ -79,10 +79,7 @@ impl Factory<dyn MotionModel> for StubMotion {
     fn build(&self, params: &ParamValue) -> Result<Arc<dyn MotionModel>, BuildError> {
         self.builds.fetch_add(1, Ordering::SeqCst);
         if params.get("a").and_then(ParamValue::as_f64) > Some(1000.0) {
-            return Err(BuildError {
-                message: "`a` is unreasonably large".into(),
-                param: Some("a".into()),
-            });
+            return Err(BuildError::new("`a` is unreasonably large").at("/a"));
         }
         let id = MotionModelId::new(self.id.as_str())
             .unwrap_or_else(|e| panic!("bad model id {}: {e}", self.id));

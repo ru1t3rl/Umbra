@@ -79,4 +79,12 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn object_keys_iterate_sorted() {
+        // Guards against `serde_json/preserve_order` being unified in (determinism).
+        let v: ParamValue = serde_json::json!({"b": 1, "a": 2});
+        let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(keys, ["a", "b"]);
+    }
 }

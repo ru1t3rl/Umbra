@@ -52,10 +52,7 @@ impl Factory<dyn MotionModel> for Stub {
     }
     fn build(&self, p: &ParamValue) -> Result<Arc<dyn MotionModel>, BuildError> {
         if p.get("bad").is_some() {
-            return Err(BuildError {
-                message: "bad".into(),
-                param: Some("bad".into()),
-            });
+            return Err(BuildError::new("bad").at("/bad"));
         }
         Ok(Arc::new(StubModel(self.model_id.clone())))
     }
@@ -78,7 +75,7 @@ fn motion_factory_registers_looks_up_and_builds() {
             .unwrap()
             .param
             .as_deref(),
-        Some("bad")
+        Some("/bad")
     );
     assert_eq!(
         r.param_schema(ComponentKind::MotionModel, &id)
@@ -98,7 +95,7 @@ fn duplicate_motion_model_leaves_first_and_ids_sorted() {
     assert!(matches!(
         err,
         RegistryError::Duplicate {
-            kind: "motion model",
+            kind: ComponentKind::MotionModel,
             ..
         }
     ));

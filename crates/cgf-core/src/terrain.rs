@@ -54,6 +54,37 @@ impl<T: TerrainProvider + ?Sized> TerrainProvider for Arc<T> {
 mod tests {
     use super::*;
 
+    struct Tilted;
+
+    impl TerrainProvider for Tilted {
+        fn height_at(&self, _: Geodetic) -> Meters {
+            Meters(7.0)
+        }
+        fn surface_normal_at(&self, _: Geodetic) -> Enu {
+            Enu {
+                east: 0.6,
+                north: 0.0,
+                up: 0.8,
+            }
+        }
+    }
+
+    #[test]
+    fn arc_forwards_both_queries() {
+        let at = Geodetic::new(
+            crate::units::Radians(0.0),
+            crate::units::Radians(0.0),
+            Meters(0.0),
+        )
+        .unwrap();
+        let arc: Arc<dyn TerrainProvider> = Arc::new(Tilted);
+        let n = arc.surface_normal_at(at);
+        assert_eq!((n.east, n.north, n.up), (0.6, 0.0, 0.8));
+        assert_eq!(arc.height_at(at), Meters(7.0));
+        let nested = Arc::new(arc);
+        assert_eq!(nested.surface_normal_at(at).east, 0.6);
+    }
+
     #[test]
     fn arc_of_provider_is_a_provider() {
         let flat = Arc::new(FlatTerrain {
