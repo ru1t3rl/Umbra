@@ -1,26 +1,40 @@
-//! STUB (WI-4): WGS-84, ECEF, geodetic, ENU/NED and `LocalFrame` (REQ-C-3, D-15, ASM-033).
+//! WGS-84, ECEF, geodetic, ENU/NED and local frames (REQ-C-3, D-15, ASM-033, ASM-044).
 //!
-//! Signatures only; the WGS-84 constants are NaN until WI-4. Acceptance tests:
-//! `tests/coords.rs`, `tests/coords_prop.rs` (AT-3).
-#![expect(
-    missing_docs,
-    clippy::todo,
-    clippy::return_self_not_must_use,
-    reason = "stub until WI-4: signatures only, documented when implemented"
-)]
+//! The canonical position is [`Ecef`]: Earth-centred, Earth-fixed, meters, `f64` (D-15). Geodetic
+//! latitude/longitude/height ([`Geodetic`]) and local tangent-plane coordinates ([`Enu`], [`Ned`])
+//! exist for input, display and local geometry; [`Position`] lets the API edge accept either form
+//! and converts to ECEF exactly once (ASM-044).
+//!
+//! Conventions (ASM-033):
+//! - ECEF: +x toward (lat 0, lon 0), +y toward (lat 0, lon 90 E), +z toward the north pole.
+//! - Geodetic: latitude and longitude in radians, height in meters above the WGS-84 ellipsoid
+//!   (HAE, no geoid). Longitude is wrapped to `(-pi, pi]`, latitude lies in `[-pi/2, pi/2]`.
+//! - ENU/NED: axes of the local tangent plane at a [`LocalFrame`] origin.
+//! - Orientation: a unit quaternion rotating body FRD (forward, right, down) axes to ECEF axes.
+//!
+//! References: NIMA TR8350.2 (WGS-84); IOGP Publication 373-7-2, methods 9602 and 9836;
+//! Heikkinen (1982) as given by Zhu (1994), IEEE Trans. AES 30(3), for ECEF to geodetic.
 
 use core::ops::{Add, Sub};
 
 use crate::geo::{Euler, Quaternion, Vec3};
+use crate::math;
 use crate::units::{Meters, Radians};
 
+/// WGS-84 ellipsoid constants (NIMA TR8350.2, 3rd ed., Tables 3.1 and 3.3). SI units.
 pub mod wgs84 {
-    pub const A: f64 = f64::NAN;
-    pub const INV_F: f64 = f64::NAN;
-    pub const F: f64 = f64::NAN;
-    pub const B: f64 = f64::NAN;
-    pub const E2: f64 = f64::NAN;
-    pub const EP2: f64 = f64::NAN;
+    /// Semi-major axis, meters (defining).
+    pub const A: f64 = 6_378_137.0;
+    /// Inverse flattening (defining).
+    pub const INV_F: f64 = 298.257_223_563;
+    /// Flattening, `1 / INV_F`.
+    pub const F: f64 = 1.0 / INV_F;
+    /// Semi-minor axis, meters, `A * (1 - F)`.
+    pub const B: f64 = A * (1.0 - F);
+    /// First eccentricity squared, `F * (2 - F)`.
+    pub const E2: f64 = F * (2.0 - F);
+    /// Second eccentricity squared, `E2 / (1 - E2)`.
+    pub const EP2: f64 = E2 / (1.0 - E2);
 }
 
 /// Canonical position: Earth-centred, Earth-fixed, meters (D-15).
@@ -28,27 +42,87 @@ pub mod wgs84 {
 pub struct Ecef(pub Vec3);
 
 impl Ecef {
+    /// Converts to WGS-84 geodetic coordinates.
+    ///
+    /// Closed form (Heikkinen 1982 as given by Zhu 1994): no iteration, so the cost and the
+    /// result do not depend on a convergence test. The polar axis and the region around the
+    /// Earth's centre (where the closed form is singular) are handled explicitly. Infallible, and
+    /// finite for every finite input.
+    #[must_use]
     pub fn to_geodetic(self) -> Geodetic {
-        todo!("WI-4")
+        let Vec3 { x, y, z } = self.0;
+        let r = (x * x + y * y).sqrt();
+        let lon = if r == 0.0 { 0.0 } else { math::atan2(y, x) };
+        let (lat, height) = latitude_and_height(r, z);
+        Geodetic {
+            lat: Radians(lat),
+            lon: math::wrap_pi(Radians(lon)),
+            height: Meters(height),
+        }
     }
-    pub fn distance(self, _o: Self) -> Meters {
-        todo!("WI-4")
-    }
-}
-impl Sub for Ecef {
-    type Output = Vec3;
-    fn sub(self, _rhs: Ecef) -> Vec3 {
-        todo!("WI-4")
-    }
-}
-impl Add<Vec3> for Ecef {
-    type Output = Ecef;
-    fn add(self, _rhs: Vec3) -> Ecef {
-        todo!("WI-4")
+
+    /// Straight-line (chord) distance to `o`.
+    #[must_use]
+    pub fn distance(self, o: Self) -> Meters {
+        Meters((self - o).norm())
     }
 }
 
-/// WGS-84 geodetic position (private fields: validated on construction).
+/// Latitude (radians) and height (meters) for the cylindrical radius `r >= 0` and `z`.
+fn latitude_and_height(r: f64, z: f64) -> (f64, f64) {
+    use core::f64::consts::FRAC_PI_2;
+    use wgs84::{A, B, E2, EP2};
+    if r == 0.0 {
+        // Polar axis (and the centre, where the sign of z picks the hemisphere).
+        let lat = if z < 0.0 { -FRAC_PI_2 } else { FRAC_PI_2 };
+        return (lat, z.abs() - B);
+    }
+    let (a2, b2) = (A * A, B * B);
+    let ff = 54.0 * b2 * z * z;
+    let gg = r * r + (1.0 - E2) * z * z - E2 * (a2 - b2);
+    if gg <= 0.0 {
+        // Within ~17 km of the centre the closed form is singular: spherical fallback.
+        return (math::atan2(z, r), (r * r + z * z).sqrt() - B);
+    }
+    let cc = E2 * E2 * ff * r * r / (gg * gg * gg);
+    let ss = math::cbrt(1.0 + cc + (cc * cc + 2.0 * cc).sqrt());
+    let sum = ss + 1.0 / ss + 1.0;
+    let pp = ff / (3.0 * sum * sum * gg * gg);
+    let qq = (1.0 + 2.0 * E2 * E2 * pp).sqrt();
+    let r_zero = -(pp * E2 * r) / (1.0 + qq)
+        + (0.5 * a2 * (1.0 + 1.0 / qq)
+            - pp * (1.0 - E2) * z * z / (qq * (1.0 + qq))
+            - 0.5 * pp * r * r)
+            .sqrt();
+    let rt = r - E2 * r_zero;
+    let big_u = (rt * rt + z * z).sqrt();
+    let big_v = (rt * rt + (1.0 - E2) * z * z).sqrt();
+    let z_zero = b2 * z / (A * big_v);
+    let height = big_u * (1.0 - b2 / (A * big_v));
+    let lat = math::atan((z + EP2 * z_zero) / r);
+    (lat, height)
+}
+
+impl Sub for Ecef {
+    type Output = Vec3;
+    /// The ECEF displacement vector from `rhs` to `self`, meters.
+    fn sub(self, rhs: Ecef) -> Vec3 {
+        self.0 - rhs.0
+    }
+}
+
+impl Add<Vec3> for Ecef {
+    type Output = Ecef;
+    /// The point displaced by an ECEF vector, meters.
+    fn add(self, rhs: Vec3) -> Ecef {
+        Ecef(self.0 + rhs)
+    }
+}
+
+/// WGS-84 geodetic position: latitude, longitude and height above the ellipsoid.
+///
+/// Fields are private so every value is valid: finite, latitude in `[-pi/2, pi/2]`, longitude in
+/// `(-pi, pi]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Geodetic {
     lat: Radians,
@@ -57,119 +131,263 @@ pub struct Geodetic {
 }
 
 impl Geodetic {
-    pub fn new(_lat: Radians, _lon: Radians, _height: Meters) -> Result<Self, CoordError> {
-        todo!("WI-4")
+    /// Validates and builds a geodetic position. Longitude is wrapped to `(-pi, pi]`.
+    ///
+    /// # Errors
+    /// [`CoordError::NonFinite`] for NaN or infinite input; [`CoordError::LatitudeOutOfRange`]
+    /// when `|lat| > pi/2`.
+    pub fn new(lat: Radians, lon: Radians, height: Meters) -> Result<Self, CoordError> {
+        if !(lat.0.is_finite() && lon.0.is_finite() && height.0.is_finite()) {
+            return Err(CoordError::NonFinite);
+        }
+        if lat.0.abs() > core::f64::consts::FRAC_PI_2 {
+            return Err(CoordError::LatitudeOutOfRange(lat.0));
+        }
+        Ok(Self {
+            lat,
+            lon: math::wrap_pi(lon),
+            height,
+        })
     }
-    pub fn from_degrees(_lat_deg: f64, _lon_deg: f64, _height_m: f64) -> Result<Self, CoordError> {
-        todo!("WI-4")
+
+    /// Like [`Geodetic::new`] with degrees for latitude and longitude and meters for height.
+    ///
+    /// # Errors
+    /// See [`Geodetic::new`].
+    pub fn from_degrees(lat_deg: f64, lon_deg: f64, height_m: f64) -> Result<Self, CoordError> {
+        Self::new(
+            Radians::from_degrees(lat_deg),
+            Radians::from_degrees(lon_deg),
+            Meters(height_m),
+        )
     }
+
+    /// Latitude, radians in `[-pi/2, pi/2]`.
+    #[must_use]
     pub fn lat(self) -> Radians {
         self.lat
     }
+
+    /// Longitude, radians in `(-pi, pi]`.
+    #[must_use]
     pub fn lon(self) -> Radians {
         self.lon
     }
+
+    /// Height above the WGS-84 ellipsoid, meters.
+    #[must_use]
     pub fn height(self) -> Meters {
         self.height
     }
-    pub fn with_height(self, _h: Meters) -> Self {
-        todo!("WI-4")
+
+    /// The same latitude and longitude at another height (`h` must be finite to stay valid).
+    #[must_use]
+    pub fn with_height(self, h: Meters) -> Self {
+        Self { height: h, ..self }
     }
+
+    /// Converts to ECEF (EPSG method 9602, closed form).
+    #[must_use]
     pub fn to_ecef(self) -> Ecef {
-        todo!("WI-4")
+        use wgs84::{A, E2};
+        let (sin_lat, cos_lat) = math::sin_cos(self.lat.0);
+        let (sin_lon, cos_lon) = math::sin_cos(self.lon.0);
+        let n = A / (1.0 - E2 * sin_lat * sin_lat).sqrt();
+        let h = self.height.0;
+        Ecef(Vec3::new(
+            (n + h) * cos_lat * cos_lon,
+            (n + h) * cos_lat * sin_lon,
+            (n * (1.0 - E2) + h) * sin_lat,
+        ))
     }
 }
 
-/// User-facing position, converted to ECEF once at the API edge (ASM-044).
+/// User-facing position: ECEF or WGS-84 geodetic (ASM-044).
+///
+/// Either form is accepted at the API edge and converted to ECEF exactly once; nothing behind the
+/// edge stores or computes in geodetic.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Position {
+    /// Already ECEF, meters.
     Ecef(Ecef),
+    /// Latitude, longitude, height above the ellipsoid.
     Geodetic(Geodetic),
 }
 
 impl Position {
+    /// The canonical ECEF position (the identity for [`Position::Ecef`]).
+    #[must_use]
     pub fn to_ecef(self) -> Ecef {
-        todo!("WI-4")
-    }
-}
-impl From<Ecef> for Position {
-    fn from(_e: Ecef) -> Self {
-        todo!("WI-4")
-    }
-}
-impl From<Geodetic> for Position {
-    fn from(_g: Geodetic) -> Self {
-        todo!("WI-4")
+        match self {
+            Self::Ecef(e) => e,
+            Self::Geodetic(g) => g.to_ecef(),
+        }
     }
 }
 
+impl From<Ecef> for Position {
+    fn from(e: Ecef) -> Self {
+        Self::Ecef(e)
+    }
+}
+
+impl From<Geodetic> for Position {
+    fn from(g: Geodetic) -> Self {
+        Self::Geodetic(g)
+    }
+}
+
+/// Local tangent-plane coordinates, East-North-Up, meters (or the vector's own unit).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Enu {
+    /// Toward local east.
     pub east: f64,
+    /// Toward local north.
     pub north: f64,
+    /// Along the ellipsoid normal, away from the Earth.
     pub up: f64,
 }
+
+/// Local tangent-plane coordinates, North-East-Down, meters (or the vector's own unit).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ned {
+    /// Toward local north.
     pub north: f64,
+    /// Toward local east.
     pub east: f64,
+    /// Along the ellipsoid normal, toward the Earth.
     pub down: f64,
 }
+
 impl From<Enu> for Ned {
-    fn from(_e: Enu) -> Ned {
-        todo!("WI-4")
-    }
-}
-impl From<Ned> for Enu {
-    fn from(_n: Ned) -> Enu {
-        todo!("WI-4")
+    /// Exact axis swap with `down = -up`.
+    fn from(e: Enu) -> Ned {
+        Ned {
+            north: e.north,
+            east: e.east,
+            down: -e.up,
+        }
     }
 }
 
-/// Local tangent plane at an origin.
+impl From<Ned> for Enu {
+    /// Exact axis swap with `up = -down`.
+    fn from(n: Ned) -> Enu {
+        Enu {
+            east: n.east,
+            north: n.north,
+            up: -n.down,
+        }
+    }
+}
+
+/// Local tangent plane at an origin (ENU/NED axes at that point).
+///
+/// Built once (one `sin_cos` per angle) and reused for many points.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LocalFrame {
-    _private: (),
+    origin: Ecef,
+    /// Row-major; the columns are the ECEF coordinates of the east, north and up unit vectors.
+    ecef_from_enu: [[f64; 3]; 3],
 }
 
 impl LocalFrame {
-    pub fn at(_origin: Geodetic) -> Self {
-        todo!("WI-4")
+    /// The frame whose origin is `origin`.
+    #[must_use]
+    pub fn at(origin: Geodetic) -> Self {
+        let (sin_lat, cos_lat) = math::sin_cos(origin.lat.0);
+        let (sin_lon, cos_lon) = math::sin_cos(origin.lon.0);
+        Self {
+            origin: origin.to_ecef(),
+            ecef_from_enu: [
+                [-sin_lon, -sin_lat * cos_lon, cos_lat * cos_lon],
+                [cos_lon, -sin_lat * sin_lon, cos_lat * sin_lon],
+                [0.0, cos_lat, sin_lat],
+            ],
+        }
     }
+
+    /// The origin in ECEF.
+    #[must_use]
     pub fn origin(&self) -> Ecef {
-        todo!("WI-4")
+        self.origin
     }
-    pub fn to_enu(&self, _p: Ecef) -> Enu {
-        todo!("WI-4")
+
+    /// ECEF point to ENU coordinates relative to the origin.
+    #[must_use]
+    pub fn to_enu(&self, p: Ecef) -> Enu {
+        self.vector_to_enu(p - self.origin)
     }
-    pub fn from_enu(&self, _e: Enu) -> Ecef {
-        todo!("WI-4")
+
+    /// ENU coordinates relative to the origin to an ECEF point.
+    #[must_use]
+    pub fn from_enu(&self, e: Enu) -> Ecef {
+        self.origin + self.vector_from_enu(e)
     }
-    pub fn to_ned(&self, _p: Ecef) -> Ned {
-        todo!("WI-4")
+
+    /// ECEF point to NED coordinates relative to the origin.
+    #[must_use]
+    pub fn to_ned(&self, p: Ecef) -> Ned {
+        Ned::from(self.to_enu(p))
     }
-    pub fn from_ned(&self, _n: Ned) -> Ecef {
-        todo!("WI-4")
+
+    /// NED coordinates relative to the origin to an ECEF point.
+    #[must_use]
+    pub fn from_ned(&self, n: Ned) -> Ecef {
+        self.from_enu(Enu::from(n))
     }
-    pub fn vector_to_enu(&self, _v: Vec3) -> Enu {
-        todo!("WI-4")
+
+    /// Rotates an ECEF vector into ENU components (rotation only, no translation).
+    #[must_use]
+    pub fn vector_to_enu(&self, v: Vec3) -> Enu {
+        let m = &self.ecef_from_enu;
+        let col = |j: usize| m[0][j] * v.x + m[1][j] * v.y + m[2][j] * v.z;
+        Enu {
+            east: col(0),
+            north: col(1),
+            up: col(2),
+        }
     }
-    pub fn vector_from_enu(&self, _e: Enu) -> Vec3 {
-        todo!("WI-4")
+
+    /// Rotates ENU components into an ECEF vector (rotation only, no translation).
+    #[must_use]
+    pub fn vector_from_enu(&self, e: Enu) -> Vec3 {
+        let m = &self.ecef_from_enu;
+        let row = |i: usize| m[i][0] * e.east + m[i][1] * e.north + m[i][2] * e.up;
+        Vec3::new(row(0), row(1), row(2))
     }
-    pub fn orientation_from_euler(&self, _e: Euler) -> Quaternion {
-        todo!("WI-4")
+
+    /// The rotation taking body FRD axes to ECEF axes for the given Euler angles at this frame.
+    #[must_use]
+    pub fn orientation_from_euler(&self, e: Euler) -> Quaternion {
+        self.ned_to_ecef().mul(e.to_quaternion())
     }
-    pub fn euler_from_orientation(&self, _q: Quaternion) -> Euler {
-        todo!("WI-4")
+
+    /// The Euler angles (relative to this frame's NED axes) of a body FRD to ECEF orientation.
+    #[must_use]
+    pub fn euler_from_orientation(&self, q: Quaternion) -> Euler {
+        Euler::from_quaternion(self.ned_to_ecef().conjugate().mul(q))
+    }
+
+    /// The rotation taking NED axes to ECEF axes (columns north, east, down).
+    fn ned_to_ecef(&self) -> Quaternion {
+        let m = &self.ecef_from_enu;
+        Quaternion::from_rotation_matrix([
+            [m[0][1], m[0][0], -m[0][2]],
+            [m[1][1], m[1][0], -m[1][2]],
+            [m[2][1], m[2][0], -m[2][2]],
+        ])
     }
 }
 
+/// Invalid coordinate input.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[non_exhaustive]
 pub enum CoordError {
+    /// Latitude outside `[-pi/2, pi/2]`.
     #[error("latitude {0} rad outside [-pi/2, pi/2]")]
     LatitudeOutOfRange(f64),
+    /// NaN or infinite coordinate.
     #[error("non-finite coordinate")]
     NonFinite,
 }
