@@ -133,7 +133,7 @@ fn given_patrol_and_engage_when_run_in_each_clock_mode_then_matches_afap() {
 /// changes nothing.
 #[test]
 #[ignore = "WI-16"]
-fn given_patrol_and_engage_when_clock_mode_is_switched_mid_run_then_matches_afap() {
+fn given_patrol_and_engage_with_clock_mode_switch_mid_run_then_matches_afap() {
     let mut engine = example_engine(None, None);
     let mut got = Trace::default();
 

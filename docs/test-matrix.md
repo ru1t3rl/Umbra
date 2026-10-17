@@ -66,3 +66,33 @@ Added in their work items: `RunSummary.stopped_early` on `ControlFlow::Break` (W
 
 Gaps and notes: the plan's `validate_path_never_builds_an_engine` is `validate_path_builds_exactly_as_often_as_load_scenario` (a registry stub cannot observe an engine; the property that validation and loading share one dry-run pipeline is observable). Tests that pin only code and file (location of an absent key is not specified): missing `schema_version`, `id`, motion model; `io` for a missing `template_paths` directory; `not_a_scenario`.
 
+
+## M3
+
+Written against `todo!()` stubs (step 4, commits e2561bc, 1827784, 039f434, f4c3edc); all of it stays green through `#[ignore = "WI-n"]` on the 250 tests that cannot pass yet (the ignore names the work item that makes them pass; un-ignore in that WI). 14 of the 264 new tests pass already (marked "live"). Counts are `tests (ignored)` per file. Plan table: `docs/plans/M3.md`, "Acceptance tests for the test-engineer". Gate 4 is still the M2 `determinism` target; `behavior_determinism` becomes part of it in WI-16 (ASM-087). `scripts/m2-compat.sh` runs the compatibility checklist items 1-3 (AT-18).
+
+| AT | REQ-ID | Type | Test file(s) | Status |
+|---|---|---|---|---|
+| AT-1 | REQ-B-6, REQ-B-14, REQ-T-2, REQ-T-5 | unit + proptest | `crates/cgf-templates/tests/graph_file.rs` 23 (23 WI-12; `graph_parse_never_panics` 256 cases) | failing (stub until WI-12) |
+| AT-2 | REQ-B-7 | unit | `crates/cgf-behavior/tests/{composites 14, decorators 10, fsm 15, subgraph 10}.rs`, `graph_file.rs` (`every_node_type_is_readable`) | failing (WI-8, WI-9, WI-10, WI-12) |
+| AT-3 | REQ-B-8, REQ-B-1 | unit + proptest | `cgf-behavior/tests/{composites, decorators, halt 5, order_prop 1}.rs`; `cgf-kernel/tests/behavior_phase.rs` (`behavior_cannot_change_state_except_through_intents`) | failing (WI-8; kernel row WI-6) |
+| AT-4 | REQ-B-7 (fsm), REQ-B-12 | unit | `cgf-behavior/tests/fsm.rs` (15, WI-9); `cgf-templates/tests/graph_resolve.rs` (5 FSM rows, WI-13) | failing (WI-9, WI-13) |
+| AT-5 | REQ-B-9, REQ-B-12, REQ-B-14 | unit | `cgf-behavior/tests/subgraph.rs` (`file_builtin_and_plugin_targets_are_indistinguishable`), `register_graphs.rs` 7; `cgf-templates/tests/graph_resolve.rs` (subgraph and version rows) | failing (WI-10, WI-13) |
+| AT-6 | REQ-B-10, REQ-B-12 | unit | `cgf-templates/tests/graph_resolve.rs` (call site and binding rows), `template_behavior.rs` (`call_site_*`) | failing (WI-13, WI-14) |
+| AT-7 | REQ-B-11 | unit + integration | `cgf-behavior/tests/isolation.rs` 6 (WI-10); `cgf-engine/tests/behavior_scenario.rs` 1 (WI-15) | failing (WI-10, WI-15) |
+| AT-8 | REQ-B-12, REQ-T-2 | unit + proptest | `cgf-templates/tests/graph_resolve.rs` (cycle, depth, shape, five errors, shuffle), `graph_resolve_prop.rs` 2 (1000 cases) | failing (WI-13) |
+| AT-9 | REQ-B-13 | integration | `cgf-engine/tests/catalog.rs` (4 provenance tests) | failing (WI-15) |
+| AT-10 | REQ-B-14 | unit | `graph_file.rs` (`version_is_required`, `version_must_be_semver`), `catalog.rs` (`graph_version_reaches_catalog`) | failing (WI-12, WI-15) |
+| AT-11 | REQ-B-15, REQ-T-3 | unit | `cgf-behavior/tests/leaves.rs` 17 (WI-11); `graph_resolve.rs` (`bad_leaf_params_located_in_graph_file`, `expression_string_is_param_wrong_type`) | failing (WI-11, WI-13) |
+| AT-12 | REQ-B-16, REQ-K-4, section 15 | integration (gate 4, second target) + process | `cgf-engine/tests/behavior_determinism.rs` 7 (WI-16); `cgf-cli/tests/cli_behavior.rs` (`patrol_and_engage_in_four_processes_is_byte_identical`) | failing (WI-16) |
+| AT-13 | REQ-B-17 | integration | `cgf-engine/tests/catalog.rs` 12 (WI-15) | failing (WI-15) |
+| AT-14 | REQ-B-1, REQ-B-2, REQ-K-5, ADR 0016 | unit | `cgf-kernel/tests/{agent_spawn 5, behavior_phase 9, perception_phase 8}.rs` (WI-6; 2 live), `cgf-motion/tests/set_heading.rs` 9 (4 WI-7, 5 live), `cgf-core/tests/intent.rs` (`intent_set_version_is_one`, live since WI-2) | failing (WI-6, WI-7) |
+| AT-15 | Perception, REQ-K-5, ADR 0015 | integration | `cgf-engine/tests/visual_sensor.rs` 10 (WI-15) | failing (WI-15) |
+| AT-16 | M3 acceptance 1 | integration + process | `cgf-engine/tests/patrol_and_engage.rs` 6 (WI-16); `cgf-cli/tests/cli_behavior.rs` (`validate_example_ok`, `run_example_prints_states_and_hash`, WI-15); example `examples/scenarios/patrol_and_engage/` | failing (WI-15, WI-16) |
+| AT-17 | M3 acceptance 2 | integration | `cgf-engine/tests/behavior_swap.rs` 2 (1 live: the byte comparison of fixtures `tests/fixtures/behavior_swap/{a,b}`; run WI-16) | partly passing |
+| AT-18 | M3 acceptance 4, A-001 | process + script | `cgf-cli/tests/m2_compat.rs` 3 (2 live: the M2 hash `849026656b7b42d2` on Linux, `ok: 4 files checked`; the spec 7.1 template validates, WI-15); `scripts/m2-compat.sh` | passing / failing (WI-15) |
+| AT-19 | gates are real | manual mutations | recorded in the WI PRs | manual |
+| AT-20 | REQ-B-11, REQ-B-10, REQ-B-12, ADR 0014 | unit + integration | `cgf-behavior/tests/input_binding.rs` 9 (WI-10); `graph_resolve.rs` (8 binding rows); `template_behavior.rs` (`key_form_in_template_behavior_params_is_invalid_binding`, `graph_with_required_binding_only_param_as_template_behavior_is_missing_param`); `patrol_and_engage.rs` (`attack_subgraph_receives_target_through_binding`) | failing (WI-10, WI-13, WI-14, WI-16) |
+| WI-14 rows | REQ-B-6, REQ-T-1, ADR 0015, ASM-079 | unit | `cgf-templates/tests/{template_behavior 13 (3 live), scenario_force 6 (1 live)}.rs`; fixtures `tests/fixtures/graphs/` | failing (WI-14, WI-12) |
+
+Gaps and notes: the ignored tests were not run against a reference implementation (M1 and M2 were); they are checked for the right failure (a `todo!()` panic, or an assertion for the tests that go through code that exists) with `cargo test -- --ignored`, and every graph text in them was parsed with the real TOML parser. The first WI that un-ignores a file should expect to fix test bugs as well as code. Tests that pin only code and file (location of an absent key is not specified): missing `schema_version`, `id`, `version`, `root`, node settings, `no_initial_state` without `initial`. AT-19 is manual.
