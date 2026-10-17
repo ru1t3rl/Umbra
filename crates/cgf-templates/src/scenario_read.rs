@@ -543,7 +543,7 @@ fn read_clock(reader: &mut Reader<'_>, table: &LTable) -> Option<ClockSetting> {
     let Some(mode) = reader.string("clock", clock) else {
         // A bad `time_scale` is reported even when the clock itself is unreadable.
         if let Some(v) = scale {
-            reader.number("time_scale", v);
+            let _ = read_time_scale(reader, v);
         }
         return None;
     };
@@ -579,10 +579,15 @@ fn read_scaled(
         reader.error(DiagnosticCode::InvalidValue, message, clock.origin());
         return None;
     };
+    read_time_scale(reader, scale).map(ClockSetting::Scaled)
+}
+
+/// Type and range check of `time_scale` (kernel `TimeScale` range, ASM-060).
+fn read_time_scale(reader: &mut Reader<'_>, scale: &LValue) -> Option<f64> {
     let factor = reader.number("time_scale", scale)?;
     let (low, high) = TIME_SCALE_RANGE;
     if (low..=high).contains(&factor) {
-        Some(ClockSetting::Scaled(factor))
+        Some(factor)
     } else {
         let message = format!("`time_scale` must be within [{low}, {high}], found {factor}");
         reader.error(DiagnosticCode::InvalidValue, message, scale.origin());

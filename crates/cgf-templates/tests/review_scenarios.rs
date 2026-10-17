@@ -451,6 +451,17 @@ fn wrong_typed_clock_and_bad_time_scale_are_both_reported() {
     assert_eq!(codes, ["wrong_type", "wrong_type"]);
 }
 
+/// Nit (re-review of 7ab75a7): a wrong-typed `clock` does not hide an out-of-range `time_scale`.
+#[test]
+fn wrong_typed_clock_and_out_of_range_time_scale_are_both_reported() {
+    let text = head(&["clock = 5", "time_scale = -1.0"]) + &entity(&[]);
+
+    let found = errors(scenario(&src(SCN, &text), &[gamma_template()]));
+
+    let codes: Vec<&str> = found.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["wrong_type", "invalid_value"]);
+}
+
 /// N5: the context of a single template file is its own directory, not the whole subtree.
 #[test]
 fn single_template_validation_ignores_unrelated_templates_in_subdirectories() {
