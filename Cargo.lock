@@ -178,6 +178,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cgf-templates"
+version = "0.1.0"
+dependencies = [
+ "cgf-core",
+ "serde_json",
+ "thiserror",
+ "toml",
+]
+
+[[package]]
 name = "chacha20"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
