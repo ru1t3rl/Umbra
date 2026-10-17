@@ -110,7 +110,7 @@ fn recover_id(table: &LTable) -> Option<TemplateId> {
     }
 }
 
-enum Version {
+pub(crate) enum Version {
     Ok,
     /// Missing, mistyped or below 1: reported, the rest of the file is still read.
     Bad,
@@ -118,7 +118,7 @@ enum Version {
     Newer,
 }
 
-fn check_version(reader: &mut Reader<'_>, table: &LTable) -> Version {
+pub(crate) fn check_version(reader: &mut Reader<'_>, table: &LTable) -> Version {
     let Some(value) = table.get("schema_version") else {
         let message = "missing required key `schema_version`".to_string();
         reader.error(DiagnosticCode::MissingKey, message, table.origin());
@@ -198,7 +198,7 @@ fn read_body(reader: &mut Reader<'_>, table: &LTable, file: &SourceFile) -> Opti
 }
 
 /// One component section: `id_key` (`model`, `ref` or `kind`) and `params`.
-fn component(
+pub(crate) fn component(
     reader: &mut Reader<'_>,
     section: &str,
     id_key: &str,

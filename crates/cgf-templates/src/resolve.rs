@@ -81,7 +81,7 @@ impl Loader<'_> {
     /// Reads, checks and resolves template files. Returns the templates that resolved cleanly and
     /// every diagnostic, unsorted. Files are processed in path order, so the result does not
     /// depend on the order they are given in (REQ-K-4).
-    pub(crate) fn load_templates(&self, files: &[SourceFile]) -> (TemplateSet, Vec<Diagnostic>) {
+    pub(crate) fn load_templates(&self, files: &[SourceFile]) -> LoadedTemplates {
         let mut sorted: Vec<&SourceFile> = files.iter().collect();
         sorted.sort_by(|a, b| a.path().cmp(b.path()));
         let mut set = SetBuilder::default();
@@ -100,7 +100,18 @@ impl Loader<'_> {
             }
             set.diagnostics.extend(local);
         }
-        (TemplateSet { templates }, set.diagnostics)
+        let unusable = set
+            .defs
+            .keys()
+            .chain(&set.bad)
+            .filter(|id| !templates.contains_key(*id))
+            .cloned()
+            .collect();
+        LoadedTemplates {
+            set: TemplateSet { templates },
+            diagnostics: set.diagnostics,
+            unusable,
+        }
     }
 
     fn resolve_one(
@@ -187,6 +198,17 @@ impl Loader<'_> {
         }
         ok
     }
+}
+
+/// The outcome of loading a set of template files.
+pub(crate) struct LoadedTemplates {
+    /// The templates that resolved cleanly.
+    pub(crate) set: TemplateSet,
+    /// Every diagnostic, unsorted.
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    /// IDs that exist (or may exist) but could not be used; references to them are not reported
+    /// again (ASM-056).
+    pub(crate) unusable: BTreeSet<TemplateId>,
 }
 
 /// The merged `model`/`ref` and `params` of a component section along a chain.

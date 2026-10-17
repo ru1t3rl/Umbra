@@ -197,6 +197,11 @@ impl Diagnostics {
         (!diagnostics.is_empty()).then_some(Self(diagnostics))
     }
 
+    /// A list of exactly one diagnostic.
+    pub(crate) fn from_one(diagnostic: Diagnostic) -> Self {
+        Self(vec![diagnostic])
+    }
+
     /// The diagnostics, consuming `self`.
     pub fn into_vec(self) -> Vec<Diagnostic> {
         self.0

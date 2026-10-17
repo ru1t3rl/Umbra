@@ -96,6 +96,14 @@ pub struct LValue {
 }
 
 impl LValue {
+    /// A value made by the loader itself (a default), located at `origin`.
+    pub(crate) fn synthetic(origin: &Origin, kind: LKind) -> Self {
+        Self {
+            origin: origin.clone(),
+            kind,
+        }
+    }
+
     /// Where the value starts.
     pub fn origin(&self) -> &Origin {
         &self.origin
@@ -130,6 +138,14 @@ pub struct LEntry {
 }
 
 impl LEntry {
+    /// An entry made by the loader itself (a default value), located at `origin`.
+    pub(crate) fn synthetic(origin: &Origin, value: LValue) -> Self {
+        Self {
+            key_origin: origin.clone(),
+            value,
+        }
+    }
+
     /// Where the key is.
     pub fn key_origin(&self) -> &Origin {
         &self.key_origin

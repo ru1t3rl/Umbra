@@ -27,6 +27,16 @@ impl<'f> Reader<'f> {
         self.out
     }
 
+    /// Records diagnostics found elsewhere (a component check).
+    pub(crate) fn extend(&mut self, diagnostics: Vec<Diagnostic>) {
+        self.out.extend(diagnostics);
+    }
+
+    /// Records a finished diagnostic.
+    pub(crate) fn push_diagnostic(&mut self, diagnostic: Diagnostic) {
+        self.out.push(diagnostic);
+    }
+
     /// Records an error at `at`.
     pub(crate) fn error(&mut self, code: DiagnosticCode, message: String, at: &Origin) {
         self.out
@@ -50,6 +60,44 @@ impl<'f> Reader<'f> {
             LKind::String(s) => Some(s),
             other => {
                 self.wrong_type(name, "a string", other, value.origin());
+                None
+            }
+        }
+    }
+
+    /// `value` as a number (integer or float), or `wrong_type`.
+    pub(crate) fn number(&mut self, name: &str, value: &LValue) -> Option<f64> {
+        match value.kind() {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "TOML integers become f64 parameters"
+            )]
+            LKind::Integer(i) => Some(*i as f64),
+            LKind::Float(f) => Some(*f),
+            other => {
+                self.wrong_type(name, "a number", other, value.origin());
+                None
+            }
+        }
+    }
+
+    /// `value` as an integer, or `wrong_type`.
+    pub(crate) fn integer(&mut self, name: &str, value: &LValue) -> Option<i64> {
+        match value.kind() {
+            LKind::Integer(i) => Some(*i),
+            other => {
+                self.wrong_type(name, "an integer", other, value.origin());
+                None
+            }
+        }
+    }
+
+    /// `value` as an array, or `wrong_type`.
+    pub(crate) fn array<'t>(&mut self, name: &str, value: &'t LValue) -> Option<&'t [LValue]> {
+        match value.kind() {
+            LKind::Array(items) => Some(items),
+            other => {
+                self.wrong_type(name, "an array", other, value.origin());
                 None
             }
         }

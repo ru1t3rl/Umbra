@@ -1,4 +1,5 @@
-//! A loaded scenario (ADR 0010, ASM-060). Data types are real; reading is STUB (WI-8).
+//! A loaded scenario and its reader (ADR 0010, REQ-T-2, REQ-T-5, REQ-C-3, ASM-044, ASM-058,
+//! ASM-060, ASM-066).
 
 use std::path::PathBuf;
 

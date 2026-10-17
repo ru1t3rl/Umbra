@@ -1,12 +1,11 @@
-//! The loader entry points (WI-7 templates; WI-8 scenarios is still a STUB).
-#![expect(clippy::todo, reason = "stub until WI-8: scenario entry points")]
+//! The loader entry points (REQ-T-1..6).
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use cgf_core::{ComponentId, ComponentKind, Registry};
 
-use crate::diagnostic::{Diagnostic, Diagnostics};
+use crate::diagnostic::{Diagnostic, DiagnosticCode, Diagnostics};
 use crate::resolve::TemplateSet;
 use crate::scenario::Scenario;
 use crate::schema::{CompiledSchema, SchemaError};
@@ -74,29 +73,31 @@ impl<'r> Loader<'r> {
     /// # Errors
     /// Every diagnostic of every file and of the set, sorted.
     pub fn templates_from_sources(&self, files: &[SourceFile]) -> Result<TemplateSet, Diagnostics> {
-        let (set, diagnostics) = self.load_templates(files);
-        match Diagnostics::new(diagnostics) {
+        let loaded = self.load_templates(files);
+        match Diagnostics::new(loaded.diagnostics) {
             Some(errors) => Err(errors),
-            None => Ok(set),
+            None => Ok(loaded.set),
         }
     }
 
-    /// Loads a scenario file and template files, all in memory.
+    /// Loads a scenario file and template files, all in memory (`template_paths` is not read).
+    ///
+    /// # Errors
+    /// Every diagnostic of every file, sorted.
     pub fn scenario_from_sources(
         &self,
-        _scenario: &SourceFile,
-        _templates: &[SourceFile],
+        scenario: &SourceFile,
+        templates: &[SourceFile],
     ) -> Result<Scenario, Diagnostics> {
-        todo!("WI-8")
-    }
-
-    /// Loads a scenario file and the templates under its `template_paths`.
-    pub fn load_scenario(&self, _path: &Path) -> Result<Scenario, Diagnostics> {
-        todo!("WI-8")
-    }
-
-    /// Checks a scenario file, a template file or a directory (recursively). Never runs anything.
-    pub fn validate_path(&self, _path: &Path) -> ValidationReport {
-        todo!("WI-8")
+        let (loaded, diagnostics) = self.build_scenario(scenario, templates, false);
+        match (loaded, Diagnostics::new(diagnostics)) {
+            (_, Some(errors)) => Err(errors),
+            (Some(scenario), None) => Ok(scenario),
+            (None, None) => Err(Diagnostics::from_one(Diagnostic::new(
+                DiagnosticCode::NotAScenario,
+                "the file is not a scenario",
+                None,
+            ))),
+        }
     }
 }

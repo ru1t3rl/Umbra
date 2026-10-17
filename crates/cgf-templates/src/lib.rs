@@ -16,10 +16,13 @@
 
 pub(crate) mod components;
 pub mod diagnostic;
+pub(crate) mod discover;
 pub mod loader;
+pub(crate) mod position;
 pub(crate) mod reader;
 pub mod resolve;
 pub mod scenario;
+pub(crate) mod scenario_read;
 pub mod schema;
 pub mod source;
 pub mod template;
