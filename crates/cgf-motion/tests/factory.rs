@@ -187,7 +187,11 @@ fn non_positive_value_gives_build_error_naming_the_parameter() {
             let error = factory().build(&with_value(key, bad)).err();
 
             let error = error.unwrap_or_else(|| panic!("{key} = {bad} must be rejected"));
-            assert_eq!(error.param.as_deref(), Some(key), "{key} = {bad}");
+            assert_eq!(
+                error.param.as_deref(),
+                Some(format!("/{key}").as_str()),
+                "{key} = {bad}"
+            );
         }
     }
 }
@@ -199,7 +203,7 @@ fn missing_parameter_gives_build_error_naming_it() {
     let error = factory().build(&params).err();
 
     let error = error.unwrap_or_else(|| panic!("a missing limit must be rejected"));
-    assert_eq!(error.param.as_deref(), Some("max_accel_mps2"));
+    assert_eq!(error.param.as_deref(), Some("/max_accel_mps2"));
 }
 
 #[test]
@@ -210,7 +214,7 @@ fn parameter_of_the_wrong_type_gives_build_error_naming_it() {
     let error = factory().build(&params).err();
 
     let error = error.unwrap_or_else(|| panic!("a string limit must be rejected"));
-    assert_eq!(error.param.as_deref(), Some("max_speed_mps"));
+    assert_eq!(error.param.as_deref(), Some("/max_speed_mps"));
 }
 
 #[test]

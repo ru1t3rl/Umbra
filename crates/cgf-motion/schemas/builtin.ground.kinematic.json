@@ -1,0 +1,27 @@
+{
+  "title": "builtin.ground.kinematic parameters",
+  "description": "Kinematic ground vehicle limits. Units are given by key suffix.",
+  "type": "object",
+  "properties": {
+    "max_speed_mps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum speed in meters per second."
+    },
+    "max_turn_rate_dps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum heading change rate in degrees per second."
+    },
+    "max_accel_mps2": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum acceleration and deceleration in meters per second squared."
+    }
+  },
+  "required": ["max_speed_mps", "max_turn_rate_dps", "max_accel_mps2"],
+  "additionalProperties": false,
+  "examples": [
+    { "max_speed_mps": 18.0, "max_turn_rate_dps": 40.0, "max_accel_mps2": 2.5 }
+  ]
+}
