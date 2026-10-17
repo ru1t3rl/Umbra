@@ -10,7 +10,9 @@ use cgf_core::{
     ParamSchema, ParamValue, RadiansPerSecond, Registry, RegistryError,
 };
 
-use crate::ground::{GROUND_KINEMATIC_ID, GroundKinematic, GroundKinematicParams};
+use crate::ground::{
+    GROUND_KINEMATIC_ID, GroundKinematic, GroundKinematicParams, MotionParamError,
+};
 
 const SCHEMA_JSON: &str = include_str!("../schemas/builtin.ground.kinematic.json");
 
@@ -20,19 +22,37 @@ pub struct GroundKinematicFactory {
     schema: ParamSchema,
 }
 
-/// Reads a finite, strictly positive number at `key`.
-fn positive(params: &ParamValue, key: &str) -> Result<f64, BuildError> {
+/// Reads the number at `key`; a missing or non-numeric value is located at the key.
+fn number(params: &ParamValue, key: &str) -> Result<f64, BuildError> {
     let pointer = format!("/{key}");
     let value = params
         .get(key)
         .ok_or_else(|| BuildError::new(format!("missing parameter `{key}`")).at(&pointer))?;
-    let number = value
+    value
         .as_f64()
-        .ok_or_else(|| BuildError::new(format!("`{key}` must be a number")).at(&pointer))?;
-    if number.is_finite() && number > 0.0 {
-        Ok(number)
-    } else {
-        Err(BuildError::new(format!("`{key}` must be greater than 0, got {number}")).at(pointer))
+        .ok_or_else(|| BuildError::new(format!("`{key}` must be a number")).at(pointer))
+}
+
+/// Maps a model limit name to the parameter key that sets it.
+fn key_of(name: &str) -> &'static str {
+    match name {
+        "max_speed" => "max_speed_mps",
+        "max_turn_rate" => "max_turn_rate_dps",
+        _ => "max_accel_mps2",
+    }
+}
+
+/// Locates a model error at the TOML key that caused it.
+fn located(error: &MotionParamError) -> BuildError {
+    match error {
+        MotionParamError::NotPositive { name, value } => {
+            let key = key_of(name);
+            BuildError::new(format!(
+                "`{key}` must be greater than 0 (after unit conversion), got {value}"
+            ))
+            .at(format!("/{key}"))
+        }
+        other => BuildError::new(other.to_string()),
     }
 }
 
@@ -70,14 +90,14 @@ impl Factory<dyn MotionModel> for GroundKinematicFactory {
 
     fn build(&self, params: &ParamValue) -> Result<Arc<dyn MotionModel>, BuildError> {
         let limits = GroundKinematicParams {
-            max_speed: MetersPerSecond(positive(params, "max_speed_mps")?),
-            max_turn_rate: RadiansPerSecond::from_degrees_per_second(positive(
+            max_speed: MetersPerSecond(number(params, "max_speed_mps")?),
+            max_turn_rate: RadiansPerSecond::from_degrees_per_second(number(
                 params,
                 "max_turn_rate_dps",
             )?),
-            max_accel: MetersPerSecondSquared(positive(params, "max_accel_mps2")?),
+            max_accel: MetersPerSecondSquared(number(params, "max_accel_mps2")?),
         };
-        let model = GroundKinematic::new(limits).map_err(|e| BuildError::new(e.to_string()))?;
+        let model = GroundKinematic::new(limits).map_err(|e| located(&e))?;
         Ok(Arc::new(model))
     }
 }
@@ -85,7 +105,8 @@ impl Factory<dyn MotionModel> for GroundKinematicFactory {
 /// Registers every built-in motion model.
 ///
 /// # Errors
-/// [`RegistryError::Duplicate`] if called twice on one registry.
+/// [`RegistryError::Duplicate`] if called twice on one registry, or if any kind already holds
+/// the id (IDs are unique across kinds, ASM-063).
 pub fn register_builtins(registry: &mut Registry) -> Result<(), RegistryError> {
     registry.register_motion_model(Arc::new(GroundKinematicFactory::new()))
 }
@@ -102,15 +123,23 @@ mod tests {
     }
 
     #[test]
-    fn build_never_panics_on_odd_params() {
+    fn build_rejects_non_object_params_with_a_pointer() {
         let f = GroundKinematicFactory::new();
         for v in [
             ParamValue::Null,
             serde_json::json!([]),
             serde_json::json!("x"),
-            serde_json::json!({"max_speed_mps": 1e308, "max_turn_rate_dps": 1e308, "max_accel_mps2": 1}),
         ] {
-            let _ = f.build(&v);
+            let error = f.build(&v).err();
+            let error = error.unwrap_or_else(|| panic!("{v} must be rejected"));
+            assert_eq!(error.param.as_deref(), Some("/max_speed_mps"), "{v}");
         }
+    }
+
+    #[test]
+    fn build_does_not_panic_on_huge_values() {
+        let f = GroundKinematicFactory::new();
+        let v = serde_json::json!({"max_speed_mps": 1e308, "max_turn_rate_dps": 1e308, "max_accel_mps2": 1});
+        let _ = f.build(&v);
     }
 }

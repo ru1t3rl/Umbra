@@ -257,3 +257,25 @@ fn register_builtins_adds_no_terrain_providers() {
         Vec::<&ComponentId>::new()
     );
 }
+
+/// 5e-324 is schema-valid but rounds to 0 rad/s after the degree conversion; the error is still
+/// located at the TOML key and names it, not an internal field.
+#[test]
+fn subnormal_turn_rate_is_located_at_its_key_and_named_by_it() {
+    let error = factory()
+        .build(&with_value("max_turn_rate_dps", 5e-324))
+        .err()
+        .unwrap_or_else(|| panic!("must be rejected"));
+
+    assert_eq!(error.param.as_deref(), Some("/max_turn_rate_dps"));
+    assert!(error.message.contains("max_turn_rate_dps"), "{error}");
+}
+
+#[test]
+fn schema_bounds_each_limit_from_above() {
+    let f = factory();
+    let props = &f.param_schema().as_json()["properties"];
+    assert_eq!(props["max_speed_mps"]["maximum"], json!(1000));
+    assert_eq!(props["max_turn_rate_dps"]["maximum"], json!(3600));
+    assert_eq!(props["max_accel_mps2"]["maximum"], json!(1000));
+}

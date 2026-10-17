@@ -6,16 +6,19 @@
     "max_speed_mps": {
       "type": "number",
       "exclusiveMinimum": 0,
+      "maximum": 1000,
       "description": "Maximum speed in meters per second."
     },
     "max_turn_rate_dps": {
       "type": "number",
       "exclusiveMinimum": 0,
+      "maximum": 3600,
       "description": "Maximum heading change rate in degrees per second."
     },
     "max_accel_mps2": {
       "type": "number",
       "exclusiveMinimum": 0,
+      "maximum": 1000,
       "description": "Maximum acceleration and deceleration in meters per second squared."
     }
   },

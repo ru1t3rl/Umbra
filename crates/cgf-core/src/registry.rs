@@ -352,11 +352,12 @@ mod tests {
             ComponentKind::Behavior => 2,
             ComponentKind::Sensor => 3,
         };
-        let variants = 4;
-        assert_eq!(ComponentKind::ALL.len(), variants);
         let mut seen: Vec<usize> = ComponentKind::ALL.iter().map(|&k| index(k)).collect();
         seen.sort_unstable();
-        assert_eq!(seen, [0, 1, 2, 3]);
+        // Indices are dense from 0, so a missing or repeated kind in `ALL` breaks this.
+        let expected: Vec<usize> = (0..seen.len()).collect();
+        assert_eq!(seen, expected);
+        assert_eq!(seen.len(), 1 + index(ComponentKind::Sensor));
         assert_eq!(ComponentKind::Terrain.to_string(), "terrain provider");
     }
 
