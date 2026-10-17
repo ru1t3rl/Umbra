@@ -57,6 +57,39 @@ fn given_demo_when_cli_runs_twice_then_final_state_hash_is_identical() {
     assert_eq!(a, b);
 }
 
+/// REQ-K-4: four separate processes print byte-identical output, with every entity line and the
+/// state hash after every tick, so a divergence anywhere in the run (a per-process hasher seed,
+/// pointer-ordered iteration) shows up even if it later cancels out.
+#[test]
+fn given_demo_when_cli_runs_four_times_then_per_tick_output_is_byte_identical() {
+    let args = [
+        "demo",
+        "--ticks",
+        "300",
+        "--seed",
+        "42",
+        "--json",
+        "--print-every",
+        "1",
+        "--hash-every",
+        "1",
+    ];
+
+    let runs: Vec<Output> = (0..4).map(|_| cli(&args)).collect();
+
+    for r in &runs {
+        assert_eq!(r.status.code(), Some(0), "stderr: {}", stderr(r));
+    }
+    let hash_lines = stdout(&runs[0])
+        .lines()
+        .filter(|l| l.starts_with("{\"state_hash\""))
+        .count();
+    assert_eq!(hash_lines, 301, "one hash per tick plus the final line");
+    for r in &runs[1..] {
+        assert_eq!(r.stdout, runs[0].stdout);
+    }
+}
+
 /// REQ-K-4: the seed reaches the simulation, so another seed ends with another hash.
 #[test]
 fn given_different_seeds_then_final_state_hashes_differ() {
@@ -201,6 +234,10 @@ fn given_malformed_scale_or_unknown_flag_then_exit_code_2() {
         &["demo", "--clock", "scaled=abc"][..],
         &["demo", "--no-such-flag"][..],
         &["demo", "--ticks", "many"][..],
+        &["demo", "--log-level", "bogus"][..],
+        &["demo", "--clock", "scaled=0.0001"][..],
+        &["demo", "--clock", "scaled=10000000"][..],
+        &["demo", "--hash-every", "x"][..],
     ] {
         assert_eq!(cli(args).status.code(), Some(2), "{args:?}");
     }

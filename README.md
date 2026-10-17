@@ -16,6 +16,9 @@ Claude Code configuration for building the CGF engine from the specification.
 ## Frontend
 The GUI lives in `gui/` (Bun workspaces): `features/` and `feature-shells/` are libraries, `src/` is the thin app. Rules in `gui/CLAUDE.md` and `docs/frontend-architecture.md`. Start with: `Use frontend-architect to plan the GUI scaffold, then add-feature for ui-kit.`
 
+## Engine demo
+`cargo run -p cgf-cli -- demo [--ticks N] [--seed S] [--rate HZ] [--clock afap|realtime|stepped|scaled=F] [--print-every N] [--hash-every N] [--json] [--log-level LEVEL]` runs the built-in three-entity scenario and prints entity state and a final `state_hash=<hex>` line.
+
 ## Tips
 - Run one milestone per session and review the plan before implementation starts.
 - Several skills call `cargo xtask ...` commands; M0 should create the `xtask` crate (`check-deps`, later `gen-api`, `gen-header`, `build-plugins`).

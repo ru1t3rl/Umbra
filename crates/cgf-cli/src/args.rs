@@ -3,6 +3,7 @@
 use clap::{Parser, Subcommand};
 
 use cgf_engine::{ClockMode, TickRate, TimeScale};
+use tracing_subscriber::filter::LevelFilter;
 
 /// The CGF Engine command line.
 #[derive(Debug, Parser)]
@@ -41,9 +42,17 @@ pub struct DemoArgs {
     /// Print JSON Lines instead of text.
     #[arg(long)]
     pub json: bool,
-    /// Log level: error, warn, info, debug or trace.
-    #[arg(long, default_value = "warn")]
-    pub log_level: String,
+    /// Print the state hash after every N ticks (0 prints none; the final hash is always printed).
+    #[arg(long, default_value_t = 0)]
+    pub hash_every: u64,
+    /// Log level: off, error, warn, info, debug or trace.
+    #[arg(long, default_value = "warn", value_parser = parse_level)]
+    pub log_level: LevelFilter,
+}
+
+fn parse_level(s: &str) -> Result<LevelFilter, String> {
+    s.parse()
+        .map_err(|e| format!("invalid log level {s:?}: {e}"))
 }
 
 fn parse_rate(s: &str) -> Result<TickRate, String> {

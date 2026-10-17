@@ -17,7 +17,11 @@ pub enum Format {
 /// Heading rounded to the printed 0.01 degree and kept in `[0, 360)`: 359.999 prints as `0.00`.
 fn heading_for_display(deg: f64) -> f64 {
     let rounded = (deg * 100.0).round() / 100.0;
-    if rounded >= 360.0 { 0.0 } else { rounded }
+    if rounded >= 360.0 || rounded == 0.0 {
+        0.0
+    } else {
+        rounded
+    }
 }
 
 /// Height rounded to the printed millimeter, with `-0.0` and tiny negatives shown as `0.0`.
@@ -71,6 +75,19 @@ pub fn write_entities(out: &mut impl Write, format: Format, snapshot: &Snapshot)
     Ok(())
 }
 
+/// Writes the state hash after `tick` ticks: `tick=N hash=<hex>` or `{"tick":N,"state_hash":".."}`.
+pub fn write_tick_hash(
+    out: &mut impl Write,
+    format: Format,
+    tick: u64,
+    hash: StateHash,
+) -> io::Result<()> {
+    match format {
+        Format::Text => writeln!(out, "tick={tick} hash={hash}"),
+        Format::Json => write_final(out, format, tick, hash),
+    }
+}
+
 /// Writes the final line: the state hash after `tick` ticks.
 pub fn write_final(
     out: &mut impl Write,
@@ -101,6 +118,8 @@ mod tests {
         assert_eq!(heading_for_display(90.004), 90.0);
         assert_eq!(heading_for_display(359.99), 359.99);
         assert_eq!(format!("{:.2}", heading_for_display(359.996)), "0.00");
+        assert_eq!(format!("{:.2}", heading_for_display(-5.7e-11)), "0.00");
+        assert_eq!(format!("{:.2}", heading_for_display(-1e-12)), "0.00");
     }
 
     /// A height of -1e-10 prints as 0.000, never -0.000.

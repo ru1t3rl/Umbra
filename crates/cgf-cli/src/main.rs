@@ -16,6 +16,7 @@ use std::io::{self, Write};
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use tracing_subscriber::filter::LevelFilter;
 
 use args::{Cli, Command, DemoArgs};
 use cgf_engine::{Engine, EngineConfig, Meters, demo};
@@ -27,12 +28,9 @@ fn main() -> Result<()> {
     }
 }
 
-fn init_logging(level: &str) -> Result<()> {
-    let filter: tracing_subscriber::filter::LevelFilter = level
-        .parse()
-        .with_context(|| format!("invalid --log-level {level:?}"))?;
+fn init_logging(level: LevelFilter) -> Result<()> {
     tracing_subscriber::fmt()
-        .with_max_level(filter)
+        .with_max_level(level)
         .with_writer(io::stderr)
         .with_ansi(false)
         .try_init()
@@ -40,7 +38,7 @@ fn init_logging(level: &str) -> Result<()> {
 }
 
 fn run_demo(args: &DemoArgs) -> Result<()> {
-    init_logging(&args.log_level)?;
+    init_logging(args.log_level)?;
     let format = if args.json {
         Format::Json
     } else {
@@ -57,14 +55,26 @@ fn run_demo(args: &DemoArgs) -> Result<()> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
     let mut write_error: Option<io::Error> = None;
-    let print_every = args.print_every;
+    let (print_every, hash_every) = (args.print_every, args.hash_every);
+    let due = |tick: u64, every: u64| every != 0 && tick.is_multiple_of(every);
+    // A write error (for example a closed pipe) does not stop the simulation; it is reported after
+    // the run (M2 may stop early).
     engine
         .step(args.ticks, |view| {
             let tick = view.report.time.tick();
-            if print_every == 0 || tick % print_every != 0 || write_error.is_some() {
+            if write_error.is_some() {
                 return;
             }
-            if let Err(e) = output::write_entities(&mut out, format, &view.snapshot()) {
+            let mut write = || -> io::Result<()> {
+                if due(tick, print_every) {
+                    output::write_entities(&mut out, format, &view.snapshot())?;
+                }
+                if due(tick, hash_every) {
+                    output::write_tick_hash(&mut out, format, tick, view.state_hash())?;
+                }
+                Ok(())
+            };
+            if let Err(e) = write() {
                 write_error = Some(e);
             }
         })
