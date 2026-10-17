@@ -8,6 +8,7 @@ mod common;
 use core::time::Duration;
 
 use cgf_core::{Intent, MetersPerSecond, Ownership, RemoteSource, Vec3};
+
 use cgf_kernel::{ClockMode, EntityInit, ManualWallClock, Pace, Phase};
 use common::{Behavior, MS_50, Stub, at, kernel, kernel_with, owned, rate, route};
 
@@ -227,12 +228,181 @@ fn overrun_is_reported_with_per_phase_timings() {
     }
 }
 
-/// REQ-K-8: a tick that keeps up reports no overrun.
+/// A motion model whose `step` costs wall time: the nth call advances the shared manual wall
+/// clock by `costs[n]` (zero after the list).
+struct Costly {
+    id: cgf_core::MotionModelId,
+    wall: ManualWallClock,
+    costs: Vec<Duration>,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl Costly {
+    fn new(wall: &ManualWallClock, costs: Vec<Duration>) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            id: common::model_id("test.stub.costly"),
+            wall: wall.clone(),
+            costs,
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        })
+    }
+}
+
+impl cgf_core::MotionModel for Costly {
+    fn id(&self) -> &cgf_core::MotionModelId {
+        &self.id
+    }
+
+    fn step(
+        &self,
+        state: &cgf_core::KinematicState,
+        _intents: &[Intent],
+        _dt: cgf_core::Seconds,
+        _terrain: &dyn cgf_core::TerrainProvider,
+    ) -> cgf_core::KinematicState {
+        let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.wall
+            .advance(self.costs.get(n).copied().unwrap_or_default());
+        *state
+    }
+}
+
+/// A kernel with one entity driven by `Costly`, plus the driver loop of the engine.
+fn costly_kernel(mode: ClockMode, costs: Vec<Duration>) -> (cgf_kernel::Kernel, ManualWallClock) {
+    let wall = ManualWallClock::new();
+    let mut k = kernel_with(1, mode, wall.clone());
+    let m = Costly::new(&wall, costs);
+    let init = EntityInit {
+        motion: m,
+        ..owned(
+            at(0.0),
+            &Stub::new("test.stub.unused", Behavior::Stationary),
+        )
+    };
+    assert!(k.spawn(init).is_ok());
+    (k, wall)
+}
+
+/// Polls and ticks or waits until `n` ticks ran (or the clock is idle).
+fn drive(k: &mut cgf_kernel::Kernel, n: usize) -> Vec<cgf_kernel::TickReport> {
+    let mut reports = Vec::new();
+    while reports.len() < n {
+        match k.clock_mut().poll() {
+            Pace::Tick => reports.extend(k.tick().ok()),
+            Pace::WaitUntil(deadline) => k.clock().wait_until(deadline),
+            Pace::Idle => break,
+        }
+    }
+    reports
+}
+
+/// REQ-K-8, ASM-050: a real-time tick that takes 1.35 budgets (45 ms of a 33.3 ms budget) is an
+/// overrun for that tick only; the next ticks, which are cheap, are not.
+#[test]
+fn one_slow_tick_reports_an_overrun_for_that_tick_only() {
+    let (mut k, _wall) = costly_kernel(ClockMode::RealTime, vec![Duration::from_millis(45)]);
+
+    let reports = drive(&mut k, 4);
+
+    let overrun = reports[0].overrun.expect("first tick overran");
+    assert!(
+        overrun > Duration::from_millis(11) && overrun < Duration::from_millis(12),
+        "{overrun:?}"
+    );
+    assert_eq!(reports[0].lag, Some(Duration::from_millis(45)));
+    for r in &reports[1..] {
+        assert_eq!(r.overrun, None);
+        assert_eq!(r.lag, None, "caught up: 11.7 ms late is within one period");
+    }
+}
+
+/// REQ-K-8: ticks that stay under their budget report neither overrun nor lag, in real time and
+/// scaled.
+#[test]
+fn ticks_within_budget_report_no_overrun() {
+    for mode in [
+        ClockMode::RealTime,
+        ClockMode::Scaled(cgf_kernel::TimeScale::new(2.0).expect("scale")),
+    ] {
+        // Budgets are 33.3 ms and 16.7 ms; the work costs 10 ms.
+        let costs = vec![Duration::from_millis(10); 6];
+        let (mut k, _wall) = costly_kernel(mode, costs);
+
+        let reports = drive(&mut k, 6);
+
+        assert_eq!(reports.len(), 6);
+        for r in reports {
+            assert_eq!((r.overrun, r.lag), (None, None), "{mode:?}");
+        }
+    }
+}
+
+/// REQ-K-8, ASM-050: one 500 ms stall followed by cheap ticks gives exactly one overrun; the
+/// 14 catch-up ticks run back to back (none skipped) and report lag, not overrun.
+#[test]
+fn a_single_stall_gives_exactly_one_overrun() {
+    let (mut k, _wall) = costly_kernel(ClockMode::RealTime, vec![Duration::from_millis(500)]);
+
+    let reports = drive(&mut k, 20);
+
+    assert_eq!(reports.len(), 20);
+    assert_eq!(k.now().tick(), 20, "no tick skipped");
+    assert_eq!(reports.iter().filter(|r| r.overrun.is_some()).count(), 1);
+    assert!(reports[0].overrun.is_some());
+    let lagging = reports.iter().filter(|r| r.lag.is_some()).count();
+    assert!(lagging > 5, "catch-up ticks report lag: {lagging}");
+}
+
+/// REQ-K-8: modes without a wall budget never report an overrun or lag, however slow the work.
+#[test]
+fn afap_and_stepped_never_report_overrun() {
+    for mode in [ClockMode::AsFastAsPossible, ClockMode::Stepped] {
+        let costs = vec![Duration::from_secs(5); 3];
+        let (mut k, _wall) = costly_kernel(mode, costs);
+        k.clock_mut().request_steps(3);
+
+        let reports = drive(&mut k, 3);
+
+        assert_eq!(reports.len(), 3, "{mode:?}");
+        for r in reports {
+            assert_eq!((r.overrun, r.lag), (None, None), "{mode:?}");
+        }
+    }
+}
+
+/// REQ-K-5: the Behavior-phase filter. A remote entity whose first waypoint is within the
+/// arrival radius of its start keeps `route_next == 0`, while an owned twin advances.
+#[test]
+fn route_stand_in_skips_remote_entities() {
+    let mut k = kernel(1);
+    let m = Stub::new("test.stub.still", Behavior::Stationary);
+    let twin = |ownership| EntityInit {
+        ownership,
+        route: Some(route(vec![at(1.0), at(500.0), at(900.0)], 5.0)),
+        ..owned(at(0.0), &m)
+    };
+    assert!(k.spawn(twin(Ownership::Owned)).is_ok());
+    let remote = Ownership::Remote {
+        source: RemoteSource::new("dis.test"),
+    };
+    assert!(k.spawn(twin(remote)).is_ok());
+
+    assert!(k.tick().is_ok());
+
+    let routes: Vec<_> = k.snapshot().entities.iter().map(|e| e.route_next).collect();
+    assert_eq!(routes, [Some((1, 3)), Some((0, 3))]);
+}
+
+/// REQ-K-8: an on-schedule real-time tick reports no overrun and no lag.
 #[test]
 fn tick_on_schedule_reports_no_overrun() {
-    let mut k = kernel(1);
+    let wall = ManualWallClock::new();
+    let mut k = kernel_with(1, ClockMode::RealTime, wall);
 
-    let report = k.tick();
+    let reports = drive(&mut k, 3);
 
-    assert_eq!(report.map(|r| r.overrun), Ok(None));
+    assert_eq!(reports.len(), 3);
+    for r in reports {
+        assert_eq!((r.overrun, r.lag), (None, None));
+    }
 }

@@ -214,6 +214,13 @@ impl Clock {
         (lag > wall_offset(1, hz, scale)).then_some(lag)
     }
 
+    /// The wall-time budget of one tick: one tick period divided by the time scale. `None` in
+    /// modes without a wall schedule (as fast as possible, stepped).
+    pub fn wall_period(&self) -> Option<Duration> {
+        let scale = self.scale()?;
+        Some(wall_offset(1, self.now.rate().hz(), scale))
+    }
+
     /// The wall clock's current time.
     pub fn wall_now(&self) -> Duration {
         self.wall.now()

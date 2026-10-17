@@ -4,6 +4,9 @@ use core::time::Duration;
 
 use cgf_core::{Seconds, SimTime, TerrainProvider};
 
+/// The number of tick phases.
+pub const PHASE_COUNT: usize = 6;
+
 /// The six tick phases, in execution order (REQ-K-2). [`Phase::ALL`] is the single source of
 /// that order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -24,7 +27,7 @@ pub enum Phase {
 
 impl Phase {
     /// Every phase in execution order.
-    pub const ALL: [Phase; 6] = [
+    pub const ALL: [Phase; PHASE_COUNT] = [
         Phase::Ingest,
         Phase::Perception,
         Phase::Behavior,
@@ -47,13 +50,11 @@ impl Phase {
 }
 
 /// What systems receive for one tick: simulation time and step only, never wall time (REQ-C-1).
-pub struct TickContext<'a> {
-    /// The time of the tick being run (before the clock advances).
-    pub now: SimTime,
+pub(crate) struct TickContext<'a> {
     /// The tick period.
-    pub dt: Seconds,
+    pub(crate) dt: Seconds,
     /// Terrain for motion models.
-    pub terrain: &'a dyn TerrainProvider,
+    pub(crate) terrain: &'a dyn TerrainProvider,
 }
 
 /// What one tick reports.
@@ -63,8 +64,12 @@ pub struct TickReport {
     /// Simulation time after the tick (ASM-036).
     pub time: SimTime,
     /// Wall time spent per phase, indexed like [`Phase::ALL`]. Diagnostics only: never hashed.
-    pub phase_wall: [Duration; 6],
-    /// In real-time and scaled modes: how far behind schedule the clock is when it exceeds one
-    /// tick period (REQ-K-8). The tick still ran; none are skipped.
+    pub phase_wall: [Duration; PHASE_COUNT],
+    /// In real-time and scaled modes: by how much this tick's own wall duration exceeded its
+    /// budget (`Clock::wall_period`), if it did (REQ-K-8, ASM-050). `None` in other modes.
     pub overrun: Option<Duration>,
+    /// In real-time and scaled modes: how far behind its schedule the clock is after this tick,
+    /// when that exceeds one period (`Clock::behind`). Catch-up ticks after a stall report lag
+    /// but, unless they are slow themselves, no overrun.
+    pub lag: Option<Duration>,
 }

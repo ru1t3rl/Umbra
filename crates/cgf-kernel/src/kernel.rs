@@ -11,7 +11,7 @@ use cgf_core::{
 
 use crate::clock::{Clock, ClockMode, WallClock};
 use crate::error::KernelError;
-use crate::pipeline::{Phase, TickContext, TickReport};
+use crate::pipeline::{PHASE_COUNT, Phase, TickContext, TickReport};
 use crate::state;
 use crate::systems::{motion, route};
 use crate::world::World;
@@ -130,32 +130,46 @@ impl Kernel {
             return Err(KernelError::TimeOverflow(now.tick()));
         }
         let ctx = TickContext {
-            now,
             dt: now.dt(),
             terrain: self.terrain.as_ref(),
         };
-        let mut phase_wall = [Duration::ZERO; 6];
+        let mut phase_wall = [Duration::ZERO; PHASE_COUNT];
+        let tick_started = self.clock.wall_now();
         for (slot, phase) in phase_wall.iter_mut().zip(Phase::ALL) {
             let _span = tracing::trace_span!("phase", phase = phase.name()).entered();
             let started = self.clock.wall_now();
             run_phase(phase, &mut self.world, &ctx);
             *slot = self.clock.wall_now().saturating_sub(started);
         }
+        let took = self.clock.wall_now().saturating_sub(tick_started);
         let time = self.clock.advance()?;
-        let overrun = self.clock.behind();
-        if let Some(lag) = overrun {
-            tracing::warn!(
-                tick = time.tick(),
-                ?lag,
-                ?phase_wall,
-                "tick overran its period"
-            );
-        }
+        let overrun = self.overrun(took, &phase_wall, time);
         Ok(TickReport {
             time,
             phase_wall,
             overrun,
+            lag: self.clock.behind(),
         })
+    }
+
+    /// REQ-K-8 (ASM-050): by how much this tick's own duration exceeded the wall budget, with one
+    /// warning for that tick. `None` when the clock has no wall budget or the tick fit.
+    fn overrun(
+        &self,
+        took: Duration,
+        phase_wall: &[Duration; PHASE_COUNT],
+        time: SimTime,
+    ) -> Option<Duration> {
+        let budget = self.clock.wall_period()?;
+        let over = took.checked_sub(budget).filter(|d| !d.is_zero())?;
+        tracing::warn!(
+            tick = time.tick(),
+            ?took,
+            ?budget,
+            ?phase_wall,
+            "tick exceeded its time budget"
+        );
+        Some(over)
     }
 
     /// The clock.
@@ -212,5 +226,83 @@ fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>) {
             }
         }),
         Phase::Ingest | Phase::Perception | Phase::Events | Phase::Publish => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+
+    use cgf_core::{FlatTerrain, Intent, Quaternion, Seconds, Vec3};
+
+    use super::*;
+    use crate::clock::ManualWallClock;
+
+    struct Counting {
+        id: MotionModelId,
+        calls: AtomicUsize,
+    }
+
+    impl MotionModel for Counting {
+        fn id(&self) -> &MotionModelId {
+            &self.id
+        }
+        fn step(
+            &self,
+            state: &KinematicState,
+            _intents: &[Intent],
+            _dt: Seconds,
+            _terrain: &dyn TerrainProvider,
+        ) -> KinematicState {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            *state
+        }
+    }
+
+    /// REQ-C-1: at `u64::MAX` the precheck returns `TimeOverflow` before any phase runs.
+    #[test]
+    fn tick_at_u64_max_overflows_before_running_any_phase() {
+        let Some(rate) = TickRate::new(30) else {
+            panic!("valid rate");
+        };
+        let Ok(id) = MotionModelId::new("test.stub.counting") else {
+            panic!("valid id");
+        };
+        let model = Arc::new(Counting {
+            id,
+            calls: AtomicUsize::new(0),
+        });
+        let mut kernel = Kernel {
+            clock: Clock::starting_at(
+                SimTime::at_tick(rate, u64::MAX),
+                ClockMode::AsFastAsPossible,
+                Box::new(ManualWallClock::new()),
+            ),
+            rng: SimRng::new(1),
+            terrain: Box::new(FlatTerrain {
+                height: Meters(0.0),
+            }),
+            world: World::new(),
+        };
+        let init = EntityInit {
+            state: KinematicState {
+                position: Ecef(Vec3::new(6_378_137.0, 0.0, 0.0)),
+                velocity: Vec3::ZERO,
+                orientation: Quaternion::IDENTITY,
+            },
+            ownership: Ownership::Owned,
+            motion: model.clone(),
+            route: None,
+        };
+        assert!(kernel.spawn(init).is_ok());
+
+        let got = kernel.tick();
+
+        assert_eq!(
+            got.map(|r| r.time),
+            Err(KernelError::TimeOverflow(u64::MAX))
+        );
+        assert_eq!(model.calls.load(Ordering::SeqCst), 0);
+        assert_eq!(kernel.now().tick(), u64::MAX);
     }
 }
