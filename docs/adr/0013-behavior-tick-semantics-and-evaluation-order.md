@@ -72,3 +72,10 @@ Option 1.
 - **Order independence:** each entity has its own `IntentBuffer`, contact vector and RNG stream and sees
   only pre-tick state, so the outcome of the Perception and Behavior phases does not depend on the order
   in which entities are visited (tested in WI-6); id order remains the fixed visiting order.
+
+## Amended 2026-10-17 after step 4 (acceptance tests)
+- "Others halted" (parallel) and every other halt apply to **Running** nodes only; halting a node that
+  never started or already finished is a no-op.
+- Exact tick arithmetic for `cooldown`, `timeout`, `wait` and `timer_elapsed` is pinned in ASM-092(a):
+  cooldown re-ticks its child at `t + n`; timeout halts at `s + n`; `wait` is Running for `n` ticks, then
+  Success; `timer_elapsed` compares the absolute tick with `n`.

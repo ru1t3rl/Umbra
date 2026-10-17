@@ -72,3 +72,8 @@ Option 3.
   (`ReservedForm::{Param, Key}`), applied only to values inside `params`, never to the `params` table
   itself; `ParamTemplate::substitute` reports a `Key` form as `SubstituteError::Binding`.
 - `result` is free-text result semantics, not a port name (wording made explicit above).
+
+## Amended 2026-10-17 after step 4 (acceptance tests)
+Binding-only params (`entity`, `position`) have no literal form and therefore cannot have a `default`
+(a `default` on one is `invalid_value`); they are always required. "An optional bound param that is unset
+stays unset" applies only to literal-capable types (`bool`, `number`, `integer`, `string`) with a default.
