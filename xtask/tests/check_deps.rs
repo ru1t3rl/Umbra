@@ -1,12 +1,14 @@
-//! Integration tests: `load_graph` on fixture workspaces and the `xtask check-deps` binary.
+//! Integration tests: `Workspace::load` on fixture workspaces and the `xtask check-deps` binary.
 //!
-//! Covers AT-5 (fixture part) and AT-6. Requirements: REQ-A-1, REQ-A-2, REQ-A-3, ASM-005,
-//! ASM-006. Fixtures: `tests/fixtures/{violating,conforming}` (see README there). All offline.
+//! Covers AT-5 (fixture part) and AT-6. Requirements: REQ-A-1, REQ-A-2, REQ-A-3, NFR-2, ASM-005,
+//! ASM-006. Fixtures: `tests/fixtures/*` (see README there). All offline.
+
+#![forbid(unsafe_code)]
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-use xtask::deps::{DepKind, RULES, Violation, check, load_graph};
+use xtask::deps::{DepKind, RULES, Violation, Workspace, WorkspaceGraph, check, check_workspace};
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -32,6 +34,25 @@ fn run_check_deps(manifest: &Path) -> Output {
         .expect("spawn xtask binary")
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "test helper: a fixture that fails to load is a test error"
+)]
+fn load_graph(manifest: &Path) -> WorkspaceGraph {
+    Workspace::load(Some(manifest)).expect("load").graph
+}
+
+#[expect(
+    clippy::expect_used,
+    reason = "test helper: a fixture that fails to load is a test error"
+)]
+fn workspace_violations(name: &str) -> Vec<Violation> {
+    check_workspace(
+        &Workspace::load(Some(&fixture(name))).expect("load"),
+        &RULES,
+    )
+}
+
 fn combined(out: &Output) -> String {
     format!(
         "{}\n{}",
@@ -45,7 +66,7 @@ fn combined(out: &Output) -> String {
 /// ASM-005/006: the loader reports members and every edge kind, and resolves renames.
 #[test]
 fn given_violating_fixture_when_loaded_then_all_edge_kinds_and_renames_are_resolved() {
-    let g = load_graph(&fixture("violating")).expect("load");
+    let g = load_graph(&fixture("violating"));
 
     let has = |from: &str, to: &str, kind: DepKind, target: bool| {
         g.edges
@@ -64,15 +85,16 @@ fn given_violating_fixture_when_loaded_then_all_edge_kinds_and_renames_are_resol
     );
 }
 
-/// ASM-006: path dependencies outside the workspace count as external.
+/// ASM-006: `fake_external` is a registry dependency (patched to a local path only so the
+/// resolved pass works offline), so it is neither a workspace nor a path edge.
 #[test]
-fn given_path_dep_outside_workspace_when_loaded_then_edge_is_not_workspace() {
-    let g = load_graph(&fixture("violating")).expect("load");
+fn given_registry_dep_when_loaded_then_edge_is_neither_workspace_nor_path() {
+    let g = load_graph(&fixture("violating"));
 
     let ext: Vec<_> = g.edges.iter().filter(|e| e.to == "fake_external").collect();
 
     assert_eq!(ext.len(), 2, "normal and build edge");
-    assert!(ext.iter().all(|e| !e.is_workspace));
+    assert!(ext.iter().all(|e| !e.is_workspace && !e.is_path));
     assert!(
         g.edges
             .iter()
@@ -84,7 +106,7 @@ fn given_path_dep_outside_workspace_when_loaded_then_edge_is_not_workspace() {
 /// AT-5: loading the fixture and running `check` finds each seeded violation exactly.
 #[test]
 fn given_violating_fixture_when_loaded_and_checked_then_each_seeded_violation_is_found() {
-    let g = load_graph(&fixture("violating")).expect("load");
+    let g = load_graph(&fixture("violating"));
 
     let v = check(&g, &RULES);
 
@@ -125,7 +147,7 @@ fn given_violating_fixture_when_loaded_and_checked_then_each_seeded_violation_is
 /// AT-6: the conforming fixture loads and has no violation.
 #[test]
 fn given_conforming_fixture_when_loaded_and_checked_then_no_violations() {
-    let g = load_graph(&fixture("conforming")).expect("load");
+    let g = load_graph(&fixture("conforming"));
 
     assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
 }
@@ -133,7 +155,7 @@ fn given_conforming_fixture_when_loaded_and_checked_then_no_violations() {
 /// Loader error path: a missing manifest is an error, not a panic.
 #[test]
 fn given_missing_manifest_when_loaded_then_error() {
-    let r = load_graph(&fixture("does_not_exist"));
+    let r = Workspace::load(Some(&fixture("does_not_exist")));
 
     assert!(r.is_err());
 }
@@ -209,7 +231,7 @@ fn given_missing_manifest_when_check_deps_runs_then_exit_code_2() {
 /// M1: the shim fixture edge is reported (`cgf-cli -> shim` would launder `cgf-kernel`).
 #[test]
 fn given_shim_path_dep_when_loaded_then_edge_is_path_and_not_workspace() {
-    let g = load_graph(&fixture("violating")).expect("load");
+    let g = load_graph(&fixture("violating"));
 
     let e = g.edges.iter().find(|e| e.to == "shim").expect("shim edge");
 
@@ -299,4 +321,269 @@ fn given_subdirectory_cwd_when_check_deps_runs_without_manifest_then_workspace_i
         .expect("spawn");
 
     assert_eq!(out.status.code(), Some(0), "{}", combined(&out));
+}
+
+// ---------------------------------------------------------------- review of 0a25b26: laundering
+
+fn assert_rejected_with(fixture_name: &str, needles: &[&str]) {
+    let out = run_check_deps(&fixture(fixture_name));
+    let text = combined(&out);
+
+    assert_eq!(out.status.code(), Some(1), "output:\n{text}");
+    for needle in needles {
+        assert!(
+            text.contains(needle),
+            "missing `{needle}` in output:\n{text}"
+        );
+    }
+}
+
+/// Finding 1 (REQ-A-3): `[patch.crates-io] shim = { path = "shim" }` in the root manifest turns a
+/// registry dependency into a path package that depends on `cgf-kernel`. Only the resolved graph
+/// shows it. The same table patches a registry `cgf-kernel = "0.1"` to the member itself, which the
+/// `--no-deps` pass sees as an external dependency.
+#[test]
+fn given_root_patch_launder_when_check_deps_runs_then_resolved_edges_are_reported() {
+    assert_rejected_with(
+        "launder_patch",
+        &[
+            "REQ-A-3: cgf-sdk -> shim -> cgf-kernel (resolved) not allowed",
+            "section 4: cgf-net-dis -> cgf-kernel (normal) not allowed",
+        ],
+    );
+}
+
+/// Finding 1 (REQ-A-3): the same patch in `.cargo/config.toml` of the checked workspace.
+#[test]
+fn given_config_patch_launder_when_check_deps_runs_then_resolved_edge_is_reported() {
+    assert_rejected_with(
+        "launder_config_patch",
+        &["REQ-A-3: cgf-sdk -> shim -> cgf-kernel (resolved) not allowed"],
+    );
+}
+
+/// Finding 2 (REQ-A-3): a non-member path package named like a member (`cgf-plugin-api`) must not
+/// count as that member.
+#[test]
+fn given_same_name_impostor_when_check_deps_runs_then_it_is_reported() {
+    assert_rejected_with(
+        "launder_same_name",
+        &[
+            "ASM-006: cgf-sdk -> cgf-plugin-api (normal) is a path dependency outside the workspace",
+            "ASM-006: package cgf-plugin-api 9.0.0",
+            "REQ-A-3: cgf-sdk -> cgf-plugin-api -> cgf-kernel (resolved) not allowed",
+        ],
+    );
+}
+
+/// Finding 3 (ASM-006): `fake_external` is no longer a production allow-list entry.
+#[test]
+fn given_fake_external_path_launder_when_check_deps_runs_then_it_is_reported() {
+    assert_rejected_with(
+        "launder_fake_external",
+        &[
+            "ASM-006: cgf-sdk -> fake_external (normal) is a path dependency outside the workspace",
+            "REQ-A-3: cgf-sdk -> fake_external -> cgf-kernel (resolved) not allowed",
+        ],
+    );
+}
+
+/// Finding 7 (NFR-2, ASM-024): every target kind of a non-FFI crate is scanned; the FFI crate's
+/// test target stays exempt.
+#[test]
+fn given_targets_without_forbid_when_check_deps_runs_then_each_is_reported() {
+    let out = run_check_deps(&fixture("unsafe_targets"));
+    let text = combined(&out);
+
+    assert_eq!(out.status.code(), Some(1), "output:\n{text}");
+    for file in [
+        "benches/bench.rs",
+        "build.rs",
+        "examples/ex.rs",
+        "src/bin/tool.rs",
+        "tests/it.rs",
+    ] {
+        let needle = format!("NFR-2: cgf-core ({file}) lacks #![forbid(unsafe_code)]");
+        assert!(
+            text.contains(&needle),
+            "missing `{needle}` in output:\n{text}"
+        );
+    }
+    assert!(
+        !text.contains("cgf-sdk"),
+        "FFI crate must be exempt:\n{text}"
+    );
+    assert!(
+        !text.contains("src/lib.rs"),
+        "lib.rs has the attribute:\n{text}"
+    );
+}
+
+/// Nit 10: `--manifest-path` given twice is a usage error.
+#[test]
+fn given_repeated_manifest_path_when_check_deps_runs_then_exit_code_2() {
+    let m = fixture("conforming");
+    let m = m.to_str().expect("fixture path is UTF-8");
+    let eq = format!("--manifest-path={m}");
+
+    assert_eq!(
+        run_args(&["check-deps", "--manifest-path", m, "--manifest-path", m])
+            .status
+            .code(),
+        Some(2)
+    );
+    assert_eq!(
+        run_args(&["check-deps", &eq, "--manifest-path", m])
+            .status
+            .code(),
+        Some(2)
+    );
+}
+
+/// Nit 10: a non-UTF-8 value in `--manifest-path=<p>` is reported as such (exit 2).
+#[cfg(unix)]
+#[test]
+fn given_non_utf8_equals_value_when_check_deps_runs_then_message_says_not_utf8() {
+    use std::os::unix::ffi::OsStrExt;
+    let bad = std::ffi::OsStr::from_bytes(b"--manifest-path=\xff");
+
+    let out = Command::new(env!("CARGO_BIN_EXE_xtask"))
+        .arg("check-deps")
+        .arg(bad)
+        .output()
+        .expect("spawn");
+
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        combined(&out).contains("--manifest-path value is not UTF-8"),
+        "{}",
+        combined(&out)
+    );
+}
+
+fn indirect(from: &str, via: &str, to: &str) -> Violation {
+    Violation::IndirectWorkspaceDep {
+        from: from.into(),
+        via: vec![via.into()],
+        to: to.into(),
+        requirement: "REQ-A-3",
+    }
+}
+
+/// Finding 1 (library level): exactly the two laundered edges, nothing else.
+#[test]
+fn given_root_patch_launder_when_checked_then_exact_violations() {
+    let mut expected = vec![
+        Violation::ForbiddenWorkspaceDep {
+            from: "cgf-net-dis".into(),
+            to: "cgf-kernel".into(),
+            kind: DepKind::Normal,
+            requirement: "section 4",
+        },
+        indirect("cgf-sdk", "shim", "cgf-kernel"),
+    ];
+    expected.sort();
+
+    assert_eq!(workspace_violations("launder_patch"), expected);
+}
+
+/// Finding 1 (library level): the `.cargo/config.toml` patch is applied because cargo runs in
+/// the checked workspace's directory.
+#[test]
+fn given_config_patch_launder_when_checked_then_exact_violations() {
+    assert_eq!(
+        workspace_violations("launder_config_patch"),
+        vec![indirect("cgf-sdk", "shim", "cgf-kernel")]
+    );
+}
+
+/// Finding 2 (library level): direct non-member path edge, the impostor and the laundered edge.
+#[test]
+fn given_same_name_impostor_when_checked_then_exact_violations() {
+    let v = workspace_violations("launder_same_name");
+
+    let (impostors, rest): (Vec<_>, Vec<_>) = v
+        .into_iter()
+        .partition(|v| matches!(v, Violation::ImpostorPackage { .. }));
+    assert!(
+        matches!(
+            impostors.as_slice(),
+            [Violation::ImpostorPackage { name, version, .. }]
+                if name == "cgf-plugin-api" && version == "9.0.0"
+        ),
+        "{impostors:?}"
+    );
+    let mut expected = vec![
+        Violation::NonMemberPathDep {
+            from: "cgf-sdk".into(),
+            to: "cgf-plugin-api".into(),
+            kind: DepKind::Normal,
+        },
+        indirect("cgf-sdk", "cgf-plugin-api", "cgf-kernel"),
+    ];
+    expected.sort();
+    assert_eq!(rest, expected);
+}
+
+/// Finding 2: membership is decided by path, so the edge to the impostor is not a workspace edge.
+#[test]
+fn given_same_name_impostor_when_loaded_then_edge_is_path_but_not_workspace() {
+    let g = load_graph(&fixture("launder_same_name"));
+
+    let e = g
+        .edges
+        .iter()
+        .find(|e| e.from == "cgf-sdk" && e.to == "cgf-plugin-api")
+        .expect("edge");
+
+    assert!(e.is_path && !e.is_workspace, "{e:?}");
+}
+
+/// Finding 3 (library level): no allow-list, so the `fake_external` shim is reported twice over.
+#[test]
+fn given_fake_external_path_launder_when_checked_then_exact_violations() {
+    let mut expected = vec![
+        Violation::NonMemberPathDep {
+            from: "cgf-sdk".into(),
+            to: "fake_external".into(),
+            kind: DepKind::Normal,
+        },
+        indirect("cgf-sdk", "fake_external", "cgf-kernel"),
+    ];
+    expected.sort();
+
+    assert_eq!(workspace_violations("launder_fake_external"), expected);
+}
+
+/// Both passes agree on the conforming fixture and on the real workspace.
+#[test]
+fn given_conforming_and_real_workspace_when_checked_then_no_violations() {
+    assert_eq!(workspace_violations("conforming"), Vec::<Violation>::new());
+    let real = Workspace::load(Some(&real_workspace())).expect("load");
+    assert_eq!(check_workspace(&real, &RULES), Vec::<Violation>::new());
+}
+
+/// A workspace without `Cargo.lock` cannot be resolved with `--locked`: load error, exit 2
+/// (fail closed, never a silent pass).
+#[test]
+fn given_workspace_without_lockfile_when_check_deps_runs_then_exit_code_2() {
+    let dir = std::env::temp_dir().join(format!("cgf-xtask-nolock-{}", std::process::id()));
+    let src = dir.join("crates/cgf-core/src");
+    std::fs::create_dir_all(&src).expect("mkdir");
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/*\"]\nresolver = \"3\"\n",
+    )
+    .expect("write");
+    std::fs::write(
+        dir.join("crates/cgf-core/Cargo.toml"),
+        "[package]\nname = \"cgf-core\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lints]\nworkspace = true\n",
+    )
+    .expect("write");
+    std::fs::write(src.join("lib.rs"), "#![forbid(unsafe_code)]\n").expect("write");
+
+    let out = run_check_deps(&dir.join("Cargo.toml"));
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(out.status.code(), Some(2), "output:\n{}", combined(&out));
 }

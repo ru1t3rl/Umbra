@@ -1,16 +1,23 @@
-//! Loader around `cargo metadata --no-deps` (no network, no resolution; ASM-006).
+//! Loaders around `cargo metadata` (ASM-005, ASM-006).
 //!
-//! The metadata is read once ([`Metadata::load`]) and every check is fed from it (review m5).
+//! Two runs, both offline:
+//! - `--no-deps`: members, their declared (direct) dependencies, targets and manifests.
+//! - `--offline --locked --all-features`: the resolved graph over all platforms (no
+//!   `--filter-platform`), which sees through `[patch]`, `[replace]`, git and registry
+//!   dependencies to the packages that are actually linked.
+//!
+//! With a manifest path, cargo runs in that manifest's directory, so `.cargo/config.toml` files
+//! (which can hold `[patch]`) are read as they would be for a build there.
 
-use std::collections::BTreeSet;
-use std::path::Path;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::Value;
 
 use super::{DepEdge, DepKind, WorkspaceGraph};
 
-/// Failure to load the workspace graph.
+/// Failure to load the workspace.
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
     /// `cargo metadata` failed or returned bad JSON.
@@ -34,6 +41,13 @@ fn str_field<'a>(v: &'a Value, key: &str) -> Result<&'a str, LoadError> {
     v.get(key).and_then(Value::as_str).ok_or_else(|| bad(key))
 }
 
+fn array_field<'a>(v: &'a Value, key: &str) -> Result<&'a [Value], LoadError> {
+    v.get(key)
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .ok_or_else(|| bad(key))
+}
+
 fn read(path: &Path) -> Result<String, LoadError> {
     std::fs::read_to_string(path).map_err(|source| LoadError::Io {
         path: path.display().to_string(),
@@ -41,13 +55,22 @@ fn read(path: &Path) -> Result<String, LoadError> {
     })
 }
 
-/// A crate root source file of a workspace member.
+fn dep_kind(v: Option<&str>) -> Result<DepKind, LoadError> {
+    match v {
+        None => Ok(DepKind::Normal),
+        Some("build") => Ok(DepKind::Build),
+        Some("dev") => Ok(DepKind::Dev),
+        Some(_) => Err(bad("dependency kind")),
+    }
+}
+
+/// A root source file of one target (lib, bin, test, example, bench or build script) of a member.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CrateRoot {
     /// Package name.
     pub package: String,
     /// Path of the root relative to the package directory, with `/` separators
-    /// (for example `src/lib.rs`, `src/bin/tool/main.rs`).
+    /// (for example `src/lib.rs`, `src/bin/tool/main.rs`, `build.rs`).
     pub file: String,
     /// Full source text.
     pub source: String,
@@ -62,108 +85,117 @@ pub struct Manifest {
     pub source: String,
 }
 
-const ROOT_KINDS: &[&str] = &[
-    "lib",
-    "rlib",
-    "dylib",
-    "cdylib",
-    "staticlib",
-    "proc-macro",
-    "bin",
-];
+/// A package in the resolved graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedPackage {
+    /// Package name.
+    pub name: String,
+    /// Package version.
+    pub version: String,
+}
+
+/// One resolved dependency edge.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedDep {
+    /// Package id of the dependency.
+    pub id: String,
+    /// Kinds under which it is a dependency (any platform).
+    pub kinds: BTreeSet<DepKind>,
+}
+
+/// The resolved dependency graph (all features, all platforms), keyed by package id.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResolvedGraph {
+    /// Package ids of the workspace members.
+    pub members: BTreeSet<String>,
+    /// Every resolved package.
+    pub packages: BTreeMap<String, ResolvedPackage>,
+    /// Dependencies of each package, sorted by id.
+    pub deps: BTreeMap<String, Vec<ResolvedDep>>,
+}
+
+/// Runs `cargo metadata --format-version 1` plus `args`.
+fn cargo_metadata(manifest_path: Option<&Path>, args: &[&str]) -> Result<Value, LoadError> {
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut cmd = Command::new(cargo);
+    cmd.args(["metadata", "--format-version", "1"]).args(args);
+    if let Some(p) = manifest_path {
+        let abs = std::path::absolute(p)
+            .map_err(|e| LoadError::Metadata(format!("bad manifest path {}: {e}", p.display())))?;
+        let dir: PathBuf = abs.parent().map(Path::to_path_buf).unwrap_or_default();
+        if !dir.is_dir() {
+            return Err(LoadError::Metadata(format!(
+                "manifest directory {} does not exist",
+                dir.display()
+            )));
+        }
+        cmd.arg("--manifest-path").arg(&abs).current_dir(dir);
+    }
+    let out = cmd
+        .output()
+        .map_err(|e| LoadError::Metadata(format!("cannot run cargo: {e}")))?;
+    if !out.status.success() {
+        return Err(LoadError::Metadata(
+            String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        ));
+    }
+    serde_json::from_slice(&out.stdout).map_err(|e| LoadError::Metadata(e.to_string()))
+}
 
 /// Parsed output of one `cargo metadata --no-deps` run.
 #[derive(Debug)]
-pub struct Metadata(Value);
+pub(super) struct Metadata(Value);
 
 impl Metadata {
-    /// Runs `cargo metadata --no-deps --format-version 1`. With `None`, cargo searches upward
-    /// from the working directory for the manifest.
-    pub fn load(manifest_path: Option<&Path>) -> Result<Self, LoadError> {
-        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-        let mut cmd = Command::new(cargo);
-        cmd.args(["metadata", "--no-deps", "--format-version", "1"]);
-        if let Some(p) = manifest_path {
-            cmd.arg("--manifest-path").arg(p);
-        }
-        let out = cmd
-            .output()
-            .map_err(|e| LoadError::Metadata(format!("cannot run cargo: {e}")))?;
-        if !out.status.success() {
-            return Err(LoadError::Metadata(
-                String::from_utf8_lossy(&out.stderr).trim().to_string(),
-            ));
-        }
-        let v =
-            serde_json::from_slice(&out.stdout).map_err(|e| LoadError::Metadata(e.to_string()))?;
-        Ok(Self(v))
+    /// Runs `cargo metadata --no-deps`. With `None`, cargo searches upward from the working
+    /// directory for the manifest.
+    pub(super) fn load(manifest_path: Option<&Path>) -> Result<Self, LoadError> {
+        cargo_metadata(manifest_path, &["--no-deps"]).map(Self)
     }
 
     fn packages(&self) -> Result<&[Value], LoadError> {
-        self.0
-            .get("packages")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice)
-            .ok_or_else(|| bad("packages"))
+        array_field(&self.0, "packages")
     }
 
     /// Members and direct dependency edges of every kind (ASM-005). Renamed dependencies are
-    /// reported under their real package name.
-    pub fn graph(&self) -> Result<WorkspaceGraph, LoadError> {
+    /// reported under their real package name. A dependency is a workspace edge only when it is a
+    /// path dependency on the member's own directory (ASM-006), not merely a member's name.
+    pub(super) fn graph(&self) -> Result<WorkspaceGraph, LoadError> {
         let pkgs = self.packages()?;
-        let mut members = BTreeSet::new();
+        let mut member_dirs: BTreeMap<&str, PathBuf> = BTreeMap::new();
         for p in pkgs {
-            members.insert(str_field(p, "name")?.to_string());
+            let dir = Path::new(str_field(p, "manifest_path")?)
+                .parent()
+                .ok_or_else(|| bad("manifest_path"))?;
+            member_dirs.insert(str_field(p, "name")?, dir.to_path_buf());
         }
+        let members = member_dirs.keys().map(|n| (*n).to_string()).collect();
         let mut edges = Vec::new();
         for p in pkgs {
             let from = str_field(p, "name")?;
-            let deps = p
-                .get("dependencies")
-                .and_then(Value::as_array)
-                .ok_or_else(|| bad("dependencies"))?;
-            for d in deps {
+            for d in array_field(p, "dependencies")? {
                 let to = str_field(d, "name")?;
-                let kind = match d.get("kind").and_then(Value::as_str) {
-                    None => DepKind::Normal,
-                    Some("build") => DepKind::Build,
-                    Some("dev") => DepKind::Dev,
-                    Some(_) => return Err(bad("dependency kind")),
-                };
+                let path = d.get("path").and_then(Value::as_str).map(Path::new);
                 edges.push(DepEdge {
                     from: from.to_string(),
                     to: to.to_string(),
-                    kind,
+                    kind: dep_kind(d.get("kind").and_then(Value::as_str))?,
                     target: d.get("target").and_then(Value::as_str).map(str::to_string),
-                    is_workspace: members.contains(to),
-                    is_path: d.get("path").is_some_and(|p| !p.is_null()),
+                    is_workspace: path.is_some_and(|p| member_dirs.get(to).is_some_and(|m| m == p)),
+                    is_path: path.is_some(),
                 });
             }
         }
         Ok(WorkspaceGraph { members, edges })
     }
 
-    /// Library and binary crate roots of all members, sorted by package and relative path.
-    pub fn crate_roots(&self) -> Result<Vec<CrateRoot>, LoadError> {
+    /// Root files of every target of every member (ASM-024), sorted by package and relative path.
+    pub(super) fn crate_roots(&self) -> Result<Vec<CrateRoot>, LoadError> {
         let mut roots = Vec::new();
         for p in self.packages()? {
             let package = str_field(p, "name")?;
             let dir = Path::new(str_field(p, "manifest_path")?).parent();
-            let targets = p
-                .get("targets")
-                .and_then(Value::as_array)
-                .ok_or_else(|| bad("targets"))?;
-            for t in targets {
-                let is_root = t
-                    .get("kind")
-                    .and_then(Value::as_array)
-                    .ok_or_else(|| bad("kind"))?
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .any(|k| ROOT_KINDS.contains(&k));
-                if !is_root {
-                    continue;
-                }
+            for t in array_field(p, "targets")? {
                 let path = Path::new(str_field(t, "src_path")?);
                 let rel = dir.and_then(|d| path.strip_prefix(d).ok()).unwrap_or(path);
                 let file = rel
@@ -179,11 +211,12 @@ impl Metadata {
             }
         }
         roots.sort_by(|a, b| (&a.package, &a.file).cmp(&(&b.package, &b.file)));
+        roots.dedup_by(|a, b| a.package == b.package && a.file == b.file);
         Ok(roots)
     }
 
     /// The `Cargo.toml` of every member, sorted by package.
-    pub fn manifests(&self) -> Result<Vec<Manifest>, LoadError> {
+    pub(super) fn manifests(&self) -> Result<Vec<Manifest>, LoadError> {
         let mut out = Vec::new();
         for p in self.packages()? {
             out.push(Manifest {
@@ -196,17 +229,54 @@ impl Metadata {
     }
 }
 
-/// Loads the dependency graph of the workspace at `manifest_path`.
-pub fn load_graph(manifest_path: &Path) -> Result<WorkspaceGraph, LoadError> {
-    Metadata::load(Some(manifest_path))?.graph()
-}
+impl ResolvedGraph {
+    /// Package name for `id` (the id itself if unknown).
+    #[must_use]
+    pub fn name<'a>(&'a self, id: &'a str) -> &'a str {
+        self.packages.get(id).map_or(id, |p| p.name.as_str())
+    }
 
-/// Loads the crate roots of the workspace at `manifest_path`.
-pub fn load_crate_roots(manifest_path: &Path) -> Result<Vec<CrateRoot>, LoadError> {
-    Metadata::load(Some(manifest_path))?.crate_roots()
-}
+    /// Runs `cargo metadata --offline --locked --all-features` and reads `resolve`. Fails when
+    /// `Cargo.lock` is missing or stale, or a dependency is not in the local cache (`cargo fetch`).
+    pub fn load(manifest_path: Option<&Path>) -> Result<Self, LoadError> {
+        let v = cargo_metadata(manifest_path, &["--offline", "--locked", "--all-features"])?;
+        Self::from_metadata(&v)
+    }
 
-/// Loads the member manifests of the workspace at `manifest_path`.
-pub fn load_manifests(manifest_path: &Path) -> Result<Vec<Manifest>, LoadError> {
-    Metadata::load(Some(manifest_path))?.manifests()
+    fn from_metadata(v: &Value) -> Result<Self, LoadError> {
+        let mut g = Self::default();
+        for m in array_field(v, "workspace_members")? {
+            g.members.insert(
+                m.as_str()
+                    .ok_or_else(|| bad("workspace_members"))?
+                    .to_string(),
+            );
+        }
+        for p in array_field(v, "packages")? {
+            g.packages.insert(
+                str_field(p, "id")?.to_string(),
+                ResolvedPackage {
+                    name: str_field(p, "name")?.to_string(),
+                    version: str_field(p, "version")?.to_string(),
+                },
+            );
+        }
+        let resolve = v.get("resolve").ok_or_else(|| bad("resolve"))?;
+        for node in array_field(resolve, "nodes")? {
+            let mut deps = Vec::new();
+            for d in array_field(node, "deps")? {
+                let mut kinds = BTreeSet::new();
+                for k in array_field(d, "dep_kinds")? {
+                    kinds.insert(dep_kind(k.get("kind").and_then(Value::as_str))?);
+                }
+                deps.push(ResolvedDep {
+                    id: str_field(d, "pkg")?.to_string(),
+                    kinds,
+                });
+            }
+            deps.sort_by(|a, b| a.id.cmp(&b.id));
+            g.deps.insert(str_field(node, "id")?.to_string(), deps);
+        }
+        Ok(g)
+    }
 }

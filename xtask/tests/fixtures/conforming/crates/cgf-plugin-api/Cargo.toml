@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dev-dependencies]
-fake_external = { path = "../../fake_external" }
+fake_external = "0.1"
 
 [lints]
 workspace = true

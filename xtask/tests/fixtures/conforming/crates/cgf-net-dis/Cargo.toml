@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 cgf-sdk = { path = "../cgf-sdk" }
-fake_external = { path = "../../fake_external" }
+fake_external = "0.1"
 
 [lints]
 workspace = true

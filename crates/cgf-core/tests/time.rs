@@ -1,5 +1,7 @@
 //! AT-8: simulation time. Requirements: REQ-C-1, D-5, ASM-016.
 
+#![forbid(unsafe_code)]
+
 use cgf_core::{Seconds, SimTime, TickRate, TimeError};
 use proptest::prelude::*;
 

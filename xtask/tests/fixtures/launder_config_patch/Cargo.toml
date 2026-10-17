@@ -1,0 +1,8 @@
+# Fixture workspace, see ../README.md
+[workspace]
+members = ["crates/*"]
+exclude = ["shim"]
+resolver = "3"
+
+[workspace.lints.rust]
+unsafe_code = "deny"

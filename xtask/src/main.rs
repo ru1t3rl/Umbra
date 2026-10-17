@@ -47,14 +47,19 @@ fn check_deps(mut args: impl Iterator<Item = OsString>) -> Result<bool> {
     // Without --manifest-path cargo searches upward from the working directory.
     let mut manifest: Option<PathBuf> = None;
     while let Some(arg) = args.next() {
-        match arg.to_str() {
-            Some("--manifest-path") => {
-                manifest = Some(args.next().context("--manifest-path needs a value")?.into());
+        let value: PathBuf = match arg.to_str() {
+            Some("--manifest-path") => args.next().context("--manifest-path needs a value")?.into(),
+            Some(a) => match a.strip_prefix("--manifest-path=") {
+                Some(v) => v.into(),
+                None => bail!("unknown argument `{a}`"),
+            },
+            None if arg.to_string_lossy().starts_with("--manifest-path=") => {
+                bail!("--manifest-path value is not UTF-8; use `--manifest-path <path>`")
             }
-            Some(a) if a.starts_with("--manifest-path=") => {
-                manifest = Some(a["--manifest-path=".len()..].into());
-            }
-            _ => bail!("unknown argument `{}`", arg.to_string_lossy()),
+            None => bail!("unknown argument `{}`", arg.to_string_lossy()),
+        };
+        if manifest.replace(value).is_some() {
+            bail!("--manifest-path given more than once");
         }
     }
     let ws = Workspace::load(manifest.as_deref())?;

@@ -1,5 +1,7 @@
 //! AT-9: IDs. Requirements: REQ-C-2, ADR 0002 (accepted), ASM-017.
 
+#![forbid(unsafe_code)]
+
 use cgf_core::{BehaviorId, EntityId, IdError, MAX_ID_LEN, MotionModelId, PluginId, TemplateId};
 use proptest::prelude::*;
 

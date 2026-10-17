@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Repository tooling: cargo xtask check-deps (REQ-A-1..3)."
+description = "Repository tooling: cargo xtask check-deps (REQ-A-1..3, NFR-2)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,9 +9,11 @@ publish.workspace = true
 repository.workspace = true
 
 [dependencies]
-thiserror.workspace = true
-serde_json.workspace = true
 anyhow.workspace = true
+serde_json.workspace = true
+syn.workspace = true
+thiserror.workspace = true
+toml.workspace = true
 
 [lints]
 workspace = true

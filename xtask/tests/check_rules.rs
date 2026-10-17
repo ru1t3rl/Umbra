@@ -3,9 +3,14 @@
 //! Covers M0 acceptance tests AT-2, AT-3, AT-4, AT-5 (synthetic graphs) and AT-7 (rule-table
 //! self-tests). Requirements: REQ-A-1, REQ-A-2, REQ-A-3, section 4, ASM-005, ASM-006.
 
+#![forbid(unsafe_code)]
+
 use std::collections::{BTreeMap, BTreeSet};
 
-use xtask::deps::{CrateRule, DepEdge, DepKind, RULES, RuleSet, Violation, WorkspaceGraph, check};
+use xtask::deps::{
+    CrateRule, DepEdge, DepKind, RULES, ResolvedDep, ResolvedGraph, ResolvedPackage, RuleSet,
+    Violation, WorkspaceGraph, check, check_resolved,
+};
 
 fn edge(from: &str, to: &str, kind: DepKind) -> DepEdge {
     DepEdge {
@@ -454,16 +459,24 @@ fn given_non_member_path_dev_and_build_deps_when_checked_then_violations() {
     assert_eq!(check(&g, &RULES).len(), 2);
 }
 
-/// M1: the allow-list (`fake_external`, used by the fixtures) is honoured.
+/// Finding 3 (ASM-006): there is no production allow-list for path dependencies, so a fixture
+/// name such as `fake_external` is no back door.
 #[test]
-fn given_allow_listed_path_dep_when_checked_then_no_violation() {
+fn given_fake_external_path_dep_when_checked_then_violation() {
     let g = graph(vec![path_edge(
         "cgf-core",
         "fake_external",
         DepKind::Normal,
     )]);
 
-    assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
+    assert_eq!(
+        check(&g, &RULES),
+        vec![Violation::NonMemberPathDep {
+            from: "cgf-core".to_string(),
+            to: "fake_external".to_string(),
+            kind: DepKind::Normal
+        }]
+    );
 }
 
 /// M1: registry dependencies (not path) stay fine.
@@ -481,7 +494,6 @@ static CUSTOM: RuleSet = RuleSet {
         allow_external_deps: false,
         requirement: "REQ-A-1",
     }],
-    allowed_path_deps: &[],
 };
 
 /// m3: rendering uses the injected rule set, not the global table.
@@ -508,4 +520,226 @@ fn given_external_violation_when_rendered_then_message_is_precise() {
         text,
         "REQ-A-1: cgf-core -> libc (build) not allowed; cgf-core may have no normal/build external dependencies (ASM-009)"
     );
+}
+
+// ---------------------------------------------------------------- review of 0a25b26: resolved pass
+
+/// Synthetic resolved graph. Nodes are `(id, name, is_member)`; edges are `(from_id, to_id, kind)`.
+fn resolved(nodes: &[(&str, &str, bool)], edges: &[(&str, &str, DepKind)]) -> ResolvedGraph {
+    let mut g = ResolvedGraph::default();
+    for (id, name, member) in nodes {
+        g.packages.insert(
+            (*id).to_string(),
+            ResolvedPackage {
+                name: (*name).to_string(),
+                version: "0.1.0".to_string(),
+            },
+        );
+        if *member {
+            g.members.insert((*id).to_string());
+        }
+        g.deps.insert((*id).to_string(), Vec::new());
+    }
+    for (from, to, kind) in edges {
+        let deps = g.deps.entry((*from).to_string()).or_default();
+        if let Some(d) = deps.iter_mut().find(|d| d.id == *to) {
+            d.kinds.insert(*kind);
+        } else {
+            deps.push(ResolvedDep {
+                id: (*to).to_string(),
+                kinds: BTreeSet::from([*kind]),
+            });
+        }
+        deps.sort_by(|a, b| a.id.cmp(&b.id));
+    }
+    g
+}
+
+fn indirect(from: &str, via: &[&str], to: &str, requirement: &'static str) -> Violation {
+    Violation::IndirectWorkspaceDep {
+        from: from.to_string(),
+        via: via.iter().map(|s| (*s).to_string()).collect(),
+        to: to.to_string(),
+        requirement,
+    }
+}
+
+/// Finding 1 (REQ-A-3): `cgf-sdk -> shim -> cgf-kernel` through a non-member is reported.
+#[test]
+fn given_member_reached_through_non_member_when_resolved_checked_then_indirect_violation() {
+    let g = resolved(
+        &[
+            ("sdk", "cgf-sdk", true),
+            ("k", "cgf-kernel", true),
+            ("s", "shim", false),
+        ],
+        &[("sdk", "s", DepKind::Normal), ("s", "k", DepKind::Normal)],
+    );
+
+    assert_eq!(
+        check_resolved(&g, &RULES),
+        vec![indirect("cgf-sdk", &["shim"], "cgf-kernel", "REQ-A-3")]
+    );
+}
+
+/// The full non-member path is reported, shortest first.
+#[test]
+fn given_multi_hop_launder_when_resolved_checked_then_full_path_is_reported() {
+    let g = resolved(
+        &[
+            ("core", "cgf-core", true),
+            ("k", "cgf-kernel", true),
+            ("a", "a", false),
+            ("b", "b", false),
+        ],
+        &[
+            ("core", "a", DepKind::Dev),
+            ("a", "b", DepKind::Normal),
+            ("b", "k", DepKind::Build),
+        ],
+    );
+
+    assert_eq!(
+        check_resolved(&g, &RULES),
+        vec![indirect("cgf-core", &["a", "b"], "cgf-kernel", "REQ-A-1")]
+    );
+}
+
+/// A member reached through a non-member is fine when it is in the allowed closure
+/// (`cgf-cli` may reach `cgf-kernel` through `cgf-engine`).
+#[test]
+fn given_member_in_allowed_closure_when_resolved_checked_then_no_violation() {
+    let g = resolved(
+        &[
+            ("cli", "cgf-cli", true),
+            ("k", "cgf-kernel", true),
+            ("s", "shim", false),
+        ],
+        &[("cli", "s", DepKind::Normal), ("s", "k", DepKind::Normal)],
+    );
+
+    assert_eq!(check_resolved(&g, &RULES), Vec::<Violation>::new());
+}
+
+/// Members are not expanded: `cgf-plugin-api -> cgf-kernel` is reported for `cgf-plugin-api`
+/// (direct edge), not again as an indirect edge of `cgf-sdk`.
+#[test]
+fn given_forbidden_edge_behind_a_member_when_resolved_checked_then_reported_once_at_its_source() {
+    let g = resolved(
+        &[
+            ("sdk", "cgf-sdk", true),
+            ("api", "cgf-plugin-api", true),
+            ("k", "cgf-kernel", true),
+        ],
+        &[
+            ("sdk", "api", DepKind::Normal),
+            ("api", "k", DepKind::Normal),
+        ],
+    );
+
+    assert_eq!(
+        check_resolved(&g, &RULES),
+        vec![forbidden(
+            "cgf-plugin-api",
+            "cgf-kernel",
+            DepKind::Normal,
+            "section 4"
+        )]
+    );
+}
+
+/// Finding 1: a direct edge to a member by package id is judged against the direct allow-list,
+/// with every kind it has (this catches a registry dependency patched to a member).
+#[test]
+fn given_direct_member_edge_by_id_when_resolved_checked_then_forbidden_for_each_kind() {
+    let g = resolved(
+        &[("dis", "cgf-net-dis", true), ("k", "cgf-kernel", true)],
+        &[("dis", "k", DepKind::Normal), ("dis", "k", DepKind::Dev)],
+    );
+
+    assert_eq!(
+        check_resolved(&g, &RULES),
+        vec![
+            forbidden("cgf-net-dis", "cgf-kernel", DepKind::Normal, "section 4"),
+            forbidden("cgf-net-dis", "cgf-kernel", DepKind::Dev, "section 4"),
+        ]
+    );
+}
+
+/// Finding 2: a non-member package with a member's name, or a rule-table name, is an impostor.
+#[test]
+fn given_non_member_with_reserved_name_when_resolved_checked_then_impostor() {
+    let g = resolved(
+        &[
+            ("sdk", "cgf-sdk", true),
+            ("api", "cgf-plugin-api", true),
+            ("fake-api", "cgf-plugin-api", false),
+            ("fake-kernel", "cgf-kernel", false),
+        ],
+        &[
+            ("sdk", "fake-api", DepKind::Normal),
+            ("sdk", "fake-kernel", DepKind::Normal),
+        ],
+    );
+
+    let v = check_resolved(&g, &RULES);
+
+    let impostors: Vec<&str> = v
+        .iter()
+        .filter_map(|v| match v {
+            Violation::ImpostorPackage { id, .. } => Some(id.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        impostors,
+        ["fake-kernel", "fake-api"],
+        "sorted by name: {v:?}"
+    );
+}
+
+/// A dev-dependency cycle back to the member itself (allowed by cargo) is not a violation.
+#[test]
+fn given_dev_cycle_back_to_self_when_resolved_checked_then_no_violation() {
+    let g = resolved(
+        &[("core", "cgf-core", true), ("h", "helper", false)],
+        &[("core", "h", DepKind::Dev), ("h", "core", DepKind::Normal)],
+    );
+
+    assert_eq!(check_resolved(&g, &RULES), Vec::<Violation>::new());
+}
+
+/// Members missing from the rule table are skipped here (`check` reports `UnknownCrate`).
+#[test]
+fn given_unknown_member_when_resolved_checked_then_no_resolved_violation() {
+    let g = resolved(
+        &[
+            ("m", "cgf-mystery", true),
+            ("k", "cgf-kernel", true),
+            ("s", "shim", false),
+        ],
+        &[("m", "s", DepKind::Normal), ("s", "k", DepKind::Normal)],
+    );
+
+    assert_eq!(check_resolved(&g, &RULES), Vec::<Violation>::new());
+}
+
+/// The indirect message names the full path and the allowed closure.
+#[test]
+fn given_indirect_violation_when_rendered_then_message_names_path_and_closure() {
+    let v = indirect("cgf-sdk", &["shim"], "cgf-kernel", "REQ-A-3");
+
+    assert_eq!(
+        v.render(&RULES),
+        "REQ-A-3: cgf-sdk -> shim -> cgf-kernel (resolved) not allowed; cgf-sdk may reach: cgf-plugin-api"
+    );
+}
+
+/// `RuleSet::closure` matches the self-test closure for every crate.
+#[test]
+fn rules_closure_matches_table_closure() {
+    for c in RULES.crates {
+        assert_eq!(RULES.closure(c.name), closure(c.name), "{}", c.name);
+    }
+    assert!(RULES.closure("not-a-crate").is_empty());
 }

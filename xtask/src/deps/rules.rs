@@ -1,5 +1,7 @@
 //! Rule table (ASM-007): the section 4 dependency rules as a type-checked constant.
 
+use std::collections::BTreeSet;
+
 /// Rule for one workspace crate.
 #[derive(Debug)]
 pub struct CrateRule {
@@ -13,14 +15,12 @@ pub struct CrateRule {
     pub requirement: &'static str,
 }
 
-/// All rules.
+/// All rules. There is deliberately no allow-list for non-member path dependencies (ASM-006):
+/// every such dependency is a violation.
 #[derive(Debug)]
 pub struct RuleSet {
     /// One entry per crate.
     pub crates: &'static [CrateRule],
-    /// Non-member path dependencies that are allowed (ASM-006). Any other path dependency
-    /// outside the workspace is a violation, because it could launder forbidden edges.
-    pub allowed_path_deps: &'static [&'static str],
 }
 
 impl RuleSet {
@@ -28,6 +28,24 @@ impl RuleSet {
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&CrateRule> {
         self.crates.iter().find(|c| c.name == name)
+    }
+
+    /// Transitive closure of the allowed workspace deps of `name` (empty for unknown crates).
+    #[must_use]
+    pub fn closure(&self, name: &str) -> BTreeSet<&'static str> {
+        let mut seen = BTreeSet::new();
+        let mut stack: Vec<&'static str> = self
+            .get(name)
+            .map(|r| r.allowed_workspace_deps.to_vec())
+            .unwrap_or_default();
+        while let Some(n) = stack.pop() {
+            if seen.insert(n)
+                && let Some(r) = self.get(n)
+            {
+                stack.extend(r.allowed_workspace_deps);
+            }
+        }
+        seen
     }
 }
 
@@ -47,8 +65,6 @@ const fn rule(
 /// The full section 4 table (REQ-A-1..3, ASM-005..009). Crates that do not exist yet are listed
 /// so they are covered the day they appear.
 pub const RULES: RuleSet = RuleSet {
-    // `fake_external` only exists in the test fixtures under `xtask/tests/fixtures`.
-    allowed_path_deps: &["fake_external"],
     crates: &[
         rule("cgf-core", &[], "REQ-A-1"),
         rule("cgf-kernel", &["cgf-core"], "REQ-A-2"),

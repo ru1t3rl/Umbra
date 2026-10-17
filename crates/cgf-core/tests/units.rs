@@ -1,5 +1,7 @@
 //! AT-10: SI unit newtypes. Requirements: REQ-C-4, ASM-015.
 
+#![forbid(unsafe_code)]
+
 use core::f64::consts::PI;
 
 use cgf_core::{
