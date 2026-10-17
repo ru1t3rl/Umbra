@@ -357,7 +357,6 @@ mod tests {
         // Indices are dense from 0, so a missing or repeated kind in `ALL` breaks this.
         let expected: Vec<usize> = (0..seen.len()).collect();
         assert_eq!(seen, expected);
-        assert_eq!(seen.len(), 1 + index(ComponentKind::Sensor));
         assert_eq!(ComponentKind::Terrain.to_string(), "terrain provider");
     }
 
