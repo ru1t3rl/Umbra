@@ -14,7 +14,7 @@ use crate::clock::{Clock, ClockMode, WallClock};
 use crate::error::KernelError;
 use crate::pipeline::{PHASE_COUNT, Phase, TickContext, TickReport};
 use crate::state;
-use crate::systems::{motion, route};
+use crate::systems::{behavior, motion, perception};
 use crate::world::World;
 
 /// Kernel construction parameters.
@@ -148,13 +148,18 @@ impl Kernel {
     /// # Errors
     /// The errors of [`Kernel::spawn`], and [`KernelError::Instantiate`] when the behavior cannot
     /// be instantiated at the tick rate. The kernel is unchanged on error (no id consumed).
-    #[expect(clippy::todo, reason = "M3 WI-6 stub")]
     pub fn spawn_with(
         &mut self,
-        _init: EntityInit,
-        _agent: AgentInit,
+        init: EntityInit,
+        agent: AgentInit,
     ) -> Result<EntityId, KernelError> {
-        todo!("M3 WI-6")
+        let rate = self.clock.now().rate();
+        let instance = agent
+            .behavior
+            .as_ref()
+            .map(|b| b.instantiate(rate))
+            .transpose()?;
+        self.world.spawn_with(init, agent, instance, self.rng)
     }
 
     /// Runs one tick through the six phases in [`Phase::ALL`] order and advances the clock by
@@ -168,6 +173,7 @@ impl Kernel {
             return Err(KernelError::TimeOverflow(now.tick()));
         }
         let ctx = TickContext {
+            now,
             dt: now.dt(),
             terrain: self.terrain.as_ref(),
         };
@@ -250,20 +256,14 @@ impl Kernel {
 /// the other phases have no systems in M1.
 fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>) {
     match phase {
-        Phase::Behavior => world.for_each_mut(|e| {
-            e.intents.0.clear();
-            if e.ownership.is_owned()
-                && let Some(r) = e.route
-            {
-                route::steer(r, e.state.position, &mut e.intents.0);
-            }
-        }),
+        Phase::Perception => perception::run(world, ctx),
+        Phase::Behavior => world.for_each_mut(|e| behavior::run(e, ctx)),
         Phase::Motion => world.for_each_mut(|e| {
             if e.ownership.is_owned() {
                 motion::step(e.motion, e.state, &e.intents.0, ctx);
             }
         }),
-        Phase::Ingest | Phase::Perception | Phase::Events | Phase::Publish => {}
+        Phase::Ingest | Phase::Events | Phase::Publish => {}
     }
 }
 

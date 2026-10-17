@@ -33,7 +33,6 @@ fn given_default_agent_init_then_it_has_no_force_behavior_or_sensors() {
 /// ADR 0011, ASM-082: `spawn_with(.., default)` is `spawn`: identical hashes and snapshots, tick by
 /// tick, for entities with and without routes.
 #[test]
-#[ignore = "WI-6"]
 fn given_default_agent_when_spawn_with_then_hashes_and_snapshots_match_plain_spawn() {
     let model = Stub::new("test.model.drift", Motion::Drift(Vec3::new(0.0, 3.0, 0.0)));
     let mut plain = kernel(7);
@@ -57,7 +56,6 @@ fn given_default_agent_when_spawn_with_then_hashes_and_snapshots_match_plain_spa
 /// ADR 0013 amendment: a behavior whose `instantiate` fails is `KernelError::Instantiate`, and the
 /// kernel is unchanged: no entity, no id consumed.
 #[test]
-#[ignore = "WI-6"]
 fn given_failing_instantiate_when_spawn_with_then_error_and_no_id_consumed() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);
@@ -76,7 +74,6 @@ fn given_failing_instantiate_when_spawn_with_then_error_and_no_id_consumed() {
 
 /// REQ-B-5: the snapshot names the behavior and the force of an agent.
 #[test]
-#[ignore = "WI-6"]
 fn given_agent_with_force_and_behavior_when_snapshot_then_both_are_reported() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);
@@ -108,7 +105,6 @@ fn given_agent_with_force_and_behavior_when_snapshot_then_both_are_reported() {
 
 /// ADR 0016: the entity without a behavior keeps the M1 stand-in; the snapshot shows its intents.
 #[test]
-#[ignore = "WI-6"]
 fn given_entity_without_behavior_when_snapshot_then_standin_intents_are_visible() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);

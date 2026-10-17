@@ -59,12 +59,11 @@ pub(crate) fn snapshot(time: SimTime, world: &World) -> Snapshot {
             motion_model: e.motion.0.id().clone(),
             state: *e.state,
             route_next: e.route.map(|r| (r.next, r.waypoints.len())),
-            // M3 WI-6 fills the behavior-side fields.
-            force: None,
-            behavior: None,
-            status: None,
-            intents: Vec::new(),
-            contacts: Vec::new(),
+            force: e.force.map(|f| f.0.clone()),
+            behavior: e.behavior.map(|b| b.id.clone()),
+            status: e.behavior.and_then(|b| b.last),
+            intents: e.intents.0.clone(),
+            contacts: e.contacts.map(|c| c.0.clone()).unwrap_or_default(),
         });
     });
     Snapshot { time, entities }

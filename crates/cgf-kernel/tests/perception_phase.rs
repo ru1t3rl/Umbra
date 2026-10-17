@@ -56,7 +56,6 @@ fn given_entity_without_sensors_then_snapshot_contacts_are_empty() {
 /// ADR 0015: contacts hold the detected entities among all others, sorted by entity id, with
 /// position, velocity, force and the range the sensor reported.
 #[test]
-#[ignore = "WI-6"]
 fn given_sensor_when_ticked_then_contacts_are_sorted_by_id_and_carry_target_data() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);
@@ -90,7 +89,6 @@ fn given_sensor_when_ticked_then_contacts_are_sorted_by_id_and_carry_target_data
 /// ADR 0015: with several sensors, contacts are merged per target and the first sensor in
 /// template order wins; a target only the second sensor sees is added; the result is sorted.
 #[test]
-#[ignore = "WI-6"]
 fn given_two_sensors_when_ticked_then_contacts_merge_first_sensor_wins_and_sorted() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let near = Arc::new(RangeSensor::new("test.sensor.near", 50.0).tagged(1.0));
@@ -121,7 +119,6 @@ fn given_two_sensors_when_ticked_then_contacts_merge_first_sensor_wins_and_sorte
 /// ADR 0013 (amended): perception works on the state before the tick. In tick 1 a drifting
 /// target is still where it was spawned, however far it moves during that tick.
 #[test]
-#[ignore = "WI-6"]
 fn given_drifting_target_when_first_tick_then_contact_position_is_the_pre_tick_position() {
     let still = Stub::new("test.model.still", Motion::Stationary);
     let drift = Stub::new(
@@ -154,7 +151,6 @@ fn given_drifting_target_when_first_tick_then_contact_position_is_the_pre_tick_p
 
 /// REQ-K-5: Remote entities are perceived by Owned observers, but never observe themselves.
 #[test]
-#[ignore = "WI-6"]
 fn given_remote_entities_when_ticked_then_they_are_perceived_but_get_no_contacts() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let sensor = Arc::new(RangeSensor::new("test.sensor.range", 1000.0));
@@ -190,7 +186,6 @@ fn given_remote_entities_when_ticked_then_they_are_perceived_but_get_no_contacts
 /// ADR 0015 (amended): the sensor is given all other entities in id order and the observer's own
 /// RNG stream (the stream `StreamKey::entity(observer)` of the master seed), not another one.
 #[test]
-#[ignore = "WI-6"]
 fn given_drawing_sensor_when_ticked_then_it_draws_from_the_observers_own_stream() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let sensor = Arc::new(RangeSensor::new("test.sensor.range", 1000.0).drawing());
@@ -212,7 +207,6 @@ fn given_drawing_sensor_when_ticked_then_it_draws_from_the_observers_own_stream(
 
 /// Perception runs before Behavior in the same tick: the behavior sees this tick's contacts.
 #[test]
-#[ignore = "WI-6"]
 fn given_sensor_and_behavior_when_first_tick_then_behavior_sees_the_contacts() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -321,7 +315,6 @@ fn shown(k: &Kernel, ids: &[(char, EntityId)]) -> Vec<(char, Vec<char>, String)>
 /// kernels; what is compared is the entity's behavior given its own stream: the draws are compared
 /// against the stream of the entity's id in each kernel.
 #[test]
-#[ignore = "WI-6"]
 fn perception_and_behavior_outcome_does_not_depend_on_entity_visiting_order() {
     let (mut forward, ids_f) = world(&['a', 'b', 'c']);
     let (mut backward, ids_b) = world(&['c', 'b', 'a']);

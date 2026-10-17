@@ -32,3 +32,14 @@ pub(crate) fn steer(route: &mut Route, position: Ecef, intents: &mut Vec<Intent>
     intents.push(Intent::SetSpeed(MetersPerSecond(route.cruise)));
     intents.push(Intent::MoveTo { destination });
 }
+
+/// Whether the route is at its last waypoint and within the arrival radius of it, where
+/// [`steer`] holds.
+pub(crate) fn is_complete(route: &Route, position: Ecef) -> bool {
+    let last = route.waypoints.len().saturating_sub(1);
+    route.next >= last
+        && route
+            .waypoints
+            .get(last)
+            .is_none_or(|w| horizontal_distance(position, *w) <= route.arrival_radius)
+}

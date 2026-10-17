@@ -4,8 +4,10 @@
 //! (REQ-K-3), the ECS world (REQ-K-1, ADR 0005), the fixed six-phase tick pipeline (REQ-K-2),
 //! per-tick timings (REQ-K-8) and the state hash (REQ-K-4, ADR 0007).
 //!
-//! In M1 the Behavior phase hosts a route-following stand-in (ASM-029) and the Motion phase runs
-//! each entity's motion model; both run on `Owned` entities only (REQ-K-5). The kernel owns the
+//! The Perception phase runs sensors and the Behavior phase ticks instantiated behaviors (M3,
+//! ADR 0013, ADR 0015); entities without a behavior keep the M1 route-following stand-in
+//! (ASM-029). The Motion phase runs each entity's motion model. All three run on `Owned`
+//! entities only (REQ-K-5). The kernel owns the
 //! master `SimRng` and gives each entity its own stream. `Kernel::snapshot` is synchronous and
 //! sorted by entity id (ASM-039); the observer buffer arrives in M5.
 //!

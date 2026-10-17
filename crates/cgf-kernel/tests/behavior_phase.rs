@@ -48,7 +48,6 @@ fn emitting(id: &str, intents: Vec<Intent>) -> Arc<dyn cgf_core::Behavior> {
 /// ADR 0016, ASM-082: a behavior that emits `FollowRoute` every tick gives, tick by tick, the same
 /// intents, route progress, states and hashes as the M1 stand-in of an entity without a behavior.
 #[test]
-#[ignore = "WI-6"]
 fn follow_route_matches_stand_in_tick_by_tick() {
     let model = Stub::new("test.model.drift", Motion::Drift(Vec3::new(0.0, 10.0, 0.0)));
     let mut standin = kernel(9);
@@ -88,7 +87,6 @@ fn follow_route_matches_stand_in_tick_by_tick() {
 
 /// ADR 0016: `FollowRoute` of an entity without a route is dropped (no intent reaches motion).
 #[test]
-#[ignore = "WI-6"]
 fn follow_route_without_route_is_dropped() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);
@@ -107,7 +105,6 @@ fn follow_route_without_route_is_dropped() {
 /// ADR 0016: only the first `FollowRoute` is expanded, in place; later ones are dropped, and the
 /// intents around it keep their order.
 #[test]
-#[ignore = "WI-6"]
 fn first_follow_route_is_expanded_in_place_and_later_ones_are_dropped() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);
@@ -135,7 +132,6 @@ fn first_follow_route_is_expanded_in_place_and_later_ones_are_dropped() {
 /// ADR 0016: `Fire`, `Spawn`, `Despawn` and `Custom` are recorded in the snapshot and change
 /// nothing: same entity count and the same state hash as an entity that emits nothing.
 #[test]
-#[ignore = "WI-6"]
 fn fire_spawn_despawn_custom_are_recorded_not_applied() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let target = EntityId::new(1).expect("non-zero");
@@ -181,7 +177,6 @@ fn fire_spawn_despawn_custom_are_recorded_not_applied() {
 
 /// Intents are per tick: an intent emitted in tick 1 is gone in tick 2.
 #[test]
-#[ignore = "WI-6"]
 fn intents_of_the_previous_tick_do_not_leak_into_the_next() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);
@@ -206,7 +201,6 @@ fn intents_of_the_previous_tick_do_not_leak_into_the_next() {
 
 /// REQ-K-5: a Remote entity's behavior is never ticked; an Owned twin's is, once per tick.
 #[test]
-#[ignore = "WI-6"]
 fn remote_entity_behavior_never_ticks() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let remote_ticks = Arc::new(AtomicUsize::new(0));
@@ -243,7 +237,6 @@ fn remote_entity_behavior_never_ticks() {
 /// REQ-B-1, AT-3: a behavior sees the pre-tick state, and the only way it affects the entity is
 /// through intents: the state it sees in tick k is the state after tick k-1, whatever it emits.
 #[test]
-#[ignore = "WI-6"]
 fn behavior_cannot_change_state_except_through_intents() {
     let model = Stub::new("test.model.drift", Motion::Drift(Vec3::new(0.0, 2.0, 0.0)));
     let seen: Arc<Mutex<Vec<KinematicState>>> = Arc::new(Mutex::new(Vec::new()));
@@ -278,7 +271,6 @@ fn behavior_cannot_change_state_except_through_intents() {
 /// ADR 0013 / REQ-K-4: behavior RNG draws come from the entity's hashed stream: drawing changes
 /// the hash, the same seed gives the same hash, another seed another hash.
 #[test]
-#[ignore = "WI-6"]
 fn behavior_rng_draws_change_the_hash_and_equal_seeds_give_equal_hashes() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let drawing = || {
@@ -312,7 +304,6 @@ fn behavior_rng_draws_change_the_hash_and_equal_seeds_give_equal_hashes() {
 /// REQ-B-5: the behavior is given the force, the route and the sorted contacts of its entity;
 /// the snapshot carries its status, intents and contacts of the last tick.
 #[test]
-#[ignore = "WI-6"]
 fn behavior_view_and_snapshot_carry_force_route_contacts_status_and_intents() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let views: Arc<Mutex<Vec<Looked>>> = Arc::new(Mutex::new(Vec::new()));

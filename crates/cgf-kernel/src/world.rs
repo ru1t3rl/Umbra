@@ -8,11 +8,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use cgf_core::{
-    Ecef, EntityId, Intent, KinematicState, MotionModel, Ownership, RngStream, SimRng, StreamKey,
+    BehaviorId, BehaviorInstance, Contact, Ecef, EntityId, Force, Intent, KinematicState,
+    MotionModel, Ownership, RngStream, Sensor, SimRng, Status, StreamKey,
 };
 
 use crate::error::{KernelError, RouteParam};
-use crate::kernel::{EntityInit, RouteInit};
+use crate::kernel::{AgentInit, EntityInit, RouteInit};
 
 /// The motion model instance of an entity (REQ-M-4).
 pub(crate) struct MotionRef(pub(crate) Arc<dyn MotionModel>);
@@ -31,8 +32,30 @@ pub(crate) struct Route {
 /// The entity's own random stream (ADR 0006).
 pub(crate) struct EntityRng(pub(crate) RngStream);
 
+/// The entity's force (ASM-079); absent for neutral entities.
+pub(crate) struct ForceTag(pub(crate) Force);
+
+/// The entity's sensors in template order; present only when non-empty.
+pub(crate) struct Sensors(pub(crate) Vec<Arc<dyn Sensor>>);
+
+/// Contacts of the last Perception phase, sorted by id; present only with [`Sensors`].
+pub(crate) struct Contacts(pub(crate) Vec<Contact>);
+
+/// An instantiated behavior and the status of its last tick (ADR 0013). Kept beside the ECS
+/// because instances are `Send` but not `Sync`.
+pub(crate) struct BehaviorSlot {
+    pub(crate) id: BehaviorId,
+    pub(crate) instance: Box<dyn BehaviorInstance>,
+    pub(crate) last: Option<Status>,
+}
+
 /// Mutable view of one entity, handed to systems in id order.
 pub(crate) struct EntityMut<'a> {
+    pub(crate) id: EntityId,
+    pub(crate) rng: &'a mut EntityRng,
+    pub(crate) force: Option<&'a ForceTag>,
+    pub(crate) contacts: Option<&'a Contacts>,
+    pub(crate) behavior: Option<&'a mut BehaviorSlot>,
     pub(crate) ownership: &'a Ownership,
     pub(crate) state: &'a mut KinematicState,
     pub(crate) motion: &'a MotionRef,
@@ -48,7 +71,30 @@ pub(crate) struct EntityRef<'a> {
     pub(crate) motion: &'a MotionRef,
     pub(crate) route: Option<&'a Route>,
     pub(crate) rng: &'a EntityRng,
+    pub(crate) force: Option<&'a ForceTag>,
+    pub(crate) contacts: Option<&'a Contacts>,
+    pub(crate) intents: &'a Intents,
+    pub(crate) behavior: Option<&'a BehaviorSlot>,
 }
+
+/// One entity as a perception observer (Owned with sensors).
+pub(crate) struct ObserverMut<'a> {
+    pub(crate) id: EntityId,
+    pub(crate) state: &'a KinematicState,
+    pub(crate) force: Option<&'a ForceTag>,
+    pub(crate) sensors: &'a Sensors,
+    pub(crate) contacts: &'a mut Contacts,
+    pub(crate) rng: &'a mut EntityRng,
+}
+
+type ObserverQuery<'a> = (
+    &'a Ownership,
+    &'a KinematicState,
+    Option<&'a ForceTag>,
+    &'a Sensors,
+    &'a mut Contacts,
+    &'a mut EntityRng,
+);
 
 type MutQuery<'a> = (
     &'a Ownership,
@@ -56,6 +102,9 @@ type MutQuery<'a> = (
     &'a MotionRef,
     &'a mut Intents,
     Option<&'a mut Route>,
+    &'a mut EntityRng,
+    Option<&'a ForceTag>,
+    Option<&'a Contacts>,
 );
 
 type RefQuery<'a> = (
@@ -64,12 +113,17 @@ type RefQuery<'a> = (
     &'a MotionRef,
     Option<&'a Route>,
     &'a EntityRng,
+    Option<&'a ForceTag>,
+    Option<&'a Contacts>,
+    &'a Intents,
 );
 
 /// All entities of a kernel.
 pub(crate) struct World {
     ecs: hecs::World,
     index: BTreeMap<EntityId, hecs::Entity>,
+    behaviors: BTreeMap<EntityId, BehaviorSlot>,
+    sensor_owners: usize,
     next_id: Option<EntityId>,
 }
 
@@ -117,6 +171,8 @@ impl World {
         Self {
             ecs: hecs::World::new(),
             index: BTreeMap::new(),
+            behaviors: BTreeMap::new(),
+            sensor_owners: 0,
             next_id: EntityId::new(1),
         }
     }
@@ -127,6 +183,18 @@ impl World {
 
     /// Validates `init` and adds the entity under the next id (from 1, never reused, REQ-C-2).
     pub(crate) fn spawn(&mut self, init: EntityInit, rng: SimRng) -> Result<EntityId, KernelError> {
+        self.spawn_with(init, AgentInit::default(), None, rng)
+    }
+
+    /// Like [`World::spawn`] with the behavior-side parts; `instance` is the already instantiated
+    /// `agent.behavior`. Nothing changes on error, and no id is consumed.
+    pub(crate) fn spawn_with(
+        &mut self,
+        init: EntityInit,
+        agent: AgentInit,
+        instance: Option<Box<dyn BehaviorInstance>>,
+        rng: SimRng,
+    ) -> Result<EntityId, KernelError> {
         validate_state(&init.state)?;
         let route = init.route.as_ref().map(validate_route).transpose()?;
         let id = self.next_id.ok_or(KernelError::IdsExhausted)?;
@@ -142,6 +210,25 @@ impl World {
         if let Some(route) = route {
             builder.add(route);
         }
+        if let Some(force) = agent.force {
+            builder.add(ForceTag(force));
+        }
+        if !agent.sensors.is_empty() {
+            builder
+                .add(Sensors(agent.sensors))
+                .add(Contacts(Vec::new()));
+            self.sensor_owners += 1;
+        }
+        if let (Some(behavior), Some(instance)) = (agent.behavior, instance) {
+            self.behaviors.insert(
+                id,
+                BehaviorSlot {
+                    id: behavior.id().clone(),
+                    instance,
+                    last: None,
+                },
+            );
+        }
         let entity = self.ecs.spawn(builder.build());
         self.index.insert(id, entity);
         Ok(id)
@@ -149,14 +236,19 @@ impl World {
 
     /// Visits every entity mutably, in ascending id order.
     pub(crate) fn for_each_mut(&mut self, mut f: impl FnMut(EntityMut<'_>)) {
-        for entity in self.index.values() {
-            let Ok((ownership, state, motion, intents, route)) =
+        for (id, entity) in &self.index {
+            let Ok((ownership, state, motion, intents, route, rng, force, contacts)) =
                 self.ecs.query_one_mut::<MutQuery<'_>>(*entity)
             else {
                 debug_assert!(false, "every indexed entity has all kernel components");
                 continue;
             };
             f(EntityMut {
+                id: *id,
+                rng,
+                force,
+                contacts,
+                behavior: self.behaviors.get_mut(id),
                 ownership,
                 state,
                 motion,
@@ -170,7 +262,8 @@ impl World {
     pub(crate) fn for_each(&self, mut f: impl FnMut(EntityRef<'_>)) {
         for (id, entity) in &self.index {
             let mut query = self.ecs.query_one::<RefQuery<'_>>(*entity);
-            let Ok((ownership, state, motion, route, rng)) = query.get() else {
+            let Ok((ownership, state, motion, route, rng, force, contacts, intents)) = query.get()
+            else {
                 debug_assert!(false, "every indexed entity has all kernel components");
                 continue;
             };
@@ -181,7 +274,37 @@ impl World {
                 motion,
                 route,
                 rng,
+                force,
+                contacts,
+                intents,
+                behavior: self.behaviors.get(id),
             });
+        }
+    }
+
+    /// Whether any entity has sensors.
+    pub(crate) fn has_sensors(&self) -> bool {
+        self.sensor_owners > 0
+    }
+
+    /// Visits every Owned entity that has sensors, in ascending id order.
+    pub(crate) fn for_each_observer_mut(&mut self, mut f: impl FnMut(ObserverMut<'_>)) {
+        for (id, entity) in &self.index {
+            let Ok((ownership, state, force, sensors, contacts, rng)) =
+                self.ecs.query_one_mut::<ObserverQuery<'_>>(*entity)
+            else {
+                continue; // no sensors
+            };
+            if ownership.is_owned() {
+                f(ObserverMut {
+                    id: *id,
+                    state,
+                    force,
+                    sensors,
+                    contacts,
+                    rng,
+                });
+            }
         }
     }
 }

@@ -13,9 +13,9 @@ pub const PHASE_COUNT: usize = 6;
 pub enum Phase {
     /// Network and command input (empty in M1).
     Ingest,
-    /// Sensing (empty in M1).
+    /// Sensors produce each Owned entity's contacts from pre-tick state (ADR 0015).
     Perception,
-    /// Behaviors write intents (the route stand-in in M1, ASM-029).
+    /// Behaviors write intents; entities without one run the M1 route stand-in (ASM-029, ASM-082).
     Behavior,
     /// Motion models turn intents into new kinematic state.
     Motion,
@@ -51,6 +51,8 @@ impl Phase {
 
 /// What systems receive for one tick: simulation time and step only, never wall time (REQ-C-1).
 pub(crate) struct TickContext<'a> {
+    /// Simulation time at the start of the tick.
+    pub(crate) now: SimTime,
     /// The tick period.
     pub(crate) dt: Seconds,
     /// Terrain for motion models.
