@@ -105,6 +105,10 @@ pub struct Engine {
 
 impl Engine {
     /// An engine paced by the real wall clock, on the given terrain (REQ-C-6).
+    ///
+    /// Terrain supplied by an embedder is not validated; a provider reporting non-finite heights
+    /// leaves entity heights unchanged (the ground model keeps the moved height). Terrain built
+    /// from a scenario is validated by its schema (ASM-069).
     pub fn new(config: EngineConfig, terrain: Arc<dyn TerrainProvider>) -> Self {
         Self::with_wall_clock(config, terrain, Box::new(StdWallClock::new()))
     }
@@ -219,7 +223,8 @@ impl Engine {
     }
 
     /// Runs `n` more ticks. In stepped mode this requests `n` steps first; in other modes it
-    /// runs until the tick count has grown by `n`. While paused nothing runs.
+    /// runs until the tick count has grown by `n`. While paused nothing runs. When the callback
+    /// breaks, the steps not yet run are cancelled.
     ///
     /// # Errors
     /// [`EngineError::Kernel`] if a tick fails (time overflow).
@@ -232,7 +237,12 @@ impl Engine {
             self.kernel.clock_mut().request_steps(n);
         }
         let target = self.kernel.now().tick().saturating_add(n);
-        self.run(RunUntil::Ticks(target), on_tick)
+        let summary = self.run(RunUntil::Ticks(target), on_tick)?;
+        if summary.stopped_early {
+            // Steps requested above but not run must not fire in a later `run`.
+            self.kernel.clock_mut().cancel_steps();
+        }
+        Ok(summary)
     }
 
     /// Pauses the clock in every mode.

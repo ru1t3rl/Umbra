@@ -443,3 +443,32 @@ fn run_callback_break_stops_the_run_and_sets_stopped_early() {
         .expect("run");
     assert_eq!((full.ticks_run, full.stopped_early), (5, false));
 }
+
+/// A `Break` in stepped mode cancels the steps that were requested but not run, so a later
+/// `run(Idle)` does not run them.
+#[test]
+fn break_in_stepped_mode_cancels_the_remaining_requested_steps() {
+    let mut engine = instantiate_with(
+        &load_example(),
+        Duration::ZERO,
+        None,
+        Some(ClockMode::Stepped),
+    )
+    .engine;
+    let mut seen = 0_u64;
+
+    let summary = engine
+        .step(10, |_| {
+            seen += 1;
+            if seen == 3 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .expect("step");
+    run_silent(&mut engine, RunUntil::Idle);
+
+    assert!(summary.stopped_early);
+    assert_eq!(engine.now().tick(), 3, "the 7 unused steps did not fire");
+}

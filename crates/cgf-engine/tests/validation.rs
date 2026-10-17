@@ -100,3 +100,57 @@ fn invalid_spawn_input_is_rejected_with_the_parameter() {
         assert_eq!(e.snapshot().entities.len(), 0);
     }
 }
+
+/// Embedder-supplied terrain is not validated (documented on `Engine::new`), but a terrain that
+/// reports non-finite heights must not poison the state: it stays finite and the run stays
+/// deterministic (the ground model keeps the moved height).
+#[test]
+fn non_finite_terrain_heights_keep_the_state_finite_and_the_run_deterministic() {
+    use cgf_core::{Enu, Geodetic, TerrainProvider};
+    use std::ops::ControlFlow;
+
+    struct Broken(f64);
+    impl TerrainProvider for Broken {
+        fn height_at(&self, _: Geodetic) -> Meters {
+            Meters(self.0)
+        }
+        fn surface_normal_at(&self, _: Geodetic) -> Enu {
+            Enu {
+                east: 0.0,
+                north: 0.0,
+                up: 1.0,
+            }
+        }
+    }
+
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let run = || {
+            let mut e = Engine::with_wall_clock(
+                config(),
+                Arc::new(Broken(bad)),
+                Box::new(ManualWallClock::new()),
+            );
+            let mut s = spec();
+            s.speed = MetersPerSecond(5.0);
+            s.route = Some(cgf_engine::RouteSpec {
+                waypoints: vec![Position::Ecef(Ecef(Vec3::new(6_378_137.0, 500.0, 0.0)))],
+                arrival_radius: Meters(5.0),
+                cruise_speed: MetersPerSecond(10.0),
+            });
+            e.spawn(s).expect("spawn");
+            e.run(cgf_engine::RunUntil::Ticks(300), |_| {
+                ControlFlow::Continue(())
+            })
+            .expect("run");
+            e
+        };
+        let (a, b) = (run(), run());
+
+        let p = a.snapshot().entities[0].state.position.0;
+        assert!(
+            p.x.is_finite() && p.y.is_finite() && p.z.is_finite(),
+            "{bad}: {p:?}"
+        );
+        assert_eq!(a.state_hash(), b.state_hash(), "{bad}");
+    }
+}

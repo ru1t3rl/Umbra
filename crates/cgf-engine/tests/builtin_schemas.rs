@@ -36,8 +36,9 @@ fn toml_of(v: &Value) -> String {
 }
 
 fn every_component(registry: &Registry) -> Vec<(ComponentKind, ComponentId)> {
-    [ComponentKind::MotionModel, ComponentKind::Terrain]
-        .into_iter()
+    ComponentKind::ALL
+        .iter()
+        .copied()
         .flat_map(|kind| {
             registry
                 .ids(kind)
@@ -185,4 +186,29 @@ fn ground_kinematic_schema_rejects_a_zero_limit_and_an_unknown_key() {
 
     let codes: Vec<&str> = found.iter().map(|d| d.code.as_str()).collect();
     assert_eq!(codes, ["param_out_of_range", "unknown_param"]);
+}
+
+/// ASM-069: the flat terrain schema bounds `height_m` to [-1000, 10000]; the factory itself only
+/// checks presence and type.
+#[test]
+fn flat_terrain_schema_rejects_heights_outside_the_bounds() {
+    let registry = registry();
+    let id = ComponentId::new("builtin.terrain.flat").expect("id");
+    let compiled = CompiledSchema::compile(&schema_of(&registry, ComponentKind::Terrain, &id))
+        .expect("compiles");
+    let codes = |height: &str| -> Vec<String> {
+        let text = format!("x = {{ height_m = {height} }}\n");
+        let (table, _) = parse(&SourceFile::new("t.toml", text.as_str()));
+        let table = table.expect("table");
+        compiled
+            .validate(table.get("x").expect("x"), "terrain")
+            .iter()
+            .map(|d| d.code.as_str().to_string())
+            .collect()
+    };
+
+    assert_eq!(codes("-1000.0"), Vec::<String>::new());
+    assert_eq!(codes("10000.0"), Vec::<String>::new());
+    assert_eq!(codes("-1000.5"), ["param_out_of_range"]);
+    assert_eq!(codes("10000.5"), ["param_out_of_range"]);
 }

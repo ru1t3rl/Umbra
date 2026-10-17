@@ -55,8 +55,7 @@ impl Factory<dyn TerrainProvider> for FlatTerrainFactory {
             .get("height_m")
             .ok_or_else(|| BuildError::new("missing parameter `height_m`").at("/height_m"))?
             .as_f64()
-            .filter(|h| h.is_finite())
-            .ok_or_else(|| BuildError::new("`height_m` must be a finite number").at("/height_m"))?;
+            .ok_or_else(|| BuildError::new("`height_m` must be a number").at("/height_m"))?;
         Ok(Arc::new(FlatTerrain {
             height: Meters(height),
         }))

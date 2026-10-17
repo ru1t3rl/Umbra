@@ -158,6 +158,11 @@ impl Clock {
         self.pending_steps = self.pending_steps.saturating_add(n);
     }
 
+    /// Drops the steps that were requested but not yet run.
+    pub fn cancel_steps(&mut self) {
+        self.pending_steps = 0;
+    }
+
     /// Says whether a tick is due. Never advances simulation time.
     pub fn poll(&mut self) -> Pace {
         if self.paused {
