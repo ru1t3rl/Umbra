@@ -193,20 +193,17 @@ fn euler_heading_and_roll_wrap_minus_pi_to_pi() {
 
     use cgf_core::Euler;
 
-    for (heading, roll) in [(-PI, 0.0), (0.0, -PI)] {
-        let q = Euler {
-            heading: Radians(heading),
-            pitch: Radians(0.0),
-            roll: Radians(roll),
-        }
-        .to_quaternion();
+    let from = |heading: f64, roll: f64| {
+        Euler::from_quaternion(
+            Euler {
+                heading: Radians(heading),
+                pitch: Radians(0.0),
+                roll: Radians(roll),
+            }
+            .to_quaternion(),
+        )
+    };
 
-        let back = Euler::from_quaternion(q);
-
-        if heading != 0.0 {
-            assert_eq!(back.heading.0, PI, "heading {heading}");
-        } else {
-            assert_eq!(back.roll.0, PI, "roll {roll}");
-        }
-    }
+    assert_eq!(from(-PI, 0.0).heading.0, PI);
+    assert_eq!(from(0.0, -PI).roll.0, PI);
 }
