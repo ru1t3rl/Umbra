@@ -1,0 +1,8 @@
+# Fixture: an unrelated sibling with an error; validating child.toml must not report it.
+# Provenance: hand-written for the M2 review fixes.
+schema_version = 1
+id = "ctx.other"
+colour = "red"
+[motion]
+model = "stub.motion.alpha"
+params = { a = 1.0 }

@@ -1,0 +1,16 @@
+# Fixture: one template directory reached through two spellings of its path (review item 13).
+# Provenance: hand-written for the M2 review fixes.
+schema_version = 1
+
+[scenario]
+name = "spelling"
+seed = 1
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 5.0
+template_paths = ["../relative/templates", "../relative/templates/../templates"]
+
+[[entities]]
+template = "rel.veh"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 0.0

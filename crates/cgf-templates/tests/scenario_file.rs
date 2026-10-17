@@ -897,8 +897,10 @@ fn template_paths_naming_a_missing_directory_is_an_io_diagnostic() {
         "scenarios/missing_template_dir/scenario.toml",
     )));
 
-    assert_eq!(found.len(), 1);
+    // Review item 8 (ASM-066): the entity's unknown template is still reported, with a note.
+    assert_eq!(found.len(), 2);
     assert_eq!(found[0].code.as_str(), "io");
+    assert_eq!(found[1].code.as_str(), "unknown_template");
     assert!(
         found[0].message.contains("no_such_dir"),
         "{}",

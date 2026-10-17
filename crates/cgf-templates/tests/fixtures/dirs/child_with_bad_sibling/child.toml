@@ -1,0 +1,5 @@
+# Fixture: a child whose parent is a sibling file; valid on its own directory's context.
+# Provenance: hand-written for the M2 review fixes.
+schema_version = 1
+id = "ctx.child"
+extends = "ctx.parent"

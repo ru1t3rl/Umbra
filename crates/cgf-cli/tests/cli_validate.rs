@@ -262,3 +262,14 @@ fn given_json_flag_then_stdout_is_a_single_document() {
 
     assert_eq!(text.trim_end().lines().count(), 1, "{text}");
 }
+
+/// Review item 15: a child template validated on its own finds its parent next to it.
+#[test]
+fn given_child_template_file_with_its_parent_in_the_same_directory_then_exit_0() {
+    let file = example_dir().join("templates/tank_mbt_generic.toml");
+
+    let out = cli(&["validate", &file.to_string_lossy()]);
+
+    assert_eq!(out.status.code(), Some(0), "stdout: {}", stdout(&out));
+    assert_eq!(stdout(&out).lines().last(), Some("ok: 1 files checked"));
+}
