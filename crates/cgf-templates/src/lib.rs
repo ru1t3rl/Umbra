@@ -16,10 +16,12 @@
 
 pub mod diagnostic;
 pub mod loader;
+pub(crate) mod reader;
 pub mod resolve;
 pub mod scenario;
 pub mod schema;
 pub mod source;
+pub mod template;
 pub mod value;
 
 pub use diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, Location, Note};
