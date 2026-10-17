@@ -24,6 +24,10 @@ pub enum ComponentKind {
     Behavior,
     /// A sensor (registrable from M3; always empty before).
     Sensor,
+    /// A behavior-tree condition leaf (M3).
+    Condition,
+    /// A behavior-tree action leaf (M3).
+    Action,
 }
 
 impl ComponentKind {
@@ -33,6 +37,8 @@ impl ComponentKind {
         Self::Terrain,
         Self::Behavior,
         Self::Sensor,
+        Self::Condition,
+        Self::Action,
     ];
 
     /// Human-readable singular noun for messages.
@@ -42,6 +48,8 @@ impl ComponentKind {
             Self::Terrain => "terrain provider",
             Self::Behavior => "behavior",
             Self::Sensor => "sensor",
+            Self::Condition => "condition",
+            Self::Action => "action",
         }
     }
 }
@@ -211,7 +219,10 @@ impl Registry {
         match kind {
             ComponentKind::MotionModel => self.motion.get(id).map(|f| f.param_schema()),
             ComponentKind::Terrain => self.terrain.get(id).map(|f| f.param_schema()),
-            ComponentKind::Behavior | ComponentKind::Sensor => None,
+            ComponentKind::Behavior
+            | ComponentKind::Sensor
+            | ComponentKind::Condition
+            | ComponentKind::Action => None,
         }
     }
 
@@ -225,7 +236,10 @@ impl Registry {
         match kind {
             ComponentKind::MotionModel => self.motion.keys().collect(),
             ComponentKind::Terrain => self.terrain.keys().collect(),
-            ComponentKind::Behavior | ComponentKind::Sensor => Vec::new(),
+            ComponentKind::Behavior
+            | ComponentKind::Sensor
+            | ComponentKind::Condition
+            | ComponentKind::Action => Vec::new(),
         }
     }
 }
@@ -352,12 +366,14 @@ mod tests {
     fn all_lists_every_kind_once() {
         // The exhaustive match fails to compile when a variant is added without updating it;
         // `COUNT` sits next to it and must grow with it, so dropping a kind from `ALL` fails.
-        const COUNT: usize = 4;
+        const COUNT: usize = 6;
         let index = |k: ComponentKind| match k {
             ComponentKind::MotionModel => 0,
             ComponentKind::Terrain => 1,
             ComponentKind::Behavior => 2,
             ComponentKind::Sensor => 3,
+            ComponentKind::Condition => 4,
+            ComponentKind::Action => 5,
         };
         let mut seen: Vec<usize> = ComponentKind::ALL.iter().map(|&k| index(k)).collect();
         seen.sort_unstable();
