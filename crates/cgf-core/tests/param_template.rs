@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use cgf_core::{ParamTemplate, ParamValue};
+use cgf_core::{ParamTemplate, ParamValue, ReservedForm, SubstituteError, reserved_form};
 use serde_json::json;
 
 fn args(pairs: &[(&str, ParamValue)]) -> BTreeMap<String, ParamValue> {
@@ -36,9 +36,14 @@ fn given_nested_references_when_listed_then_pointers_and_names_are_returned() {
 
 /// A reference at the root has the empty pointer; special characters are escaped (RFC 6901).
 #[test]
-fn given_root_reference_and_odd_keys_when_listed_then_pointers_are_escaped() {
+fn given_root_table_and_odd_keys_when_listed_then_root_is_literal_and_pointers_escaped() {
+    // The root is the params table itself: a param literally named `param` (ASM-089 b).
     let root = ParamTemplate::new(json!({ "param": "p" }));
-    assert_eq!(root.references(), vec![(String::new(), "p")]);
+    assert_eq!(root.references().len(), 0);
+    assert_eq!(
+        root.substitute(&BTreeMap::new()),
+        Ok(json!({ "param": "p" }))
+    );
 
     let odd = ParamTemplate::new(json!({ "a/b": { "param": "p" }, "c~d": { "param": "q" } }));
     assert_eq!(
@@ -99,10 +104,14 @@ fn given_unbound_name_when_substituted_then_error_names_it() {
     let t = ParamTemplate::new(json!({ "a": { "param": "x" }, "b": { "param": "y" } }));
     let err = t.substitute(&args(&[("y", json!(1))]));
 
-    let e = err.expect_err("x is unbound");
-    assert_eq!(e.name, "x");
-    assert_eq!(e.pointer, "/a");
-    assert!(e.to_string().contains('x'));
+    assert_eq!(
+        err,
+        Err(SubstituteError::Unbound {
+            pointer: "/a".into(),
+            name: "x".into()
+        })
+    );
+    assert!(err.map_err(|e| e.to_string()).unwrap_err().contains('x'));
 }
 
 /// A template without references substitutes to itself, and equality is structural.
@@ -112,4 +121,71 @@ fn given_literal_template_when_substituted_then_identity() {
     let t = ParamTemplate::new(v.clone());
     assert_eq!(t.substitute(&BTreeMap::new()), Ok(v));
     assert_eq!(t.references().len(), 0);
+}
+
+/// With two unbound references the first in traversal order is reported; pointers nest.
+#[test]
+fn given_two_unbound_when_substituted_then_first_in_traversal_order_is_reported() {
+    let t = ParamTemplate::new(json!({ "b": [{ "param": "y" }], "a": { "param": "x" } }));
+    assert_eq!(
+        t.substitute(&BTreeMap::new()),
+        Err(SubstituteError::Unbound {
+            pointer: "/a".into(),
+            name: "x".into()
+        })
+    );
+    let nested = ParamTemplate::new(json!({ "b": [0, { "param": "y" }] }));
+    assert_eq!(
+        nested.substitute(&BTreeMap::new()),
+        Err(SubstituteError::Unbound {
+            pointer: "/b/1".into(),
+            name: "y".into()
+        })
+    );
+}
+
+/// Children of look-alike tables are still scanned.
+#[test]
+fn given_look_alike_with_reference_child_when_listed_then_child_is_found() {
+    let t = ParamTemplate::new(json!({ "v": { "param": "p", "extra": { "param": "x" } } }));
+    assert_eq!(t.references(), vec![("/v/extra".to_owned(), "x")]);
+
+    let t = ParamTemplate::new(json!({ "v": { "param": { "param": "x" } } }));
+    assert_eq!(t.references(), vec![("/v/param".to_owned(), "x")]);
+}
+
+/// A `{ key }` binding is not a build-time value: `substitute` refuses it.
+#[test]
+fn given_key_binding_when_substituted_then_binding_error() {
+    let t = ParamTemplate::new(json!({ "list": [{ "key": "target" }] }));
+    assert_eq!(t.references().len(), 0);
+    assert_eq!(
+        t.substitute(&BTreeMap::new()),
+        Err(SubstituteError::Binding {
+            pointer: "/list/0".into(),
+            key: "target".into()
+        })
+    );
+}
+
+/// Truth table of the single classifier; only the value itself is classified.
+#[test]
+fn given_values_when_classified_then_only_exact_one_key_string_forms_match() {
+    assert_eq!(
+        reserved_form(&json!({ "param": "x" })),
+        Some(ReservedForm::Param("x"))
+    );
+    assert_eq!(
+        reserved_form(&json!({ "key": "x" })),
+        Some(ReservedForm::Key("x"))
+    );
+    assert_eq!(reserved_form(&json!({ "param": "x", "key": "y" })), None);
+    assert_eq!(reserved_form(&json!({ "param": "x", "other": 1 })), None);
+    assert_eq!(reserved_form(&json!({ "param": 1 })), None);
+    assert_eq!(reserved_form(&json!({ "key": null })), None);
+    assert_eq!(reserved_form(&json!({ "other": "x" })), None);
+    assert_eq!(reserved_form(&json!({})), None);
+    assert_eq!(reserved_form(&json!([{ "param": "x" }])), None);
+    assert_eq!(reserved_form(&json!({ "a": { "param": "x" } })), None);
+    assert_eq!(reserved_form(&json!("param")), None);
 }

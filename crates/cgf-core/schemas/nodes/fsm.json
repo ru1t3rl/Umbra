@@ -42,21 +42,34 @@
           },
           "when": {
             "type": "string",
-            "description": "Guard node (condition, inverter, sequence, selector only)."
+            "description": "Guard node (condition, inverter, sequence, selector only). Exactly one of when or on."
           },
           "on": {
             "type": "string",
             "enum": [
               "success",
               "failure"
-            ]
+            ],
+            "description": "Fires when the current state's node finishes with this status (success or failure). Exactly one of when or on."
           }
         },
         "required": [
           "from",
           "to"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "when"
+            ]
+          },
+          {
+            "required": [
+              "on"
+            ]
+          }
+        ]
       }
     }
   },

@@ -11,7 +11,7 @@ use crate::graph::{Version, VersionReq};
 use crate::id::ComponentId;
 use crate::params::ParamSchema;
 
-/// Where a graph or component came from (REQ-B-13).
+/// Where a graph or component came from (REQ-B-13). Closed: the spec names exactly these three.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Provenance {
     /// Shipped with the engine.
@@ -31,6 +31,7 @@ impl Provenance {
 
 /// How a leaf parameter that names a blackboard key uses the key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Access {
     /// The leaf reads the key.
     Read,
@@ -40,6 +41,7 @@ pub enum Access {
 
 /// A leaf parameter that names a blackboard key (for example `store_as`, `target_key`).
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct BlackboardParam {
     /// Parameter name in the leaf's schema.
     pub param: String,
@@ -47,6 +49,17 @@ pub struct BlackboardParam {
     pub ty: BbType,
     /// Whether the leaf reads or writes the key.
     pub access: Access,
+}
+
+impl BlackboardParam {
+    /// A parameter `param` naming a key of type `ty`.
+    pub fn new(param: impl Into<String>, ty: BbType, access: Access) -> Self {
+        Self {
+            param: param.into(),
+            ty,
+            access,
+        }
+    }
 }
 
 /// Metadata stored with a behavior, condition or action (ADR 0011).
@@ -61,11 +74,16 @@ pub struct ComponentInfo {
     pub version: Version,
     /// Leaves: which parameters name blackboard keys, in declaration order.
     pub blackboard_params: Vec<BlackboardParam>,
+    /// Behaviors: the type of every interface param, binding-only ones included (ADR 0014).
+    /// Filled by `register_graphs` from `Interface::types`; plugin behaviors declare it with the
+    /// builder. Leaves: empty (their params are literal-only, checked by the param schema).
+    pub param_types: BTreeMap<String, BbType>,
     /// Behaviors: output ports by name.
     pub outputs: BTreeMap<String, BbType>,
     /// Behaviors: referenced subgraphs in node order (cycle and depth checks).
     pub subgraphs: Vec<(ComponentId, Option<VersionReq>)>,
-    /// Behaviors: the output port that carries the result, if any.
+    /// Free-text result semantics (REQ-B-10): what Success, Failure and Running mean. Not a port
+    /// name.
     pub result: Option<String>,
 }
 
@@ -77,6 +95,7 @@ impl ComponentInfo {
             source,
             version,
             blackboard_params: Vec::new(),
+            param_types: BTreeMap::new(),
             outputs: BTreeMap::new(),
             subgraphs: Vec::new(),
             result: None,
@@ -87,6 +106,13 @@ impl ComponentInfo {
     #[must_use]
     pub fn with_blackboard_param(mut self, param: BlackboardParam) -> Self {
         self.blackboard_params.push(param);
+        self
+    }
+
+    /// Declares the type of an interface param.
+    #[must_use]
+    pub fn with_param_type(mut self, param: impl Into<String>, ty: BbType) -> Self {
+        self.param_types.insert(param.into(), ty);
         self
     }
 
@@ -104,16 +130,17 @@ impl ComponentInfo {
         self
     }
 
-    /// Sets the result port.
+    /// Sets the free-text result semantics.
     #[must_use]
-    pub fn with_result(mut self, port: impl Into<String>) -> Self {
-        self.result = Some(port.into());
+    pub fn with_result(mut self, text: impl Into<String>) -> Self {
+        self.result = Some(text.into());
         self
     }
 }
 
 /// What a catalog entry describes. The derived order is the catalog's primary sort key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum CatalogKind {
     /// A behavior node type (REQ-B-7).
     NodeType,
@@ -127,6 +154,7 @@ pub enum CatalogKind {
 
 /// One catalog row (REQ-B-17).
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct CatalogEntry {
     /// What the entry describes.
     pub kind: CatalogKind,
@@ -140,26 +168,106 @@ pub struct CatalogEntry {
     pub version: Version,
     /// Parameter (or node settings) schema.
     pub params: ParamSchema,
+    /// Behaviors: the type of every interface param, binding-only ones included.
+    pub param_types: BTreeMap<String, BbType>,
     /// Behaviors: output ports.
     pub outputs: BTreeMap<String, BbType>,
-    /// Whether editors must not change it ([`Provenance::read_only`]).
-    pub read_only: bool,
+    /// Free-text result semantics (REQ-B-10).
+    pub result: Option<String>,
+}
+
+impl CatalogEntry {
+    /// An entry with no param types, outputs or result.
+    pub fn new(
+        kind: CatalogKind,
+        id: impl Into<String>,
+        description: impl Into<String>,
+        source: Provenance,
+        version: Version,
+        params: ParamSchema,
+    ) -> Self {
+        Self {
+            kind,
+            id: id.into(),
+            description: description.into(),
+            source,
+            version,
+            params,
+            param_types: BTreeMap::new(),
+            outputs: BTreeMap::new(),
+            result: None,
+        }
+    }
+
+    /// Sets the param types.
+    #[must_use]
+    pub fn with_param_types(mut self, t: BTreeMap<String, BbType>) -> Self {
+        self.param_types = t;
+        self
+    }
+
+    /// Sets the output ports.
+    #[must_use]
+    pub fn with_outputs(mut self, o: BTreeMap<String, BbType>) -> Self {
+        self.outputs = o;
+        self
+    }
+
+    /// Sets the free-text result semantics.
+    #[must_use]
+    pub fn with_result(mut self, text: impl Into<String>) -> Self {
+        self.result = Some(text.into());
+        self
+    }
+
+    /// Whether editors must not change it; derived from `source` (REQ-B-13), so no stored flag can
+    /// disagree.
+    pub fn read_only(&self) -> bool {
+        self.source.read_only()
+    }
+}
+
+/// Why a [`Catalog`] could not be built.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum CatalogError {
+    /// Two entries share a (kind, id).
+    #[error("duplicate catalog entry {kind:?} `{id}`")]
+    Duplicate {
+        /// Kind of the duplicate.
+        kind: CatalogKind,
+        /// ID of the duplicate.
+        id: String,
+    },
 }
 
 /// Node types, conditions, actions and behaviors with schemas, versions and provenance.
 ///
-/// Entries are sorted by (kind, id), so iteration order is deterministic.
+/// Entries are sorted by (kind, id) and unique per (kind, id), so iteration order is
+/// deterministic.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Catalog {
     entries: Vec<CatalogEntry>,
 }
 
 impl Catalog {
-    /// Builds a catalog from entries in any order; they are sorted by (kind, id) (stable, so
-    /// equal keys keep their input order).
-    pub fn from_entries(mut entries: Vec<CatalogEntry>) -> Self {
+    /// Builds a catalog from entries in any order; they are sorted by (kind, id).
+    ///
+    /// # Errors
+    /// [`CatalogError::Duplicate`] when two entries share a (kind, id). Equal ids of different
+    /// kinds are allowed.
+    pub fn from_entries(mut entries: Vec<CatalogEntry>) -> Result<Self, CatalogError> {
         entries.sort_by(|a, b| (a.kind, &a.id).cmp(&(b.kind, &b.id)));
-        Self { entries }
+        if let Some(w) = entries
+            .windows(2)
+            .find(|w| w[0].kind == w[1].kind && w[0].id == w[1].id)
+        {
+            return Err(CatalogError::Duplicate {
+                kind: w[1].kind,
+                id: w[1].id.clone(),
+            });
+        }
+        Ok(Self { entries })
     }
 
     /// All entries, sorted by (kind, id).

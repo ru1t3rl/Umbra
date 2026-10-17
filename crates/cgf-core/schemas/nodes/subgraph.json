@@ -33,10 +33,10 @@
       "ref": "example.subgraph.attack",
       "version": "^1.0",
       "params": {
+        "target": {
+          "key": "target"
+        },
         "fire_range_m": 1200.0
-      },
-      "outputs": {
-        "done": "attack_done"
       }
     }
   ]

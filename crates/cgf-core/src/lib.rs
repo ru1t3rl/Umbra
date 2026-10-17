@@ -54,14 +54,16 @@ pub use behavior::{
     Status,
 };
 pub use catalog::{
-    Access, BlackboardParam, Catalog, CatalogEntry, CatalogKind, ComponentInfo, Provenance,
+    Access, BlackboardParam, Catalog, CatalogEntry, CatalogError, CatalogKind, ComponentInfo,
+    Provenance,
 };
 pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
 pub use geo::{Euler, Quaternion, Vec3};
 pub use graph::{
-    ExitDef, FsmDef, GraphDef, Interface, LeafRef, NODE_TYPES, NodeDef, NodeId, NodeKind,
-    NodeKindTag, NodeTypeInfo, OutputPort, ParallelPolicy, ParamTemplate, StateDef, SubgraphRef,
-    TransitionDef, TransitionTarget, Trigger, UnboundParam, Version, VersionReq,
+    Composite, Decorator, ExitDef, FsmDef, GraphDef, Interface, LeafRef, NODE_TYPES, NodeDef,
+    NodeId, NodeKind, NodeKindTag, NodeTypeInfo, OutputPort, ParallelDef, ParallelPolicy,
+    ParamTemplate, RepeatDef, ReservedForm, StateDef, SubgraphRef, SubstituteError, TimedDef,
+    TransitionDef, TransitionTarget, Trigger, Version, VersionReq, reserved_form,
 };
 pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher};
 pub use id::{
