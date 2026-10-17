@@ -113,7 +113,8 @@ fn enu_of(s: &KinematicState) -> Enu {
 
 fn horizontal_distance(s: &KinematicState, east: f64, north: f64) -> f64 {
     let p = enu_of(s);
-    ((p.east - east).powi(2) + (p.north - north).powi(2)).sqrt()
+    let (de, dn) = (p.east - east, p.north - north);
+    (de * de + dn * dn).sqrt()
 }
 
 /// The states after each of `steps` steps (the start state is not included).

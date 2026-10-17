@@ -1,57 +1,123 @@
-//! STUB (WI-2): the single site for non-exact `f64` functions (ADR 0003, ASM-034).
+//! The single site for non-exact floating-point functions (ADR 0003, ASM-034, REQ-K-4).
 //!
-//! Signatures only; bodies land in WI-2. Acceptance tests: `tests/math.rs` (AT-4).
+//! `+ - * /`, `sqrt`, `abs`, `floor` and `to_radians` are IEEE-exact and may be used anywhere.
+//! Everything else (trigonometry, exponentials, logarithms, powers, `cbrt`, `hypot`) can differ in
+//! the last bit between platform libms, so it is called only from here. `clippy.toml` bans the
+//! direct `f64`/`f32` methods workspace-wide, which keeps this module the one swap point for a
+//! pure-Rust `libm` should cross-OS determinism ever be required (ADR 0003, option 2).
+//!
+//! Today every wrapper is the matching `std` function. All angles are radians.
+
 #![expect(
-    missing_docs,
-    clippy::todo,
-    reason = "stub until WI-2: signatures only, documented when implemented"
+    clippy::disallowed_methods,
+    reason = "ADR 0003: the only sanctioned call site of the banned f64 methods"
 )]
+
+use core::f64::consts::{PI, TAU};
 
 use crate::units::Radians;
 
-pub fn sin(_x: f64) -> f64 {
-    todo!("WI-2")
+/// Sine of `x` (radians).
+#[inline]
+pub fn sin(x: f64) -> f64 {
+    x.sin()
 }
-pub fn cos(_x: f64) -> f64 {
-    todo!("WI-2")
+
+/// Cosine of `x` (radians).
+#[inline]
+pub fn cos(x: f64) -> f64 {
+    x.cos()
 }
-pub fn sin_cos(_x: f64) -> (f64, f64) {
-    todo!("WI-2")
+
+/// Sine and cosine of `x` (radians), as `(sin, cos)`.
+#[inline]
+pub fn sin_cos(x: f64) -> (f64, f64) {
+    x.sin_cos()
 }
-pub fn tan(_x: f64) -> f64 {
-    todo!("WI-2")
+
+/// Tangent of `x` (radians).
+#[inline]
+pub fn tan(x: f64) -> f64 {
+    x.tan()
 }
-pub fn asin(_x: f64) -> f64 {
-    todo!("WI-2")
+
+/// Arcsine, result in radians within `[-pi/2, pi/2]`; NaN outside `[-1, 1]`.
+#[inline]
+pub fn asin(x: f64) -> f64 {
+    x.asin()
 }
-pub fn acos(_x: f64) -> f64 {
-    todo!("WI-2")
+
+/// Arccosine, result in radians within `[0, pi]`; NaN outside `[-1, 1]`.
+#[inline]
+pub fn acos(x: f64) -> f64 {
+    x.acos()
 }
-pub fn atan(_x: f64) -> f64 {
-    todo!("WI-2")
+
+/// Arctangent, result in radians within `(-pi/2, pi/2)`.
+#[inline]
+pub fn atan(x: f64) -> f64 {
+    x.atan()
 }
-pub fn atan2(_y: f64, _x: f64) -> f64 {
-    todo!("WI-2")
+
+/// Four-quadrant arctangent of `y / x`, result in radians within `[-pi, pi]`.
+#[inline]
+pub fn atan2(y: f64, x: f64) -> f64 {
+    y.atan2(x)
 }
-pub fn hypot(_x: f64, _y: f64) -> f64 {
-    todo!("WI-2")
+
+/// Length of the hypotenuse, `sqrt(x^2 + y^2)`, without undue overflow.
+#[inline]
+pub fn hypot(x: f64, y: f64) -> f64 {
+    x.hypot(y)
 }
-pub fn cbrt(_x: f64) -> f64 {
-    todo!("WI-2")
+
+/// Cube root.
+#[inline]
+pub fn cbrt(x: f64) -> f64 {
+    x.cbrt()
 }
-pub fn powi(_x: f64, _n: i32) -> f64 {
-    todo!("WI-2")
+
+/// `x` raised to the integer power `n`.
+#[inline]
+pub fn powi(x: f64, n: i32) -> f64 {
+    x.powi(n)
 }
-pub fn powf(_x: f64, _y: f64) -> f64 {
-    todo!("WI-2")
+
+/// `x` raised to the real power `y`.
+#[inline]
+pub fn powf(x: f64, y: f64) -> f64 {
+    x.powf(y)
 }
-pub fn exp(_x: f64) -> f64 {
-    todo!("WI-2")
+
+/// `e^x`.
+#[inline]
+pub fn exp(x: f64) -> f64 {
+    x.exp()
 }
-pub fn ln(_x: f64) -> f64 {
-    todo!("WI-2")
+
+/// Natural logarithm.
+#[inline]
+pub fn ln(x: f64) -> f64 {
+    x.ln()
 }
-/// Wraps an angle to (-PI, PI].
-pub fn wrap_pi(_a: Radians) -> Radians {
-    todo!("WI-2")
+
+/// Wraps an angle to the half-open interval `(-PI, PI]`.
+///
+/// Angles already inside the interval are returned unchanged (bit for bit). Uses exact
+/// operations only (`+ - * /` and `floor`), no transcendental function. NaN and infinities give
+/// NaN.
+pub fn wrap_pi(a: Radians) -> Radians {
+    let x = a.0;
+    if x > -PI && x <= PI {
+        return a;
+    }
+    // [-PI, PI) by floor; rounding can leave the edges, so fix them up.
+    let mut r = x - TAU * ((x + PI) / TAU).floor();
+    if r <= -PI {
+        r += TAU;
+    }
+    if r > PI {
+        r = PI;
+    }
+    Radians(r)
 }
