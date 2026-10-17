@@ -1,0 +1,20 @@
+{
+  "title": "succeed_always node settings",
+  "description": "Reports the child's Failure as Success; Running passes through.",
+  "type": "object",
+  "properties": {
+    "child": {
+      "type": "string",
+      "description": "Child whose Failure is reported as Success."
+    }
+  },
+  "required": [
+    "child"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "child": "a"
+    }
+  ]
+}

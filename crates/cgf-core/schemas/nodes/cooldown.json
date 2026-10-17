@@ -1,0 +1,27 @@
+{
+  "title": "cooldown node settings",
+  "description": "After the child finishes, fails without ticking it until the duration has elapsed.",
+  "type": "object",
+  "properties": {
+    "child": {
+      "type": "string",
+      "description": "Child gated by the cooldown."
+    },
+    "duration_s": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Duration in seconds; converted to whole ticks at the scenario rate (at least one tick)."
+    }
+  },
+  "required": [
+    "child",
+    "duration_s"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "child": "a",
+      "duration_s": 5.0
+    }
+  ]
+}

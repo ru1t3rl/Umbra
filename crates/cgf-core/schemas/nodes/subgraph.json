@@ -1,0 +1,43 @@
+{
+  "title": "subgraph node settings",
+  "description": "Runs another behavior graph with its own blackboard, bound by interface parameters and outputs.",
+  "type": "object",
+  "properties": {
+    "ref": {
+      "type": "string",
+      "description": "Catalog ID of the behavior graph."
+    },
+    "version": {
+      "type": "string",
+      "description": "Semver range the referenced graph must satisfy (for example ^1.0); absent accepts any version."
+    },
+    "params": {
+      "type": "object",
+      "description": "Child interface parameters: literals, { param = \"<name>\" } build-time references, or { key = \"<blackboard key>\" } run-time input bindings."
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "description": "Parent blackboard key."
+      },
+      "description": "Child output port to parent blackboard key."
+    }
+  },
+  "required": [
+    "ref"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "ref": "example.subgraph.attack",
+      "version": "^1.0",
+      "params": {
+        "fire_range_m": 1200.0
+      },
+      "outputs": {
+        "done": "attack_done"
+      }
+    }
+  ]
+}

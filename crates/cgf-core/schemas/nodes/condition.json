@@ -1,0 +1,27 @@
+{
+  "title": "condition node settings",
+  "description": "Leaf that checks a catalog condition; returns Success or Failure, never Running.",
+  "type": "object",
+  "properties": {
+    "ref": {
+      "type": "string",
+      "description": "Catalog ID of the condition."
+    },
+    "params": {
+      "type": "object",
+      "description": "Condition parameters; values may be { param = \"<interface param>\" } references."
+    }
+  },
+  "required": [
+    "ref"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "ref": "builtin.cond.chance",
+      "params": {
+        "probability": 0.5
+      }
+    }
+  ]
+}

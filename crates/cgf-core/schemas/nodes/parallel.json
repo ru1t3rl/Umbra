@@ -1,0 +1,38 @@
+{
+  "title": "parallel node settings",
+  "description": "Ticks every unfinished child each tick; the policy decides when it finishes.",
+  "type": "object",
+  "properties": {
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "Name of a child node."
+      },
+      "minItems": 1,
+      "description": "Children ticked every tick in order."
+    },
+    "policy": {
+      "type": "string",
+      "enum": [
+        "all",
+        "any"
+      ],
+      "default": "all",
+      "description": "all: Success when every child succeeded, Failure on the first failure. any: Success on the first success, Failure when all failed."
+    }
+  },
+  "required": [
+    "children"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "children": [
+        "a",
+        "b"
+      ],
+      "policy": "any"
+    }
+  ]
+}

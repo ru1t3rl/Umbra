@@ -1,0 +1,27 @@
+{
+  "title": "timeout node settings",
+  "description": "Halts the child and fails when it is still Running after the duration.",
+  "type": "object",
+  "properties": {
+    "child": {
+      "type": "string",
+      "description": "Child aborted when it runs too long."
+    },
+    "duration_s": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Duration in seconds; converted to whole ticks at the scenario rate (at least one tick)."
+    }
+  },
+  "required": [
+    "child",
+    "duration_s"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "child": "a",
+      "duration_s": 10.0
+    }
+  ]
+}

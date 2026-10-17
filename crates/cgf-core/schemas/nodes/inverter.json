@@ -1,0 +1,20 @@
+{
+  "title": "inverter node settings",
+  "description": "Swaps the child's Success and Failure; Running passes through.",
+  "type": "object",
+  "properties": {
+    "child": {
+      "type": "string",
+      "description": "Child whose Success and Failure are swapped."
+    }
+  },
+  "required": [
+    "child"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "child": "a"
+    }
+  ]
+}

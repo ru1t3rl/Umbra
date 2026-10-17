@@ -1,0 +1,92 @@
+{
+  "title": "fsm node settings",
+  "description": "Finite state machine whose states are nodes; guard and completion transitions, named exits mapped to Success or Failure.",
+  "type": "object",
+  "properties": {
+    "initial": {
+      "type": "string",
+      "description": "Name of the initial state."
+    },
+    "states": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "description": "Node run while the state is current."
+      },
+      "description": "State name to node name."
+    },
+    "exits": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": [
+          "success",
+          "failure"
+        ]
+      },
+      "description": "Exit name to the status the FSM returns when entered."
+    },
+    "transitions": {
+      "type": "array",
+      "description": "Transitions in file order; each has from, to and exactly one of when or on.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Source state."
+          },
+          "to": {
+            "type": "string",
+            "description": "Target state or exit."
+          },
+          "when": {
+            "type": "string",
+            "description": "Guard node (condition, inverter, sequence, selector only)."
+          },
+          "on": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure"
+            ]
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "initial",
+    "states"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "initial": "idle",
+      "states": {
+        "idle": "wait",
+        "go": "move"
+      },
+      "exits": {
+        "done": "success"
+      },
+      "transitions": [
+        {
+          "from": "idle",
+          "to": "go",
+          "when": "enemy_near"
+        },
+        {
+          "from": "go",
+          "to": "done",
+          "on": "success"
+        }
+      ]
+    }
+  ]
+}

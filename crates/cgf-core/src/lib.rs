@@ -17,6 +17,9 @@
 //! - [`behavior`], [`perception`]: the [`Behavior`], [`Condition`], [`Action`] and [`Sensor`]
 //!   traits, the typed [`Blackboard`], [`Force`] and [`Contact`] (REQ-B-1, REQ-B-5, REQ-B-11,
 //!   ADR 0013-0015).
+//! - [`graph`], [`catalog`]: the format-free [`GraphDef`] behavior graph, the [`NODE_TYPES`] table,
+//!   [`Provenance`], [`ComponentInfo`] and the [`Catalog`] types (REQ-B-6, REQ-B-7, REQ-B-13,
+//!   REQ-B-17, ADR 0011, ADR 0012).
 //! - [`intent`], [`ownership`], [`terrain`], [`motion`]: [`Intent`], [`Ownership`],
 //!   [`TerrainProvider`], [`KinematicState`] and the [`MotionModel`] trait (REQ-B-2, REQ-K-5,
 //!   REQ-C-6, REQ-M-1).
@@ -27,8 +30,10 @@
 #![forbid(unsafe_code)]
 
 pub mod behavior;
+pub mod catalog;
 pub mod coords;
 pub mod geo;
+pub mod graph;
 pub mod hash;
 pub mod id;
 pub mod intent;
@@ -48,8 +53,16 @@ pub use behavior::{
     Blackboard, BlackboardError, Condition, EntityView, InstantiateError, IntentBuffer, RouteView,
     Status,
 };
+pub use catalog::{
+    Access, BlackboardParam, Catalog, CatalogEntry, CatalogKind, ComponentInfo, Provenance,
+};
 pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
 pub use geo::{Euler, Quaternion, Vec3};
+pub use graph::{
+    ExitDef, FsmDef, GraphDef, Interface, LeafRef, NODE_TYPES, NodeDef, NodeId, NodeKind,
+    NodeKindTag, NodeTypeInfo, OutputPort, ParallelPolicy, ParamTemplate, StateDef, SubgraphRef,
+    TransitionDef, TransitionTarget, Trigger, UnboundParam, Version, VersionReq,
+};
 pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher};
 pub use id::{
     BehaviorId, ComponentId, EntityId, IdError, MAX_ID_LEN, MotionModelId, PluginId, TemplateId,

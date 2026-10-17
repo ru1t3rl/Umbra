@@ -1,0 +1,26 @@
+{
+  "title": "repeat node settings",
+  "description": "Ticks its child at most once per tick, repeating it until count successes (forever when absent).",
+  "type": "object",
+  "properties": {
+    "child": {
+      "type": "string",
+      "description": "Child ticked at most once per tick."
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of child successes before Success; absent repeats forever."
+    }
+  },
+  "required": [
+    "child"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "child": "a",
+      "count": 3
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "title": "selector node settings",
+  "description": "Ticks children in order; Success or Running of a child ends the tick, Failure when all fail. Reactive unless memory is set.",
+  "type": "object",
+  "properties": {
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "Name of a child node."
+      },
+      "minItems": 1,
+      "description": "Children ticked in order until one succeeds or is Running."
+    },
+    "memory": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, resume at the Running child instead of re-checking from the first child every tick."
+    }
+  },
+  "required": [
+    "children"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "children": [
+        "a",
+        "b"
+      ]
+    }
+  ]
+}

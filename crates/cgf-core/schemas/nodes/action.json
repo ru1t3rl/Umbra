@@ -1,0 +1,27 @@
+{
+  "title": "action node settings",
+  "description": "Leaf that runs a catalog action; may return Success, Failure or Running.",
+  "type": "object",
+  "properties": {
+    "ref": {
+      "type": "string",
+      "description": "Catalog ID of the action."
+    },
+    "params": {
+      "type": "object",
+      "description": "Action parameters; values may be { param = \"<interface param>\" } references."
+    }
+  },
+  "required": [
+    "ref"
+  ],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "ref": "builtin.action.wait",
+      "params": {
+        "duration_s": 2.0
+      }
+    }
+  ]
+}
