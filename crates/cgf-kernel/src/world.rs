@@ -4,11 +4,6 @@
 //! `BTreeMap`; every walk over entities goes through that map, so the order is the id order and
 //! never the ECS storage order (REQ-K-4).
 
-#![expect(
-    dead_code,
-    reason = "the mutable walk and route fields are used by the WI-11 systems"
-)]
-
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
