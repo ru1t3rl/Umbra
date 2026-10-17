@@ -90,7 +90,6 @@ pub enum IdError {
     },
 }
 
-/// Validates `s` against the ADR 0002 grammar.
 /// The longest prefix of `s` of at most [`ERROR_PREFIX_LEN`] bytes that ends on a char boundary.
 fn bounded_prefix(s: &str) -> &str {
     let end = (0..=ERROR_PREFIX_LEN)
@@ -140,6 +139,7 @@ pub(crate) fn validate_segment(s: &str) -> Result<(), SegmentError> {
     Ok(())
 }
 
+/// Validates `s` against the ADR 0002 grammar.
 fn validate(s: &str) -> Result<(), IdError> {
     if s.is_empty() {
         return Err(IdError::Empty);

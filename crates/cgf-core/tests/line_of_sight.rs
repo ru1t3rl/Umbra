@@ -180,7 +180,7 @@ fn counted(a: Ecef, b: Ecef) -> (usize, bool) {
     let t = Ridge {
         queries: AtomicUsize::new(0),
     };
-    // Fully clear of the ridge: both points high above ground, east-west at lon 0.5 deg.
+    // Fully clear of the ridge: both points high above ground.
     let visible = t.line_of_sight(a, b);
     (t.queries.load(Ordering::Relaxed), visible)
 }
