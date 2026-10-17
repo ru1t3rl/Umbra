@@ -30,7 +30,7 @@ pub enum Status {
 
 /// Why a behavior or action could not create an instance (for example a duration that does not
 /// fit in ticks at this rate). Not expected after validation; callers propagate it.
-#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum InstantiateError {
     /// A duration does not convert to whole ticks at the tick rate.
@@ -217,6 +217,14 @@ pub trait BehaviorInstance: Send {
     /// Value of a declared output port after the last tick (REQ-B-10), owned so an FFI bridge can
     /// return it; `None` = unset or no such port.
     fn output(&self, port: &str) -> Option<BbValue>;
+
+    /// Sets an interface param's run-time value before the next tick (ADR 0014); `None` = unset.
+    /// Required (no default body): graph instances write the read-only blackboard key of the same
+    /// name via [`Blackboard::input`].
+    ///
+    /// # Errors
+    /// The blackboard's error: undeclared param, not an input key, wrong type or non-finite number.
+    fn set_input(&mut self, param: &str, value: Option<BbValue>) -> Result<(), BlackboardError>;
 }
 
 /// A boolean check. Never emits intents.

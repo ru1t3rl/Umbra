@@ -6,8 +6,8 @@
 use std::sync::Arc;
 
 use cgf_core::{
-    BbValue, Behavior, BehaviorContext, BehaviorId, BehaviorInstance, EntityView, InstantiateError,
-    IntentBuffer, Status, TickRate,
+    BbValue, Behavior, BehaviorContext, BehaviorId, BehaviorInstance, BlackboardError, EntityView,
+    InstantiateError, IntentBuffer, Status, TickRate,
 };
 
 struct Failing(BehaviorId);
@@ -40,6 +40,9 @@ impl BehaviorInstance for Inst {
     fn halt(&mut self) {}
     fn output(&self, port: &str) -> Option<BbValue> {
         (port == "n").then_some(BbValue::Integer(3))
+    }
+    fn set_input(&mut self, _: &str, _: Option<BbValue>) -> Result<(), BlackboardError> {
+        Ok(())
     }
 }
 

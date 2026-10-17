@@ -5,8 +5,9 @@ use core::time::Duration;
 use std::sync::Arc;
 
 use cgf_core::{
-    Ecef, EntityId, KinematicState, Meters, MetersPerSecond, MotionModel, MotionModelId, Ownership,
-    SimRng, SimTime, StateHash, TerrainProvider, TickRate,
+    Behavior, BehaviorId, Contact, Ecef, EntityId, Force, Intent, KinematicState, Meters,
+    MetersPerSecond, MotionModel, MotionModelId, Ownership, Sensor, SimRng, SimTime, StateHash,
+    Status, TerrainProvider, TickRate,
 };
 
 use crate::clock::{Clock, ClockMode, WallClock};
@@ -51,6 +52,18 @@ pub struct EntityInit {
     pub route: Option<RouteInit>,
 }
 
+/// Behavior-side parts of an entity (ADR 0011); `AgentInit::default()` spawns exactly like
+/// [`Kernel::spawn`] (M3 plan, `cgf-kernel` changes).
+#[derive(Clone, Default)]
+pub struct AgentInit {
+    /// The entity's force; `None` is neutral to everyone (ASM-079).
+    pub force: Option<Force>,
+    /// The behavior program; the kernel instantiates it at the tick rate on spawn.
+    pub behavior: Option<Arc<dyn Behavior>>,
+    /// Sensors in template order (first wins when contacts coincide).
+    pub sensors: Vec<Arc<dyn Sensor>>,
+}
+
 /// An immutable copy of the world, entities sorted by id (REQ-K-6 partial, ASM-039).
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -75,6 +88,16 @@ pub struct EntitySnapshot {
     pub state: KinematicState,
     /// `(next, len)` of the route, if any.
     pub route_next: Option<(usize, usize)>,
+    /// The entity's force, if any.
+    pub force: Option<Force>,
+    /// The id of the entity's behavior, if it has one.
+    pub behavior: Option<BehaviorId>,
+    /// The behavior's status in the last tick, if it has run.
+    pub status: Option<Status>,
+    /// The intents of the last tick (after route expansion).
+    pub intents: Vec<Intent>,
+    /// The contacts of the last Perception phase, sorted by contact entity id.
+    pub contacts: Vec<Contact>,
 }
 
 impl EntitySnapshot {
@@ -117,6 +140,21 @@ impl Kernel {
     /// [`KernelError::IdsExhausted`] when ids run out. The kernel is unchanged on error.
     pub fn spawn(&mut self, init: EntityInit) -> Result<EntityId, KernelError> {
         self.world.spawn(init, self.rng)
+    }
+
+    /// Adds an entity with a behavior, sensors and a force (ADR 0011). `spawn(init)` is
+    /// `spawn_with(init, AgentInit::default())`.
+    ///
+    /// # Errors
+    /// The errors of [`Kernel::spawn`], and [`KernelError::Instantiate`] when the behavior cannot
+    /// be instantiated at the tick rate. The kernel is unchanged on error (no id consumed).
+    #[expect(clippy::todo, reason = "M3 WI-6 stub")]
+    pub fn spawn_with(
+        &mut self,
+        _init: EntityInit,
+        _agent: AgentInit,
+    ) -> Result<EntityId, KernelError> {
+        todo!("M3 WI-6")
     }
 
     /// Runs one tick through the six phases in [`Phase::ALL`] order and advances the clock by
