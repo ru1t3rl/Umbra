@@ -5,7 +5,7 @@
 //! `dt`, so there is no drift and results are deterministic (ADR 0003).
 
 use core::cmp::Ordering;
-use core::num::NonZeroU32;
+use core::num::{NonZeroU32, NonZeroU64};
 
 use crate::units::Seconds;
 
@@ -30,6 +30,36 @@ impl TickRate {
     /// The duration of one tick, `1 / hz`.
     pub fn dt(self) -> Seconds {
         Seconds(1.0 / f64::from(self.hz()))
+    }
+
+    /// Whole ticks for a duration: `ceil(seconds * hz)`, at least 1 (ASM-078).
+    ///
+    /// A product within two ULPs of a whole number of at least 1 is that number, so `0.1 s` at
+    /// 30 Hz is 3 ticks, not 4 (ASM-066). Returns `None` when the duration is not finite, not
+    /// positive, or the tick count does not fit in `u64`.
+    pub fn ticks_for(self, duration: Seconds) -> Option<NonZeroU64> {
+        let seconds = duration.0;
+        if !seconds.is_finite() || seconds <= 0.0 {
+            return None;
+        }
+        let product = seconds * f64::from(self.hz());
+        let nearest = product.round();
+        let ticks =
+            if nearest >= 1.0 && (product - nearest).abs() <= 2.0 * (product.next_up() - product) {
+                nearest
+            } else {
+                product.ceil().max(1.0)
+            };
+        // 2^64 as f64; anything at or above does not fit in u64.
+        if ticks >= 18_446_744_073_709_551_616.0 {
+            return None;
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "checked to be whole and within [1, 2^64) above"
+        )]
+        NonZeroU64::new(ticks as u64)
     }
 }
 

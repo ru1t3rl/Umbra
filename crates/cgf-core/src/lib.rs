@@ -43,8 +43,9 @@ pub use geo::{Euler, Quaternion, Vec3};
 pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher};
 pub use id::{
     BehaviorId, ComponentId, EntityId, IdError, MAX_ID_LEN, MotionModelId, PluginId, TemplateId,
+    WeaponId,
 };
-pub use intent::Intent;
+pub use intent::{INTENT_SET_VERSION, Intent};
 pub use motion::{KinematicState, MotionModel};
 pub use ownership::{Ownership, RemoteSource};
 pub use params::{ParamSchema, ParamSchemaError, ParamValue};
