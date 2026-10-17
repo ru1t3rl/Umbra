@@ -7,9 +7,10 @@
 use std::collections::BTreeMap;
 
 use crate::behavior::BbType;
-use crate::graph::{Version, VersionReq};
+use crate::graph::{NODE_TYPES, Version, VersionReq};
 use crate::id::ComponentId;
 use crate::params::ParamSchema;
+use crate::registry::{ComponentKind, Registry};
 
 /// Where a graph or component came from (REQ-B-13). Closed: the spec names exactly these three.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -220,6 +221,11 @@ impl CatalogEntry {
         self
     }
 
+    fn with_result_opt(mut self, text: Option<String>) -> Self {
+        self.result = text;
+        self
+    }
+
     /// Whether editors must not change it; derived from `source` (REQ-B-13), so no stored flag can
     /// disagree.
     pub fn read_only(&self) -> bool {
@@ -270,6 +276,45 @@ impl Catalog {
         Ok(Self { entries })
     }
 
+    /// The catalog of a registry: the node types, then every registered condition, action and
+    /// behavior. Motion models, terrain providers and sensors are not catalog material.
+    ///
+    /// Infallible: IDs are unique per kind in a registry and node type names are distinct, so no
+    /// (kind, id) repeats. Node types carry [`Provenance::Builtin`] and the `cgf-core` package
+    /// version.
+    pub fn from_registry(registry: &Registry) -> Self {
+        let mut entries = node_type_entries();
+        for (kind, component) in [
+            (CatalogKind::Condition, ComponentKind::Condition),
+            (CatalogKind::Action, ComponentKind::Action),
+            (CatalogKind::Behavior, ComponentKind::Behavior),
+        ] {
+            for id in registry.ids(component) {
+                let Some(info) = registry.info(id) else {
+                    continue;
+                };
+                let Some(params) = registry.param_schema(component, id) else {
+                    continue;
+                };
+                entries.push(
+                    CatalogEntry::new(
+                        kind,
+                        id.as_str(),
+                        info.description.clone(),
+                        info.source,
+                        info.version.clone(),
+                        params.clone(),
+                    )
+                    .with_param_types(info.param_types.clone())
+                    .with_outputs(info.outputs.clone())
+                    .with_result_opt(info.result.clone()),
+                );
+            }
+        }
+        entries.sort_by(|a, b| (a.kind, &a.id).cmp(&(b.kind, &b.id)));
+        Self { entries }
+    }
+
     /// All entries, sorted by (kind, id).
     pub fn entries(&self) -> &[CatalogEntry] {
         &self.entries
@@ -282,4 +327,25 @@ impl Catalog {
             .ok()
             .map(|i| &self.entries[i])
     }
+}
+
+/// One entry per node type. A schema that fails to parse would skip its entry; a `cgf-core`
+/// test guarantees all of them parse.
+fn node_type_entries() -> Vec<CatalogEntry> {
+    let version =
+        Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0));
+    NODE_TYPES
+        .iter()
+        .filter_map(|n| {
+            let params = ParamSchema::from_json_str(n.settings_schema).ok()?;
+            Some(CatalogEntry::new(
+                CatalogKind::NodeType,
+                n.name,
+                n.description,
+                Provenance::Builtin,
+                version.clone(),
+                params,
+            ))
+        })
+        .collect()
 }

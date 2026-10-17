@@ -7,9 +7,12 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
+use crate::behavior::{Action, Behavior, Condition};
+use crate::catalog::ComponentInfo;
 use crate::id::ComponentId;
 use crate::motion::MotionModel;
 use crate::params::{ParamSchema, ParamValue};
+use crate::perception::Sensor;
 use crate::terrain::TerrainProvider;
 
 /// The kinds of component a [`Registry`] can hold.
@@ -20,9 +23,9 @@ pub enum ComponentKind {
     MotionModel,
     /// A [`TerrainProvider`].
     Terrain,
-    /// A behavior (registrable from M3; always empty before).
+    /// A behavior (a graph or a plugin behavior).
     Behavior,
-    /// A sensor (registrable from M3; always empty before).
+    /// A sensor.
     Sensor,
     /// A behavior-tree condition leaf (M3).
     Condition,
@@ -131,13 +134,26 @@ pub enum RegistryError {
 
 type MotionFactory = Arc<dyn Factory<dyn MotionModel>>;
 type TerrainFactory = Arc<dyn Factory<dyn TerrainProvider>>;
+type BehaviorFactory = Arc<dyn Factory<dyn Behavior>>;
+type ConditionFactory = Arc<dyn Factory<dyn Condition>>;
+type ActionFactory = Arc<dyn Factory<dyn Action>>;
+type SensorFactory = Arc<dyn Factory<dyn Sensor>>;
 
 /// All registered component factories, looked up by kind and ID.
-#[derive(Default)]
+///
+/// `Clone` copies the maps and shares the factories (they are `Arc`s), so the engine can give each
+/// scenario its own registry with that scenario's file graphs added (ADR 0011).
+#[derive(Default, Clone)]
 pub struct Registry {
     kinds: BTreeMap<ComponentId, ComponentKind>,
     motion: BTreeMap<ComponentId, MotionFactory>,
     terrain: BTreeMap<ComponentId, TerrainFactory>,
+    behavior: BTreeMap<ComponentId, BehaviorFactory>,
+    condition: BTreeMap<ComponentId, ConditionFactory>,
+    action: BTreeMap<ComponentId, ActionFactory>,
+    sensor: BTreeMap<ComponentId, SensorFactory>,
+    /// Metadata of behaviors, conditions and actions.
+    info: BTreeMap<ComponentId, ComponentInfo>,
 }
 
 impl fmt::Debug for Registry {
@@ -203,6 +219,94 @@ impl Registry {
         )
     }
 
+    /// Registers a behavior factory under its own ID with its metadata.
+    ///
+    /// # Errors
+    /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
+    pub fn register_behavior(
+        &mut self,
+        f: BehaviorFactory,
+        info: ComponentInfo,
+    ) -> Result<(), RegistryError> {
+        let id = f.id().clone();
+        insert(
+            &mut self.kinds,
+            &mut self.behavior,
+            ComponentKind::Behavior,
+            f,
+        )?;
+        self.info.insert(id, info);
+        Ok(())
+    }
+
+    /// Registers a condition factory under its own ID with its metadata.
+    ///
+    /// # Errors
+    /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
+    pub fn register_condition(
+        &mut self,
+        f: ConditionFactory,
+        info: ComponentInfo,
+    ) -> Result<(), RegistryError> {
+        let id = f.id().clone();
+        insert(
+            &mut self.kinds,
+            &mut self.condition,
+            ComponentKind::Condition,
+            f,
+        )?;
+        self.info.insert(id, info);
+        Ok(())
+    }
+
+    /// Registers an action factory under its own ID with its metadata.
+    ///
+    /// # Errors
+    /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
+    pub fn register_action(
+        &mut self,
+        f: ActionFactory,
+        info: ComponentInfo,
+    ) -> Result<(), RegistryError> {
+        let id = f.id().clone();
+        insert(&mut self.kinds, &mut self.action, ComponentKind::Action, f)?;
+        self.info.insert(id, info);
+        Ok(())
+    }
+
+    /// Registers a sensor factory under its own ID. Sensors carry no catalog metadata.
+    ///
+    /// # Errors
+    /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
+    pub fn register_sensor(&mut self, f: SensorFactory) -> Result<(), RegistryError> {
+        insert(&mut self.kinds, &mut self.sensor, ComponentKind::Sensor, f)
+    }
+
+    /// The behavior factory with this ID.
+    pub fn behavior(&self, id: &ComponentId) -> Option<&BehaviorFactory> {
+        self.behavior.get(id)
+    }
+
+    /// The condition factory with this ID.
+    pub fn condition(&self, id: &ComponentId) -> Option<&ConditionFactory> {
+        self.condition.get(id)
+    }
+
+    /// The action factory with this ID.
+    pub fn action(&self, id: &ComponentId) -> Option<&ActionFactory> {
+        self.action.get(id)
+    }
+
+    /// The sensor factory with this ID.
+    pub fn sensor(&self, id: &ComponentId) -> Option<&SensorFactory> {
+        self.sensor.get(id)
+    }
+
+    /// The metadata of a behavior, condition or action (`None` for other kinds and unknown IDs).
+    pub fn info(&self, id: &ComponentId) -> Option<&ComponentInfo> {
+        self.info.get(id)
+    }
+
     /// The motion model factory with this ID.
     pub fn motion_model(&self, id: &ComponentId) -> Option<&MotionFactory> {
         self.motion.get(id)
@@ -213,16 +317,15 @@ impl Registry {
         self.terrain.get(id)
     }
 
-    /// The parameter schema of a component, for any kind. `Behavior` and `Sensor` are always
-    /// `None` until M3.
+    /// The parameter schema of a component, for any kind.
     pub fn param_schema(&self, kind: ComponentKind, id: &ComponentId) -> Option<&ParamSchema> {
         match kind {
             ComponentKind::MotionModel => self.motion.get(id).map(|f| f.param_schema()),
             ComponentKind::Terrain => self.terrain.get(id).map(|f| f.param_schema()),
-            ComponentKind::Behavior
-            | ComponentKind::Sensor
-            | ComponentKind::Condition
-            | ComponentKind::Action => None,
+            ComponentKind::Behavior => self.behavior.get(id).map(|f| f.param_schema()),
+            ComponentKind::Sensor => self.sensor.get(id).map(|f| f.param_schema()),
+            ComponentKind::Condition => self.condition.get(id).map(|f| f.param_schema()),
+            ComponentKind::Action => self.action.get(id).map(|f| f.param_schema()),
         }
     }
 
@@ -236,10 +339,10 @@ impl Registry {
         match kind {
             ComponentKind::MotionModel => self.motion.keys().collect(),
             ComponentKind::Terrain => self.terrain.keys().collect(),
-            ComponentKind::Behavior
-            | ComponentKind::Sensor
-            | ComponentKind::Condition
-            | ComponentKind::Action => Vec::new(),
+            ComponentKind::Behavior => self.behavior.keys().collect(),
+            ComponentKind::Sensor => self.sensor.keys().collect(),
+            ComponentKind::Condition => self.condition.keys().collect(),
+            ComponentKind::Action => self.action.keys().collect(),
         }
     }
 }
