@@ -1,4 +1,4 @@
-//! AT-8 (WI-2): `TickRate::ticks_for`. Requirements: ASM-078, ASM-066.
+//! M3 WI-2: `TickRate::ticks_for`. Requirements: ASM-078, ASM-066.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]

@@ -1,4 +1,4 @@
-//! AT-5 (WI-2): drift guard between the scenario reader's `read_duration` (M2) and
+//! M3 WI-2: drift guard between the scenario reader's `read_duration` (M2) and
 //! `TickRate::ticks_for` (ASM-078, ASM-066). Both must agree for every duration.
 
 #![forbid(unsafe_code)]
