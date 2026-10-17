@@ -186,8 +186,9 @@ impl MotionModel for GroundKinematic {
     ///    the destination at about `max_accel * dt` or less. The heading changes only while the
     ///    new speed is positive (no pivot turns, ASM-049).
     /// 3. Arrival snap: when the destination is within this step's travel (or 1 mm), ahead, and
-    ///    the new speed is at most `2 * max_accel * dt`, the entity lands on it and stops. That
-    ///    final step changes speed by at most `2 * max_accel * dt`; a faster entity keeps moving.
+    ///    both the old and the new speed are at most `2 * max_accel * dt`, the entity lands on it and
+    ///    stops. That final step changes speed by at most `2 * max_accel * dt`; a faster entity
+    ///    keeps moving.
     /// 4. Terrain following: the new height is `terrain.height_at`; pitch and roll are zero.
     ///
     /// Precondition: `dt` is finite and > 0; otherwise the state is returned unchanged.
@@ -226,7 +227,7 @@ impl MotionModel for GroundKinematic {
         let (east, north) = match &toward {
             Some(a)
                 if a.distance <= travel.max(ARRIVAL_EPSILON_M)
-                    && new_speed <= 2.0 * accel_step
+                    && speed.max(new_speed) <= 2.0 * accel_step
                     && a.error.abs() < core::f64::consts::FRAC_PI_2 =>
             {
                 new_speed = 0.0;

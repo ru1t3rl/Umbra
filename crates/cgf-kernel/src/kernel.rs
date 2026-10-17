@@ -163,7 +163,7 @@ impl Kernel {
         let budget = self.clock.wall_period()?;
         let over = took.checked_sub(budget).filter(|d| !d.is_zero())?;
         tracing::warn!(
-            tick = time.tick(),
+            tick_run = time.tick().saturating_sub(1),
             ?took,
             ?budget,
             ?phase_wall,

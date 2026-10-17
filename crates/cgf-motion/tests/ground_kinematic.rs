@@ -326,6 +326,19 @@ fn fast_entity_close_to_destination_does_not_snap() {
     );
 }
 
+/// REQ-M-2: the snap guard looks at the old speed too. A braking entity at 0.24 m/s with the
+/// destination 5 mm ahead must not stop in one step (that would be a change of 2.9 times the
+/// per-step limit); it keeps decelerating at the limit.
+#[test]
+fn slow_braking_entity_close_to_destination_does_not_over_brake() {
+    let from = start(0.0, 0.24);
+
+    let out = model().step(&from, &[move_to(0.0, 0.005)], DT, &flat());
+
+    let dv = speed_of(&out) - speed_of(&from);
+    assert!(dv.abs() <= 2.0 * ACCEL_STEP + EPS, "dv {dv}");
+}
+
 /// REQ-M-2: a stopped entity within 1 mm of the destination snaps onto it.
 #[test]
 fn stopped_entity_half_a_millimetre_away_snaps_onto_the_destination() {
@@ -634,6 +647,27 @@ proptest! {
         }
 
         prop_assert!(reached.is_some(), "not within 5 m after {bound} ticks (d = {distance})");
+    }
+
+    /// REQ-M-2: with small destinations (the arrival snap region, mostly ahead of the entity) from any speed, no
+    /// step of the whole trajectory changes the speed by more than twice `max_accel * dt`.
+    #[test]
+    fn whole_trajectory_respects_the_speed_change_limit(
+        heading in 0.0_f64..TAU,
+        side in prop_oneof![Just(0.0), -0.3_f64..0.3, 0.0_f64..TAU],
+        distance in prop_oneof![0.0_f64..0.05, 0.0_f64..20.0],
+        speed in prop_oneof![0.0_f64..0.5, 0.0_f64..=MAX_SPEED],
+    ) {
+        let (sin_b, cos_b) = cgf_core::math::sin_cos(heading + side);
+        let intents = [move_to(distance * sin_b, distance * cos_b)];
+        let states = run(&model(), start(heading, speed), &intents, 900);
+
+        let mut prev = speed;
+        for (i, s) in states.iter().enumerate() {
+            let v = speed_of(s);
+            prop_assert!((v - prev).abs() <= 2.0 * ACCEL_STEP + EPS, "step {i}: {prev} -> {v}");
+            prev = v;
+        }
     }
 
     /// REQ-M-1: a step is a pure function of its inputs: repeated calls, and a freshly built

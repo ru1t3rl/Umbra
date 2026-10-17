@@ -1,9 +1,9 @@
 //! AT-6 (kernel part): the state hash content and stability. Requirements: REQ-K-4, ADR 0007.
 //!
 //! One field at a time is varied against a baseline; each variation must change the hash.
-//! Hash content (ADR 0007, version 1): tick, tick rate, entity count, then per entity in id order:
-//! id, ownership, motion model id, kinematic state, route state (waypoint count, next index),
-//! RNG state. Intents and wall timings are never hashed.
+//! Hash content (ADR 0007, version 2): tick, tick rate, entity count, then per entity in id order:
+//! id, ownership, motion model id, kinematic state, route (waypoint count, waypoints, next index,
+//! arrival radius, cruise speed), RNG state. Intents and wall timings are never hashed.
 
 #![forbid(unsafe_code)]
 
@@ -370,12 +370,19 @@ fn hash_entity(
     h: &mut StateHasher,
     id: u64,
     seed: u64,
+    ownership: &Ownership,
     model: &str,
     state: &KinematicState,
     route: Option<&RefRoute>,
 ) {
     h.write_u64(id);
-    h.write_u8(0); // Owned
+    match ownership {
+        Ownership::Owned => h.write_u8(0),
+        Ownership::Remote { source } => {
+            h.write_u8(1);
+            h.write_str(source.as_str());
+        }
+    }
     h.write_str(model);
     h.write_vec3(state.position.0);
     h.write_vec3(state.velocity);
@@ -414,10 +421,25 @@ fn state_hash_equals_the_reference_encoding() {
     let seed = 11;
     let mut k = kernel(seed);
     let m = Stub::new("test.stub.still", Behavior::Stationary);
+    let remote = Ownership::Remote {
+        source: RemoteSource::new("dis.a"),
+    };
+    // Waypoints with non-zero x, y and z, a radius and a cruise speed that differ from each other.
+    let waypoints = vec![
+        Ecef(Vec3::new(common::A + 1.0, 1000.0, 300.0)),
+        Ecef(Vec3::new(common::A + 2.0, 2000.0, 600.0)),
+    ];
+    let spawned_route = || RouteInit {
+        arrival_radius: Meters(5.0),
+        ..route(waypoints.clone(), 7.0)
+    };
     for i in 0..3_u32 {
         let mut init = owned(at(f64::from(i) * 10.0), &m);
         if i % 2 == 0 {
-            init.route = Some(route(vec![at(1000.0), at(2000.0)], 5.0));
+            init.route = Some(spawned_route());
+        }
+        if i == 1 {
+            init.ownership = remote.clone();
         }
         assert!(k.spawn(init).is_ok());
     }
@@ -426,10 +448,23 @@ fn state_hash_equals_the_reference_encoding() {
     h.write_u64(0); // tick
     h.write_u32(30); // tick rate
     h.write_u64(3); // entity count
-    let ref_route: RefRoute = (vec![at(1000.0), at(2000.0)], 5.0, 5.0);
-    for (id, route) in [(1, Some(&ref_route)), (2, None), (3, Some(&ref_route))] {
+    let ref_route: RefRoute = (waypoints.clone(), 5.0, 7.0);
+    let entities = [
+        (1, Ownership::Owned, Some(&ref_route)),
+        (2, remote, None),
+        (3, Ownership::Owned, Some(&ref_route)),
+    ];
+    for (id, ownership, route) in entities {
         let state = state_at(at(f64::from(u32::try_from(id - 1).expect("small")) * 10.0));
-        hash_entity(&mut h, id, seed, "test.stub.still", &state, route);
+        hash_entity(
+            &mut h,
+            id,
+            seed,
+            &ownership,
+            "test.stub.still",
+            &state,
+            route,
+        );
     }
 
     assert_eq!(k.state_hash(), h.finish());

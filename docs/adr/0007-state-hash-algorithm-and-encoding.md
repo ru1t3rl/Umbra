@@ -31,7 +31,7 @@ Option 1 (KISS; stability by construction).
   (length-prefixed with a `u64`), `write_str`. Integers are little-endian, fixed width.
 - `write_f64` canonicalises: `-0.0` becomes `+0.0`; every NaN becomes `0x7FF8_0000_0000_0000`; then
   `to_bits()` little-endian.
-- The stream starts with `STATE_HASH_VERSION: u32 = 1`. Any change to what is hashed bumps it.
+- The stream starts with `STATE_HASH_VERSION: u32 = 1` (2 since the amendment below). Any change to what is hashed bumps it.
 - Content (kernel, version 1; see the v2 amendment below): tick, tick rate (Hz), entity count; then for each entity in ascending
   `EntityId` order: id, ownership tag (and remote source string), motion model id string, kinematic
   state (position x, y, z; velocity x, y, z; orientation w, x, y, z), route state (waypoint count,
