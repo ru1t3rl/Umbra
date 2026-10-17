@@ -1,9 +1,8 @@
-//! Located diagnostics (REQ-T-2, ASM-056). Partly STUB (WI-4): `Display` is not implemented yet.
-#![expect(clippy::todo, reason = "stub until WI-4: Display and sorting")]
+//! Located diagnostics (REQ-T-2, ASM-056).
 
 use core::fmt;
 use std::ops::Range;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Where a diagnostic points. 1-based line and column (Unicode scalar values).
 ///
@@ -116,10 +115,70 @@ pub struct Diagnostic {
     pub notes: Vec<Note>,
 }
 
-impl fmt::Display for Diagnostic {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!("WI-4")
+impl Diagnostic {
+    /// A diagnostic without notes.
+    pub fn new(
+        code: DiagnosticCode,
+        message: impl Into<String>,
+        location: Option<Location>,
+    ) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            location,
+            notes: Vec::new(),
+        }
     }
+
+    /// Adds a note.
+    #[must_use]
+    pub fn with_note(mut self, message: impl Into<String>, location: Option<Location>) -> Self {
+        self.notes.push(Note {
+            message: message.into(),
+            location,
+        });
+        self
+    }
+
+    /// Sort key: (path, span start, code, message, span end). Unlocated diagnostics sort first.
+    fn sort_key(&self) -> (Option<&Path>, usize, DiagnosticCode, &str, usize) {
+        let (path, start, end) = self.location.as_ref().map_or((None, 0, 0), |l| {
+            (Some(l.path.as_path()), l.span.start, l.span.end)
+        });
+        (path, start, self.code, self.message.as_str(), end)
+    }
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}:{}", self.path.display(), self.line, self.column)
+    }
+}
+
+impl fmt::Display for Diagnostic {
+    /// `path:line:col: error[code]: message`, then one `  note: message (path:line:col)` line per
+    /// note.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(location) = &self.location {
+            write!(f, "{location}: ")?;
+        }
+        write!(f, "error[{}]: {}", self.code.as_str(), self.message)?;
+        for note in &self.notes {
+            write!(f, "\n  note: {}", note.message)?;
+            if let Some(location) = &note.location {
+                write!(f, " ({location})")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Sorts by (path, span start, code, message) and removes duplicates (same code, location and
+/// message), so output is stable (REQ-K-4, ASM-056).
+pub fn sort_and_dedup(diagnostics: &mut Vec<Diagnostic>) {
+    diagnostics.sort_by(|a, b| a.sort_key().cmp(&b.sort_key()));
+    diagnostics
+        .dedup_by(|b, a| a.code == b.code && a.location == b.location && a.message == b.message);
 }
 
 /// A non-empty list of diagnostics, sorted by (path, span start, code, message) without duplicates.
@@ -132,6 +191,17 @@ pub struct Diagnostics(Vec<Diagnostic>);
     reason = "a Diagnostics value is never empty by construction"
 )]
 impl Diagnostics {
+    /// Sorts and de-duplicates `diagnostics`; `None` when there are none.
+    pub fn new(mut diagnostics: Vec<Diagnostic>) -> Option<Self> {
+        sort_and_dedup(&mut diagnostics);
+        (!diagnostics.is_empty()).then_some(Self(diagnostics))
+    }
+
+    /// The diagnostics, consuming `self`.
+    pub fn into_vec(self) -> Vec<Diagnostic> {
+        self.0
+    }
+
     /// The diagnostics in order.
     pub fn iter(&self) -> impl Iterator<Item = &Diagnostic> {
         self.0.iter()
@@ -140,5 +210,81 @@ impl Diagnostics {
     /// How many there are.
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(path: &str, line: u32, column: u32, start: usize) -> Location {
+        Location {
+            path: path.into(),
+            line,
+            column,
+            span: start..start + 1,
+        }
+    }
+
+    fn d(code: DiagnosticCode, message: &str, location: Location) -> Diagnostic {
+        Diagnostic::new(code, message, Some(location))
+    }
+
+    #[test]
+    fn display_is_path_line_col_error_code_message_then_notes() {
+        let diagnostic = d(
+            DiagnosticCode::UnknownKey,
+            "no such key",
+            at("a.toml", 3, 7, 20),
+        )
+        .with_note("defined here", Some(at("b.toml", 1, 2, 1)))
+        .with_note("plain", None);
+
+        assert_eq!(
+            diagnostic.to_string(),
+            "a.toml:3:7: error[unknown_key]: no such key\n  note: defined here (b.toml:1:2)\n  note: plain"
+        );
+    }
+
+    #[test]
+    fn display_without_location_omits_the_prefix() {
+        let diagnostic = Diagnostic::new(DiagnosticCode::Io, "cannot read x", None);
+
+        assert_eq!(diagnostic.to_string(), "error[io]: cannot read x");
+    }
+
+    #[test]
+    fn diagnostics_sort_by_path_then_offset_then_code_then_message() {
+        let list = vec![
+            d(DiagnosticCode::Syntax, "z", at("b.toml", 1, 1, 0)),
+            d(DiagnosticCode::Syntax, "b", at("a.toml", 2, 1, 10)),
+            d(DiagnosticCode::WrongType, "a", at("a.toml", 1, 1, 0)),
+            d(DiagnosticCode::Syntax, "m", at("a.toml", 1, 1, 0)),
+            d(DiagnosticCode::Syntax, "a", at("a.toml", 1, 1, 0)),
+        ];
+
+        let sorted = Diagnostics::new(list)
+            .map(Diagnostics::into_vec)
+            .unwrap_or_default();
+
+        let order: Vec<&str> = sorted.iter().map(|x| x.message.as_str()).collect();
+        assert_eq!(order, ["a", "m", "a", "b", "z"]);
+        assert_eq!(sorted[2].code, DiagnosticCode::WrongType);
+    }
+
+    #[test]
+    fn duplicates_with_equal_code_location_and_message_are_removed() {
+        let one = d(DiagnosticCode::Syntax, "m", at("a.toml", 1, 1, 0));
+        let other = d(DiagnosticCode::Syntax, "m", at("a.toml", 1, 1, 0));
+        let different = d(DiagnosticCode::Syntax, "n", at("a.toml", 1, 1, 0));
+
+        let all = Diagnostics::new(vec![one, different, other]);
+
+        assert_eq!(all.map(|d| d.len()), Some(2));
+    }
+
+    #[test]
+    fn no_diagnostics_is_none() {
+        assert_eq!(Diagnostics::new(Vec::new()), None);
     }
 }
