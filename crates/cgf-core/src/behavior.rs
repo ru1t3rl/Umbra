@@ -6,6 +6,7 @@
 //! [`BehaviorContext`] (REQ-K-4).
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::Arc;
 
 use crate::coords::Ecef;
@@ -25,6 +26,36 @@ pub enum Status {
     Failure,
     /// Not finished; ticked again next tick.
     Running,
+}
+
+/// Why a behavior or action could not create an instance (for example a duration that does not
+/// fit in ticks at this rate). Not expected after validation; callers propagate it.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[non_exhaustive]
+pub enum InstantiateError {
+    /// A duration does not convert to whole ticks at the tick rate.
+    #[error("{what}: duration does not convert to ticks at {hz} Hz")]
+    Duration {
+        /// What carries the duration (a node or parameter name).
+        what: String,
+        /// The tick rate in hertz.
+        hz: u32,
+    },
+    /// A nested subgraph could not be instantiated.
+    #[error("subgraph `{id}`: {source}")]
+    Subgraph {
+        /// The subgraph's ID.
+        id: BehaviorId,
+        /// Why it failed.
+        #[source]
+        source: Box<InstantiateError>,
+    },
+    /// Any other reason.
+    #[error("{message}")]
+    Other {
+        /// Human-readable reason.
+        message: String,
+    },
 }
 
 /// Time and randomness for one behavior tick (REQ-K-4).
@@ -96,6 +127,7 @@ impl<'a> EntityView<'a> {
 
 /// Read-only view of an entity's route.
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub struct RouteView<'a> {
     /// Waypoints in order, ECEF.
     pub waypoints: &'a [Ecef],
@@ -105,10 +137,28 @@ pub struct RouteView<'a> {
     pub complete: bool,
 }
 
+impl<'a> RouteView<'a> {
+    /// Creates a route view.
+    pub fn new(waypoints: &'a [Ecef], next: usize, complete: bool) -> Self {
+        Self {
+            waypoints,
+            next,
+            complete,
+        }
+    }
+}
+
 /// Append-only view of this tick's intents (REQ-B-1): behaviors can add intents, never remove or
 /// inspect earlier ones.
-#[derive(Debug)]
 pub struct IntentBuffer<'a>(&'a mut Vec<Intent>);
+
+impl fmt::Debug for IntentBuffer<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IntentBuffer")
+            .field("len", &self.0.len())
+            .finish()
+    }
+}
 
 impl<'a> IntentBuffer<'a> {
     /// Wraps the tick's intent list.
@@ -144,7 +194,11 @@ pub trait Behavior: Send + Sync {
     fn id(&self) -> &BehaviorId;
 
     /// Per-entity (or per-subgraph-node) state, durations converted to ticks at `rate`.
-    fn instantiate(&self, rate: TickRate) -> Box<dyn BehaviorInstance>;
+    ///
+    /// # Errors
+    /// [`InstantiateError`] if the instance cannot be created at `rate` (not expected after
+    /// validation).
+    fn instantiate(&self, rate: TickRate) -> Result<Box<dyn BehaviorInstance>, InstantiateError>;
 }
 
 /// Per-entity state of a [`Behavior`].
@@ -160,8 +214,9 @@ pub trait BehaviorInstance: Send {
     /// Abandons a Running activation; the next tick starts fresh (blackboard kept, ADR 0014).
     fn halt(&mut self);
 
-    /// Value of a declared output port after the last tick (REQ-B-10); `None` = unset.
-    fn output(&self, port: &str) -> Option<&BbValue>;
+    /// Value of a declared output port after the last tick (REQ-B-10), owned so an FFI bridge can
+    /// return it; `None` = unset or no such port.
+    fn output(&self, port: &str) -> Option<BbValue>;
 }
 
 /// A boolean check. Never emits intents.
@@ -196,7 +251,11 @@ pub trait Action: Send + Sync {
     fn id(&self) -> &ComponentId;
 
     /// Per-activation state, durations converted to ticks at `rate`.
-    fn instantiate(&self, rate: TickRate) -> Box<dyn ActionInstance>;
+    ///
+    /// # Errors
+    /// [`InstantiateError`] if the instance cannot be created at `rate` (not expected after
+    /// validation).
+    fn instantiate(&self, rate: TickRate) -> Result<Box<dyn ActionInstance>, InstantiateError>;
 }
 
 /// Per-entity state of an [`Action`].
@@ -216,6 +275,7 @@ pub trait ActionInstance: Send {
 
 /// The type of a blackboard key (ASM-071).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum BbType {
     /// `bool`.
     Bool,
@@ -231,8 +291,22 @@ pub enum BbType {
     Position,
 }
 
+impl fmt::Display for BbType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Bool => "bool",
+            Self::Number => "number",
+            Self::Integer => "integer",
+            Self::String => "string",
+            Self::Entity => "entity",
+            Self::Position => "position",
+        })
+    }
+}
+
 /// A blackboard value.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub enum BbValue {
     /// `bool`.
     Bool(bool),
@@ -274,20 +348,26 @@ impl BbValue {
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 #[non_exhaustive]
 pub enum BlackboardError {
-    /// The key is not declared (or, for `input`, not declared as an input key).
+    /// The key is not declared.
     #[error("blackboard key `{key}` is not declared")]
     Undeclared {
         /// The key.
         key: String,
     },
-    /// The key is a read-only interface param.
+    /// `set` or `unset` on a read-only interface param key.
     #[error("blackboard key `{key}` is read-only")]
     ReadOnly {
         /// The key.
         key: String,
     },
+    /// `input` on a declared key that is not an input key.
+    #[error("blackboard key `{key}` is not an input key")]
+    NotInput {
+        /// The key.
+        key: String,
+    },
     /// The value's type differs from the key's declared type.
-    #[error("blackboard key `{key}` holds {expected:?}, not {found:?}")]
+    #[error("blackboard key `{key}` holds {expected}, not {found}")]
     WrongType {
         /// The key.
         key: String,
@@ -311,7 +391,7 @@ struct Slot {
     value: Option<BbValue>,
 }
 
-/// Typed, declared per-instance key-value store (ASM-071, ADR 0014). Keys iterate in sorted order.
+/// Typed, declared per-instance key-value store (ASM-071, ADR 0014).
 ///
 /// Values start unset. Cloning gives an independent store (instances never share one, REQ-B-11).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -381,12 +461,13 @@ impl Blackboard {
     /// value must have exactly the key's type.
     ///
     /// # Errors
-    /// [`BlackboardError::Undeclared`] if `key` is not declared with
-    /// [`Blackboard::declare_input`]; wrong type or non-finite values are refused.
+    /// [`BlackboardError::Undeclared`] if `key` is not declared, [`BlackboardError::NotInput`] if
+    /// it was not declared with [`Blackboard::declare_input`]; wrong type or non-finite values
+    /// are refused.
     pub fn input(&mut self, key: &str, v: Option<BbValue>) -> Result<(), BlackboardError> {
         let slot = self.slot_mut(key)?;
         if !slot.read_only {
-            return Err(BlackboardError::Undeclared {
+            return Err(BlackboardError::NotInput {
                 key: key.to_owned(),
             });
         }

@@ -161,3 +161,80 @@ fn given_arc_of_overriding_provider_when_los_then_forwards() {
     assert!(!nested.line_of_sight(a, b));
     assert!(flat().line_of_sight(a, b));
 }
+
+fn east_of(origin_lat_lon: (f64, f64), metres: f64, h: f64) -> Ecef {
+    let deg = metres / 6_378_137.0 * 180.0 / std::f64::consts::PI;
+    at(origin_lat_lon.0, origin_lat_lon.1 + deg, h)
+}
+
+/// ASM-080: 20 km apart at 2 m eye height the curvature blocks the line (sag ~7.8 m).
+#[test]
+fn given_two_points_2m_up_20km_apart_when_flat_then_blocked_by_curvature() {
+    let a = at(0.0, 0.0, 2.0);
+    let b = east_of((0.0, 0.0), 20_000.0, 2.0);
+
+    assert!(!flat().line_of_sight(a, b));
+}
+
+fn counted(a: Ecef, b: Ecef) -> (usize, bool) {
+    let t = Ridge {
+        queries: AtomicUsize::new(0),
+    };
+    // Fully clear of the ridge: both points high above ground, east-west at lon 0.5 deg.
+    let visible = t.line_of_sight(a, b);
+    (t.queries.load(Ordering::Relaxed), visible)
+}
+
+/// ASM-080: the count is clamp(ceil(d / 20), 2, 512) at the boundaries, and the line is visible.
+#[test]
+fn sample_count_boundaries_use_chord_length() {
+    let up = |lon: f64, h: f64| at(0.0, lon, h);
+    let chord = |a: Ecef, b: Ecef| a.distance(b).0;
+    let h = 500_000.0;
+    let a = up(10.0, h);
+    // Find points on the same latitude whose chord is exactly the wanted length by bisection.
+    let at_chord = |want: f64| {
+        let (mut lo, mut hi) = (0.0_f64, 1.0_f64);
+        for _ in 0..80 {
+            let mid = f64::midpoint(lo, hi);
+            if chord(a, up(10.0 + mid, h)) < want {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        up(10.0 + lo, h)
+    };
+    for (want, expect) in [(40.0, 2), (60.0, 3), (10_240.0, 512)] {
+        let b = at_chord(want);
+        assert_eq!(counted(a, b), (expect, true), "chord {want}");
+    }
+    // Just above 40 m needs a third sample; just above the cap stays at 512.
+    assert_eq!(counted(a, at_chord(40.5)), (3, true));
+    assert_eq!(counted(a, at_chord(10_300.0)), (512, true));
+}
+
+/// ASM-080: infinite endpoints, and inf - inf (NaN displacement), are blocked without panic.
+#[test]
+fn given_infinite_endpoints_when_los_then_blocked() {
+    let inf = Ecef(cgf_core::Vec3 {
+        x: f64::INFINITY,
+        y: 0.0,
+        z: 0.0,
+    });
+    let p = at(0.0, 0.0, 0.0);
+
+    assert!(!flat().line_of_sight(inf, p));
+    assert!(!flat().line_of_sight(p, inf));
+    assert!(!flat().line_of_sight(inf, inf));
+}
+
+/// ASM-080 (documents the strictness): at 0 m eye height 1 m apart on flat ground the chord dips
+/// below the ellipsoid, so the line is blocked. Callers raise endpoints by an eye height.
+#[test]
+fn given_zero_eye_height_1m_apart_on_flat_ground_then_blocked() {
+    let a = at(0.0, 0.0, 0.0);
+    let b = east_of((0.0, 0.0), 1.0, 0.0);
+
+    assert!(!flat().line_of_sight(a, b));
+}

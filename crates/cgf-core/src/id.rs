@@ -91,17 +91,62 @@ pub enum IdError {
 }
 
 /// Validates `s` against the ADR 0002 grammar.
+/// The longest prefix of `s` of at most [`ERROR_PREFIX_LEN`] bytes that ends on a char boundary.
+fn bounded_prefix(s: &str) -> &str {
+    let end = (0..=ERROR_PREFIX_LEN)
+        .rev()
+        .find(|&i| s.is_char_boundary(i))
+        .unwrap_or(0);
+    &s[..end]
+}
+
+/// Why a single `[a-z][a-z0-9_]*` segment was rejected by [`validate_segment`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SegmentError {
+    Empty,
+    /// Longer than [`MAX_ID_LEN`]; `prefix` is bounded.
+    TooLong {
+        prefix: String,
+        len: usize,
+    },
+    /// The first character is not `a-z` (always at byte 0).
+    InvalidStart,
+    /// A later character is not `a-z`, `0-9` or `_`.
+    InvalidChar {
+        index: usize,
+    },
+}
+
+/// Validates one lowercase segment (`[a-z][a-z0-9_]*`, at most [`MAX_ID_LEN`] bytes) with a
+/// bounded error echo. Shared by the types that reuse the segment grammar (for example `Force`).
+pub(crate) fn validate_segment(s: &str) -> Result<(), SegmentError> {
+    if s.is_empty() {
+        return Err(SegmentError::Empty);
+    }
+    if s.len() > MAX_ID_LEN {
+        return Err(SegmentError::TooLong {
+            prefix: bounded_prefix(s).to_owned(),
+            len: s.len(),
+        });
+    }
+    for (index, b) in s.bytes().enumerate() {
+        match b {
+            b'a'..=b'z' => {}
+            b'0'..=b'9' | b'_' if index > 0 => {}
+            _ if index == 0 => return Err(SegmentError::InvalidStart),
+            _ => return Err(SegmentError::InvalidChar { index }),
+        }
+    }
+    Ok(())
+}
+
 fn validate(s: &str) -> Result<(), IdError> {
     if s.is_empty() {
         return Err(IdError::Empty);
     }
     if s.len() > MAX_ID_LEN {
-        let end = (0..=ERROR_PREFIX_LEN)
-            .rev()
-            .find(|&i| s.is_char_boundary(i))
-            .unwrap_or(0);
         return Err(IdError::TooLong {
-            id: s[..end].to_owned(),
+            id: bounded_prefix(s).to_owned(),
             len: s.len(),
             max: MAX_ID_LEN,
         });

@@ -45,7 +45,8 @@ pub mod units;
 
 pub use behavior::{
     Action, ActionInstance, BbType, BbValue, Behavior, BehaviorContext, BehaviorInstance,
-    Blackboard, BlackboardError, Condition, EntityView, IntentBuffer, RouteView, Status,
+    Blackboard, BlackboardError, Condition, EntityView, InstantiateError, IntentBuffer, RouteView,
+    Status,
 };
 pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
 pub use geo::{Euler, Quaternion, Vec3};
@@ -58,7 +59,9 @@ pub use intent::{INTENT_SET_VERSION, Intent};
 pub use motion::{KinematicState, MotionModel};
 pub use ownership::{Ownership, RemoteSource};
 pub use params::{ParamSchema, ParamSchemaError, ParamValue};
-pub use perception::{Contact, Force, ForceError, Observer, Sensor, Target, hostile};
+pub use perception::{
+    Contact, ContactBuffer, Force, ForceError, Observer, SenseContext, Sensor, Target, hostile,
+};
 pub use registry::{BuildError, ComponentKind, Factory, Registry, RegistryError};
 pub use rng::{RngStream, SimRng, SplitMix64, StreamKey};
 pub use terrain::{FlatTerrain, TerrainProvider};

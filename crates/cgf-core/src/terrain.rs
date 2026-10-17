@@ -38,9 +38,10 @@ const LOS_MAX_SAMPLES: u32 = 512;
 #[expect(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
-    reason = "the value is clamped to [2, 512] in f64 first, so the cast is exact"
+    reason = "d is finite and >= 0 (asserted); the value is clamped to [2, 512] in f64 first, so the cast is exact"
 )]
 fn sample_count(d: f64) -> u32 {
+    debug_assert!(d.is_finite() && d >= 0.0);
     (d / LOS_SPACING_M)
         .ceil()
         .clamp(f64::from(LOS_MIN_SAMPLES), f64::from(LOS_MAX_SAMPLES)) as u32
