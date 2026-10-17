@@ -1,8 +1,8 @@
 //! `cgf-engine`: the embeddable, synchronous facade over kernel and motion models.
 //!
 //! Responsibility: `Engine` construction, spawning with placement by ECEF or lat/lon/alt
-//! (ASM-044), running and stepping the kernel by its clock, and the hard-coded M1 demo scenario
-//! (REQ-S-2 minimal, ASM-026, ASM-028).
+//! (ASM-044), running and stepping the kernel by its clock, and loading and instantiating scenario
+//! files through the component registry (REQ-S-2, REQ-T-1, ASM-026).
 //!
 //! This crate re-exports the core, kernel and motion types that `cgf-cli` needs, because the
 //! dependency rules let the CLI depend on `cgf-engine` only (ASM-026).
@@ -13,7 +13,6 @@
 #![forbid(unsafe_code)]
 
 pub mod builtins;
-pub mod demo;
 pub mod display;
 pub mod engine;
 pub mod error;

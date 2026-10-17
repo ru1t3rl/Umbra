@@ -8,9 +8,18 @@ use std::sync::Arc;
 use cgf_core::{
     Ecef, Meters, MetersPerSecond, MotionModel, Ownership, Position, Radians, TickRate, Vec3,
 };
-use cgf_engine::{Engine, EngineConfig, EngineError, SpawnParam, SpawnSpec, demo};
+use cgf_engine::{Engine, EngineConfig, EngineError, SpawnParam, SpawnSpec};
 use cgf_kernel::{ClockMode, ManualWallClock};
 use cgf_motion::GroundKinematic;
+
+/// The spec 7.1 ground limits: 18 m/s, 40 deg/s, 2.5 m/s^2.
+fn ground_params() -> cgf_motion::GroundKinematicParams {
+    cgf_motion::GroundKinematicParams {
+        max_speed: cgf_core::MetersPerSecond(18.0),
+        max_turn_rate: cgf_core::RadiansPerSecond::from_degrees_per_second(40.0),
+        max_accel: cgf_core::MetersPerSecondSquared(2.5),
+    }
+}
 
 fn config() -> EngineConfig {
     EngineConfig {
@@ -32,7 +41,7 @@ fn engine() -> Engine {
 
 fn spec() -> SpawnSpec {
     let model: Arc<dyn MotionModel> =
-        Arc::new(GroundKinematic::new(demo::ground_params()).expect("valid params"));
+        Arc::new(GroundKinematic::new(ground_params()).expect("valid params"));
     SpawnSpec {
         position: Position::Ecef(Ecef(Vec3::new(6_378_137.0, 0.0, 0.0))),
         heading: Radians(0.0),

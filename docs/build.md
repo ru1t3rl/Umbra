@@ -15,7 +15,7 @@ There is no CI gate: this list, run in this order, is the definition of done (CL
 | 1 | Format | `cargo fmt --all -- --check` | M0 |
 | 2 | Lint | `cargo clippy --workspace --all-targets --locked -- -D warnings` | M0 |
 | 3 | Tests | `cargo test --workspace --locked` | M0 |
-| 4 | Determinism (REQ-K-4) | `cargo test -p cgf-engine --test determinism --locked` | M1 (active from WI-13; skipped in M0, ASM-019) |
+| 4 | Determinism (REQ-K-4) | `cargo test -p cgf-engine --test determinism --locked` | M1 (active from WI-13; skipped in M0, ASM-019); from M2 the subject is `examples/scenarios/walking_skeleton` |
 | 5 | Dependency rules (REQ-A-1..3, NFR-2) | `cargo xtask check-deps` | M0 |
 | 6 | Licenses, bans, sources, advisories (NFR-4) | `cargo deny check` | M0 |
 | 7 | Vulnerabilities in `Cargo.lock` | `cargo audit` | M0 |

@@ -1,73 +1,64 @@
-//! AT-9: an entity follows a waypoint list. Requirements: M1 acceptance 3, REQ-M-2, REQ-B-2
-//! (subset), ASM-028, ASM-029.
+//! AT-8 (ported M1 AT-9): entities follow their waypoint lists in the example scenario.
+//! Requirements: M2 acceptance 2, REQ-M-2, REQ-B-2 (subset), ASM-029, ASM-061.
 //!
-//! Entity 1 of the demo scenario (square route of four 500 m legs, arrival radius 5 m, ground
-//! parameters 18 m/s, 40 deg/s, 2.5 m/s^2 at 30 Hz, flat terrain at 0 m) is run for 240 s.
+//! The example (three entities near 52 N 4 E, square routes of four 500 m legs, arrival radius 5 m,
+//! fixed cruise speeds, flat terrain at 0 m, 30 Hz) is run for its full duration of 240 s (7200
+//! ticks). Kinematic limits are read from each entity's resolved parameters in the scenario, so a
+//! template, override or inheritance change shows up here.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
 
+mod common;
+
 use core::f64::consts::{PI, TAU};
 
-use std::ops::ControlFlow;
-use std::sync::Arc;
-
-use cgf_core::{Ecef, Euler, KinematicState, LocalFrame, Meters, TickRate};
-use cgf_engine::{Engine, EngineConfig, RunUntil, demo};
-use cgf_kernel::{ClockMode, ManualWallClock};
+use cgf_core::{Ecef, Euler, KinematicState, LocalFrame};
+use cgf_engine::RunUntil;
+use cgf_templates::Placement;
+use common::{Trace, example_engine, load_example, run_traced};
 
 const HZ: f64 = 30.0;
-const TICKS: u64 = 7200;
 const ARRIVAL_M: f64 = 5.0;
-const MAX_SPEED: f64 = 18.0;
-const MAX_ACCEL: f64 = 2.5;
-const MAX_TURN: f64 = 40.0 * PI / 180.0;
-/// All waypoints must be reached by this simulation time.
-///
-/// The plan (AT-9) said 120 s. That is infeasible with the specified algorithm: 2000 m at a cruise
-/// speed of 14.4 to 18 m/s takes 111 to 139 s before braking for each waypoint (the entity slows
-/// to about `sqrt(2 * 2.5 * 5) = 5 m/s` at the arrival radius, then re-accelerates, which costs
-/// another 3 to 4 s per waypoint). 200 s leaves margin for every cruise speed in [14.4, 18].
+/// All waypoints must be reached by this simulation time. The slowest entity (the truck, 1.5 m/s^2
+/// braking) finishes in about 150 s; 200 s leaves margin.
 const ALL_REACHED_BY_S: f64 = 200.0;
 
-/// The post-tick state of entity 1 for each tick, preceded by its spawn state.
-fn entity_1_states(seed: u64) -> Vec<KinematicState> {
-    entity_1_trace(seed).0
-}
-
-/// Like [`entity_1_states`], plus entity 1's `route_next` after each tick (and at spawn).
-fn entity_1_trace(seed: u64) -> (Vec<KinematicState>, Vec<Option<(usize, usize)>>) {
-    let config = EngineConfig {
-        seed,
-        tick_rate: TickRate::new(30).expect("non-zero rate"),
-        clock: ClockMode::AsFastAsPossible,
-    };
-    let mut engine = Engine::with_wall_clock(
-        config,
-        Arc::new(cgf_core::FlatTerrain {
-            height: Meters(0.0),
-        }),
-        Box::new(ManualWallClock::new()),
+/// The full-duration trace of the example run.
+fn full_trace() -> Trace {
+    let scenario = load_example();
+    let mut engine = example_engine(None, None);
+    let mut trace = Trace::default();
+    run_traced(
+        &mut engine,
+        RunUntil::Ticks(scenario.duration_ticks),
+        &mut trace,
     );
-    assert!(demo::spawn_walking_skeleton(&mut engine).is_ok());
-    let first = engine.snapshot().entities[0].clone();
-    let mut states = vec![first.state];
-    let mut nexts = vec![first.route_next];
-    engine
-        .run(RunUntil::Ticks(TICKS), |v| {
-            let e = v.snapshot().entities[0].clone();
-            states.push(e.state);
-            nexts.push(e.route_next);
-            ControlFlow::Continue(())
-        })
-        .expect("run");
-    (states, nexts)
+    trace
 }
 
-fn waypoints() -> Vec<Ecef> {
-    demo::route_of(0)
-        .into_iter()
-        .map(cgf_core::Geodetic::to_ecef)
+/// The spawn state followed by the post-tick states of entity `index`, and its `route_next` values.
+fn states_of(index: usize) -> (Vec<KinematicState>, Vec<Option<(usize, usize)>>) {
+    let trace = full_trace();
+    let snaps = trace.entity(index);
+    (
+        snaps.iter().map(|s| s.state).collect(),
+        snaps.iter().map(|s| s.route_next).collect(),
+    )
+}
+
+fn placements() -> Vec<Placement> {
+    load_example().entities
+}
+
+fn waypoints_of(index: usize) -> Vec<Ecef> {
+    placements()[index]
+        .route
+        .as_ref()
+        .expect("every example entity has a route")
+        .waypoints
+        .iter()
+        .map(|p| p.to_ecef())
         .collect()
 }
 
@@ -108,58 +99,67 @@ fn visit_ticks(states: &[KinematicState], waypoints: &[Ecef]) -> Vec<usize> {
     visits
 }
 
-/// ASM-028: the demo spawns three entities with ids 1, 2 and 3, in order.
-#[test]
-fn given_demo_when_spawned_then_ids_are_1_2_3_in_order() {
-    let config = EngineConfig {
-        seed: 1,
-        tick_rate: TickRate::new(30).expect("non-zero rate"),
-        clock: ClockMode::AsFastAsPossible,
-    };
-    let mut engine = Engine::with_wall_clock(
-        config,
-        Arc::new(cgf_core::FlatTerrain {
-            height: Meters(0.0),
-        }),
-        Box::new(ManualWallClock::new()),
-    );
+fn param(p: &Placement, key: &str) -> f64 {
+    p.motion
+        .params
+        .get(key)
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or_else(|| panic!("resolved motion params lack `{key}`: {}", p.motion.params))
+}
 
-    let ids = demo::spawn_walking_skeleton(&mut engine);
+/// ASM-061: the resolved parameters of the three templates (inheritance and the per-entity
+/// override), which the limit tests below rely on.
+#[test]
+fn given_example_then_resolved_motion_params_follow_inheritance_and_the_override() {
+    let entities = placements();
+
+    let limits: Vec<(f64, f64, f64)> = entities
+        .iter()
+        .map(|p| {
+            (
+                param(p, "max_speed_mps"),
+                param(p, "max_turn_rate_dps"),
+                param(p, "max_accel_mps2"),
+            )
+        })
+        .collect();
 
     assert_eq!(
-        ids.map(|v| v.iter().map(|id| id.get()).collect::<Vec<_>>())
-            .ok(),
-        Some(vec![1, 2, 3])
+        limits,
+        [
+            (18.0, 40.0, 2.5), // ground_vehicle.base as is
+            (16.0, 30.0, 2.5), // tank.mbt_generic (turn rate) + entity override (speed)
+            (22.0, 40.0, 1.5), // truck.cargo (speed, accel)
+        ]
     );
-    assert_eq!(engine.snapshot().entities.len(), 3);
 }
 
-/// ASM-028: entity 1's route is a square of 500 m legs near the demo origin.
+/// ASM-061: each leg of every example route is 500 m, and the squares start near 52 N 4 E.
 #[test]
-fn given_demo_entity_1_route_then_legs_are_500_m_near_the_origin() {
-    let route = waypoints();
-
-    assert!(
-        route.len() >= 4,
-        "a square needs at least four waypoints, got {}",
-        route.len()
-    );
-    for pair in route.windows(2) {
-        let leg = pair[0].distance(pair[1]).0;
-        assert!((leg - 500.0).abs() < 1.0, "leg of {leg} m");
+fn given_example_routes_then_legs_are_500_m_near_the_origin() {
+    for index in 0..3 {
+        let route = waypoints_of(index);
+        assert_eq!(route.len(), 4, "entity {}", index + 1);
+        let start = placements()[index].position.to_ecef();
+        let mut previous = start;
+        for (leg, wp) in route.iter().enumerate() {
+            let length = previous.distance(*wp).0;
+            assert!(
+                (length - 500.0).abs() < 1.0,
+                "entity {} leg {leg}: {length} m",
+                index + 1
+            );
+            previous = *wp;
+        }
+        assert!(start.to_geodetic().lat().to_degrees() > 51.9);
     }
-    let (lat, lon) = demo::ORIGIN_DEG;
-    let near = cgf_core::Geodetic::from_degrees(lat, lon, 0.0)
-        .expect("origin")
-        .to_ecef();
-    assert!(route[0].distance(near).0 < 2000.0);
 }
 
-/// M1 acceptance 3: the entity reaches every waypoint, in order, within the time limit.
+/// M2 acceptance 2: entity 1 reaches every waypoint, in order, within the time limit.
 #[test]
-fn given_demo_entity_1_when_run_then_it_visits_every_waypoint_in_order() {
-    let states = entity_1_states(42);
-    let route = waypoints();
+fn given_example_entity_1_then_it_visits_every_waypoint_in_order() {
+    let (states, _) = states_of(0);
+    let route = waypoints_of(0);
 
     let visits = visit_ticks(&states, &route);
 
@@ -175,23 +175,42 @@ fn given_demo_entity_1_when_run_then_it_visits_every_waypoint_in_order() {
     );
 }
 
-/// M1 acceptance 3 (any cruise speed): the same holds for other seeds, i.e. other cruise speeds.
+/// The same holds for all three entities, within the scenario's own duration.
 #[test]
-fn given_other_seeds_when_run_then_entity_1_still_visits_every_waypoint() {
-    let route = waypoints();
+fn every_example_entity_completes_its_route_within_duration() {
+    let trace = full_trace();
+    let duration = load_example().duration_ticks;
 
-    for seed in [1, 2, 3, 7] {
-        let visits = visit_ticks(&entity_1_states(seed), &route);
-        assert_eq!(visits.len(), route.len(), "seed {seed}: {visits:?}");
+    for index in 0..3 {
+        let states: Vec<KinematicState> = trace.entity(index).iter().map(|s| s.state).collect();
+        let route = waypoints_of(index);
+        let visits = visit_ticks(&states, &route);
+        assert_eq!(
+            visits.len(),
+            route.len(),
+            "entity {}: {visits:?}",
+            index + 1
+        );
+        let last = u64::try_from(visits[visits.len() - 1]).expect("tick fits");
+        assert!(
+            last < duration,
+            "entity {} finished at tick {last} of {duration}",
+            index + 1
+        );
+        assert!(
+            visits.windows(2).all(|w| w[0] < w[1]),
+            "entity {}: {visits:?}",
+            index + 1
+        );
     }
 }
 
-/// REQ-B-2 (`Hold`): after the route is complete the entity stops within 10 s and stays within
-/// the arrival radius of the last waypoint until the end of the run.
+/// REQ-B-2 (`Hold`): after the route is complete the entity stops within 10 s and stays within the
+/// arrival radius of the last waypoint until the end of the run.
 #[test]
-fn given_route_complete_then_entity_holds_at_last_waypoint() {
-    let states = entity_1_states(42);
-    let route = waypoints();
+fn given_example_entity_1_when_route_complete_then_it_holds_at_last_waypoint() {
+    let (states, _) = states_of(0);
+    let route = waypoints_of(0);
     let visits = visit_ticks(&states, &route);
     let last = route[route.len() - 1];
     let reached = visits[visits.len() - 1];
@@ -212,93 +231,12 @@ fn given_route_complete_then_entity_holds_at_last_waypoint() {
     }
 }
 
-/// REQ-M-2: on every tick speed, acceleration (except the arrival snap), turn rate and height
-/// stay within the model's limits.
-#[test]
-fn given_route_then_kinematic_limits_hold_every_tick() {
-    let states = entity_1_states(42);
-    let dt = 1.0 / HZ;
-    let frame_height = |s: &KinematicState| s.position.to_geodetic().height().0;
-
-    for (tick, pair) in states.windows(2).enumerate() {
-        let (before, after) = (&pair[0], &pair[1]);
-        let (v0, v1) = (speed(before), speed(after));
-        assert!(v1 <= MAX_SPEED + 1e-9, "tick {tick}: speed {v1}");
-        // The arrival snap (new speed exactly zero) may brake harder, up to twice the limit.
-        let accel_limit = if v1 == 0.0 {
-            2.0 * MAX_ACCEL
-        } else {
-            MAX_ACCEL
-        };
-        assert!(
-            ((v1 - v0) / dt).abs() <= accel_limit + 1e-6,
-            "tick {tick}: {v0} -> {v1}"
-        );
-        let turn = angle_delta(heading(after), heading(before)).abs() / dt;
-        assert!(turn <= MAX_TURN + 1e-6, "tick {tick}: turn rate {turn}");
-        assert!(
-            frame_height(after).abs() < 1e-6,
-            "tick {tick}: height {}",
-            frame_height(after)
-        );
-    }
-}
-
-/// REQ-M-2 (flat terrain): the entity stays level, with pitch and roll zero.
-#[test]
-fn given_route_then_entity_stays_level() {
-    let states = entity_1_states(42);
-
-    for (tick, s) in states.iter().enumerate().step_by(30) {
-        let e: Euler =
-            LocalFrame::at(s.position.to_geodetic()).euler_from_orientation(s.orientation);
-        assert!(
-            e.pitch.0.abs() < 1e-9 && e.roll.0.abs() < 1e-9,
-            "tick {tick}: {e:?}"
-        );
-    }
-}
-
-/// ASM-028: the other two demo entities move too (their routes differ from entity 1's).
-#[test]
-fn given_demo_when_run_then_all_three_entities_move() {
-    let config = EngineConfig {
-        seed: 5,
-        tick_rate: TickRate::new(30).expect("non-zero rate"),
-        clock: ClockMode::AsFastAsPossible,
-    };
-    let mut engine = Engine::with_wall_clock(
-        config,
-        Arc::new(cgf_core::FlatTerrain {
-            height: Meters(0.0),
-        }),
-        Box::new(ManualWallClock::new()),
-    );
-    assert!(demo::spawn_walking_skeleton(&mut engine).is_ok());
-    let before = engine.snapshot();
-
-    engine
-        .run(RunUntil::Ticks(300), |_| ControlFlow::Continue(()))
-        .expect("run");
-
-    let after = engine.snapshot();
-    for (b, a) in before.entities.iter().zip(&after.entities) {
-        assert!(
-            a.state.position.distance(b.state.position).0 > 10.0,
-            "entity {} did not move",
-            a.id
-        );
-    }
-    assert_ne!(demo::route_of(0), demo::route_of(1));
-    assert_ne!(demo::route_of(1), demo::route_of(2));
-}
-
 /// ASM-029: at the tick the entity first comes within the arrival radius of waypoint `k`, the route
 /// still points at `k`; one tick later it points at `k + 1` (and stays on the last waypoint).
 #[test]
-fn given_entity_1_visits_waypoint_then_route_next_advances_by_one() {
-    let (states, nexts) = entity_1_trace(42);
-    let route = waypoints();
+fn given_example_entity_1_visits_waypoint_then_route_next_advances_by_one() {
+    let (states, nexts) = states_of(0);
+    let route = waypoints_of(0);
     let visits = visit_ticks(&states, &route);
 
     for (k, tick) in visits.iter().enumerate() {
@@ -311,9 +249,9 @@ fn given_entity_1_visits_waypoint_then_route_next_advances_by_one() {
 
 /// REQ-M-2: the entity stays near the straight leg it is flying: cross-track error below 50 m.
 #[test]
-fn given_route_then_cross_track_error_stays_below_50_m() {
-    let (states, _) = entity_1_trace(42);
-    let route = waypoints();
+fn given_example_entity_1_then_cross_track_error_stays_below_50_m() {
+    let (states, _) = states_of(0);
+    let route = waypoints_of(0);
     let visits = visit_ticks(&states, &route);
     let mut leg_start = states[0].position;
 
@@ -328,4 +266,102 @@ fn given_route_then_cross_track_error_stays_below_50_m() {
         }
         leg_start = *end;
     }
+}
+
+/// REQ-M-2: on every tick, for every entity, speed, acceleration (except the arrival snap), turn
+/// rate and height stay within the limits of the entity's resolved parameters.
+#[test]
+fn given_example_then_kinematic_limits_hold_every_tick_for_every_entity() {
+    let trace = full_trace();
+    let dt = 1.0 / HZ;
+
+    for (index, p) in placements().iter().enumerate() {
+        let (max_speed, max_accel) = (param(p, "max_speed_mps"), param(p, "max_accel_mps2"));
+        let max_turn = param(p, "max_turn_rate_dps") * PI / 180.0;
+        let states: Vec<KinematicState> = trace.entity(index).iter().map(|s| s.state).collect();
+        for (tick, pair) in states.windows(2).enumerate() {
+            let (before, after) = (&pair[0], &pair[1]);
+            let (v0, v1) = (speed(before), speed(after));
+            let who = format!("entity {} tick {tick}", index + 1);
+            assert!(
+                v1 <= max_speed + 1e-9,
+                "{who}: speed {v1} above {max_speed}"
+            );
+            // The arrival snap (new speed exactly zero) may brake harder, up to twice the limit.
+            let accel_limit = if v1 == 0.0 {
+                2.0 * max_accel
+            } else {
+                max_accel
+            };
+            assert!(
+                ((v1 - v0) / dt).abs() <= accel_limit + 1e-6,
+                "{who}: {v0} -> {v1}"
+            );
+            let turn = angle_delta(heading(after), heading(before)).abs() / dt;
+            assert!(
+                turn <= max_turn + 1e-6,
+                "{who}: turn rate {turn} above {max_turn}"
+            );
+            let h = after.position.to_geodetic().height().0;
+            assert!(h.abs() < 1e-6, "{who}: height {h}");
+        }
+    }
+}
+
+/// REQ-M-2 (flat terrain): entities stay level, with pitch and roll zero.
+#[test]
+fn given_example_then_entities_stay_level() {
+    let trace = full_trace();
+
+    for index in 0..3 {
+        for (tick, snap) in trace.entity(index).iter().enumerate().step_by(30) {
+            let s = &snap.state;
+            let e: Euler =
+                LocalFrame::at(s.position.to_geodetic()).euler_from_orientation(s.orientation);
+            assert!(
+                e.pitch.0.abs() < 1e-9 && e.roll.0.abs() < 1e-9,
+                "entity {} tick {tick}: {e:?}",
+                index + 1
+            );
+        }
+    }
+}
+
+/// The three example entities move, and their routes differ.
+#[test]
+fn given_example_when_run_then_all_three_entities_move_along_different_routes() {
+    let mut engine = example_engine(None, None);
+    let before = engine.snapshot();
+
+    common::run_silent(&mut engine, RunUntil::Ticks(300));
+
+    let after = engine.snapshot();
+    for (b, a) in before.entities.iter().zip(&after.entities) {
+        assert!(
+            a.state.position.distance(b.state.position).0 > 10.0,
+            "entity {} did not move",
+            a.id
+        );
+    }
+    assert_ne!(waypoints_of(0), waypoints_of(1));
+    assert_ne!(waypoints_of(1), waypoints_of(2));
+}
+
+/// ASM-061: the tank's per-entity override (16 m/s) is binding: it never exceeds it, though its
+/// template allows 18 m/s.
+#[test]
+fn given_example_tank_override_then_speed_never_exceeds_16_mps() {
+    let trace = full_trace();
+
+    let fastest = trace
+        .entity(1)
+        .iter()
+        .map(|s| speed(&s.state))
+        .fold(0.0_f64, f64::max);
+
+    assert!(fastest <= 16.0 + 1e-9, "tank reached {fastest} m/s");
+    assert!(
+        fastest > 14.0,
+        "the tank cruises at 14.5 m/s, got {fastest}"
+    );
 }

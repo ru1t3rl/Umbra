@@ -13,9 +13,18 @@ use cgf_core::{
     Enu, Geodetic, LocalFrame, Meters, MetersPerSecond, MotionModel, Ownership, Position, Radians,
     TickRate,
 };
-use cgf_engine::{Engine, EngineConfig, RouteSpec, RunUntil, SpawnSpec, demo};
+use cgf_engine::{Engine, EngineConfig, RouteSpec, RunUntil, SpawnSpec};
 use cgf_kernel::{ClockMode, ManualWallClock};
 use cgf_motion::GroundKinematic;
+
+/// The spec 7.1 ground limits: 18 m/s, 40 deg/s, 2.5 m/s^2.
+fn ground_params() -> cgf_motion::GroundKinematicParams {
+    cgf_motion::GroundKinematicParams {
+        max_speed: cgf_core::MetersPerSecond(18.0),
+        max_turn_rate: cgf_core::RadiansPerSecond::from_degrees_per_second(40.0),
+        max_accel: cgf_core::MetersPerSecondSquared(2.5),
+    }
+}
 
 fn engine() -> Engine {
     let config = EngineConfig {
@@ -33,7 +42,7 @@ fn engine() -> Engine {
 }
 
 fn model() -> Arc<dyn MotionModel> {
-    Arc::new(GroundKinematic::new(demo::ground_params()).expect("valid params"))
+    Arc::new(GroundKinematic::new(ground_params()).expect("valid params"))
 }
 
 fn geo(lat: f64, lon: f64, h: f64) -> Geodetic {

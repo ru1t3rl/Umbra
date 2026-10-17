@@ -26,9 +26,6 @@ pub enum EngineError {
     /// A spawn parameter was invalid.
     #[error("invalid spawn parameter: {0:?}")]
     InvalidSpawn(SpawnParam),
-    /// The demo scenario has no entity with this index.
-    #[error("the demo scenario has no entity {0}")]
-    DemoLayout(usize),
     /// Invalid motion model parameters.
     #[error(transparent)]
     Motion(#[from] MotionParamError),

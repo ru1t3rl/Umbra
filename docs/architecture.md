@@ -9,7 +9,7 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 | `cgf-kernel` | `crates/cgf-kernel` | Clock (four modes, wall-clock site), hecs-backed world, fixed six-phase tick pipeline, state hash, snapshot (M1) | `cgf-core` (REQ-A-2) |
 | `cgf-motion` | `crates/cgf-motion` | Built-in motion models, `builtin.ground.kinematic` (M1) | `cgf-core` |
 | `cgf-templates` | `crates/cgf-templates` | Template and scenario reading, inheritance, schema validation, located diagnostics (M2; WI-1 scaffold, no modules yet) | `cgf-core` only (section 4) |
-| `cgf-engine` | `crates/cgf-engine` | Embeddable synchronous facade, placement by ECEF or lat/lon/alt, M1 demo scenario (M1); built-in registry, `builtin.terrain.flat`, scenario load/validate/instantiate, `ControlFlow` run callbacks (M2) | `cgf-core`, `cgf-kernel`, `cgf-motion`, `cgf-templates` |
+| `cgf-engine` | `crates/cgf-engine` | Embeddable synchronous facade, placement by ECEF or lat/lon/alt, the M1 hard-coded demo is replaced by `examples/scenarios/walking_skeleton/` (M2); built-in registry, `builtin.terrain.flat`, scenario load/validate/instantiate, `ControlFlow` run callbacks (M2) | `cgf-core`, `cgf-kernel`, `cgf-motion`, `cgf-templates` |
 | `cgf-cli` | `crates/cgf-cli` | Binary; `run`, `validate`, `schema` commands (M2; `demo` removed) | `cgf-engine` |
 
 Planned crates (section 4) are added in their own milestones; no placeholders (ASM-010).
