@@ -492,8 +492,8 @@ fn with_height_changes_only_the_height() {
     let h = g.with_height(Meters(120.0));
 
     assert_eq!(
-        (h.lat(), h.lon(), h.height()),
-        (g.lat(), g.lon(), Meters(120.0))
+        h.map(|h| (h.lat(), h.lon(), h.height())),
+        Ok((g.lat(), g.lon(), Meters(120.0)))
     );
 }
 
@@ -656,4 +656,80 @@ fn orientation_from_euler_is_a_unit_quaternion() {
 
     let norm = (q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z).sqrt();
     assert!((norm - 1.0).abs() < 1e-12);
+}
+
+// ---- Review fixes (near-pole NaN, domain, validation) ---------------------------------------
+
+/// REQ-C-3: finite, accurate result for points a few centimetres off the polar axis, where the
+/// closed form's radicand can round slightly negative.
+#[test]
+fn ecef_to_geodetic_near_polar_axis_is_finite_and_accurate() {
+    for r in [1e-3, 1e-2, 0.06, 0.1] {
+        for z in [B - 1.0e4, B, B + 1.0e3, 7.0e6, -B] {
+            let p = ecef(r, 0.0, z);
+
+            let g = p.to_geodetic();
+
+            assert!(
+                g.lat().0.is_finite() && g.lon().0.is_finite() && g.height().0.is_finite(),
+                "r = {r}, z = {z}: {g:?}"
+            );
+            assert!(
+                (g.to_ecef() - p).norm() < 1e-6,
+                "r = {r}, z = {z}: round trip {:?}",
+                g.to_ecef()
+            );
+        }
+    }
+}
+
+/// REQ-C-3: geodetic points 1e-6 degrees from the pole at extreme heights round trip finitely.
+#[test]
+fn near_pole_extreme_heights_round_trip() {
+    for h in [-6.0e6, 4.2e7] {
+        let p = geo(89.999_999, 30.0, h).to_ecef();
+
+        let g = p.to_geodetic();
+
+        assert!(g.lat().0.is_finite() && g.height().0.is_finite(), "h = {h}");
+        assert!((g.height().0 - h).abs() < 1e-3, "h = {h}: {}", g.height().0);
+    }
+}
+
+/// REQ-C-3: `to_geodetic` is finite for any finite input, however large (spherical fallback
+/// beyond 1e12 m).
+#[test]
+fn ecef_to_geodetic_is_finite_for_huge_coordinates() {
+    for p in [
+        ecef(1.0e149, 1.0e149, 1.0e149),
+        ecef(1.0e200, 0.0, 0.0),
+        ecef(1.0e300, -1.0e300, 1.0e300),
+        ecef(0.0, 0.0, -1.0e300),
+    ] {
+        let g = p.to_geodetic();
+
+        assert!(
+            g.lat().0.is_finite() && g.lon().0.is_finite() && g.height().0.is_finite(),
+            "{p:?}"
+        );
+    }
+}
+
+/// REQ-C-3: the polar axis has longitude 0 by convention.
+#[test]
+fn polar_axis_longitude_is_zero() {
+    assert_eq!(ecef(0.0, 0.0, B + 10.0).to_geodetic().lon().0, 0.0);
+    assert_eq!(ecef(0.0, 0.0, -B - 10.0).to_geodetic().lon().0, 0.0);
+}
+
+/// REQ-C-4: `with_height` rejects non-finite heights like `new`.
+#[test]
+fn with_height_rejects_non_finite() {
+    let g = geo(52.0, 4.0, 0.0);
+
+    assert_eq!(g.with_height(Meters(f64::NAN)), Err(CoordError::NonFinite));
+    assert_eq!(
+        g.with_height(Meters(f64::INFINITY)),
+        Err(CoordError::NonFinite)
+    );
 }

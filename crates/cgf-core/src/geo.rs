@@ -286,9 +286,9 @@ impl Euler {
             1.0 - 2.0 * (q.y * q.y + q.z * q.z),
         );
         Self {
-            heading: Radians(heading),
+            heading: math::wrap_pi(Radians(heading)),
             pitch: Radians(pitch),
-            roll: Radians(roll),
+            roll: math::wrap_pi(Radians(roll)),
         }
     }
 }

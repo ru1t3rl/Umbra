@@ -32,7 +32,9 @@ fn given_flat_terrain_when_queried_at_other_height_then_ignores_it() {
         height: Meters(5.0),
     };
 
-    let at = geo(10.0, 10.0).with_height(Meters(9_000.0));
+    let at = geo(10.0, 10.0)
+        .with_height(Meters(9_000.0))
+        .expect("finite height");
 
     assert_eq!(t.height_at(at), Meters(5.0));
 }

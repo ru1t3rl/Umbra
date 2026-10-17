@@ -36,7 +36,7 @@ pub mod units;
 
 pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
 pub use geo::{Euler, Quaternion, Vec3};
-pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher, fnv1a64};
+pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher};
 pub use id::{BehaviorId, EntityId, IdError, MAX_ID_LEN, MotionModelId, PluginId, TemplateId};
 pub use intent::Intent;
 pub use motion::{KinematicState, MotionModel};

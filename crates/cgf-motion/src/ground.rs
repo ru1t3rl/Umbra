@@ -227,7 +227,8 @@ impl MotionModel for GroundKinematic {
                 up: 0.0,
             })
             .to_geodetic();
-        let grounded = moved.with_height(terrain.height_at(moved));
+        // A non-finite terrain height keeps the (finite) height of the moved point.
+        let grounded = moved.with_height(terrain.height_at(moved)).unwrap_or(moved);
         let new_frame = LocalFrame::at(grounded);
         let (s, c) = math::sin_cos(new_heading);
         KinematicState {

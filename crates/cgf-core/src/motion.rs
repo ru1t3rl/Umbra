@@ -50,8 +50,8 @@ pub mod contract {
 
     /// Largest accepted deviation of the orientation quaternion's norm from 1.
     const UNIT_TOLERANCE: f64 = 1e-9;
-    /// Largest displacement (meters) a stationary, intent-free entity may show.
-    const STATIONARY_TOLERANCE_M: f64 = 1e-6;
+    /// Largest displacement (meters, 1 mm) a stationary, intent-free entity may show.
+    const STATIONARY_TOLERANCE_M: f64 = 1e-3;
 
     /// A broken [`MotionModel`] contract; `case` is the index of the offending test case.
     #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -90,14 +90,12 @@ pub mod contract {
 
     fn is_stationary_without_motion_intent(state: &KinematicState, intents: &[Intent]) -> bool {
         state.velocity == crate::geo::Vec3::ZERO
-            && intents
-                .iter()
-                .all(|i| !matches!(i, Intent::MoveTo { .. } | Intent::SetSpeed(_)))
+            && intents.iter().all(|i| matches!(i, Intent::Hold))
     }
 
     /// Checks that `model` is deterministic (two calls agree bit for bit), finite, returns a
-    /// unit-quaternion orientation, and does not move a stationary entity that has no `MoveTo` or
-    /// `SetSpeed` intent. Cases should place stationary entities on the terrain, since a model may
+    /// unit-quaternion orientation, and does not move (by more than 1 mm) a stationary entity whose
+    /// intents are empty or only `Hold`. Cases should place stationary entities on the terrain, since a model may
     /// legitimately snap to it.
     ///
     /// # Errors

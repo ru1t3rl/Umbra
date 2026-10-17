@@ -87,6 +87,7 @@ fn given_geodetic_route_then_entity_reaches_each_waypoint() {
             })
             .to_geodetic()
             .with_height(Meters(0.0))
+            .expect("finite height")
     };
     let waypoints = [at(200.0, 0.0), at(200.0, 200.0), at(0.0, 200.0)];
     let mut s = spec(Position::Geodetic(start), 90.0, 0.0);

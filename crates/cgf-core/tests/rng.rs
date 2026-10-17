@@ -220,6 +220,57 @@ fn gen_range_matches_lemire_reference() {
     assert_eq!(got, [3, 7, 1, 6, 9, 2]);
 }
 
+/// ADR 0006: Lemire rejection path. With `n = 2^63 + 1` about half of the raw draws are rejected;
+/// the eight outputs below (and 7 rejections along the way) come from an independent C program
+/// (`unsigned __int128` multiply-shift with the same threshold rule) on the golden stream.
+#[test]
+fn gen_range_rejection_path_matches_c_reference() {
+    let mut s = SimRng::new(42).stream(StreamKey::entity(entity(1)));
+    let n = NonZeroU64::new((1 << 63) + 1).expect("non-zero");
+
+    let got: Vec<u64> = (0..8).map(|_| s.gen_range_u64(n)).collect();
+
+    assert_eq!(
+        got,
+        [
+            2_977_470_381_875_375_148,
+            6_624_872_855_470_173_103,
+            1_616_059_068_227_067_801,
+            1_914_849_401_412_867_175,
+            2_945_256_639_144_962_634,
+            779_041_525_315_024_800,
+            6_977_169_489_203_176_273,
+            6_283_853_278_567_299_709,
+        ]
+    );
+    // 8 outputs plus 7 rejected draws consumed 15 raw draws.
+    let mut reference = SimRng::new(42).stream(StreamKey::entity(entity(1)));
+    let _ = take(&mut reference, 15);
+    assert_eq!(s.state(), reference.state());
+}
+
+/// ADR 0006: `uniform_f64` stays half-open even when `hi` is the next float after `lo`.
+#[test]
+fn uniform_f64_stays_below_hi_for_adjacent_bounds() {
+    let mut s = SimRng::new(5).stream(StreamKey::scenario(0));
+    let (lo, hi) = (1.0_f64, 1.0_f64.next_up());
+
+    for _ in 0..64 {
+        let x = s.uniform_f64(lo, hi);
+        assert!(x >= lo && x < hi, "{x}");
+    }
+}
+
+/// ADR 0006: an empty, reversed or overflowing interval returns `lo`.
+#[test]
+fn uniform_f64_degenerate_intervals_return_lo() {
+    let mut s = SimRng::new(5).stream(StreamKey::scenario(0));
+
+    assert_eq!(s.uniform_f64(2.0, 2.0), 2.0);
+    assert_eq!(s.uniform_f64(3.0, 1.0), 3.0);
+    assert_eq!(s.uniform_f64(-f64::MAX, f64::MAX), -f64::MAX);
+}
+
 /// REQ-K-4: the same seed and key give the same sequence, every time.
 #[test]
 fn same_seed_and_key_give_same_sequence() {

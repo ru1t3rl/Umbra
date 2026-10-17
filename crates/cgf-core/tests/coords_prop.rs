@@ -165,7 +165,7 @@ proptest! {
     /// the whole supported range.
     #[test]
     fn height_round_trip_through_ecef(h in -12_000.0_f64..1_000_000.0, lat in -90.0_f64..=90.0) {
-        let g = geo(lat, 10.0, 0.0).with_height(Meters(h));
+        let g = geo(lat, 10.0, 0.0).with_height(Meters(h)).expect("finite height");
 
         prop_assert!((g.to_ecef().to_geodetic().height().0 - h).abs() < 1e-6);
     }

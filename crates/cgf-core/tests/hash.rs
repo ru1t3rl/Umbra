@@ -4,7 +4,8 @@
 
 #![forbid(unsafe_code)]
 
-use cgf_core::{Quaternion, STATE_HASH_VERSION, StateHash, StateHasher, Vec3, fnv1a64};
+use cgf_core::hash::fnv1a64;
+use cgf_core::{Quaternion, STATE_HASH_VERSION, StateHash, StateHasher, Vec3};
 
 /// A fresh hasher after the given writes.
 fn hash_of(f: impl FnOnce(&mut StateHasher)) -> StateHash {

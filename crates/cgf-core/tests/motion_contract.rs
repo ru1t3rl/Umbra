@@ -272,3 +272,52 @@ fn given_models_when_boxed_and_shared_then_trait_objects_work() {
         Ok(())
     );
 }
+
+/// Drifts the position by a fixed amount along z every step.
+struct Drift(MotionModelId, f64);
+impl MotionModel for Drift {
+    fn id(&self) -> &MotionModelId {
+        &self.0
+    }
+    fn step(
+        &self,
+        s: &KinematicState,
+        _: &[Intent],
+        _: Seconds,
+        _: &dyn TerrainProvider,
+    ) -> KinematicState {
+        let mut out = *s;
+        out.position.0.z += self.1;
+        out
+    }
+}
+
+/// ASM-045: the stationary tolerance is 1 mm.
+#[test]
+fn given_drift_around_one_millimetre_when_stationary_then_tolerance_is_1mm() {
+    let stationary = vec![(state(Vec3::ZERO), vec![Intent::Hold])];
+
+    let small = Drift(model_id("test.stub.small"), 5e-4);
+    let large = Drift(model_id("test.stub.large"), 2e-3);
+
+    assert_eq!(
+        check_motion_model(&small, &stationary, DT, &terrain()),
+        Ok(())
+    );
+    assert!(matches!(
+        check_motion_model(&large, &stationary, DT, &terrain()),
+        Err(ContractViolation::StationaryMoved { case: 0 })
+    ));
+}
+
+/// ASM-045: with a `SetSpeed` intent the entity is not "stationary", so it may move.
+#[test]
+fn given_set_speed_intent_when_model_moves_then_stationary_rule_does_not_apply() {
+    let cases = vec![(
+        state(Vec3::ZERO),
+        vec![Intent::SetSpeed(cgf_core::MetersPerSecond(3.0))],
+    )];
+    let m = Drift(model_id("test.stub.moves"), 1.0);
+
+    assert_eq!(check_motion_model(&m, &cases, DT, &terrain()), Ok(()));
+}

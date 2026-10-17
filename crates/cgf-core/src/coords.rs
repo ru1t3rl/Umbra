@@ -47,13 +47,19 @@ impl Ecef {
     /// Closed form (Heikkinen 1982 as given by Zhu 1994): no iteration, so the cost and the
     /// result do not depend on a convergence test. The polar axis and the region around the
     /// Earth's centre (where the closed form is singular) are handled explicitly. Infallible, and
-    /// finite for every finite input.
+    /// finite for every finite input. Beyond 1e12 m from the centre (far outside any physical
+    /// use) a spherical approximation is returned, because the closed form's intermediates
+    /// overflow `f64` for huge coordinates.
     #[must_use]
     pub fn to_geodetic(self) -> Geodetic {
         let Vec3 { x, y, z } = self.0;
-        let r = (x * x + y * y).sqrt();
+        let r = math::hypot(x, y);
         let lon = if r == 0.0 { 0.0 } else { math::atan2(y, x) };
-        let (lat, height) = latitude_and_height(r, z);
+        let (lat, height) = if r.max(z.abs()) > SPHERICAL_ABOVE_M {
+            (math::atan2(z, r), math::hypot(r, z) - wgs84::B)
+        } else {
+            latitude_and_height(r, z)
+        };
         Geodetic {
             lat: Radians(lat),
             lon: math::wrap_pi(Radians(lon)),
@@ -68,6 +74,9 @@ impl Ecef {
     }
 }
 
+/// Distance beyond which `to_geodetic` falls back to a sphere (closed-form intermediates overflow).
+const SPHERICAL_ABOVE_M: f64 = 1.0e12;
+
 /// Latitude (radians) and height (meters) for the cylindrical radius `r >= 0` and `z`.
 fn latitude_and_height(r: f64, z: f64) -> (f64, f64) {
     use core::f64::consts::FRAC_PI_2;
@@ -81,7 +90,7 @@ fn latitude_and_height(r: f64, z: f64) -> (f64, f64) {
     let ff = 54.0 * b2 * z * z;
     let gg = r * r + (1.0 - E2) * z * z - E2 * (a2 - b2);
     if gg <= 0.0 {
-        // Within ~17 km of the centre the closed form is singular: spherical fallback.
+        // Within ~42.7 km (e^2 * a) of the centre the closed form is singular: spherical fallback.
         return (math::atan2(z, r), (r * r + z * z).sqrt() - B);
     }
     let cc = E2 * E2 * ff * r * r / (gg * gg * gg);
@@ -93,6 +102,7 @@ fn latitude_and_height(r: f64, z: f64) -> (f64, f64) {
         + (0.5 * a2 * (1.0 + 1.0 / qq)
             - pp * (1.0 - E2) * z * z / (qq * (1.0 + qq))
             - 0.5 * pp * r * r)
+            .max(0.0)
             .sqrt();
     let rt = r - E2 * r_zero;
     let big_u = (rt * rt + z * z).sqrt();
@@ -131,7 +141,8 @@ pub struct Geodetic {
 }
 
 impl Geodetic {
-    /// Validates and builds a geodetic position. Longitude is wrapped to `(-pi, pi]`.
+    /// Validates and builds a geodetic position. Longitude is wrapped to `(-pi, pi]`; absurdly
+    /// large longitudes (beyond about 1e15 rad) lose precision in the wrap, as any `f64` angle does.
     ///
     /// # Errors
     /// [`CoordError::NonFinite`] for NaN or infinite input; [`CoordError::LatitudeOutOfRange`]
@@ -180,10 +191,12 @@ impl Geodetic {
         self.height
     }
 
-    /// The same latitude and longitude at another height (`h` must be finite to stay valid).
-    #[must_use]
-    pub fn with_height(self, h: Meters) -> Self {
-        Self { height: h, ..self }
+    /// The same latitude and longitude at another height.
+    ///
+    /// # Errors
+    /// [`CoordError::NonFinite`] when `h` is NaN or infinite.
+    pub fn with_height(self, h: Meters) -> Result<Self, CoordError> {
+        Self::new(self.lat, self.lon, h)
     }
 
     /// Converts to ECEF (EPSG method 9602, closed form).
@@ -204,9 +217,10 @@ impl Geodetic {
 
 /// User-facing position: ECEF or WGS-84 geodetic (ASM-044).
 ///
-/// Either form is accepted at the API edge and converted to ECEF exactly once; nothing behind the
-/// edge stores or computes in geodetic.
+/// Either form is accepted at the API edge and converted to ECEF exactly once. Behind the edge
+/// only ECEF is stored; geodetic is derived on demand for terrain queries and display.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum Position {
     /// Already ECEF, meters.
     Ecef(Ecef),
@@ -289,6 +303,8 @@ pub struct LocalFrame {
     origin: Ecef,
     /// Row-major; the columns are the ECEF coordinates of the east, north and up unit vectors.
     ecef_from_enu: [[f64; 3]; 3],
+    /// Rotation taking NED axes to ECEF axes (columns north, east, down), computed once.
+    ned_to_ecef: Quaternion,
 }
 
 impl LocalFrame {
@@ -297,13 +313,19 @@ impl LocalFrame {
     pub fn at(origin: Geodetic) -> Self {
         let (sin_lat, cos_lat) = math::sin_cos(origin.lat.0);
         let (sin_lon, cos_lon) = math::sin_cos(origin.lon.0);
+        let m = [
+            [-sin_lon, -sin_lat * cos_lon, cos_lat * cos_lon],
+            [cos_lon, -sin_lat * sin_lon, cos_lat * sin_lon],
+            [0.0, cos_lat, sin_lat],
+        ];
         Self {
             origin: origin.to_ecef(),
-            ecef_from_enu: [
-                [-sin_lon, -sin_lat * cos_lon, cos_lat * cos_lon],
-                [cos_lon, -sin_lat * sin_lon, cos_lat * sin_lon],
-                [0.0, cos_lat, sin_lat],
-            ],
+            ecef_from_enu: m,
+            ned_to_ecef: Quaternion::from_rotation_matrix([
+                [m[0][1], m[0][0], -m[0][2]],
+                [m[1][1], m[1][0], -m[1][2]],
+                [m[2][1], m[2][0], -m[2][2]],
+            ]),
         }
     }
 
@@ -360,23 +382,13 @@ impl LocalFrame {
     /// The rotation taking body FRD axes to ECEF axes for the given Euler angles at this frame.
     #[must_use]
     pub fn orientation_from_euler(&self, e: Euler) -> Quaternion {
-        self.ned_to_ecef().mul(e.to_quaternion())
+        self.ned_to_ecef.mul(e.to_quaternion())
     }
 
     /// The Euler angles (relative to this frame's NED axes) of a body FRD to ECEF orientation.
     #[must_use]
     pub fn euler_from_orientation(&self, q: Quaternion) -> Euler {
-        Euler::from_quaternion(self.ned_to_ecef().conjugate().mul(q))
-    }
-
-    /// The rotation taking NED axes to ECEF axes (columns north, east, down).
-    fn ned_to_ecef(&self) -> Quaternion {
-        let m = &self.ecef_from_enu;
-        Quaternion::from_rotation_matrix([
-            [m[0][1], m[0][0], -m[0][2]],
-            [m[1][1], m[1][0], -m[1][2]],
-            [m[2][1], m[2][0], -m[2][2]],
-        ])
+        Euler::from_quaternion(self.ned_to_ecef.conjugate().mul(q))
     }
 }
 

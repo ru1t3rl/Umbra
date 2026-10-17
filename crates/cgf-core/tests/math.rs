@@ -2,10 +2,10 @@
 //!
 //! The wrappers must be thin: on this platform they equal the `std` functions bit for bit, so a
 //! later `libm` swap changes exactly one file. This is the only test file that calls the banned
-//! `f64` methods directly (the workspace ban, `clippy.toml`, lands in WI-2).
+//! `f64` methods directly (the workspace ban in `clippy.toml`).
 
 #![forbid(unsafe_code)]
-#![allow(
+#![expect(
     clippy::disallowed_methods,
     reason = "ADR 0003: this test compares the wrappers against the std implementation"
 )]
@@ -115,4 +115,17 @@ proptest! {
         let turns = (r - a) / TAU;
         prop_assert!((turns - turns.round()).abs() < 1e-9, "{a} -> {r}");
     }
+}
+
+/// ADR 0003, ADR 0007: `powi` is a fixed-order product, exact on small integer cases.
+#[test]
+fn powi_known_values() {
+    assert_eq!(math::powi(2.0, 10), 1024.0);
+    assert_eq!(math::powi(2.0, -2), 0.25);
+    assert_eq!(math::powi(-3.0, 3), -27.0);
+    assert_eq!(math::powi(5.0, 0), 1.0);
+    assert_eq!(math::powi(0.0, 0), 1.0);
+    assert_eq!(math::powi(10.0, 6), 1.0e6);
+    assert!(math::powi(0.0, -1).is_infinite());
+    assert_eq!(math::powi(1.0, i32::MIN), 1.0);
 }

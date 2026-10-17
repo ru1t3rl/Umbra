@@ -78,9 +78,26 @@ pub fn cbrt(x: f64) -> f64 {
 }
 
 /// `x` raised to the integer power `n`.
+///
+/// Exponentiation by squaring with a fixed multiplication order (the compiler-rt `__powidf2`
+/// algorithm), not the LLVM `powi` intrinsic, whose result can differ between debug and release
+/// builds through constant folding. Only exact multiplies and one division are used.
 #[inline]
 pub fn powi(x: f64, n: i32) -> f64 {
-    x.powi(n)
+    let mut exponent = n.unsigned_abs();
+    let mut base = x;
+    let mut result = 1.0;
+    loop {
+        if exponent & 1 == 1 {
+            result *= base;
+        }
+        exponent >>= 1;
+        if exponent == 0 {
+            break;
+        }
+        base *= base;
+    }
+    if n < 0 { 1.0 / result } else { result }
 }
 
 /// `x` raised to the real power `y`.

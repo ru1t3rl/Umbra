@@ -146,7 +146,8 @@ impl RngStream {
         high
     }
 
-    /// A uniform value in `[lo, hi)`; `lo` if the interval is empty or not finite.
+    /// A uniform value in `[lo, hi)`; `lo` if the interval is empty, reversed, or its width
+    /// `hi - lo` overflows `f64`. A draw is always consumed.
     pub fn uniform_f64(&mut self, lo: f64, hi: f64) -> f64 {
         let u = self.next_f64();
         if !(hi > lo && (hi - lo).is_finite()) {
