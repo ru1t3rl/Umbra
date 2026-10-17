@@ -43,6 +43,8 @@ Option 3.
   child is halted). An optional bound param that is unset stays unset in the child (the default is not
   substituted for a bound param). Binding-only params with no binding are `missing_param` at the call site;
   a top-level graph therefore cannot have required binding-only params (`missing_param` at the template).
+- **Result semantics:** `[interface] result` is optional free text describing what Success, Failure and
+  Running mean (REQ-B-10); it is shown by the catalog. It is not a port and names nothing.
 - **Outputs:** `outputs = { <port> = { type, from = "<key>" } }`; call site `outputs = { <port> = "<parent
   key>" }`; copied after each tick, including unset; one output writer per parent key (ASM-088).
 - **Isolation:** each graph instance (each entity, each `subgraph` node in an instance) owns its node state
@@ -59,3 +61,14 @@ Option 3.
   values and as blackboard keys, so the "bindable iff not used as `{ param }`" rule must be taught
   (`docs/behavior.md`).
 - Revisit if plugins (M4) need structured (list or JSON) blackboard values.
+
+## Amended 2026-10-17 after the WI-4 review
+- "Listed in `Interface::types` and in the catalog" is implemented by a typed param map
+  `param_types: BTreeMap<String, BbType>` on `ComponentInfo` and `CatalogEntry` (builders
+  `with_param_type`/`with_param_types`), filled by `register_graphs` from `Interface::types`. Binding
+  checks (`invalid_binding`, `missing_param`) and the Integer-to-Number input conversion read it for
+  registered behaviors; plugin behaviors (M4) declare it.
+- Both reserved forms are recognised by one public classifier, `cgf_core::reserved_form`
+  (`ReservedForm::{Param, Key}`), applied only to values inside `params`, never to the `params` table
+  itself; `ParamTemplate::substitute` reports a `Key` form as `SubstituteError::Binding`.
+- `result` is free-text result semantics, not a port name (wording made explicit above).
