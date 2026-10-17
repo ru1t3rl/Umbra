@@ -12,8 +12,7 @@ repository.workspace = true
 cgf-core = { path = "../cgf-core" }
 serde_json.workspace = true
 thiserror.workspace = true
-# Parse only (`toml::de::DeTable::parse_recoverable`, ASM-054). The workspace entry also enables
-# `serde` for xtask; features unify and `cgf-templates` uses no serde derives.
+# Parse only (`toml::de::DeTable::parse_recoverable`, ASM-054); no serde feature. xtask adds it itself.
 toml.workspace = true
 
 [lints]
