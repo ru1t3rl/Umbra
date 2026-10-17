@@ -314,7 +314,7 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 ## 19. Open questions (resolve before or during the named milestone)
 
 1. **M0 (resolved 2026-10-17, D-18):** ~~Project license, and whether the SDK/plugin API gets a more permissive license than the engine.~~ `MIT OR Apache-2.0` everywhere.
-2. **M1:** Confirm A-1 (scale) and A-2 (determinism). Changes affect the scheduler and plugin RNG rules.
+2. **M1 (resolved 2026-10-17):** ~~Confirm A-1 (scale) and A-2 (determinism). Changes affect the scheduler and plugin RNG rules.~~ Both confirmed by the human as written; A-2 scope is same-OS (ADR 0003).
 3. **M3:** Behavior trees vs FSM as the first declarative format, or both at once.
 4. **M5:** Is command access control needed (more than one operator)? Currently out of scope.
 5. **M6:** Reuse an existing DIS crate or implement PDUs in-house (depends on license and coverage).
