@@ -1,0 +1,7 @@
+id = "test.graph.bad"
+version = "1.0.0"
+root = "a"
+
+[nodes.a]
+type = "action"
+ref = "builtin.action.wait"

@@ -1,0 +1,32 @@
+{
+  "title": "builtin.visual parameters",
+  "description": "Visual sensor with perfect detection: an entity is a contact when it is within `range_m` meters (3D distance, inclusive), inside the horizontal field of view centred on the heading (`fov_deg` degrees, edge inclusive) and visible from this entity's eyes, `eye_height_m` meters above its position, to the other entity's eyes (terrain line of sight). With `eye_height_m = 0` two entities on smooth ground never see each other.",
+  "type": "object",
+  "properties": {
+    "range_m": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 100000,
+      "description": "Maximum 3D detection distance in meters."
+    },
+    "fov_deg": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 360,
+      "description": "Horizontal field of view in degrees, centred on the heading; 360 sees all around."
+    },
+    "eye_height_m": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 2.0,
+      "description": "Height of the eyes above the entity's position in meters, for the line-of-sight test."
+    }
+  },
+  "required": ["range_m", "fov_deg"],
+  "additionalProperties": false,
+  "examples": [
+    { "range_m": 3000.0, "fov_deg": 120.0 },
+    { "range_m": 1200.0, "fov_deg": 360.0, "eye_height_m": 1.5 }
+  ]
+}

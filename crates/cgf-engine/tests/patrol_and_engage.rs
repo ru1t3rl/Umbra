@@ -2,8 +2,8 @@
 //! patrol-and-engage example runs: blue patrols, notices red, engages, fires and resumes.
 //! Requirements: M3 acceptance 1, REQ-B-6..B-12, REQ-K-5, REQ-T-6, ADR 0013, ADR 0014, ADR 0015.
 //!
-//! Step 4 of M3: written before WI-15/WI-16. `standard_registry()` is a `todo!()` stub, so the
-//! tests are ignored with WI-16, which owns the example's layout (this file bounds the ticks
+//! Step 4 of M3: written before WI-15/WI-16. The standard registry exists since WI-15; the
+//! tests tagged WI-16 stay ignored until WI-16, which owns the example's layout (this file bounds the ticks
 //! generously and checks events, not exact numbers). Layout (see the example's `scenario.toml`):
 //! blue-1 starts at (0, 0) heading east with a two-leg route (50 m, then 800 m); red-1 starts at
 //! (1500 m east, 200 m north) heading west at 20 m/s; the visual sensor reaches 1200 m, the
@@ -74,7 +74,6 @@ fn approaching(e: &EntitySnapshot) -> bool {
 /// REQ-T-6, M3 acceptance 1: the example directory validates with no diagnostics (the scenario,
 /// four templates and three graphs: eight files).
 #[test]
-#[ignore = "WI-15"]
 fn example_validates_with_no_diagnostics() {
     let report = validate_path(&standard(), &example_dir()).expect("registry");
 

@@ -7,12 +7,12 @@ use std::path::Path;
 
 use cgf_core::{ComponentKind, EntityId, Ownership, Registry, TemplateId};
 use cgf_kernel::{ClockMode, TimeScale, WallClock};
-use cgf_templates::{ClockSetting, Loader, LoaderError};
+use cgf_templates::{ClockSetting, Loader, LoaderError, Placement};
 pub use cgf_templates::{
     Diagnostic, DiagnosticCode, Diagnostics, Location, Note, Scenario, ValidationReport,
 };
 
-use crate::engine::{Engine, EngineConfig, RouteSpec, SpawnSpec};
+use crate::engine::{AgentInit, Engine, EngineConfig, RouteSpec, SpawnSpec};
 use crate::error::EngineError;
 
 /// Overrides and the wall clock for one run.
@@ -87,24 +87,80 @@ fn clock_mode(setting: ClockSetting) -> Result<ClockMode, EngineError> {
 }
 
 /// A clone of `base` with the scenario's file graphs registered as behaviors (ADR 0011), so a
-/// template can name them by ID. M3 step 4: `todo!()` until WI-15.
+/// template can name them by ID. `base` is unchanged, and the result is a pure function of
+/// `base` and the graphs (ordered by ID, REQ-K-4).
 ///
 /// # Errors
 /// [`EngineError::Graphs`] if a graph cannot be registered (not expected after validation).
-#[expect(clippy::todo, reason = "M3 WI-15 stub")]
-pub fn scenario_registry(_base: &Registry, _scenario: &Scenario) -> Result<Registry, EngineError> {
-    todo!("M3 WI-15")
+pub fn scenario_registry(base: &Registry, scenario: &Scenario) -> Result<Registry, EngineError> {
+    let mut registry = base.clone();
+    cgf_behavior::register_graphs(&mut registry, scenario.graphs.iter())?;
+    Ok(registry)
 }
 
-/// Builds terrain and motion models through the registry and spawns in file order.
+/// The behavior and sensors of a placement, built through the registry by ID (ADR 0011).
+fn build_agent(
+    registry: &Registry,
+    index: usize,
+    placement: &Placement,
+) -> Result<AgentInit, EngineError> {
+    let behavior = placement
+        .behavior
+        .as_ref()
+        .map(|b| {
+            registry
+                .behavior(&b.id)
+                .ok_or_else(|| EngineError::UnknownComponent {
+                    kind: ComponentKind::Behavior,
+                    id: b.id.clone(),
+                })?
+                .build(&b.params)
+                .map_err(|source| EngineError::BehaviorBuild {
+                    entity: index,
+                    source,
+                })
+        })
+        .transpose()?;
+    let sensors = placement
+        .sensors
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            registry
+                .sensor(&s.id)
+                .ok_or_else(|| EngineError::UnknownComponent {
+                    kind: ComponentKind::Sensor,
+                    id: s.id.clone(),
+                })?
+                .build(&s.params)
+                .map_err(|source| EngineError::SensorBuild {
+                    entity: index,
+                    index: i,
+                    source,
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(AgentInit {
+        force: placement.force.clone(),
+        behavior,
+        sensors,
+    })
+}
+
+/// Builds terrain, motion models, behaviors and sensors through the registry and spawns in file
+/// order. The scenario's file graphs are registered first ([`scenario_registry`]). Placements
+/// without behavior, sensors and force are spawned with [`Engine::spawn`] exactly as in M2.
 ///
 /// # Errors
-/// [`EngineError`]; after a successful validation only the spawn checks can fail.
+/// [`EngineError`]; after a successful validation only the spawn checks can fail. A behavior that
+/// cannot be instantiated at the tick rate arrives as
+/// `EngineError::Kernel(KernelError::Instantiate(..))`.
 pub fn instantiate(
     registry: &Registry,
     scenario: &Scenario,
     options: RunOptions,
 ) -> Result<ScenarioRun, EngineError> {
+    let registry = &scenario_registry(registry, scenario)?;
     let unknown = |kind, id: &cgf_core::ComponentId| EngineError::UnknownComponent {
         kind,
         id: id.clone(),
@@ -133,7 +189,8 @@ pub fn instantiate(
                 entity: index,
                 source,
             })?;
-        let id = engine.spawn(SpawnSpec {
+        let agent = build_agent(registry, index, placement)?;
+        let spec = SpawnSpec {
             position: placement.position,
             heading: placement.heading,
             speed: placement.speed,
@@ -144,7 +201,8 @@ pub fn instantiate(
                 arrival_radius: r.arrival_radius,
                 cruise_speed: r.cruise_speed,
             }),
-        })?;
+        };
+        let id = engine.spawn_with(spec, agent)?;
         entities.push(EntityInfo {
             id,
             template: placement.template.clone(),

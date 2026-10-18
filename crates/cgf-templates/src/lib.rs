@@ -45,3 +45,7 @@ pub const TEMPLATE_FILE_SCHEMA: &str = include_str!("../schemas/template.v1.sche
 
 /// The JSON Schema of scenario files (format v1, ADR 0010), in the ADR 0009 subset.
 pub const SCENARIO_FILE_SCHEMA: &str = include_str!("../schemas/scenario.v1.schema.json");
+
+/// The JSON Schema of behavior graph files (`*.behavior.toml`, format v1, ADR 0012), in the
+/// ADR 0009 subset. It checks structure only; the reader is authoritative.
+pub const BEHAVIOR_FILE_SCHEMA: &str = include_str!("../schemas/behavior.v1.schema.json");

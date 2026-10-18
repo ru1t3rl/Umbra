@@ -54,6 +54,26 @@ pub enum EngineError {
     /// validation).
     #[error("terrain: {0}")]
     TerrainBuild(BuildError),
+    /// A behavior factory rejected the parameters of a placement (not expected after validation).
+    #[error("entity {entity}: behavior: {source}")]
+    BehaviorBuild {
+        /// Index of the placement in file order, 0-based.
+        entity: usize,
+        /// The factory's error.
+        #[source]
+        source: BuildError,
+    },
+    /// A sensor factory rejected the parameters of a placement (not expected after validation).
+    #[error("entity {entity}: sensor {index}: {source}")]
+    SensorBuild {
+        /// Index of the placement in file order, 0-based.
+        entity: usize,
+        /// Index of the sensor in the placement's sensor list, 0-based.
+        index: usize,
+        /// The factory's error.
+        #[source]
+        source: BuildError,
+    },
     /// Registering the scenario's graphs failed (not expected after validation).
     #[error(transparent)]
     Graphs(#[from] cgf_behavior::GraphRegistrationError),

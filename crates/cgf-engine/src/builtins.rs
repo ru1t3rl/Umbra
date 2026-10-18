@@ -4,10 +4,12 @@ use std::sync::Arc;
 
 use cgf_behavior::GraphRegistrationError;
 use cgf_core::{
-    BuildError, ComponentId, Factory, FlatTerrain, Meters, ParamSchema, ParamValue, Registry,
-    RegistryError, Sensor, TerrainProvider,
+    BuildError, ComponentId, Factory, FlatTerrain, Meters, ParamSchema, ParamValue, Provenance,
+    Registry, RegistryError, TerrainProvider,
 };
-use cgf_templates::{Diagnostics, LoaderError};
+use cgf_templates::{Diagnostics, Loader, LoaderError, SourceFile};
+
+pub use crate::visual::{VISUAL_SENSOR_ID, VisualSensorFactory};
 
 /// ID of the flat terrain provider.
 pub const FLAT_TERRAIN_ID: &str = "builtin.terrain.flat";
@@ -75,28 +77,6 @@ pub fn builtin_registry() -> Result<Registry, RegistryError> {
     Ok(registry)
 }
 
-/// `builtin.visual` (ADR 0015): perfect detection by 3D range, then field of view, then line of
-/// sight. Parameters `range_m`, `fov_deg`, `eye_height_m`.
-///
-/// M3 step 4: signatures only; the bodies are `todo!()` until WI-15.
-#[derive(Debug)]
-pub struct VisualSensorFactory(());
-
-#[expect(clippy::todo, reason = "M3 WI-15 stub")]
-impl Factory<dyn Sensor> for VisualSensorFactory {
-    fn id(&self) -> &ComponentId {
-        todo!("M3 WI-15")
-    }
-
-    fn param_schema(&self) -> &ParamSchema {
-        todo!("M3 WI-15")
-    }
-
-    fn build(&self, _params: &ParamValue) -> Result<Arc<dyn Sensor>, BuildError> {
-        todo!("M3 WI-15")
-    }
-}
-
 /// Why [`standard_registry`] failed (not expected: every part is built in and tested).
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -115,16 +95,37 @@ pub enum StandardRegistryError {
     Graphs(#[from] GraphRegistrationError),
 }
 
+/// The built-in graph files, parsed with the loader (ASM-077): `(file name, contents)`.
+const BUILTIN_GRAPH_FILES: [(&str, &str); 2] = [
+    (
+        "builtin.fsm.patrol_and_engage.behavior.toml",
+        include_str!("../behaviors/builtin.fsm.patrol_and_engage.behavior.toml"),
+    ),
+    (
+        "builtin.subgraph.engage_target.behavior.toml",
+        include_str!("../behaviors/builtin.subgraph.engage_target.behavior.toml"),
+    ),
+];
+
 /// [`builtin_registry`] plus the built-in conditions and actions, `builtin.visual` and the built-in
-/// graphs (`builtin.fsm.patrol_and_engage`, `builtin.subgraph.engage_target`), ASM-084.
-///
-/// M3 step 4: `todo!()` until WI-15.
+/// graphs (`builtin.fsm.patrol_and_engage`, `builtin.subgraph.engage_target`), ASM-084. The
+/// graphs are `Provenance::Builtin`, read-only in the catalog.
 ///
 /// # Errors
-/// [`StandardRegistryError`]; not expected.
-#[expect(clippy::todo, reason = "M3 WI-15 stub")]
+/// [`StandardRegistryError`]; not expected, every part is built in and tested.
 pub fn standard_registry() -> Result<Registry, StandardRegistryError> {
-    todo!("M3 WI-15")
+    let mut registry = builtin_registry()?;
+    cgf_behavior::register_builtins(&mut registry)?;
+    registry.register_sensor(Arc::new(VisualSensorFactory::new()))?;
+    let files: Vec<SourceFile> = BUILTIN_GRAPH_FILES
+        .iter()
+        .map(|(name, text)| SourceFile::new(*name, *text))
+        .collect();
+    let graphs = Loader::new(&registry)?
+        .graphs_from_sources(&files, Provenance::Builtin)
+        .map_err(StandardRegistryError::BuiltinGraphs)?;
+    cgf_behavior::register_graphs(&mut registry, graphs.iter())?;
+    Ok(registry)
 }
 
 #[cfg(test)]

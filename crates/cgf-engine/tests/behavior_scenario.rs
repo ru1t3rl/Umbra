@@ -2,8 +2,8 @@
 //! blackboard.
 //! Requirements: REQ-B-5, REQ-B-11, REQ-K-5, ADR 0014.
 //!
-//! Step 4 of M3: written before WI-15. `standard_registry()` is a `todo!()` stub, so the test is
-//! ignored with WI-15 (the scenario instantiation with behaviors and sensors).
+//! Step 4 of M3: written before WI-15; runs since WI-15 (the scenario instantiation with
+//! behaviors and sensors).
 
 #![forbid(unsafe_code)]
 
@@ -76,7 +76,6 @@ waypoints = [ { lat_deg = 52.0017975, lon_deg = 3.8689651 } ]
 /// the shared key is read); that is proven by `cgf-behavior/tests/isolation.rs`
 /// (`two_entities_with_one_graph_share_no_node_state`).
 #[test]
-#[ignore = "WI-15"]
 fn two_entities_one_graph_diverge_by_their_own_contacts() {
     let registry = standard();
     let scenario = Loader::new(&registry)

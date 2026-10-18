@@ -1,0 +1,7 @@
+schema_version = 1
+id = "test.graph.bad"
+version = "1.0.0"
+root = "a"
+
+[nodes.a]
+ref = "builtin.action.wait"

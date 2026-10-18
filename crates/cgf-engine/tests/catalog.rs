@@ -3,8 +3,8 @@
 //! graphs of a scenario.
 //! Requirements: REQ-B-13, REQ-B-14, REQ-B-17, REQ-T-3, ADR 0009, ADR 0011, ADR 0014, ASM-077, ASM-084, ASM-091.
 //!
-//! Step 4 of M3: written before WI-15. `standard_registry()` and `scenario_registry()` are
-//! `todo!()` stubs until then, so every test is ignored with that work item.
+//! Step 4 of M3: written before WI-15; run since WI-15, which implemented `standard_registry()` and
+//! `scenario_registry()`.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -96,7 +96,6 @@ impl Factory<dyn Behavior> for PluginStub {
 
 /// REQ-B-13 (AT-9): the built-in conditions, actions and graphs are `Builtin` and read-only.
 #[test]
-#[ignore = "WI-15"]
 fn builtin_graphs_and_leaves_are_builtin_and_read_only() {
     let catalog = standard_catalog();
     let all = BUILTIN_CONDITIONS
@@ -115,7 +114,6 @@ fn builtin_graphs_and_leaves_are_builtin_and_read_only() {
 
 /// REQ-B-13 (AT-9): graphs loaded from the scenario's files are `File` and editable.
 #[test]
-#[ignore = "WI-15"]
 fn file_graphs_are_file_and_editable() {
     let catalog = scenario_catalog();
 
@@ -130,7 +128,6 @@ fn file_graphs_are_file_and_editable() {
 /// REQ-B-13 (AT-9): a behavior registered by a plugin is `Plugin` and read-only, and the catalog
 /// does not tell it from the others otherwise.
 #[test]
-#[ignore = "WI-15"]
 fn plugin_stub_is_plugin_and_read_only() {
     let mut registry: Registry = standard();
     let id = ComponentId::new("acme.behavior.smart_tank").expect("id");
@@ -159,7 +156,6 @@ fn plugin_stub_is_plugin_and_read_only() {
 
 /// REQ-B-13 (AT-9): the twelve node types are built in and read-only.
 #[test]
-#[ignore = "WI-15"]
 fn node_types_are_builtin() {
     let catalog = standard_catalog();
 
@@ -180,7 +176,6 @@ fn node_types_are_builtin() {
 /// REQ-B-17 (AT-13): the catalog lists node types, conditions, actions and graphs, and nothing of
 /// the other kinds (motion models, terrain, sensors are not in it).
 #[test]
-#[ignore = "WI-15"]
 fn catalog_lists_node_types_conditions_actions_and_graphs() {
     let catalog = scenario_catalog();
     let ids = |kind: CatalogKind| -> Vec<&str> {
@@ -216,7 +211,6 @@ fn catalog_lists_node_types_conditions_actions_and_graphs() {
 
 /// REQ-B-17 (AT-13): every entry has an ID, a description, a source, a version and a schema.
 #[test]
-#[ignore = "WI-15"]
 fn every_entry_has_id_description_source_version_schema() {
     let catalog = scenario_catalog();
 
@@ -239,7 +233,6 @@ fn every_entry_has_id_description_source_version_schema() {
 /// REQ-B-10, REQ-B-17, ADR 0014 (AT-13): binding-only param types reach the catalog: the attack
 /// subgraph's `target` is an `entity` in `param_types` although it is not in the JSON Schema.
 #[test]
-#[ignore = "WI-15"]
 fn binding_only_param_types_reach_the_catalog() {
     let catalog = scenario_catalog();
 
@@ -268,7 +261,6 @@ fn binding_only_param_types_reach_the_catalog() {
 
 /// REQ-B-13 (AT-13): `read_only()` is `source != File` for every entry.
 #[test]
-#[ignore = "WI-15"]
 fn read_only_follows_source() {
     for e in scenario_catalog().entries() {
         assert_eq!(e.read_only(), e.source != Provenance::File, "{}", e.id);
@@ -277,7 +269,6 @@ fn read_only_follows_source() {
 
 /// REQ-B-17 (AT-13): entries are sorted by (kind, id) and unique.
 #[test]
-#[ignore = "WI-15"]
 fn catalog_is_sorted_by_kind_and_id() {
     let catalog = scenario_catalog();
 
@@ -314,7 +305,6 @@ fn toml_of(v: &Value) -> String {
 /// ADR 0009, REQ-T-3 (AT-13): every catalog schema compiles in the supported subset and validates
 /// its own examples.
 #[test]
-#[ignore = "WI-15"]
 fn every_catalog_schema_compiles_in_subset_and_examples_validate() {
     for e in scenario_catalog().entries() {
         let compiled = CompiledSchema::compile(&e.params)
@@ -347,7 +337,6 @@ fn every_catalog_schema_compiles_in_subset_and_examples_validate() {
 /// REQ-B-17 (AT-13): the catalog is a pure function of the registry: the same registry gives equal
 /// catalogs, and two independently built standard registries do too.
 #[test]
-#[ignore = "WI-15"]
 fn catalog_is_a_pure_function_of_the_registry() {
     let registry = standard();
 
@@ -361,7 +350,6 @@ fn catalog_is_a_pure_function_of_the_registry() {
 /// REQ-B-14 (AT-10): a graph's `version` reaches the catalog; built-in leaves carry the package
 /// version.
 #[test]
-#[ignore = "WI-15"]
 fn graph_version_reaches_catalog() {
     let catalog = scenario_catalog();
 

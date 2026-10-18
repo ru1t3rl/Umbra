@@ -17,6 +17,7 @@ pub mod display;
 pub mod engine;
 pub mod error;
 pub mod scenario;
+mod visual;
 
 pub use cgf_core::{
     Catalog, CatalogEntry, CatalogKind, ComponentId, ComponentKind, EntityId, FlatTerrain,
@@ -27,7 +28,7 @@ pub use cgf_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, StdWallClock, TickReport,
     TimeScale, WallClock,
 };
-pub use cgf_templates::{SCENARIO_FILE_SCHEMA, TEMPLATE_FILE_SCHEMA};
+pub use cgf_templates::{BEHAVIOR_FILE_SCHEMA, SCENARIO_FILE_SCHEMA, TEMPLATE_FILE_SCHEMA};
 pub use display::EntityDisplay;
 pub use engine::{
     AgentInit, Engine, EngineConfig, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView,

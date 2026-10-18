@@ -146,6 +146,20 @@ impl Engine {
     /// [`EngineError::InvalidSpawn`] for a non-finite heading or position or a non-finite or
     /// negative speed; [`EngineError::Kernel`] for an invalid route or exhausted ids.
     pub fn spawn(&mut self, spec: SpawnSpec) -> Result<EntityId, EngineError> {
+        self.spawn_with(spec, AgentInit::default())
+    }
+
+    /// Places an entity with a behavior, sensors and a force (ADR 0011). `spawn(spec)` is
+    /// `spawn_with(spec, AgentInit::default())`.
+    ///
+    /// # Errors
+    /// The errors of [`Engine::spawn`], and [`EngineError::Kernel`] wrapping
+    /// `KernelError::Instantiate` when the behavior cannot be instantiated at the tick rate.
+    pub fn spawn_with(
+        &mut self,
+        spec: SpawnSpec,
+        agent: AgentInit,
+    ) -> Result<EntityId, EngineError> {
         let position = spec.position.to_ecef();
         validate_spawn(&spec, position)?;
         // The frame is built from the geodetic derived from the ECEF position, never from the
@@ -178,22 +192,7 @@ impl Engine {
             motion: spec.motion,
             route,
         };
-        Ok(self.kernel.spawn(init)?)
-    }
-
-    /// Places an entity with a behavior, sensors and a force (ADR 0011). `spawn(spec)` is
-    /// `spawn_with(spec, AgentInit::default())`.
-    ///
-    /// # Errors
-    /// The errors of [`Engine::spawn`], and [`EngineError::Kernel`] wrapping
-    /// `KernelError::Instantiate` when the behavior cannot be instantiated at the tick rate.
-    #[expect(clippy::todo, reason = "M3 WI-15 stub")]
-    pub fn spawn_with(
-        &mut self,
-        _spec: SpawnSpec,
-        _agent: AgentInit,
-    ) -> Result<EntityId, EngineError> {
-        todo!("M3 WI-15")
+        Ok(self.kernel.spawn_with(init, agent)?)
     }
 
     /// Drives the kernel by its clock: polls, ticks or waits, and calls `on_tick` after every

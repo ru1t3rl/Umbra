@@ -1,0 +1,70 @@
+# Built-in subgraph: approach the target handed in by the caller and fire at it while it is in range.
+# Input: `target` (entity, required, bound by the caller with `{ key = .. }`).
+# Success: never (runs until halted). Failure: `target` unset or no longer a contact.
+schema_version = 1
+id = "builtin.subgraph.engage_target"
+version = "1.0.0"
+description = "Approach the target handed in by the caller and fire at it while it is in fire range"
+root = "modes"
+
+[interface]
+# `target` is binding-only (entity): inside this graph it is the read-only blackboard key `target`.
+params = { target             = { type = "entity" },
+           fire_range_m       = { type = "number", exclusiveMinimum = 0, default = 1500.0 },
+           approach_speed_mps = { type = "number", exclusiveMinimum = 0, default = 8.0 },
+           aggression         = { type = "number", minimum = 0, maximum = 1, default = 0.5 } }
+result = "Failure when the target is unset or lost; otherwise Running"
+
+[nodes.modes]                      # the embedded FSM
+type = "fsm"
+initial = "approach"
+states = { approach = "go", engage = "shoot" }
+
+[[nodes.modes.transitions]]
+from = "approach"
+to = "engage"
+when = "in_fire_range"
+
+[[nodes.modes.transitions]]
+from = "engage"
+to = "approach"
+when = "out_of_fire_range"
+
+[nodes.in_fire_range]
+type = "condition"
+ref = "builtin.cond.target_in_range"
+params = { target_key = "target", range_m = { param = "fire_range_m" } }
+
+[nodes.out_of_fire_range]
+type = "inverter"
+child = "in_fire_range_2"
+
+[nodes.in_fire_range_2]            # a node has one parent (ASM-075), so the guard is written twice
+type = "condition"
+ref = "builtin.cond.target_in_range"
+params = { target_key = "target", range_m = { param = "fire_range_m" } }
+
+[nodes.go]
+type = "action"
+ref = "builtin.action.move_to"
+params = { target_key = "target", speed_mps = { param = "approach_speed_mps" }, arrival_radius_m = { param = "fire_range_m" } }
+
+[nodes.shoot]
+type = "sequence"
+memory = true                      # roll, fire, then reload, step by step
+children = ["roll", "fire", "reload"]
+
+[nodes.roll]                       # fires with probability `aggression` when ready
+type = "condition"
+ref = "builtin.cond.chance"
+params = { probability = { param = "aggression" } }
+
+[nodes.fire]
+type = "action"
+ref = "builtin.action.fire"
+params = { target_key = "target", weapon = "builtin.weapon.default" }
+
+[nodes.reload]
+type = "action"
+ref = "builtin.action.wait"
+params = { duration_s = 4.0 }

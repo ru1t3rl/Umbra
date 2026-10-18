@@ -64,6 +64,7 @@ fn assemble(
     if !params.required.is_empty() {
         schema["required"] = json!(params.required);
     }
+    schema["examples"] = json!([example(&params)]);
     let Ok(schema) = ParamSchema::from_json_str(&schema.to_string()) else {
         let message = "the interface parameters could not be assembled into a schema".to_string();
         reader.error(DiagnosticCode::InvalidValue, message, at);
@@ -83,6 +84,52 @@ fn assemble(
         interface = interface.with_result(text);
     }
     Some(interface)
+}
+
+/// One documented example of the assembled schema (REQ-B-17): every literal param at its
+/// `default`, or for a param without one at the simplest value its keywords allow.
+fn example(params: &Params) -> ParamValue {
+    let object: Map<String, ParamValue> = params
+        .properties
+        .iter()
+        .map(|(name, fragment)| {
+            let value = params
+                .defaults
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| simplest_value(fragment));
+            (name.clone(), value)
+        })
+        .collect();
+    ParamValue::Object(object)
+}
+
+/// The first `enum` member, else the lowest value a numeric fragment allows, else the zero of
+/// its type. Best effort: it only has to document the shape.
+fn simplest_value(fragment: &ParamValue) -> ParamValue {
+    if let Some(first) = fragment.get("enum").and_then(|e| e.get(0)) {
+        return first.clone();
+    }
+    let number = |key: &str| fragment.get(key).and_then(ParamValue::as_f64);
+    let integer = fragment.get("type").and_then(ParamValue::as_str) == Some("integer");
+    match fragment.get("type").and_then(ParamValue::as_str) {
+        Some("boolean") => json!(false),
+        Some("string") => json!(""),
+        Some("number" | "integer") => {
+            let value = number("minimum")
+                .or_else(|| number("exclusiveMinimum").map(|m| m.floor() + 1.0))
+                .or_else(|| number("maximum"))
+                .unwrap_or(0.0);
+            if integer {
+                format!("{:.0}", value.trunc())
+                    .parse::<i64>()
+                    .map_or_else(|_| json!(0), |n| json!(n))
+            } else {
+                json!(value)
+            }
+        }
+        _ => ParamValue::Null,
+    }
 }
 
 /// `params = { <name> = { type = .., default = .., <keywords> } }`. `None` when any is bad.

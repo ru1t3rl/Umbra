@@ -1,0 +1,40 @@
+# Built-in behavior: follow the initial route and engage the nearest hostile that comes within
+# `engage_range_m`. `engage` pre-empts `patrol` (reactive selector, ADR 0013).
+# Running while patrolling or engaging; Success when the route is complete and no hostile is in range.
+schema_version = 1
+id = "builtin.fsm.patrol_and_engage"
+version = "1.0.0"
+description = "Follow the initial route; engage hostiles that come within range"
+root = "main"
+
+[interface]
+params = { aggression     = { type = "number", minimum = 0, maximum = 1, default = 0.5 },
+           engage_range_m = { type = "number", exclusiveMinimum = 0, default = 3000.0 },
+           fire_range_m   = { type = "number", exclusiveMinimum = 0, default = 1500.0 } }
+result = "Running while patrolling or engaging; Success when the route is complete and no hostile is in range"
+
+[blackboard]
+target = "entity"
+
+[nodes.main]
+type = "selector"                  # reactive (ADR 0013): engage pre-empts patrol
+children = ["engage", "patrol"]
+
+[nodes.engage]
+type = "sequence"
+children = ["enemy_near", "attack"]
+
+[nodes.enemy_near]                 # picks the nearest hostile and stores it
+type = "condition"
+ref = "builtin.cond.enemy_in_range"
+params = { range_m = { param = "engage_range_m" }, store_as = "target" }
+
+[nodes.attack]
+type = "subgraph"
+ref = "builtin.subgraph.engage_target"
+version = "^1.0"
+params = { target = { key = "target" }, fire_range_m = { param = "fire_range_m" }, aggression = { param = "aggression" } }
+
+[nodes.patrol]
+type = "action"
+ref = "builtin.action.follow_route"

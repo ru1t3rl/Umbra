@@ -1,0 +1,14 @@
+schema_version = 1
+id = "test.graph.bad"
+version = "1.0.0"
+root = "a"
+
+[nodes.a]
+type = "fsm"
+initial = "s"
+states = { s = "b" }
+transitions = [ { from = "s", to = "s", when = "b", on = "success" } ]
+
+[nodes.b]
+type = "action"
+ref = "builtin.action.wait"

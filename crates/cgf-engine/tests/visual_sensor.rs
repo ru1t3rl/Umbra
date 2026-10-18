@@ -2,8 +2,8 @@
 //! sight, eye height, ordering, remote targets, forces.
 //! Requirements: Perception (M3 deliverable), REQ-K-5, REQ-C-6, ADR 0015, ASM-079, ASM-080.
 //!
-//! Step 4 of M3: written before WI-15. `standard_registry()` (which holds the sensor) is a
-//! `todo!()` stub, so every test is ignored with that work item. Entities are placed with a local
+//! Step 4 of M3: written before WI-15; run since WI-15, which implemented `builtin.visual`
+//! and `standard_registry()`. Entities are placed with a local
 //! frame at 52 N 4 E on flat terrain at 0 m (unless a test says otherwise); the observer looks
 //! along the heading in its test. The "edge is inclusive" rule cannot be tested at exactly half the
 //! field of view (floating-point bearings), so it is tested a hair inside and a hair outside.
@@ -130,7 +130,6 @@ fn ids(contacts: &[Contact]) -> Vec<u64> {
 /// ASM-080: a target inside range and field of view is a contact, with its position, velocity,
 /// force and the 3D range to it.
 #[test]
-#[ignore = "WI-15"]
 fn detects_inside_range_and_fov() {
     let sensor = visual(&json!({ "range_m": 3000.0, "fov_deg": 120.0 }));
     let candidates = vec![
@@ -159,7 +158,6 @@ fn detects_inside_range_and_fov() {
 /// ASM-080: the range is the 3D distance, `range_m` inclusive: 2900 m is seen, 3100 m is not, and
 /// a target 2000 m ahead and 2300 m above is 3049 m away, so not seen.
 #[test]
-#[ignore = "WI-15"]
 fn misses_outside_range() {
     let sensor = visual(&json!({ "range_m": 3000.0, "fov_deg": 360.0, "eye_height_m": 2.0 }));
 
@@ -193,7 +191,6 @@ fn misses_outside_range() {
 /// ASM-080: the field of view is horizontal, centered on the heading, half-angle `fov_deg / 2`
 /// inclusive: a hair inside the edge is seen, a hair outside is not; 360 degrees sees behind.
 #[test]
-#[ignore = "WI-15"]
 fn misses_outside_fov_edge_inclusive() {
     let sensor = visual(&json!({ "range_m": 3000.0, "fov_deg": 90.0 }));
     let bearing = |deg: f64| {
@@ -255,7 +252,6 @@ impl TerrainProvider for Ridge {
 /// REQ-C-6, ASM-080: terrain between observer and target blocks the contact; the same pair on flat
 /// terrain is seen.
 #[test]
-#[ignore = "WI-15"]
 fn terrain_blocks_line_of_sight() {
     let sensor = visual(&json!({ "range_m": 3000.0, "fov_deg": 120.0 }));
     let target = one(2, at(2000.0, 0.0, 0.0));
@@ -271,7 +267,6 @@ fn terrain_blocks_line_of_sight() {
 /// `eye_height_m` lifts the line over the curvature. At 3 km the chord sags 0.18 m below the
 /// surface: 0.05 m eyes cannot see, 0.2 m and 2 m eyes can.
 #[test]
-#[ignore = "WI-15"]
 fn eye_height_lifts_over_curvature() {
     let seen_with = |eye: f64| {
         let sensor = visual(&json!({ "range_m": 5000.0, "fov_deg": 120.0, "eye_height_m": eye }));
@@ -292,7 +287,6 @@ fn eye_height_lifts_over_curvature() {
 /// ASM-080: with `eye_height_m = 0` two entities on smooth ground never see each other, whatever
 /// the range: the straight segment dips below the surface.
 #[test]
-#[ignore = "WI-15"]
 fn eye_height_zero_on_smooth_ground_never_sees() {
     let sensor = visual(&json!({ "range_m": 5000.0, "fov_deg": 360.0, "eye_height_m": 0.0 }));
 
@@ -335,7 +329,6 @@ impl TerrainProvider for Counting {
 /// expensive call, only for targets that pass both: of three targets (out of range, behind the
 /// observer, in view) exactly one reaches the terrain.
 #[test]
-#[ignore = "WI-15"]
 fn range_and_fov_are_checked_before_line_of_sight() {
     let sensor = visual(&json!({ "range_m": 3000.0, "fov_deg": 120.0 }));
     let terrain = Counting(AtomicUsize::new(0));
@@ -404,7 +397,6 @@ fn tick(engine: &mut Engine) -> cgf_engine::Snapshot {
 /// REQ-K-5: Remote entities are perceived (they are candidates), but only Owned entities observe:
 /// a Remote entity with a sensor gets no contacts.
 #[test]
-#[ignore = "WI-15"]
 fn remote_entities_are_perceived_observers_are_owned_only() {
     let sensor = visual(&json!({ "range_m": 3000.0, "fov_deg": 360.0 }));
     let remote = Ownership::Remote {
@@ -445,7 +437,6 @@ fn remote_entities_are_perceived_observers_are_owned_only() {
 /// ADR 0015: contacts are sorted by entity ID, and with several sensors the contacts are merged per
 /// target: each target appears once.
 #[test]
-#[ignore = "WI-15"]
 fn contacts_sorted_by_id_and_merged_across_sensors() {
     let short = visual(&json!({ "range_m": 500.0, "fov_deg": 360.0 }));
     let long = visual(&json!({ "range_m": 3000.0, "fov_deg": 360.0 }));
@@ -473,7 +464,6 @@ fn contacts_sorted_by_id_and_merged_across_sensors() {
 /// ASM-079: a contact carries the target's force; same-force and neutral contacts are not hostile
 /// (to a blue observer, or to a neutral one), a red contact is hostile to a blue observer only.
 #[test]
-#[ignore = "WI-15"]
 fn neutral_and_same_force_not_hostile() {
     let sensor = visual(&json!({ "range_m": 3000.0, "fov_deg": 360.0 }));
     let candidates = vec![
