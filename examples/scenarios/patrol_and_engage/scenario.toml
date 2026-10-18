@@ -4,10 +4,13 @@
 # and resumes its patrol once the truck has left. A second blue tank uses the built-in graph
 # `builtin.fsm.patrol_and_engage` through the spec 7.1 style template.
 #
-# Provenance: written for M3 step 4 (test-engineer); run and checked in WI-16 with no change to the
-# numbers. Real ticks at 30 Hz for blue-1 (seed 7): first contact 328, approach (`move_to`) 634,
-# first `Fire` 1130, last `Fire` 1619 (5 shots), contact lost and patrol resumed 1704. The
-# contact is continuous from 328 to 1703, so there is no flicker at the fov edge.
+# Provenance: written for M3 step 4 (test-engineer); run and tuned in WI-16 (review round: the
+# sensors' fov is 360 degrees and blue-2's engage range is 1500 m, so a blue loses red by RANGE, not
+# at the fov edge). Real ticks at 30 Hz (seed 7):
+#   blue-1: first contact 328, approach (`move_to`) 634, first `Fire` 1130, last `Fire` 2347
+#           (11 shots), patrol resumed 3488 (red 900.8 m away, engage range 900 m).
+#   blue-2: contact and first `Fire` at tick 1, last `Fire` 3643 (31 shots), patrol resumed 3685
+#           (red 1501.1 m away, engage range 1500 m, off-axis 156 deg, irrelevant at fov 360).
 #
 #   blue-1   start (0, 0)      heading east   10 m/s   route (50, 0) then (800, 0)
 #   red-1    start (1500, 200) heading west   20 m/s   route to (-9000, 200)

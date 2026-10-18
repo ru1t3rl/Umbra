@@ -21,6 +21,7 @@ The engage state rolls a `chance` of 0.5 before each shot, so the seed decides o
 Swapping a behavior is a template change: replace the `ref` in `templates/tank_blue.toml` by
 `example.behavior.follow_route` and blue-1 just drives its route (AT-17).
 
-Status: written in M3 step 4 as the subject of the acceptance tests. The layout has not been run
-yet; WI-16 runs it and records the ticks of first contact, approach and first `Fire` in
-`docs/plans/M3.md`.
+Status: written in M3 step 4, run and tuned in WI-16. Real ticks at 30 Hz, seed 7 (blue-1): first
+contact 328, approach 634, first `Fire` 1130, last `Fire` 2347, patrol resumed 3488. The visual
+sensors have `fov_deg = 360`, so a blue loses red because red leaves its engage range (900 m for
+blue-1, 1500 m for blue-2), never at a fov edge. Details in `docs/plans/M3.md` (Running log).

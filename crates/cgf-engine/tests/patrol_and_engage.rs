@@ -3,8 +3,10 @@
 //! Requirements: M3 acceptance 1, REQ-B-6..B-12, REQ-K-5, REQ-T-6, ADR 0013, ADR 0014, ADR 0015.
 //!
 //! Written in step 4 of M3; all tests run since WI-16, which ran the example (blue-1 at seed 7:
-//! first contact tick 328, approach 634, first `Fire` 1130, last `Fire` 1619, patrol resumed 1704).
-//! The file bounds the ticks generously and checks events, not exact numbers. Layout (see the example's `scenario.toml`):
+//! first contact tick 328, approach 634, first `Fire` 1130, last `Fire` 2347, patrol resumed
+//! 3488 when red passes the 900 m engage range; the sensor fov is 360 degrees, so contact is
+//! lost by range only). The file bounds the ticks generously and checks events, not exact
+//! numbers. Layout (see the example's `scenario.toml`; the ranges are in the templates):
 //! blue-1 starts at (0, 0) heading east with a two-leg route (50 m, then 800 m); red-1 starts at
 //! (1500 m east, 200 m north) heading west at 20 m/s; the visual sensor reaches 1200 m, the
 //! engage range is 900 m and the fire range 450 m. Patrol speed is 10 m/s, the approach speed

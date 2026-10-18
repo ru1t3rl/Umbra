@@ -11,4 +11,4 @@ ref = "example.behavior.patrol_and_engage"
 
 [[sensors]]
 kind = "builtin.visual"
-params = { range_m = 1200.0, fov_deg = 120.0 }
+params = { range_m = 1200.0, fov_deg = 360.0 }

@@ -461,6 +461,32 @@ fn contacts_sorted_by_id_and_merged_across_sensors() {
     );
 }
 
+/// ADR 0015 (added after the WI-16 review, AT-19 mutation 2): with ten targets a random contact
+/// order passes only about 1 time in 3.6 million, so any map or hash iteration in perception shows
+/// up here. Targets are spawned from far to near, so ID order is the reverse of range order.
+#[test]
+fn ten_contacts_come_out_in_ascending_id_order() {
+    let sensor = visual(&json!({ "range_m": 3000.0, "fov_deg": 360.0 }));
+    let mut engine = engine();
+    let observer = spawn(&mut engine, 0.0, Ownership::Owned, vec![sensor]);
+    let targets: Vec<EntityId> = (0..10_u32)
+        .map(|i| {
+            let metres = 2000.0 - 150.0 * f64::from(i);
+            spawn(&mut engine, metres, Ownership::Owned, Vec::new())
+        })
+        .collect();
+
+    let snapshot = tick(&mut engine);
+
+    let seen: Vec<EntityId> = snapshot
+        .entities
+        .iter()
+        .find(|e| e.id == observer)
+        .map(|e| e.contacts.iter().map(|c| c.entity).collect())
+        .expect("observer");
+    assert_eq!(seen, targets);
+}
+
 /// ASM-079: a contact carries the target's force; same-force and neutral contacts are not hostile
 /// (to a blue observer, or to a neutral one), a red contact is hostile to a blue observer only.
 #[test]

@@ -69,7 +69,8 @@ fn run_example_prints_states_and_hash() {
 /// line and the state hash after every tick (the CLI output has no intents or contacts; those are
 /// compared in `cgf-engine/tests/behavior_determinism.rs`). Separate processes have different
 /// hasher seeds and address-space layouts, so hidden `RandomState` or pointer-ordered iteration
-/// shows up here.
+/// shows up here. 1800 ticks (60 s) run past blue-1's first `Fire` (tick 1130), so the file
+/// subgraph, the FSM and the `chance` draws are compared too (amended after the WI-16 review).
 #[test]
 fn patrol_and_engage_in_four_processes_is_byte_identical() {
     let args = [
@@ -79,7 +80,7 @@ fn patrol_and_engage_in_four_processes_is_byte_identical() {
         "--hash-every",
         "1",
         "--ticks",
-        "600",
+        "1800",
     ];
 
     let runs: Vec<Output> = (0..4).map(|_| run(&args)).collect();
@@ -92,7 +93,7 @@ fn patrol_and_engage_in_four_processes_is_byte_identical() {
         .lines()
         .filter(|l| l.contains("\"state_hash\""))
         .count();
-    assert_eq!(hash_lines, 601, "one hash per tick plus the final line");
+    assert_eq!(hash_lines, 1801, "one hash per tick plus the final line");
     for r in &runs[1..] {
         assert_eq!(r.stdout, runs[0].stdout);
     }

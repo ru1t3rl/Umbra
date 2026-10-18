@@ -7,8 +7,8 @@ description = "Blue tank that uses the built-in patrol-and-engage graph"
 
 [[sensors]]
 kind = "builtin.visual"
-params = { range_m = 3000.0, fov_deg = 120.0 }
+params = { range_m = 3000.0, fov_deg = 360.0 }
 
 [behavior]
 ref = "builtin.fsm.patrol_and_engage"
-params = { aggression = 0.7 }
+params = { aggression = 0.7, engage_range_m = 1500.0 }
