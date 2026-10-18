@@ -920,6 +920,10 @@ typedef const UmbraPluginDescriptor *(*UmbraPluginEntry)(const UmbraHostApi *hos
  */
 #define UMBRA_LOG_TRACE 5
 
+/* The one exported symbol of a plugin (REQ-P-1): define it with UMBRA_EXPORT. Declared here so the
+   compiler checks a C plugin's definition against the ABI's entry type. */
+UMBRA_EXPORT const UmbraPluginDescriptor *umbra_plugin_entry(const UmbraHostApi *host);
+
 /* UmbraStr from a string literal, as an expression (compound literal). */
 #define UMBRA_STR(lit) ((UmbraStr){ (const uint8_t *)("" lit), sizeof(lit) - 1 })
 /* UmbraStr from a string literal, as a static initializer. */

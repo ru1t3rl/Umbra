@@ -89,7 +89,8 @@ fn edit(path: &Path, f: impl FnOnce(String) -> String) {
     std::fs::write(path, f(text)).expect("write");
 }
 
-/// Gate 11: the committed `umbra_plugin_api.h` is what the pinned cbindgen generates.
+/// Gate 11: the committed `umbra_plugin_api.h` is what the pinned cbindgen generates. This is the only
+/// test of the default `--crate-dir` (`crates/umbra-plugin-api`); the others use the fixture.
 #[test]
 fn committed_header_is_current() {
     let out = gen_header(&["--check"], None);
@@ -124,6 +125,24 @@ fn appended_field_is_drift() {
         "{}",
         text(&out)
     );
+}
+
+/// Without a `Cargo.lock` the locked, offline `cargo metadata` fails: exit 2, never a silent resolve.
+#[test]
+fn missing_lockfile_is_exit_2() {
+    let dir = fixture_copy("no_lock");
+    std::fs::remove_file(dir.join("Cargo.lock"))
+        .unwrap_or_else(|e| panic!("remove Cargo.lock: {e}"));
+
+    let out = check_dir(&dir);
+
+    assert_eq!(code(&out), Some(2), "{}", text(&out));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("cargo metadata --locked --offline failed"),
+        "{}",
+        text(&out)
+    );
+    assert!(!dir.join("Cargo.lock").exists(), "a lockfile was created");
 }
 
 /// A CRLF checkout of the header (Windows, `core.autocrlf`) is not drift.

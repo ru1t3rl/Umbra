@@ -45,6 +45,10 @@ extern "C" {
 # After the generated items, so UmbraStr is declared (re-review RR-m1): UTF-8 string literals without the
 # sizeof off-by-one or char/uint8_t sign warnings; the "" forces a literal argument.
 trailer = """
+/* The one exported symbol of a plugin (REQ-P-1): define it with UMBRA_EXPORT. Declared here so the
+   compiler checks a C plugin's definition against the ABI's entry type. */
+UMBRA_EXPORT const UmbraPluginDescriptor *umbra_plugin_entry(const UmbraHostApi *host);
+
 /* UmbraStr from a string literal, as an expression (compound literal). */
 #define UMBRA_STR(lit) ((UmbraStr){ (const uint8_t *)("" lit), sizeof(lit) - 1 })
 /* UmbraStr from a string literal, as a static initializer. */

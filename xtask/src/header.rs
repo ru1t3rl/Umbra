@@ -5,7 +5,9 @@
 //! `Cargo.lock`) on a crate directory with its `cbindgen.toml` and writes or compares
 //! `<crate>/include/umbra_plugin_api.h`. Line endings are normalised to LF on both sides, so a CRLF
 //! checkout is not drift. The binary is `cbindgen` on `PATH`, or the program named by the `CBINDGEN`
-//! environment variable.
+//! environment variable. The crate metadata comes from `cargo metadata --locked --offline` run here
+//! (written under `target/gen-header/` and passed as `cbindgen --metadata`), so cbindgen never resolves
+//! or updates `Cargo.lock` itself and a missing or stale lockfile is exit 2.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -43,6 +45,14 @@ pub enum HeaderError {
         program: String,
         /// Its first output line.
         found: String,
+    },
+    /// `cargo metadata --locked --offline` failed (missing or stale `Cargo.lock`, or not cached).
+    #[error("cargo metadata --locked --offline failed for {manifest}:\n{stderr}")]
+    Metadata {
+        /// Manifest.
+        manifest: PathBuf,
+        /// Its stderr.
+        stderr: String,
     },
     /// `cbindgen` ran and failed.
     #[error("cbindgen failed on {dir}:\n{stderr}")]
@@ -130,18 +140,76 @@ pub fn check_version(program: &OsString) -> Result<(), HeaderError> {
     }
 }
 
-/// Runs `program` on `crate_dir` with `crate_dir/cbindgen.toml` and returns the LF-normalised header.
+/// The directory for scratch files: `$CARGO_TARGET_DIR/gen-header`, else `<repo>/target/gen-header`.
+fn scratch_dir() -> PathBuf {
+    let target = std::env::var_os("CARGO_TARGET_DIR").map_or_else(
+        || {
+            let xtask_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+            xtask_dir.parent().unwrap_or(xtask_dir).join("target")
+        },
+        PathBuf::from,
+    );
+    target.join("gen-header")
+}
+
+/// `cargo metadata --locked --offline --all-features --format-version 1` for `crate_dir`, written to a
+/// per-process file under [`scratch_dir`]; returns its path.
+fn write_metadata(crate_dir: &Path) -> Result<PathBuf, HeaderError> {
+    let manifest = crate_dir.join("Cargo.toml");
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
+    let out = Command::new(cargo)
+        .args([
+            "metadata",
+            "--locked",
+            "--offline",
+            "--all-features",
+            "--format-version",
+            "1",
+            "--manifest-path",
+        ])
+        .arg(&manifest)
+        .output()
+        .map_err(|source| HeaderError::Io {
+            path: manifest.clone(),
+            source,
+        })?;
+    if !out.status.success() {
+        return Err(HeaderError::Metadata {
+            manifest,
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        });
+    }
+    let dir = scratch_dir();
+    std::fs::create_dir_all(&dir).map_err(|source| HeaderError::Io {
+        path: dir.clone(),
+        source,
+    })?;
+    let path = dir.join(format!("metadata-{}.json", std::process::id()));
+    std::fs::write(&path, &out.stdout).map_err(|source| HeaderError::Io {
+        path: path.clone(),
+        source,
+    })?;
+    Ok(path)
+}
+
+/// Runs `program` on `crate_dir` with `crate_dir/cbindgen.toml` and the locked metadata and returns the
+/// LF-normalised header.
 pub fn generate(program: &OsString, crate_dir: &Path) -> Result<String, HeaderError> {
+    let metadata = write_metadata(crate_dir)?;
     let out = Command::new(program)
         .arg("--quiet")
         .arg("--config")
         .arg(crate_dir.join("cbindgen.toml"))
+        .arg("--metadata")
+        .arg(&metadata)
         .arg(crate_dir)
-        .output()
-        .map_err(|source| HeaderError::Missing {
-            program: program.to_string_lossy().into_owned(),
-            source,
-        })?;
+        .output();
+    // Best effort: a leftover scratch file under target/ is harmless.
+    let _ = std::fs::remove_file(&metadata);
+    let out = out.map_err(|source| HeaderError::Missing {
+        program: program.to_string_lossy().into_owned(),
+        source,
+    })?;
     if !out.status.success() {
         return Err(HeaderError::Failed {
             dir: crate_dir.to_path_buf(),

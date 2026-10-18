@@ -17,6 +17,9 @@ changed, so the host's size-per-minor table (R-B3) can be checked against it.
 - Kinds: `UMBRA_CAPABILITY_BEHAVIOR` (1) supported; 2-7 reserved (motion model, network adapter, sensor,
   component, condition, action) and rejected as unsupported.
 - Host API v0: `log`, `rng_next_u64`, `rng_next_f64` with opaque tokens (ADR 0021).
+- Header: declares the entry `UMBRA_EXPORT const UmbraPluginDescriptor *umbra_plugin_entry(const
+  UmbraHostApi *host);` (added after the WI-1..WI-4 review, still within the provisional period), so a C
+  plugin's definition is checked against the entry type `UmbraPluginEntry`. No struct layout changed.
 - **Provisional** (ADR 0019 R-M10, ASM-117): M4 WI-3..WI-14 may still change this layout, updating the
   plan table, the pins, the header and this entry together. The field-by-field freeze review is part of
   M4 WI-16; after `m4-done` the rules of REQ-P-2 apply in full.

@@ -18,6 +18,8 @@ pub struct FieldLayout {
     pub offset: usize,
     /// `size_of` the field's type.
     pub size: usize,
+    /// `type_name` of the field's type (for example `f64`, `*const u8`, `umbra_plugin_api::..::UmbraStr`).
+    pub ty: &'static str,
 }
 
 /// One `#[repr(C)]` struct as Rust lays it out.
@@ -32,10 +34,10 @@ pub struct StructLayout {
     pub fields: Vec<FieldLayout>,
 }
 
-/// `size_of` the type of the field selected by `select`, inferred from the struct definition (so the
-/// table cannot state a wrong type).
-fn field_size<T, F>(_select: fn(&T) -> &F) -> usize {
-    size_of::<F>()
+/// `size_of` and `type_name` of the type of the field selected by `select`, inferred from the struct
+/// definition (so the table cannot state a wrong type).
+fn field_type<T, F>(_select: fn(&T) -> &F) -> (usize, &'static str) {
+    (size_of::<F>(), core::any::type_name::<F>())
 }
 
 macro_rules! layout {
@@ -44,10 +46,9 @@ macro_rules! layout {
             name: stringify!($t),
             size: size_of::<$t>(),
             align: align_of::<$t>(),
-            fields: vec![$(FieldLayout {
-                name: stringify!($f),
-                offset: offset_of!($t, $f),
-                size: field_size(|s: &$t| &s.$f),
+            fields: vec![$({
+                let (size, ty) = field_type(|s: &$t| &s.$f);
+                FieldLayout { name: stringify!($f), offset: offset_of!($t, $f), size, ty }
             }),*],
         }
     };

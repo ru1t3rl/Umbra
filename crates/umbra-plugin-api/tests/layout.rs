@@ -98,7 +98,6 @@ fn layouts_are_pinned_on_64_bit() {
     ];
 
     // The reserved arrays have the documented widths.
-    assert_eq!(size_of::<[u8; 6]>(), 6);
     assert_eq!(
         offset_of!(UmbraEntityView, route_next) - offset_of!(UmbraEntityView, reserved_0),
         6
@@ -383,4 +382,71 @@ fn function_pointer_fields_are_nullable() {
     assert!(descriptor.init.is_none() && descriptor.shutdown.is_none());
     assert!(vtable.configure.is_none() && vtable.output.is_none());
     assert_eq!(size_of::<Option<unsafe extern "C" fn()>>(), 8);
+}
+
+/// R-B1: every `reserved_N` field is a `u32` or a byte array, so writers can zero it and readers can
+/// ignore it without interpreting a type.
+#[test]
+fn reserved_fields_are_u32_or_byte_arrays() {
+    let mut seen = 0;
+    for s in abi_layout::structs() {
+        for f in s.fields.iter().filter(|f| f.name.starts_with("reserved_")) {
+            assert!(
+                f.ty == "u32" || f.ty.starts_with("[u8; "),
+                "{}.{} is {}",
+                s.name,
+                f.name,
+                f.ty
+            );
+            seen += 1;
+        }
+    }
+    assert_eq!(
+        seen, 5,
+        "UmbraCapability, UmbraBehaviorBatch, UmbraEntityView, UmbraIntent, UmbraValue"
+    );
+}
+
+/// The hand-kept type lists agree: every `pub struct` and `pub type` in `src/*.rs` is in the support
+/// table (structs, the two opaque handles, typedefs) and vice versa (the C side checks the header
+/// against the same table in `umbra-plugin-host/tests/c_header.rs`).
+#[test]
+fn source_types_match_the_support_table() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut structs = std::collections::BTreeSet::new();
+    let mut types = std::collections::BTreeSet::new();
+    let entries = std::fs::read_dir(&src).unwrap_or_else(|e| panic!("{}: {e}", src.display()));
+    for entry in entries {
+        let path = entry.unwrap_or_else(|e| panic!("{e}")).path();
+        if path.extension().is_none_or(|e| e != "rs") {
+            continue;
+        }
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        for line in text.lines().map(str::trim_start) {
+            let ident = |rest: &str| {
+                rest.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            };
+            if let Some(rest) = line.strip_prefix("pub struct ") {
+                structs.insert(ident(rest));
+            } else if let Some(rest) = line.strip_prefix("pub type ") {
+                types.insert(ident(rest));
+            }
+        }
+    }
+    let mut expected_structs: std::collections::BTreeSet<String> = abi_layout::structs()
+        .iter()
+        .map(|s| s.name.to_string())
+        .collect();
+    expected_structs.extend(["UmbraBehavior".to_string(), "UmbraInstance".to_string()]);
+    let expected_types: std::collections::BTreeSet<String> = abi_layout::typedefs()
+        .iter()
+        .map(|(n, _)| (*n).to_string())
+        .collect();
+
+    assert_eq!(structs, expected_structs);
+    assert_eq!(types, expected_types);
 }
