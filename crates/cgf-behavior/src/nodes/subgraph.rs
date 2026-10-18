@@ -6,14 +6,13 @@
 //! output into the parent's blackboard (`output`; unset copies as unset). The node is Running iff
 //! the child returned Running.
 //!
-//! Allocation: the copies move `BbValue`s by value through the object-safe `set_input` and
-//! `output` calls, so a `string` value is cloned on each copy (one small allocation per bound
-//! string per tick). Numbers, booleans, integers, entities and positions are `Copy`-sized and
-//! allocate nothing.
+//! Allocation: none. The copies move `BbValue`s by value through the object-safe `set_input` and
+//! `output` calls, and every `BbValue` is `Copy`-sized or an `Arc<str>`, so a copy is a cheap clone.
+//! A refused copy (not expected after validation) halts a Running child and returns Failure.
 
 use crate::instance::{NodeState, Walk};
 use crate::program::{Input, Subgraph};
-use cgf_core::{BbValue, Status};
+use cgf_core::{BbValue, BehaviorInstance, Status};
 
 /// Ticks the `subgraph` node at `idx` once.
 pub(crate) fn tick(w: &mut Walk<'_, '_, '_, '_>, idx: usize, sub: &Subgraph) -> Status {
@@ -34,9 +33,7 @@ pub(crate) fn tick(w: &mut Walk<'_, '_, '_, '_>, idx: usize, sub: &Subgraph) -> 
     for input in &sub.inputs {
         let value = w.bb.get(&input.key).map(|v| convert(input, v));
         if child.set_input(&input.param, value).is_err() {
-            // Not expected after validation (ASM-088); the child is not ticked with bad inputs.
-            debug_assert!(false, "set_input `{}` refused", input.param);
-            return Status::Failure;
+            return refuse(child, running);
         }
     }
     let status = child.tick(&mut *w.ctx, w.entity, &mut *w.out);
@@ -47,11 +44,19 @@ pub(crate) fn tick(w: &mut Walk<'_, '_, '_, '_>, idx: usize, sub: &Subgraph) -> 
             None => w.bb.unset(key),
         };
         if written.is_err() {
-            debug_assert!(false, "output `{port}` refused by `{key}`");
-            return Status::Failure;
+            return refuse(child, running);
         }
     }
     status
+}
+
+/// A copy the blackboard refused: the child is halted as a parent halt if it was Running, so
+/// `is_running` stays exact, and the node fails.
+fn refuse(child: &mut Box<dyn BehaviorInstance>, running: &mut bool) -> Status {
+    if std::mem::take(running) {
+        child.halt_running();
+    }
+    Status::Failure
 }
 
 /// The value as the child's param type wants it: `integer` to `number` is converted (ASM-088).

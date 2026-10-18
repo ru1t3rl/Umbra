@@ -1,6 +1,6 @@
 //! Stack budget of the recursive tick (plan WI-10 Risks, ASM-098): the worst case the loader and
 //! the interpreter allow is 16 graph levels of 128 node levels each. This test builds it and
-//! ticks, halts and drops it on a thread with a fixed stack. Requirements: REQ-B-8, REQ-K-4.
+//! ticks, halts and drops it on a thread with a fixed stack. Requirements: REQ-B-12 (nesting limits), ASM-098.
 
 #![forbid(unsafe_code)]
 

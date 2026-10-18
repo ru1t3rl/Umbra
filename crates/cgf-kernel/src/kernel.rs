@@ -178,6 +178,12 @@ impl Kernel {
     /// Runs one tick through the six phases in [`Phase::ALL`] order and advances the clock by
     /// exactly one tick. Pacing is the caller's business; this never waits.
     ///
+    /// # Stack
+    /// Behavior graphs are ticked by recursion, one or two frames per node level (up to 128 levels
+    /// per graph, 16 graphs deep). The calling thread needs at least 2 MiB in a debug build
+    /// (worst case measured 1.25-1.5 MiB, ASM-098); drive the kernel from a thread with an
+    /// explicit stack of 4 MiB or more.
+    ///
     /// # Errors
     /// [`KernelError::TimeOverflow`] if the tick counter is exhausted; nothing runs then.
     pub fn tick(&mut self) -> Result<TickReport, KernelError> {

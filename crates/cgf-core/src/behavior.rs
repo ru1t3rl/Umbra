@@ -212,6 +212,10 @@ pub trait BehaviorInstance: Send {
     ) -> Status;
 
     /// Abandons a Running activation; the next tick starts fresh (blackboard kept, ADR 0014).
+    ///
+    /// This is the instance halt: it must be idempotent and may be called when the instance is
+    /// not Running (a `subgraph` node calls it on every instance halt of its caller, so timers
+    /// inside a graph child reset).
     fn halt(&mut self);
 
     /// A parent halt (ADR 0013): halt what is Running and keep the state of finished nodes; the

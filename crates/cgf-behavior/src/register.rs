@@ -34,9 +34,9 @@ const MAX_SUBGRAPH_DEPTH: usize = 16;
 /// The order depends on the IDs only, never on the input order (REQ-K-4). A subgraph target may
 /// also be a behavior that is already in `registry` (a built-in or plugin behavior, or a graph
 /// from an earlier call). The checks that need the whole batch (duplicate, dangling reference,
-/// cycle, depth) run before anything is registered; a failure while building or registering
-/// a graph leaves the earlier graphs of the batch in the registry (ASM-091 d: callers register
-/// into a clone).
+/// cycle, depth) run before anything is registered, and the batch is all-or-nothing: graphs are
+/// staged in a clone of `registry` that replaces it only when every graph registered, so after
+/// an error `registry` is unchanged (ASM-099 e).
 ///
 /// # Errors
 /// [`GraphRegistrationError`]: a duplicate ID, an unresolved reference, a cycle, a chain deeper
@@ -58,17 +58,16 @@ pub fn register_graphs<'a>(
             return Err(RegistryError::Duplicate { kind, id }.into());
         }
     }
-    let Some(first) = batch.values().next() else {
-        return Ok(());
-    };
-    let order = Order::new(registry, &batch, first.id.clone()).sorted()?;
+    let order = Order::new(registry, &batch).sorted()?;
+    let mut staged = registry.clone();
     for id in order {
         let Some(def) = batch.get(&id) else {
             continue;
         };
-        let factory = GraphFactory::new(Arc::clone(def), registry)?;
-        registry.register_behavior(Arc::new(factory), info_of(def))?;
+        let factory = GraphFactory::new(Arc::clone(def), &staged)?;
+        staged.register_behavior(Arc::new(factory), info_of(def))?;
     }
+    *registry = staged;
     Ok(())
 }
 
@@ -102,25 +101,19 @@ fn info_of(def: &GraphDef) -> ComponentInfo {
 }
 
 /// The dependency walk: the depth-first post-order over the batch in ID order, which puts every
-/// subgraph before its callers.
+/// subgraph before its callers. Errors name the nearest batch graph on the path (`blame`).
 struct Order<'a> {
     registry: &'a Registry,
     batch: &'a BTreeMap<ComponentId, Arc<GraphDef>>,
     done: BTreeSet<ComponentId>,
     path: Vec<ComponentId>,
     out: Vec<ComponentId>,
-    /// Longest chain (in behaviors) starting at each visited ID.
+    /// Longest chain (in behaviors) starting at each finished ID.
     depth: BTreeMap<ComponentId, usize>,
-    /// The batch graph being walked from.
-    root: BehaviorId,
 }
 
 impl<'a> Order<'a> {
-    fn new(
-        registry: &'a Registry,
-        batch: &'a BTreeMap<ComponentId, Arc<GraphDef>>,
-        root: BehaviorId,
-    ) -> Self {
+    fn new(registry: &'a Registry, batch: &'a BTreeMap<ComponentId, Arc<GraphDef>>) -> Self {
         Self {
             registry,
             batch,
@@ -128,21 +121,14 @@ impl<'a> Order<'a> {
             path: Vec::new(),
             out: Vec::new(),
             depth: BTreeMap::new(),
-            root,
         }
     }
 
     fn sorted(mut self) -> Result<Vec<ComponentId>, GraphRegistrationError> {
         for (id, def) in self.batch {
-            self.root = def.id.clone();
-            self.visit(id)?;
+            self.visit(id, &def.id)?;
         }
         Ok(self.out)
-    }
-
-    /// `id` as a behavior ID (the grammars are the same, so the fallback is never used).
-    fn behavior_id(&self, id: &ComponentId) -> BehaviorId {
-        BehaviorId::new(id.as_str()).unwrap_or_else(|_| self.root.clone())
     }
 
     /// The subgraph targets of `id`, from the batch or from the registry's metadata; `None` if
@@ -164,32 +150,44 @@ impl<'a> Order<'a> {
         Some(info.subgraphs.iter().map(|(id, _)| id.clone()).collect())
     }
 
-    fn visit(&mut self, id: &ComponentId) -> Result<usize, GraphRegistrationError> {
-        if let Some(&d) = self.depth.get(id) {
-            return Ok(d);
-        }
+    /// Visits `id` and returns the length of the longest chain from it. The chain from the walk's
+    /// root through `id` must stay within [`MAX_SUBGRAPH_DEPTH`], also when `id` was finished
+    /// earlier through another path.
+    fn visit(
+        &mut self,
+        id: &ComponentId,
+        blame: &BehaviorId,
+    ) -> Result<usize, GraphRegistrationError> {
+        let too_deep = || GraphRegistrationError::TooDeep {
+            graph: blame.clone(),
+        };
         if self.path.contains(id) {
             return Err(GraphRegistrationError::Cycle {
-                graph: self.behavior_id(id),
+                graph: blame.clone(),
             });
+        }
+        if let Some(&d) = self.depth.get(id) {
+            return if self.path.len() + d > MAX_SUBGRAPH_DEPTH {
+                Err(too_deep())
+            } else {
+                Ok(d)
+            };
         }
         if self.path.len() >= MAX_SUBGRAPH_DEPTH {
-            return Err(GraphRegistrationError::TooDeep {
-                graph: self.behavior_id(id),
-            });
+            return Err(too_deep());
         }
         let Some(targets) = self.targets(id) else {
-            // The caller is the last path entry (a top-level miss cannot happen: it is in the batch).
-            let caller = self.path.last().unwrap_or(id);
             return Err(GraphRegistrationError::Unresolved {
-                graph: self.behavior_id(caller),
+                graph: blame.clone(),
                 id: id.clone(),
             });
         };
+        let own = self.batch.get(id).map(|def| def.id.clone());
+        let blame = own.as_ref().unwrap_or(blame);
         self.path.push(id.clone());
         let mut deepest = 0;
         for target in &targets {
-            deepest = deepest.max(self.visit(target)?);
+            deepest = deepest.max(self.visit(target, blame)?);
         }
         self.path.pop();
         if self.batch.contains_key(id) && self.done.insert(id.clone()) {

@@ -200,6 +200,12 @@ impl Engine {
     /// tick, until `until` is reached, the clock is idle, or the callback returns
     /// [`ControlFlow::Break`] (then [`RunSummary::stopped_early`] is set).
     ///
+    /// # Stack
+    /// Behavior graphs are ticked by recursion, one or two frames per node level (up to 128 levels
+    /// per graph, 16 graphs deep). The calling thread needs at least 2 MiB in a debug build
+    /// (worst case measured 1.25-1.5 MiB, ASM-098); drive the engine from a thread with an
+    /// explicit stack of 4 MiB or more.
+    ///
     /// # Errors
     /// [`EngineError::Kernel`] if a tick fails (time overflow).
     pub fn run(
@@ -241,6 +247,12 @@ impl Engine {
     /// Runs `n` more ticks. In stepped mode this requests `n` steps first; in other modes it
     /// runs until the tick count has grown by `n`. While paused nothing runs. When the callback
     /// breaks, the steps not yet run are cancelled.
+    ///
+    /// # Stack
+    /// Behavior graphs are ticked by recursion, one or two frames per node level (up to 128 levels
+    /// per graph, 16 graphs deep). The calling thread needs at least 2 MiB in a debug build
+    /// (worst case measured 1.25-1.5 MiB, ASM-098); drive the engine from a thread with an
+    /// explicit stack of 4 MiB or more.
     ///
     /// # Errors
     /// [`EngineError::Kernel`] if a tick fails (time overflow).

@@ -111,6 +111,7 @@ impl GraphFactory {
     /// node arena the interpreter cannot run.
     pub fn new(def: Arc<GraphDef>, registry: &Registry) -> Result<Self, GraphRegistrationError> {
         program::validate(&def)?;
+        check_required(&def)?;
         let id =
             ComponentId::new(def.id.as_str()).map_err(|e| GraphRegistrationError::Malformed {
                 graph: def.id.clone(),
@@ -164,17 +165,31 @@ fn resolve_subgraph(
     let factory = registry.behavior(&call.id).ok_or_else(unresolved)?;
     let info = registry.info(&call.id).ok_or_else(unresolved)?;
     let required = factory.param_schema().as_json().get("required");
+    let bad = |reason: String| GraphRegistrationError::Malformed {
+        graph: def.id.clone(),
+        reason: format!("node `{}`: {reason}", node.name),
+    };
     let mut inputs = Vec::with_capacity(call.inputs.len());
     for (param, key) in &call.inputs {
         let Some(&ty) = info.param_types.get(param) else {
-            return Err(GraphRegistrationError::Malformed {
-                graph: def.id.clone(),
-                reason: format!(
-                    "node `{}` binds `{param}`, which `{}` does not declare bindable",
-                    node.name, call.id
-                ),
-            });
+            return Err(bad(format!(
+                "binds `{param}`, which `{}` does not declare bindable",
+                call.id
+            )));
         };
+        // The parent's readable keys are its declared keys and its own params.
+        let Some(&parent) = def
+            .blackboard
+            .get(key)
+            .or_else(|| def.interface.types.get(key))
+        else {
+            return Err(bad(format!(
+                "binds `{param}` to `{key}`, which is not a key of this graph"
+            )));
+        };
+        if parent != ty && !(parent == BbType::Integer && ty == BbType::Number) {
+            return Err(bad(format!("binds `{param}` ({ty}) to `{key}` ({parent})")));
+        }
         let listed = required
             .and_then(ParamValue::as_array)
             .is_some_and(|names| names.iter().any(|n| n.as_str() == Some(param)));
@@ -185,9 +200,62 @@ fn resolve_subgraph(
             to_number: ty == BbType::Number,
         });
     }
+    for (port, key) in &call.outputs {
+        let Some(&ty) = info.outputs.get(port) else {
+            return Err(bad(format!("`{}` has no output port `{port}`", call.id)));
+        };
+        if def.interface.types.contains_key(key) {
+            return Err(bad(format!(
+                "output `{port}` targets `{key}`, a read-only param of this graph"
+            )));
+        }
+        let Some(&parent) = def.blackboard.get(key) else {
+            return Err(bad(format!(
+                "output `{port}` targets `{key}`, which is not a declared key of this graph"
+            )));
+        };
+        if parent != ty {
+            return Err(bad(format!(
+                "output `{port}` ({ty}) targets `{key}` ({parent})"
+            )));
+        }
+    }
     Ok(Leaf::Behavior {
         factory: Arc::clone(factory),
         inputs,
+    })
+}
+
+/// The schema's `required` list must be the params without a default (binding-only params are
+/// not in the schema); `resolve_subgraph` and callers' `Input::required` rely on it.
+fn check_required(def: &GraphDef) -> Result<(), GraphRegistrationError> {
+    let interface = &def.interface;
+    let mut expected: Vec<&str> = interface
+        .types
+        .iter()
+        .filter(|(name, ty)| {
+            !matches!(ty, BbType::Entity | BbType::Position)
+                && !interface.defaults.contains_key(*name)
+        })
+        .map(|(name, _)| name.as_str())
+        .collect();
+    let mut listed: Vec<&str> = interface
+        .params
+        .as_json()
+        .get("required")
+        .and_then(ParamValue::as_array)
+        .map(|a| a.iter().filter_map(ParamValue::as_str).collect())
+        .unwrap_or_default();
+    expected.sort_unstable();
+    listed.sort_unstable();
+    if expected == listed {
+        return Ok(());
+    }
+    Err(GraphRegistrationError::Malformed {
+        graph: def.id.clone(),
+        reason: format!(
+            "the parameter schema requires {listed:?} but the params without a default are {expected:?}"
+        ),
     })
 }
 

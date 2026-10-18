@@ -245,3 +245,125 @@ fn unset_required_input_halts_with_halt_running_and_keeps_finished_state() {
     );
     assert_eq!(steps[4].trace, lines(&["put:t", "tick:aim"]));
 }
+
+/// `BehaviorInstance::halt` contract: an instance halt of the caller reaches the child even when its
+/// subgraph node is not Running (ASM-096 c); the child's `halt` must tolerate it.
+#[test]
+fn instance_halt_calls_the_childs_halt_even_when_it_is_not_running() {
+    let mut bench = Bench::new();
+    bench.register_plugin_behavior("test.target.plugin");
+    let mut b = B::new();
+    let node = b.subgraph("call", call("test.target.plugin", json!({})));
+    bench.register(vec![b.graph("test.graph.parent", node)]);
+    let mut run = bench.run_registered("test.graph.parent", &json!({}));
+    let steps = run.steps(2);
+
+    let halted = run.halt();
+
+    assert_eq!(steps[1].status, Status::Success, "the child has finished");
+    assert_eq!(halted, lines(&["halt:leaf"]));
+}
+
+/// A refused input copy (not expected after validation) halts a Running child as a parent halt
+/// and fails the node, so `is_running` stays exact.
+#[expect(clippy::expect_used, reason = "tests lock a known-good mutex")]
+mod refused {
+    use super::*;
+    use cgf_core::{
+        BbValue, Behavior, BehaviorContext, BehaviorId, BehaviorInstance, BlackboardError,
+        EntityView, InstantiateError, IntentBuffer, TickRate,
+    };
+    use std::sync::Arc;
+
+    struct Refusing(BehaviorId, common::Log);
+    struct RefusingInstance(common::Log, u32);
+
+    impl Behavior for Refusing {
+        fn id(&self) -> &BehaviorId {
+            &self.0
+        }
+        fn instantiate(&self, _: TickRate) -> Result<Box<dyn BehaviorInstance>, InstantiateError> {
+            Ok(Box::new(RefusingInstance(Arc::clone(&self.1), 0)))
+        }
+    }
+    impl BehaviorInstance for RefusingInstance {
+        fn tick(
+            &mut self,
+            _: &mut BehaviorContext<'_>,
+            _: &EntityView<'_>,
+            _: &mut IntentBuffer<'_>,
+        ) -> Status {
+            self.0.lock().expect("log").push("tick:child".to_string());
+            Status::Running
+        }
+        fn halt(&mut self) {
+            self.0.lock().expect("log").push("halt:full".to_string());
+        }
+        fn halt_running(&mut self) {
+            self.0.lock().expect("log").push("halt:running".to_string());
+        }
+        fn output(&self, _: &str) -> Option<BbValue> {
+            None
+        }
+        fn set_input(&mut self, param: &str, _: Option<BbValue>) -> Result<(), BlackboardError> {
+            self.1 += 1;
+            if self.1 > 1 {
+                return Err(BlackboardError::Undeclared { key: param.into() });
+            }
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn refused_input_halts_a_running_child_and_fails() {
+        let mut bench = Bench::new();
+        let id = common::bid("test.target.refusing");
+        bench
+            .registry
+            .register_behavior(
+                Arc::new(common::StubFactory::<dyn Behavior>::new(
+                    "test.target.refusing",
+                    Box::new({
+                        let log = Arc::clone(&bench.log);
+                        move |_, _| Ok(Arc::new(Refusing(id.clone(), Arc::clone(&log))))
+                    }),
+                )),
+                common::info(cgf_core::Provenance::Plugin).with_param_type("p", BbType::Integer),
+            )
+            .expect("register");
+        let mut b = B::new();
+        let put = b.put("put", "k", "slot");
+        let node = b.subgraph(
+            "call",
+            call("test.target.refusing", json!({})).with_input("p", "k"),
+        );
+        let root = b.seq("root", false, &[put, node]);
+        bench.register(vec![
+            b.graph("test.graph.parent", root)
+                .with_blackboard_key("k", BbType::Integer),
+        ]);
+        let mut run = bench.run_registered("test.graph.parent", &json!({}));
+        bench
+            .controls
+            .set_slot("slot", Some(cgf_core::BbValue::Integer(1)));
+
+        let steps = run.steps(3);
+
+        assert_eq!(steps[0].status, Status::Running);
+        assert_eq!(
+            steps[1].status,
+            Status::Failure,
+            "second set_input is refused"
+        );
+        assert!(
+            steps[1].trace.contains(&"halt:running".to_string()),
+            "{:?}",
+            steps[1].trace
+        );
+        assert!(!steps[1].trace.contains(&"tick:child".to_string()));
+        assert!(
+            !steps[2].trace.contains(&"halt:running".to_string()),
+            "no second halt"
+        );
+    }
+}

@@ -67,3 +67,73 @@ fn already_registered_levels_count() {
         "{result:?}"
     );
 }
+
+/// A deep subtree that sorts first by ID must not hide from the cap when a later graph reaches it
+/// through a long path: `test.z.g00 -> .. -> g08 -> test.m.g00 -> .. -> g10` is 9 + 11 = 20 levels.
+#[test]
+fn a_deep_subtree_visited_first_does_not_hide_from_the_cap() {
+    let link = |id: String, next: String| {
+        let mut b = B::new();
+        let node = b.subgraph("call", call(&next, json!({})));
+        b.graph(&id, node)
+    };
+    let mut graphs = Vec::new();
+    for i in 0..10 {
+        graphs.push(link(
+            format!("test.m.g{i:02}"),
+            format!("test.m.g{:02}", i + 1),
+        ));
+    }
+    graphs.push(script_graph("test.m.g10", "leaf", &["success"]));
+    for i in 0..8 {
+        graphs.push(link(
+            format!("test.z.g{i:02}"),
+            format!("test.z.g{:02}", i + 1),
+        ));
+    }
+    graphs.push(link("test.z.g08".to_string(), "test.m.g00".to_string()));
+    let mut bench = Bench::new();
+
+    let result = register(&mut bench, graphs.clone());
+    graphs.reverse();
+    let reversed = register(&mut bench, graphs);
+
+    for r in [result, reversed] {
+        assert!(
+            matches!(r, Err(GraphRegistrationError::TooDeep { .. })),
+            "{r:?}"
+        );
+    }
+    assert!(
+        bench.registry.behavior(&cid("test.m.g00")).is_none(),
+        "nothing registered"
+    );
+}
+
+/// The same shape exactly at the limit (5 + 11 = 16) is accepted.
+#[test]
+fn a_shared_subtree_reached_at_exactly_the_limit_is_accepted() {
+    let link = |id: String, next: String| {
+        let mut b = B::new();
+        let node = b.subgraph("call", call(&next, json!({})));
+        b.graph(&id, node)
+    };
+    let mut graphs = Vec::new();
+    for i in 0..10 {
+        graphs.push(link(
+            format!("test.m.g{i:02}"),
+            format!("test.m.g{:02}", i + 1),
+        ));
+    }
+    graphs.push(script_graph("test.m.g10", "leaf", &["success"]));
+    for i in 0..4 {
+        graphs.push(link(
+            format!("test.z.g{i:02}"),
+            format!("test.z.g{:02}", i + 1),
+        ));
+    }
+    graphs.push(link("test.z.g04".to_string(), "test.m.g00".to_string()));
+    let mut bench = Bench::new();
+
+    assert!(register(&mut bench, graphs).is_ok());
+}
