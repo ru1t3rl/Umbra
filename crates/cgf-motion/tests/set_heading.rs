@@ -249,3 +249,57 @@ fn given_set_heading_intents_then_the_motion_contract_holds() {
 
     assert_eq!(check_motion_model(&model(), &cases, DT, &flat()), Ok(()));
 }
+
+/// ASM-094 (a): a non-finite `SetHeading` after a finite steering intent keeps that steering.
+#[test]
+fn given_non_finite_set_heading_after_move_to_then_the_move_to_still_steers() {
+    let intents = [
+        cruise(10.0),
+        Intent::MoveTo {
+            destination: dest(1000.0, 0.0),
+        },
+        Intent::SetHeading(Radians(f64::NAN)),
+    ];
+
+    let states = run(start(0.0, 10.0), &intents, 1);
+
+    assert!((heading_of(&states[0]) - TURN_STEP).abs() < EPS);
+}
+
+/// ASM-094 (b): `SetHeading` without `SetSpeed` slows the entity to a stop, and the heading
+/// changes only while the new speed is positive (ASM-049).
+#[test]
+fn given_set_heading_without_set_speed_then_speed_falls_and_heading_turns_only_while_moving() {
+    let accel_step = 2.5 / HZ;
+    let from = start(0.0, 10.0);
+    let states = run(from, &[Intent::SetHeading(Radians(FRAC_PI_2))], 130);
+
+    let mut speed = from.velocity.norm();
+    let mut heading = heading_of(&from);
+    for s in &states {
+        let expected = (speed - accel_step).max(0.0);
+        let now = s.velocity.norm();
+        assert!((now - expected).abs() < 1e-9, "speed {now} vs {expected}");
+        let turned = angle_delta(heading_of(s), heading).abs();
+        if now > 0.0 {
+            assert!(turned > 0.0 || angle_delta(FRAC_PI_2, heading).abs() < EPS);
+        } else {
+            assert!(turned < EPS, "turned {turned} while stopped");
+        }
+        speed = now;
+        heading = heading_of(s);
+    }
+    assert!(speed == 0.0, "the entity came to a stop");
+}
+
+/// ASM-094 (e): an exact reversal (heading error of pi) turns clockwise.
+#[test]
+fn given_exact_reversal_when_stepped_then_it_turns_clockwise() {
+    let states = run(
+        start(0.0, 10.0),
+        &[cruise(10.0), Intent::SetHeading(Radians(PI))],
+        1,
+    );
+
+    assert!((angle_delta(heading_of(&states[0]), 0.0) - TURN_STEP).abs() < EPS);
+}

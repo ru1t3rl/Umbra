@@ -27,7 +27,9 @@ pub enum Intent {
     Hold,
     /// Follow the entity's initial route once; the kernel expands it in place (ASM-082); without a route it is dropped.
     FollowRoute,
-    /// Steer to this true heading when no later `MoveTo` overrides it.
+    /// Steer to this true heading when no later `MoveTo` overrides it. Sets no speed: pair it with
+    /// `SetSpeed`, otherwise the entity slows to a stop and, with no pivot turns (ASM-049), turns
+    /// only while still moving.
     SetHeading(Radians),
     /// Fire `weapon` at `target`. Recorded only until events land (ADR 0016).
     Fire {
