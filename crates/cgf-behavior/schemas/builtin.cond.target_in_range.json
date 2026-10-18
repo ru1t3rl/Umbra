@@ -1,0 +1,21 @@
+{
+  "title": "builtin.cond.target_in_range parameters",
+  "description": "Succeeds when the entity stored in a blackboard key is a current contact within range_m meters. Fails if the key is unset or the entity is not (or no longer) a contact.",
+  "type": "object",
+  "properties": {
+    "target_key": {
+      "type": "string",
+      "description": "Blackboard key of type entity that holds the target (read only)."
+    },
+    "range_m": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum distance in meters (3D range of the contact, inclusive)."
+    }
+  },
+  "required": ["target_key", "range_m"],
+  "additionalProperties": false,
+  "examples": [
+    { "target_key": "target", "range_m": 1500.0 }
+  ]
+}

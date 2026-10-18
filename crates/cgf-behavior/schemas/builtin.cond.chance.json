@@ -1,0 +1,18 @@
+{
+  "title": "builtin.cond.chance parameters",
+  "description": "Succeeds with the given probability. Each evaluation draws one number from the entity's own random stream, so the result depends on the scenario seed and is reproducible. A probability of 0 never succeeds and 1 always does.",
+  "type": "object",
+  "properties": {
+    "probability": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Chance of Success per evaluation"
+    }
+  },
+  "required": ["probability"],
+  "additionalProperties": false,
+  "examples": [
+    { "probability": 0.5 }
+  ]
+}

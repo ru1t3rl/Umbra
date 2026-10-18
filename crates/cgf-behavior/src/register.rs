@@ -1,6 +1,6 @@
 //! Registration of the built-in conditions and actions and of graphs as behaviors.
 //!
-//! `register_graphs` is WI-10; `register_builtins` is a signature stub until WI-11.
+//! `register_graphs` is WI-10; `register_builtins` (WI-11) delegates to the `leaves` module.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -11,6 +11,7 @@ use cgf_core::{
 };
 
 use crate::factory::{GraphFactory, GraphRegistrationError};
+use crate::leaves;
 
 /// Registers the built-in conditions (`builtin.cond.{enemy_in_range, target_in_range,
 /// timer_elapsed, chance}`) and actions (`builtin.action.{follow_route, move_to, wait, fire}`),
@@ -18,9 +19,8 @@ use crate::factory::{GraphFactory, GraphRegistrationError};
 ///
 /// # Errors
 /// [`RegistryError::Duplicate`] if one of them is already registered.
-#[expect(clippy::todo, reason = "M3 WI-11 stub")]
-pub fn register_builtins(_registry: &mut Registry) -> Result<(), RegistryError> {
-    todo!("M3 WI-11")
+pub fn register_builtins(registry: &mut Registry) -> Result<(), RegistryError> {
+    leaves::register(registry)
 }
 
 /// The longest `subgraph` chain `register_graphs` accepts, counted in behaviors including the

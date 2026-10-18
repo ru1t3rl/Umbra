@@ -155,7 +155,6 @@ fn tick(
 
 /// ASM-077: exactly four conditions and four actions are built in, all with `Provenance::Builtin`.
 #[test]
-#[ignore = "WI-11"]
 fn register_builtins_registers_the_four_conditions_and_four_actions() {
     let registry = registry();
 
@@ -188,7 +187,6 @@ fn register_builtins_registers_the_four_conditions_and_four_actions() {
 
 /// REQ-B-17: the leaves that take blackboard key names say so in their `ComponentInfo`.
 #[test]
-#[ignore = "WI-11"]
 fn blackboard_params_are_declared_for_store_as_and_target_key() {
     let registry = registry();
     let declared = |id: &str| -> Vec<BlackboardParam> {
@@ -225,7 +223,6 @@ fn blackboard_params_are_declared_for_store_as_and_target_key() {
 
 /// REQ-T-3: every schema has `examples`, and every example builds.
 #[test]
-#[ignore = "WI-11"]
 fn every_schema_has_examples_that_build() {
     let registry = registry();
     for id in CONDITIONS {
@@ -257,7 +254,6 @@ fn every_schema_has_examples_that_build() {
 
 /// Factory rule: bad parameters are a `BuildError` located by a JSON pointer, never a panic.
 #[test]
-#[ignore = "WI-11"]
 fn each_factory_rejects_bad_params_with_a_json_pointer() {
     let registry = registry();
     let cases: [(&str, serde_json::Value, &str); 13] = [
@@ -322,7 +318,6 @@ fn each_factory_rejects_bad_params_with_a_json_pointer() {
 /// ASM-077: `enemy_in_range` succeeds for a hostile contact in range and stores the nearest one;
 /// friendly, neutral and out-of-range contacts do not count.
 #[test]
-#[ignore = "WI-11"]
 fn enemy_in_range_stores_the_nearest_hostile_contact_in_range() {
     let cond = condition(ENEMY, &json!({ "range_m": 1000.0, "store_as": "target" }));
     let contacts = [
@@ -342,7 +337,6 @@ fn enemy_in_range_stores_the_nearest_hostile_contact_in_range() {
 
 /// ASM-077: equal ranges are broken by the smaller entity id.
 #[test]
-#[ignore = "WI-11"]
 fn enemy_in_range_breaks_range_ties_by_entity_id() {
     let cond = condition(ENEMY, &json!({ "range_m": 1000.0, "store_as": "target" }));
     let contacts = [
@@ -365,7 +359,6 @@ fn enemy_in_range_breaks_range_ties_by_entity_id() {
 /// ASM-077, ASM-079: no contacts, only out-of-range, friendly or neutral contacts, an observer
 /// without a force, and a contact without a force are all Failure and store nothing.
 #[test]
-#[ignore = "WI-11"]
 fn enemy_in_range_fails_without_a_hostile_contact_in_range() {
     let cond = condition(ENEMY, &json!({ "range_m": 1000.0, "store_as": "target" }));
     let blue = force("blue");
@@ -404,7 +397,6 @@ fn enemy_in_range_fails_without_a_hostile_contact_in_range() {
 
 /// ASM-077: `store_as` is optional.
 #[test]
-#[ignore = "WI-11"]
 fn enemy_in_range_without_store_as_just_answers() {
     let cond = condition(ENEMY, &json!({ "range_m": 1000.0 }));
     let contacts = [contact(2, 100.0, Some("red"))];
@@ -422,7 +414,6 @@ fn enemy_in_range_without_store_as_just_answers() {
 /// ASM-077: `target_in_range` is true iff the entity in the blackboard key is a current contact
 /// within `range_m`.
 #[test]
-#[ignore = "WI-11"]
 fn target_in_range_result_paths() {
     let cond = condition(
         TARGET,
@@ -452,7 +443,6 @@ fn target_in_range_result_paths() {
 /// ASM-077, ASM-078: `timer_elapsed` is true once the simulation time is at least `duration_s`
 /// (whole ticks: 0.1 s is 3 ticks at 30 Hz).
 #[test]
-#[ignore = "WI-11"]
 fn timer_elapsed_compares_simulation_time_in_whole_ticks() {
     let cond = condition(TIMER, &json!({ "duration_s": 0.1 }));
     let mut bb = Blackboard::default();
@@ -467,7 +457,6 @@ fn timer_elapsed_compares_simulation_time_in_whole_ticks() {
 /// REQ-B-16, ASM-077: `chance` draws exactly once from the entity stream per evaluation, and a
 /// probability of 0 or 1 is exact.
 #[test]
-#[ignore = "WI-11"]
 fn chance_draws_exactly_once_per_evaluation_and_zero_and_one_are_exact() {
     let mut expected = stream();
     let _ = expected.next_u64();
@@ -488,7 +477,6 @@ fn chance_draws_exactly_once_per_evaluation_and_zero_and_one_are_exact() {
 
 /// REQ-K-4: the same stream gives the same answers (the seed matters, nothing else does).
 #[test]
-#[ignore = "WI-11"]
 fn chance_answers_follow_the_stream() {
     let cond = condition(CHANCE, &json!({ "probability": 0.5 }));
     let run = |seed: u64| -> Vec<bool> {
@@ -508,7 +496,6 @@ fn chance_answers_follow_the_stream() {
 /// ASM-077: `follow_route` emits `FollowRoute` and is Running until the initial route is
 /// complete, then Success; without a route it fails and emits nothing.
 #[test]
-#[ignore = "WI-11"]
 fn follow_route_result_paths() {
     let mut act = action(FOLLOW, &json!({}));
     let waypoints = [Ecef(Vec3::new(6_378_137.0, 100.0, 0.0))];
@@ -538,7 +525,6 @@ fn follow_route_result_paths() {
 /// ASM-077: `move_to` fails if the target is not a current contact (or the key is unset), is
 /// Running with `SetSpeed` and `MoveTo` toward the contact, and Success within the radius.
 #[test]
-#[ignore = "WI-11"]
 fn move_to_result_paths() {
     let params = json!({ "target_key": "target", "speed_mps": 8.0, "arrival_radius_m": 50.0 });
     let mut act = action(MOVE_TO, &params);
@@ -573,7 +559,6 @@ fn move_to_result_paths() {
 /// ASM-077, ASM-078: `wait` emits `Hold` and is Running for the ticks of `duration_s` counted from
 /// its own first tick, then Success; a halt restarts the count.
 #[test]
-#[ignore = "WI-11"]
 fn wait_counts_whole_ticks_from_its_first_tick_and_restarts_after_halt() {
     let mut act = action(WAIT, &json!({ "duration_s": 0.1 }));
     let mut bb = Blackboard::default();
@@ -595,7 +580,6 @@ fn wait_counts_whole_ticks_from_its_first_tick_and_restarts_after_halt() {
 /// ASM-078 / ADR 0013 amendment: a `wait` whose duration does not fit in ticks fails `instantiate`
 /// with `InstantiateError::Duration`.
 #[test]
-#[ignore = "WI-11"]
 fn wait_duration_that_does_not_fit_fails_instantiate() {
     let factory = registry()
         .action(&cid(WAIT))
@@ -614,7 +598,6 @@ fn wait_duration_that_does_not_fit_fails_instantiate() {
 /// ASM-077: `fire` emits `Fire { target, weapon }` and succeeds; it fails, without an intent, if
 /// the target is not a current contact or the key is unset.
 #[test]
-#[ignore = "WI-11"]
 fn fire_result_paths() {
     let params = json!({ "target_key": "target", "weapon": "example.weapon.main_gun" });
     let mut act = action(FIRE, &params);
@@ -650,4 +633,385 @@ fn fire_result_paths() {
             }]
         )
     );
+}
+
+// --- added in WI-11: remaining AT-11 rows ------------------------------------------------------
+
+/// A `store_as` key that is not declared (or has another type) cannot be written, so the
+/// condition fails instead of claiming a target it could not store (ASM-100 a).
+#[test]
+fn enemy_in_range_fails_when_store_as_cannot_be_written() {
+    let cond = condition(ENEMY, &json!({ "range_m": 1000.0, "store_as": "target" }));
+    let contacts = [contact(2, 100.0, Some("red"))];
+    let mut undeclared = Blackboard::default();
+    let mut wrong_type = Blackboard::default();
+    wrong_type.declare("target", BbType::Bool);
+
+    let a = check(
+        cond.as_ref(),
+        0,
+        Some(&force("blue")),
+        &contacts,
+        &mut undeclared,
+    );
+    let b = check(
+        cond.as_ref(),
+        0,
+        Some(&force("blue")),
+        &contacts,
+        &mut wrong_type,
+    );
+
+    assert!(!a && !b);
+    assert_eq!(wrong_type.get("target"), None);
+}
+
+/// ASM-077: the range test is inclusive and uses `Contact::range`.
+#[test]
+fn range_tests_are_inclusive() {
+    let enemy = condition(ENEMY, &json!({ "range_m": 500.0 }));
+    let target = condition(TARGET, &json!({ "target_key": "target", "range_m": 500.0 }));
+    let contacts = [contact(3, 500.0, Some("red"))];
+    let mut bb = bb_with_target();
+    bb.set("target", BbValue::Entity(eid(3))).expect("declared");
+
+    assert!(check(
+        enemy.as_ref(),
+        0,
+        Some(&force("blue")),
+        &contacts,
+        &mut bb
+    ));
+    assert!(check(target.as_ref(), 0, None, &contacts, &mut bb));
+}
+
+/// `target_in_range` does not require hostility: it only asks about the stored contact.
+#[test]
+fn target_in_range_ignores_forces() {
+    let cond = condition(TARGET, &json!({ "target_key": "target", "range_m": 500.0 }));
+    let mut bb = bb_with_target();
+    bb.set("target", BbValue::Entity(eid(3))).expect("declared");
+
+    let friendly = check(
+        cond.as_ref(),
+        0,
+        Some(&force("blue")),
+        &[contact(3, 100.0, Some("blue"))],
+        &mut bb,
+    );
+
+    assert!(friendly);
+}
+
+/// ASM-078 at another rate, and a duration beyond `u64` ticks never elapses.
+#[test]
+fn timer_elapsed_at_60_hz_and_with_an_unreachable_duration() {
+    let st = state();
+    let run = |cond: &dyn Condition, tick: u64| {
+        let mut rng = stream();
+        let r60 = TickRate::new(60).expect("60 Hz");
+        let mut ctx = BehaviorContext::new(SimTime::at_tick(r60, tick), &mut rng);
+        cond.check(
+            &mut ctx,
+            &EntityView::new(eid(1), &st),
+            &mut Blackboard::default(),
+        )
+    };
+    let cond = condition(TIMER, &json!({ "duration_s": 0.1 }));
+    let never = condition(TIMER, &json!({ "duration_s": 1e30 }));
+
+    let results: Vec<bool> = (4..9).map(|t| run(cond.as_ref(), t)).collect();
+
+    assert_eq!(
+        results,
+        [false, false, true, true, true],
+        "0.1 s is 6 ticks"
+    );
+    assert!(!run(never.as_ref(), u64::MAX));
+}
+
+/// REQ-B-16: probabilities strictly between 0 and 1 follow the draw (`draw < p`), one draw each.
+#[test]
+fn chance_succeeds_iff_the_draw_is_below_the_probability() {
+    let cond = condition(CHANCE, &json!({ "probability": 0.3 }));
+    let mut mirror = stream();
+    let mut rng = stream();
+    let mut bb = Blackboard::default();
+
+    for tick in 0..200 {
+        let got = check_with(cond.as_ref(), tick, None, &[], &mut bb, &mut rng);
+        assert_eq!(got, mirror.next_f64() < 0.3, "tick {tick}");
+    }
+    assert_eq!(rng, mirror);
+}
+
+/// Probability 0 and 1 are exact over many draws.
+#[test]
+fn chance_zero_never_and_one_always_over_many_draws() {
+    let never = condition(CHANCE, &json!({ "probability": 0.0 }));
+    let always = condition(CHANCE, &json!({ "probability": 1.0 }));
+    let mut rng = stream();
+    let mut bb = Blackboard::default();
+
+    for tick in 0..1000 {
+        assert!(!check_with(
+            never.as_ref(),
+            tick,
+            None,
+            &[],
+            &mut bb,
+            &mut rng
+        ));
+        assert!(check_with(
+            always.as_ref(),
+            tick,
+            None,
+            &[],
+            &mut bb,
+            &mut rng
+        ));
+    }
+}
+
+/// ASM-077: an empty route counts as no route; `follow_route` takes `null` or `{}` params.
+#[test]
+fn follow_route_with_an_empty_route_fails_and_accepts_null_params() {
+    let mut act = action(FOLLOW, &serde_json::Value::Null);
+    let mut bb = Blackboard::default();
+
+    let empty = tick(
+        act.as_mut(),
+        0,
+        &[],
+        Some(RouteView::new(&[], 0, false)),
+        &mut bb,
+    );
+
+    assert_eq!(empty, (Status::Failure, vec![]));
+}
+
+/// A finished route still emits `FollowRoute` (the kernel expands it to `Hold`, ASM-100 b).
+#[test]
+fn follow_route_emits_the_intent_on_the_completion_tick() {
+    let mut act = action(FOLLOW, &json!({}));
+    let waypoints = [Ecef(Vec3::new(6_378_137.0, 100.0, 0.0))];
+    let mut bb = Blackboard::default();
+
+    let done = tick(
+        act.as_mut(),
+        0,
+        &[],
+        Some(RouteView::new(&waypoints, 0, true)),
+        &mut bb,
+    );
+
+    assert_eq!(done, (Status::Success, vec![Intent::FollowRoute]));
+}
+
+/// `move_to` with a zero arrival radius succeeds only at distance zero, and holds no state: a
+/// target lost then found again is simply approached again.
+#[test]
+fn move_to_is_stateless_between_ticks() {
+    let params = json!({ "target_key": "target", "speed_mps": 8.0, "arrival_radius_m": 0.0 });
+    let mut act = action(MOVE_TO, &params);
+    let mut bb = bb_with_target();
+    bb.set("target", BbValue::Entity(eid(3))).expect("declared");
+    let here = contact(3, 0.0, Some("red"));
+    let near = contact(3, 1.0, Some("red"));
+
+    let a = tick(act.as_mut(), 0, std::slice::from_ref(&near), None, &mut bb);
+    let lost = tick(act.as_mut(), 1, &[], None, &mut bb);
+    act.halt();
+    act.halt();
+    let b = tick(act.as_mut(), 2, std::slice::from_ref(&near), None, &mut bb);
+    let arrived = tick(act.as_mut(), 3, std::slice::from_ref(&here), None, &mut bb);
+
+    assert_eq!(a.0, Status::Running);
+    assert_eq!(lost.0, Status::Failure);
+    assert_eq!(a, b);
+    assert_eq!(arrived, (Status::Success, vec![]));
+}
+
+/// A `wait` is Running exactly while it holds, restarts after it finished, and `halt` is
+/// idempotent and harmless when it is not Running (ASM-096 c).
+#[test]
+fn wait_restarts_after_success_and_halt_is_idempotent() {
+    let mut act = action(WAIT, &json!({ "duration_s": 0.0333 }));
+    let mut bb = Blackboard::default();
+    act.halt();
+    act.halt();
+
+    let statuses: Vec<Status> = (0..6)
+        .map(|t| tick(act.as_mut(), t, &[], None, &mut bb).0)
+        .collect();
+
+    assert_eq!(
+        statuses,
+        [
+            Status::Running,
+            Status::Success,
+            Status::Running,
+            Status::Success,
+            Status::Running,
+            Status::Success
+        ],
+        "0.0333 s is one tick at 30 Hz"
+    );
+}
+
+/// At 60 Hz the same duration is more ticks (ASM-078).
+#[test]
+fn wait_converts_duration_at_the_instance_rate() {
+    let factory = registry()
+        .action(&cid(WAIT))
+        .expect("registered")
+        .build(&json!({ "duration_s": 0.1 }))
+        .expect("builds");
+    let mut act = factory
+        .instantiate(TickRate::new(60).expect("60 Hz"))
+        .expect("instantiates");
+    let mut bb = Blackboard::default();
+
+    let statuses: Vec<Status> = (0..8)
+        .map(|t| tick(act.as_mut(), t, &[], None, &mut bb).0)
+        .collect();
+
+    assert_eq!(statuses[..6], [Status::Running; 6]);
+    assert_eq!(statuses[6], Status::Success);
+}
+
+/// `fire` holds no state and keeps working after halts.
+#[test]
+fn fire_fires_every_tick_and_halt_is_a_no_op() {
+    let params = json!({ "target_key": "target", "weapon": "example.weapon.main_gun" });
+    let mut act = action(FIRE, &params);
+    let target = contact(3, 500.0, Some("red"));
+    let mut bb = bb_with_target();
+    bb.set("target", BbValue::Entity(eid(3))).expect("declared");
+
+    act.halt();
+    let first = tick(
+        act.as_mut(),
+        0,
+        std::slice::from_ref(&target),
+        None,
+        &mut bb,
+    );
+    let second = tick(
+        act.as_mut(),
+        1,
+        std::slice::from_ref(&target),
+        None,
+        &mut bb,
+    );
+
+    assert_eq!(first, second);
+    assert_eq!(first.0, Status::Success);
+}
+
+/// Any key that is not a parameter is rejected at its pointer, and params that are not a table
+/// are rejected at the root. Wrong types and non-finite numbers are located, never a panic.
+#[test]
+fn unknown_keys_wrong_types_and_non_tables_are_located_errors() {
+    let registry = registry();
+    let cases: [(&str, serde_json::Value, &str); 8] = [
+        (FOLLOW, json!({ "speed": 1 }), "/speed"),
+        (
+            CHANCE,
+            json!({ "probability": 0.5, "extra": true }),
+            "/extra",
+        ),
+        (CHANCE, json!([0.5]), ""),
+        (CHANCE, json!({ "probability": "half" }), "/probability"),
+        (TIMER, json!({ "duration_s": null }), "/duration_s"),
+        (
+            TARGET,
+            json!({ "target_key": 7, "range_m": 1.0 }),
+            "/target_key",
+        ),
+        (
+            ENEMY,
+            json!({ "range_m": 1.0, "store_as": null }),
+            "/store_as",
+        ),
+        (WAIT, json!({}), "/duration_s"),
+    ];
+    for (id, params, pointer) in cases {
+        let error = if CONDITIONS.contains(&id) {
+            registry
+                .condition(&cid(id))
+                .expect("f")
+                .build(&params)
+                .err()
+        } else {
+            registry.action(&cid(id)).expect("f").build(&params).err()
+        };
+        assert_eq!(
+            error.and_then(|e| e.param).as_deref(),
+            Some(pointer),
+            "{id} {params}"
+        );
+    }
+}
+
+/// The weapon and key grammars: an over-long key is a located error, and a valid namespaced
+/// weapon builds.
+#[test]
+fn key_and_weapon_grammar_are_enforced() {
+    let registry = registry();
+    let long = "k".repeat(300);
+
+    let too_long = registry
+        .condition(&cid(TARGET))
+        .expect("f")
+        .build(&json!({ "target_key": long, "range_m": 1.0 }))
+        .err();
+    let bad_weapon = registry
+        .action(&cid(FIRE))
+        .expect("f")
+        .build(&json!({ "target_key": "t", "weapon": 5 }))
+        .err();
+
+    assert_eq!(
+        too_long.and_then(|e| e.param).as_deref(),
+        Some("/target_key")
+    );
+    assert_eq!(bad_weapon.and_then(|e| e.param).as_deref(), Some("/weapon"));
+}
+
+/// A condition's product reports the ID it was built for (Factory contract).
+#[test]
+fn products_carry_their_factory_id() {
+    let registry = registry();
+    for id in CONDITIONS {
+        let params = match id {
+            ENEMY => json!({ "range_m": 1.0 }),
+            TARGET => json!({ "target_key": "t", "range_m": 1.0 }),
+            TIMER => json!({ "duration_s": 1.0 }),
+            _ => json!({ "probability": 0.5 }),
+        };
+        let built = registry.condition(&cid(id)).expect("f").build(&params);
+        assert_eq!(built.expect("builds").id().as_str(), id);
+    }
+    for id in ACTIONS {
+        let params = match id {
+            FOLLOW => json!({}),
+            MOVE_TO => json!({ "target_key": "t", "speed_mps": 1.0, "arrival_radius_m": 1.0 }),
+            WAIT => json!({ "duration_s": 1.0 }),
+            _ => json!({ "target_key": "t", "weapon": "a.b" }),
+        };
+        let built = registry.action(&cid(id)).expect("f").build(&params);
+        assert_eq!(built.expect("builds").id().as_str(), id);
+    }
+}
+
+/// Registering twice is a duplicate error and leaves the first registration intact.
+#[test]
+fn registering_builtins_twice_is_a_duplicate_error() {
+    let mut registry = registry();
+
+    let again = register_builtins(&mut registry);
+
+    assert!(again.is_err());
+    assert_eq!(registry.ids(ComponentKind::Condition).len(), 4);
 }

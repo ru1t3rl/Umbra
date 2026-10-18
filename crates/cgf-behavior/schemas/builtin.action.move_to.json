@@ -1,0 +1,26 @@
+{
+  "title": "builtin.action.move_to parameters",
+  "description": "Moves toward the entity stored in a blackboard key, at a fixed speed. Running while the target is farther than arrival_radius_m, Success inside it. Fails if the key is unset or the entity is not a current contact.",
+  "type": "object",
+  "properties": {
+    "target_key": {
+      "type": "string",
+      "description": "Blackboard key of type entity that holds the target (read only)."
+    },
+    "speed_mps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Cruise speed in meters per second (the motion model clamps it to its limits)."
+    },
+    "arrival_radius_m": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Distance in meters at or below which the action succeeds."
+    }
+  },
+  "required": ["target_key", "speed_mps", "arrival_radius_m"],
+  "additionalProperties": false,
+  "examples": [
+    { "target_key": "target", "speed_mps": 8.0, "arrival_radius_m": 50.0 }
+  ]
+}

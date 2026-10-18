@@ -1,0 +1,22 @@
+{
+  "title": "builtin.cond.enemy_in_range parameters",
+  "description": "Succeeds when at least one hostile contact is within range_m meters. Hostile means both entities have a force and the forces differ; entities without a force are neutral and never hostile. The nearest hostile contact (ties: lowest entity id) can be stored in a blackboard key.",
+  "type": "object",
+  "properties": {
+    "range_m": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum distance in meters (3D range of the contact, inclusive)."
+    },
+    "store_as": {
+      "type": "string",
+      "description": "Optional blackboard key of type entity that receives the nearest hostile contact on success. The key must be declared in the graph's [blackboard] table. Left unchanged on failure."
+    }
+  },
+  "required": ["range_m"],
+  "additionalProperties": false,
+  "examples": [
+    { "range_m": 1500.0 },
+    { "range_m": 900.0, "store_as": "target" }
+  ]
+}

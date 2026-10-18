@@ -1,0 +1,10 @@
+{
+  "title": "builtin.action.follow_route parameters",
+  "description": "Follows the entity's initial route. Takes no parameters.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "examples": [
+    {}
+  ]
+}

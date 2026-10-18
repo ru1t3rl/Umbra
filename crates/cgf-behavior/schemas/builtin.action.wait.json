@@ -1,0 +1,17 @@
+{
+  "title": "builtin.action.wait parameters",
+  "description": "Holds position (emits Hold) for duration_s seconds, rounded up to whole ticks, counted from the node's first tick; Running until then, then Success. Starts over after it is halted or has finished.",
+  "type": "object",
+  "properties": {
+    "duration_s": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "How long to wait in seconds."
+    }
+  },
+  "required": ["duration_s"],
+  "additionalProperties": false,
+  "examples": [
+    { "duration_s": 5.0 }
+  ]
+}

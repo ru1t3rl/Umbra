@@ -1,0 +1,17 @@
+{
+  "title": "builtin.cond.timer_elapsed parameters",
+  "description": "Succeeds once the simulation time since the start of the run is at least duration_s seconds (rounded up to whole ticks). It measures the run, not the time since the node was last used; use a cooldown or timeout decorator for relative time.",
+  "type": "object",
+  "properties": {
+    "duration_s": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Time since the start of the run in seconds."
+    }
+  },
+  "required": ["duration_s"],
+  "additionalProperties": false,
+  "examples": [
+    { "duration_s": 30.0 }
+  ]
+}
