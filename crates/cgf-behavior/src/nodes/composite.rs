@@ -63,6 +63,8 @@ pub(crate) fn parallel(
         }
         let status = w.tick(child);
         if status == decisive {
+            // The decisive child is not halted only because `halt_node` checks `is_running`, which
+            // must stay exact for the fsm and subgraph nodes (WI-9, WI-10).
             halt_running(w, idx, children);
             reset(w, idx);
             return status;

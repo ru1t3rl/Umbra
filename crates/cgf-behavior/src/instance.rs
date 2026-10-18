@@ -201,11 +201,17 @@ fn reset_all(program: &Program, states: &mut [NodeState], idx: usize) {
         }
         (Kind::Sequence { children, .. } | Kind::Selector { children, .. }, state) => {
             *state = NodeState::Composite { running: None };
-            return children.iter().for_each(|&c| reset_all(program, states, c));
+            for &c in children {
+                reset_all(program, states, c);
+            }
+            return;
         }
         (Kind::Parallel { children, .. }, NodeState::Parallel { slots }) => {
             slots.fill(Slot::Idle);
-            return children.iter().for_each(|&c| reset_all(program, states, c));
+            for &c in children {
+                reset_all(program, states, c);
+            }
+            return;
         }
         (Kind::Repeat { child, .. }, NodeState::Repeat { successes, running }) => {
             (*successes, *running) = (0, false);
@@ -264,9 +270,6 @@ pub(crate) fn halt_node(program: &Program, states: &mut [NodeState], idx: usize)
                 if was == Some(Slot::Running) {
                     halt_node(program, states, child);
                 }
-            }
-            if let NodeState::Parallel { slots } = &mut states[idx] {
-                slots.fill(Slot::Idle);
             }
         }
         (Kind::Repeat { child, .. }, NodeState::Repeat { successes, running }) => {

@@ -91,15 +91,27 @@ Decision's **Halt** bullet; blackboards are still not cleared (ADR 0014).
   been halted since. A `cooldown` that is cooling (its child finished, its timer is running) returns
   Failure, so it is not Running.
 - **Parent halt** (a reactive composite skipping or pre-empting a child, a `parallel`'s decisive halt,
-  a `timeout` expiry, an FSM guard transition, a subgraph node halting its child graph, and the halt
-  of whatever these reach): a no-op on any node that is not Running. A halted Running node resets its
+  a `timeout` expiry, an FSM guard transition, a subgraph node halting its child behavior through
+  `halt_running` (below), and the halt of whatever these reach): a no-op on any node that is not Running. A halted Running node resets its
   **own** state (a memory composite's position, a `parallel`'s slots, a `repeat`'s count, a `timeout`'s
   start tick, an FSM's current state back to `initial`), tells a Running action to halt, and passes the
   halt on to its Running children only. A finished child (including a finished `parallel` slot) is not
   halted and keeps its state; resetting a slot to idle does not touch the child's subtree.
 - **Instance halt** (`BehaviorInstance::halt`, "the next tick starts fresh"): unchanged. Every node
   returns to its `instantiate` state, `cooldown` timers included; Running actions are told to halt,
-  others are not. A subgraph node's halt of its child graph is a parent halt, not an instance halt.
+  others are not. A subgraph node's halt of its child is a parent halt, not an instance halt.
+- **Subgraph halt mechanism** (human decision, 2026-10-18): a subgraph's child is a `dyn Behavior`
+  (graph, built-in, or a plugin from M4), and `BehaviorInstance::halt` is the instance halt, so
+  `cgf-core` gains one additive default method on `BehaviorInstance` (allowed under the A-001 freeze):
+  `fn halt_running(&mut self) { self.halt() }`, documented as "a parent halt (ADR 0013): halt what is
+  Running and keep the state of finished nodes; the default is the full reset of `halt`".
+  `GraphInstance` overrides it with the Running-only parent halt from its root; its `halt` stays the
+  full reset. A subgraph node's parent halt calls `halt_running` on its child, and only when the
+  subgraph node is Running; its full-reset (instance-halt) path calls `halt` on its child. Built-in and
+  plugin behaviors that do not override `halt_running` get the full reset, which is correct for any
+  behavior without timers that outlive a Running activation. **M4:** the plugin ABI must mirror
+  `halt_running` (an optional table entry that falls back to `halt` when absent), or document that
+  plugin behaviors always get the full reset.
 - **Required cases** (whole-tick arithmetic of ASM-092(a); `n` = cooldown ticks; `fire` is an action
   returning Success at once, `aim` an action returning Running):
   1. *Cooling cooldown under a pre-empted reactive sequence keeps its timer.* In
@@ -114,3 +126,6 @@ Decision's **Halt** bullet; blackboards are still not cleared (ADR 0014).
      `fire` (no cooldown pending).
   4. *Finished children keep their state.* A cooldown that finished inside a Running `repeat` or as a
      finished slot of a Running `parallel` keeps its timer when that node is halted.
+  5. *The same through a subgraph.* Cases 1 and 4 with the cooldown inside a graph called through a
+     `subgraph` node give the same traces as the inlined form; a built-in child that does not override
+     `halt_running` gets the full reset.
