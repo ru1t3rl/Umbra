@@ -1,6 +1,7 @@
 # Built-in subgraph: approach the target handed in by the caller and fire at it while it is in range.
 # Input: `target` (entity, required, bound by the caller with `{ key = .. }`).
-# Success: never (runs until halted). Failure: `target` unset or no longer a contact.
+# Success: never (runs until halted). Failure: only when `target` is unset. A set target that is no longer a contact
+# keeps it Running (`move_to` fails and the state restarts each tick), so callers stop calling it.
 schema_version = 1
 id = "builtin.subgraph.engage_target"
 version = "1.0.0"
@@ -13,7 +14,7 @@ params = { target             = { type = "entity" },
            fire_range_m       = { type = "number", exclusiveMinimum = 0, default = 1500.0 },
            approach_speed_mps = { type = "number", exclusiveMinimum = 0, default = 8.0 },
            aggression         = { type = "number", minimum = 0, maximum = 1, default = 0.5 } }
-result = "Failure when the target is unset or lost; otherwise Running"
+result = "Failure when the target is unset; otherwise Running, also when a set target is lost (the approach restarts each tick)"
 
 [nodes.modes]                      # the embedded FSM
 type = "fsm"

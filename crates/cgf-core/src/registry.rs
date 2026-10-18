@@ -326,6 +326,51 @@ impl Registry {
         }
     }
 
+    /// The longest `subgraph` chain that starts at the registered behavior `id`, as IDs from `id`
+    /// down (REQ-B-12, ASM-099 e). A behavior that calls no subgraph (a built-in, a plugin
+    /// behavior with no known references) is a chain of 1. References that are not registered
+    /// behaviors are skipped; of equal chains the one through the first reference wins.
+    ///
+    /// The walk stops `limit` levels below `id`, so the chain has at most `limit + 1` IDs and a
+    /// longer one shows as `limit + 1` (also for metadata that loops). `None` if `id` is not a
+    /// registered behavior. The loader (`validate`) and `register_graphs` (run) both call this,
+    /// so they share one definition of depth.
+    pub fn longest_subgraph_chain(
+        &self,
+        id: &ComponentId,
+        limit: usize,
+    ) -> Option<Vec<ComponentId>> {
+        self.behavior.get(id)?;
+        let mut memo = BTreeMap::new();
+        Some(self.chain_below(id, limit, &mut memo))
+    }
+
+    fn chain_below(
+        &self,
+        id: &ComponentId,
+        left: usize,
+        memo: &mut BTreeMap<(ComponentId, usize), Vec<ComponentId>>,
+    ) -> Vec<ComponentId> {
+        if let Some(found) = memo.get(&(id.clone(), left)) {
+            return found.clone();
+        }
+        let mut best: Vec<ComponentId> = Vec::new();
+        if left > 0 {
+            let targets = self.info(id).map_or(&[][..], |i| i.subgraphs.as_slice());
+            for (target, _) in targets {
+                if self.behavior.contains_key(target) {
+                    let chain = self.chain_below(target, left - 1, memo);
+                    if chain.len() > best.len() {
+                        best = chain;
+                    }
+                }
+            }
+        }
+        best.insert(0, id.clone());
+        memo.insert((id.clone(), left), best.clone());
+        best
+    }
+
     /// Every behavior, condition or action of `kind` with its schema and metadata, in ID order.
     /// Empty for other kinds. The factory and the metadata live in one map entry, so none can
     /// be missing (used by `Catalog::from_registry`).

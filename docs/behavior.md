@@ -630,10 +630,13 @@ second); any number of inputs may read it.
 loader's limit with `LoaderOptions::max_subgraph_depth`, but registration always applies 16. Inside one
 graph, nodes nest at most **128 levels** (`node_too_deep`). Graphs that call each other in a loop are
 `subgraph_cycle` (once per strongly connected group, at the first `ref` of the shortest cycle through its
-smallest ID, with one note per remaining edge). The loader counts only the graphs of the load; a call to
-a registered behavior (for example a built-in graph) counts as the end of the chain at load time, while
-registration also counts the registered behavior's own calls. Keep chains that end in a built-in graph
-with its own subgraph calls well under 16.
+smallest ID, with one note per remaining edge). Depth counts behaviors, the same way at load time (`cgf-cli validate`) and at registration: a call to a
+registered graph (for example `builtin.fsm.patrol_and_engage`, which itself calls
+`builtin.subgraph.engage_target`) adds that graph's whole longest chain, one level per behavior, and a
+registered behavior that calls no subgraph (a built-in leaf-like behavior, a plugin behavior) adds 1. So
+15 of your graphs ending in `builtin.fsm.patrol_and_engage` are 17 levels and `subgraph_too_deep` at the
+call that crosses the limit, with a note that names the registered chain; what `validate` accepts also
+instantiates (ASM-099 e).
 
 ## Load-time checks
 `cgf-cli validate` and every scenario load run the M2 pipeline over graph files too (A-001): all errors of
@@ -824,7 +827,7 @@ Every code the graph loader can emit (positions per ASM-092(b)):
 | `invalid_version` | `version` is not a semantic version, or a `subgraph` `version` is not a range |
 | `version_mismatch` | The target's version does not satisfy the call's range (note at the target's `version`) |
 | `subgraph_cycle` | Graphs call each other in a loop (once per cycle group) |
-| `subgraph_too_deep` | A `subgraph` chain longer than 16 graphs |
+| `subgraph_too_deep` | A `subgraph` chain longer than 16 behaviors, registered chains included (note names the registered chain) |
 | `no_initial_state` | An `fsm` without `initial`, or whose `initial` names no state |
 | `unreachable_state` | An FSM state that no chain of transitions from `initial` reaches (at the state key) |
 | `invalid_binding` | A `{ key }` form outside a `subgraph` node's top-level params (also in leaf or template params); a `{ param }` form in template params; a `{ param }` naming an undeclared param or one of an incompatible type; a `{ key }` binding to an undeclared key or one of another type; binding a param that the target uses as `{ param }` (note at the reference) or that a registered behavior does not declare bindable; an output binding to an unknown port, to an undeclared, read-only or wrongly typed key, or to a key another output already writes; an `outputs.from` that is undeclared or of another type; a `target_key`/`store_as` naming an undeclared key, a key of the wrong type, or (for `store_as`) a read-only param key |

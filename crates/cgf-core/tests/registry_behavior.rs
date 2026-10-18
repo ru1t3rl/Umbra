@@ -192,3 +192,37 @@ fn given_new_kinds_when_displayed_then_nouns_match() {
     assert_eq!(ComponentKind::Action.to_string(), "action");
     check::<Registry>();
 }
+
+/// REQ-B-12, ASM-099 e: the longest chain below a registered behavior counts one level per
+/// behavior, 1 without references, and stops `limit` levels down (also for looping metadata).
+#[test]
+fn longest_subgraph_chain_counts_registered_levels() {
+    let mut r = Registry::new();
+    let mut add = |id: &str, calls: &[&str]| {
+        let mut described = info();
+        for c in calls {
+            described = described.with_subgraph(cid(c), None);
+        }
+        r.register_behavior(BehaviorStub::arc(id), described)
+            .unwrap_or_else(|e| panic!("{e}"));
+    };
+    add("t.c", &[]);
+    add("t.b", &["t.c"]);
+    add("t.a", &["t.b", "t.c", "t.missing"]);
+    add("t.loop", &["t.loop"]);
+
+    let ids = |chain: Option<Vec<ComponentId>>| -> Vec<String> {
+        chain
+            .unwrap_or_default()
+            .iter()
+            .map(|i| i.as_str().to_string())
+            .collect()
+    };
+    assert_eq!(ids(r.longest_subgraph_chain(&cid("t.c"), 16)), ["t.c"]);
+    assert_eq!(
+        ids(r.longest_subgraph_chain(&cid("t.a"), 16)),
+        ["t.a", "t.b", "t.c"]
+    );
+    assert_eq!(ids(r.longest_subgraph_chain(&cid("t.loop"), 3)).len(), 4);
+    assert!(r.longest_subgraph_chain(&cid("t.missing"), 16).is_none());
+}

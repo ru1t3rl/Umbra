@@ -20,10 +20,24 @@ pub(super) struct Link {
     pub(super) at: Origin,
 }
 
+/// A `subgraph` node's reference to a registered behavior: the chain it starts counts one level
+/// per behavior (`Registry::longest_subgraph_chain`, ASM-099 e), as `register_graphs` counts it.
+pub(super) struct Tail {
+    /// The longest chain from the registered target down, target first.
+    pub(super) chain: Vec<ComponentId>,
+    /// The `ref` value of the node.
+    pub(super) at: Origin,
+}
+
 /// Every `subgraph_cycle` and `subgraph_too_deep` of the reference graph. `ids` are sorted;
-/// `links[v]` are the references of graph `v` in file order; `limit` is the most graphs on one
-/// chain.
-pub(super) fn analyse(ids: &[ComponentId], links: &[Vec<Link>], limit: usize) -> Vec<Diagnostic> {
+/// `links[v]` are the references of graph `v` in file order and `tails[v]` its references to
+/// registered behaviors; `limit` is the most behaviors on one chain.
+pub(super) fn analyse(
+    ids: &[ComponentId],
+    links: &[Vec<Link>],
+    tails: &[Vec<Tail>],
+    limit: usize,
+) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let mut cyclic = vec![false; ids.len()];
     for members in components(links) {
@@ -35,7 +49,7 @@ pub(super) fn analyse(ids: &[ComponentId], links: &[Vec<Link>], limit: usize) ->
             }
         }
     }
-    out.extend(too_deep(ids, links, &cyclic, limit));
+    out.extend(too_deep(ids, links, tails, &cyclic, limit));
     out
 }
 
@@ -158,11 +172,13 @@ fn cycle(ids: &[ComponentId], links: &[Vec<Link>], members: &[usize]) -> Diagnos
 }
 
 /// `subgraph_too_deep` at each reference that would make a chain of acyclic graphs longer than
-/// `limit` graphs: the references from a graph whose longest chain from a root is exactly `limit`.
-/// Graphs on cycles are left out (their cycle is reported).
+/// `limit` graphs: the references from a graph whose longest chain from a root is exactly `limit`,
+/// and the references to a registered chain that does not fit below the graph (the note names the
+/// chain). Graphs on cycles are left out (their cycle is reported).
 fn too_deep(
     ids: &[ComponentId],
     links: &[Vec<Link>],
+    tails: &[Vec<Tail>],
     cyclic: &[bool],
     limit: usize,
 ) -> Vec<Diagnostic> {
@@ -199,5 +215,29 @@ fn too_deep(
             ));
         }
     }
+    for v in (0..n).filter(|&v| !cyclic[v]) {
+        for tail in tails[v].iter().filter(|t| level[v] + t.chain.len() > limit) {
+            out.push(registered_too_deep(&ids[v], tail, limit));
+        }
+    }
     out
+}
+
+/// `subgraph_too_deep` at a reference to a registered chain that crosses the limit.
+fn registered_too_deep(caller: &ComponentId, tail: &Tail, limit: usize) -> Diagnostic {
+    let names: Vec<String> = tail.chain.iter().map(|id| format!("`{id}`")).collect();
+    let message = format!(
+        "`{caller}` calls `{}`, which makes the chain deeper than the limit of {limit} graphs",
+        tail.chain[0]
+    );
+    let note = format!(
+        "registered behaviors count one level each; the registered chain is {}",
+        names.join(" -> ")
+    );
+    Diagnostic::new(
+        DiagnosticCode::SubgraphTooDeep,
+        message,
+        Some(tail.at.location()),
+    )
+    .with_note(note, None)
 }

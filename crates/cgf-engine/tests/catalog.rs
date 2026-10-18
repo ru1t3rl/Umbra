@@ -255,7 +255,9 @@ fn binding_only_param_types_reach_the_catalog() {
     );
     assert_eq!(
         attack.result.as_deref(),
-        Some("Failure when the target is unset or lost; otherwise Running")
+        Some(
+            "Failure when the target is unset; otherwise Running, also when a set target is lost (the approach restarts each tick)"
+        )
     );
 }
 

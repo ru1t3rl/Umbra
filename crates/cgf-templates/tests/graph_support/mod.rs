@@ -293,6 +293,21 @@ pub fn register_twin(
         .unwrap_or_else(|e| panic!("{e}"));
 }
 
+/// Registers `ids` as behaviors that call each other in order (`ids[0]` calls `ids[1]`, ...): a
+/// registered `subgraph` chain, as `register_graphs` leaves it (ASM-099 e). The last one is a
+/// plain behavior with no references.
+pub fn register_chain(registry: &mut Registry, ids: &[&str]) {
+    for (i, id) in ids.iter().enumerate().rev() {
+        let mut described = info(Provenance::File);
+        if let Some(next) = ids.get(i + 1) {
+            described = described.with_subgraph(cid(next), None);
+        }
+        registry
+            .register_behavior(Arc::new(Leaf::new(id, EXT)), described)
+            .unwrap_or_else(|e| panic!("{e}"));
+    }
+}
+
 /// The parameter that `build` rejects at 13.0 for the leaf `id`, so every kind has a dry run.
 fn unlucky_key(id: &str) -> &'static str {
     match id {

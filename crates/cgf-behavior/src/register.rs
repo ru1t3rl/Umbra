@@ -131,23 +131,13 @@ impl<'a> Order<'a> {
         Ok(self.out)
     }
 
-    /// The subgraph targets of `id`, from the batch or from the registry's metadata; `None` if
-    /// nothing by that ID exists.
-    fn targets(&self, id: &ComponentId) -> Option<Vec<ComponentId>> {
-        if let Some(def) = self.batch.get(id) {
-            return Some(
-                def.nodes
-                    .iter()
-                    .filter_map(|n| match &n.kind {
-                        NodeKind::Subgraph(call) => Some(call.id.clone()),
-                        _ => None,
-                    })
-                    .collect(),
-            );
-        }
-        self.registry.behavior(id)?;
-        let info = self.registry.info(id)?;
-        Some(info.subgraphs.iter().map(|(id, _)| id.clone()).collect())
+    /// The depth of a registered behavior: its longest chain, from the registry's own metadata
+    /// (the definition the loader shares, ASM-099 e); `None` if nothing by that ID exists.
+    fn registered_depth(&self, id: &ComponentId) -> Option<usize> {
+        let chain = self
+            .registry
+            .longest_subgraph_chain(id, MAX_SUBGRAPH_DEPTH)?;
+        Some(chain.len())
     }
 
     /// Visits `id` and returns the length of the longest chain from it. The chain from the walk's
@@ -176,21 +166,35 @@ impl<'a> Order<'a> {
         if self.path.len() >= MAX_SUBGRAPH_DEPTH {
             return Err(too_deep());
         }
-        let Some(targets) = self.targets(id) else {
-            return Err(GraphRegistrationError::Unresolved {
-                graph: blame.clone(),
-                id: id.clone(),
-            });
+        let Some(def) = self.batch.get(id) else {
+            let Some(d) = self.registered_depth(id) else {
+                return Err(GraphRegistrationError::Unresolved {
+                    graph: blame.clone(),
+                    id: id.clone(),
+                });
+            };
+            return if self.path.len() + d > MAX_SUBGRAPH_DEPTH {
+                Err(too_deep())
+            } else {
+                Ok(d)
+            };
         };
-        let own = self.batch.get(id).map(|def| def.id.clone());
-        let blame = own.as_ref().unwrap_or(blame);
+        let targets: Vec<ComponentId> = def
+            .nodes
+            .iter()
+            .filter_map(|n| match &n.kind {
+                NodeKind::Subgraph(call) => Some(call.id.clone()),
+                _ => None,
+            })
+            .collect();
+        let blame = &def.id;
         self.path.push(id.clone());
         let mut deepest = 0;
         for target in &targets {
             deepest = deepest.max(self.visit(target, blame)?);
         }
         self.path.pop();
-        if self.batch.contains_key(id) && self.done.insert(id.clone()) {
+        if self.done.insert(id.clone()) {
             self.out.push(id.clone());
         }
         self.depth.insert(id.clone(), deepest + 1);

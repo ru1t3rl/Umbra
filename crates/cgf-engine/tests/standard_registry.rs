@@ -106,7 +106,9 @@ fn builtin_graphs_are_builtin_version_1_with_their_interfaces() {
     );
     assert_eq!(
         engage.result.as_deref(),
-        Some("Failure when the target is unset or lost; otherwise Running")
+        Some(
+            "Failure when the target is unset; otherwise Running, also when a set target is lost (the approach restarts each tick)"
+        )
     );
 }
 

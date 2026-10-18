@@ -20,7 +20,7 @@ use crate::graph_read::{GraphRead, read_graph};
 use crate::loader::Loader;
 use crate::source::SourceFile;
 use crate::value::Origin;
-use cycles::Link;
+use cycles::{Link, Tail};
 pub(crate) use template::Graphs;
 use view::View;
 
@@ -193,7 +193,7 @@ impl<'a> Set<'a> {
 
     /// The references between the graphs that can take part in cycles: graphs with a unique ID
     /// and readable parts, sorted by ID, and for each its `subgraph` references in file order.
-    fn links(&self) -> (Vec<ComponentId>, Vec<Vec<Link>>) {
+    fn links(&self) -> (Vec<ComponentId>, Vec<Vec<Link>>, Vec<Vec<Tail>>) {
         let vertices: BTreeMap<&ComponentId, View<'_>> = self
             .known
             .iter()
@@ -227,7 +227,31 @@ impl<'a> Set<'a> {
                     .collect()
             })
             .collect();
-        (ids, links)
+        let tails = vertices.values().map(|view| self.tails(view)).collect();
+        (ids, links, tails)
+    }
+
+    /// The references of a graph to registered behaviors, each with the longest chain below it.
+    fn tails(&self, view: &View<'_>) -> Vec<Tail> {
+        let limit = self.depth_limit();
+        view.parts
+            .nodes
+            .iter()
+            .filter_map(|(name, def)| {
+                let NodeKind::Subgraph(call) = &def.as_ref()?.kind else {
+                    return None;
+                };
+                if self.known.contains_key(&call.id) {
+                    return None;
+                }
+                let chain = self
+                    .loader
+                    .registry
+                    .longest_subgraph_chain(&call.id, limit)?;
+                let at = view.node_table(name)?.get("ref")?.origin().clone();
+                Some(Tail { chain, at })
+            })
+            .collect()
     }
 }
 
@@ -247,8 +271,8 @@ impl Loader<'_> {
         for view in reads.iter().filter_map(View::of) {
             own::check(&set, &view, &mut seen, &mut diagnostics);
         }
-        let (ids, links) = set.links();
-        diagnostics.extend(cycles::analyse(&ids, &links, set.depth_limit()));
+        let (ids, links, tails) = set.links();
+        diagnostics.extend(cycles::analyse(&ids, &links, &tails, set.depth_limit()));
         let used: BTreeSet<&ComponentId> = set
             .known
             .iter()

@@ -11,7 +11,10 @@ mod graph_support;
 
 use cgf_templates::{Diagnostic, LoaderOptions, SourceFile};
 use common::{Row, errors, lines, ok, pos_after, pos_of, pos_of_nth, row, rows, src};
-use graph_support::{caller, graphs, graphs_with_depth, minimal, with_interface};
+use graph_support::{
+    caller, graphs, graphs_with_depth, loader_for, minimal, register_chain, registry,
+    with_interface,
+};
 
 fn path(name: &str) -> String {
     format!("behaviors/{name}.behavior.toml")
@@ -684,4 +687,69 @@ fn a_graph_with_binding_only_params_loads_alone() {
     );
 
     assert_eq!(ok(graphs(&files(&[("g", &text)]))).len(), 1);
+}
+
+/// `n` file graphs `test.f00 -> test.f01 -> ... ->` the registered `stub.reg.r1`.
+fn file_chain_into_registered(n: usize) -> Vec<(String, String)> {
+    (0..n)
+        .map(|i| {
+            let id = format!("test.f{i:02}");
+            let target = if i + 1 == n {
+                "stub.reg.r1".to_string()
+            } else {
+                format!("test.f{:02}", i + 1)
+            };
+            (format!("f{i:02}"), calling(&id, &[&target]))
+        })
+        .collect()
+}
+
+/// ASM-099 e: a registered graph's own `subgraph` chain counts, one level per behavior, so
+/// `validate` agrees with `register_graphs`: 14 file graphs and a 2-level registered chain are
+/// exactly the limit of 16; 15 are rejected at the reference that crosses it, with a note that
+/// names the registered chain.
+#[test]
+fn a_registered_chain_counts_level_by_level() {
+    let mut reg = registry();
+    register_chain(&mut reg, &["stub.reg.r1", "stub.reg.r2"]);
+    let load = |n: usize| {
+        let texts = file_chain_into_registered(n);
+        let given: Vec<SourceFile> = texts.iter().map(|(n, t)| src(&path(n), t)).collect();
+        loader_for(&reg).graphs_from_sources(&given, cgf_core::Provenance::File)
+    };
+
+    assert_eq!(ok(load(14)).len(), 14);
+    let d = errors(load(15));
+
+    let texts = file_chain_into_registered(15);
+    let last = &texts[14].1;
+    assert_eq!(
+        rows(&d),
+        [row(
+            "subgraph_too_deep",
+            path("f14"),
+            pos_of(last, "\"stub.reg.r1\"")
+        )]
+    );
+    let note = format!("{:?}", d[0].notes);
+    assert!(
+        note.contains("stub.reg.r1") && note.contains("stub.reg.r2"),
+        "{note}"
+    );
+}
+
+/// ASM-099 e: a registered behavior without references counts as one level.
+#[test]
+fn a_registered_leaf_counts_as_one_level() {
+    let top = calling("test.g1", &["stub.behavior.plain"]);
+    let given = files(&[("g1", &top)]);
+
+    assert_eq!(ok(graphs_with_depth(&given, 2)).len(), 1);
+    assert_eq!(
+        errors(graphs_with_depth(&given, 1))
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect::<Vec<_>>(),
+        ["subgraph_too_deep"]
+    );
 }
