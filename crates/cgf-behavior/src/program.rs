@@ -5,15 +5,15 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use cgf_core::{
-    Action, BbType, Condition, FsmDef, GraphDef, NodeId, NodeKind, ParallelPolicy, Seconds, Status,
-    TransitionTarget, Trigger,
+    Action, BbType, BbValue, Behavior, Condition, FsmDef, GraphDef, NodeId, NodeKind,
+    ParallelPolicy, Seconds, Status, TransitionTarget, Trigger,
 };
 
 use crate::factory::GraphRegistrationError;
 
 /// The deepest node nesting one graph may have. The tick recurses once per level, so this bounds
 /// the stack use of one graph; with subgraphs the bound multiplies by up to 16 graph levels
-/// (`max_subgraph_depth`, ASM-095).
+/// (`max_subgraph_depth`, ASM-095); ASM-098 records the measured stack use.
 pub(crate) const MAX_NODE_DEPTH: usize = 128;
 
 /// How a `parallel` node decides (ADR 0013).
@@ -54,6 +54,28 @@ pub(crate) enum Kind {
         duration: Seconds,
     },
     Fsm(Fsm),
+    Subgraph(Subgraph),
+}
+
+/// One run-time input binding of a `subgraph` node (ADR 0014, ASM-088).
+#[derive(Debug, Clone)]
+pub(crate) struct Input {
+    /// The child's param (a read-only key in the child).
+    pub param: Box<str>,
+    /// The parent's blackboard key.
+    pub key: Box<str>,
+    /// No `default` (or a binding-only type): an unset parent key fails the node.
+    pub required: bool,
+    /// The param is a `number`: an `integer` value is converted (lossy above 2^53).
+    pub to_number: bool,
+}
+
+/// A `subgraph` node: the built child behavior and its bindings, in port or param name order.
+pub(crate) struct Subgraph {
+    pub behavior: Arc<dyn Behavior>,
+    pub inputs: Box<[Input]>,
+    /// (child output port, parent key).
+    pub outputs: Box<[(Box<str>, Box<str>)]>,
 }
 
 /// Where a transition goes.
@@ -105,6 +127,7 @@ impl Kind {
             Kind::Cooldown { .. } => "cooldown",
             Kind::Timeout { .. } => "timeout",
             Kind::Fsm(_) => "fsm",
+            Kind::Subgraph(_) => "subgraph",
         }
     }
 }
@@ -125,6 +148,8 @@ pub(crate) struct Program {
     pub inputs: BTreeMap<String, BbType>,
     /// Output port to blackboard key.
     pub outputs: BTreeMap<String, String>,
+    /// Literal and default values of the interface params, set when an instance is created.
+    pub literals: Vec<(Box<str>, BbValue)>,
 }
 
 /// The arena index of `id`; `usize::MAX` (never a valid index) if it does not fit.
@@ -180,7 +205,8 @@ pub(crate) fn validate(def: &GraphDef) -> Result<(), GraphRegistrationError> {
             | NodeKind::SucceedAlways(_)
             | NodeKind::Repeat(_)
             | NodeKind::Cooldown(_)
-            | NodeKind::Timeout(_) => true,
+            | NodeKind::Timeout(_)
+            | NodeKind::Subgraph(_) => true,
             NodeKind::Fsm(f) => {
                 fsm_shape(f).map_err(|reason| bad(format!("fsm `{}`: {reason}", node.name)))?;
                 true

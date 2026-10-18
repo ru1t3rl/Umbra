@@ -10,7 +10,7 @@ use cgf_core::{
     BlackboardError, EntityView, InstantiateError, IntentBuffer, Seconds, Status, TickRate,
 };
 
-use crate::nodes::{composite, decorator, fsm};
+use crate::nodes::{composite, decorator, fsm, subgraph};
 use crate::program::{Kind, Node, Program};
 
 /// A built graph: the shared program of one parameter binding.
@@ -36,6 +36,12 @@ impl Behavior for GraphBehavior {
         }
         for (key, ty) in &program.inputs {
             bb.declare_input(key, *ty);
+        }
+        for (key, value) in &program.literals {
+            bb.input(key, Some(value.clone()))
+                .map_err(|e| InstantiateError::Other {
+                    message: format!("parameter `{key}`: {e}"),
+                })?;
         }
         Ok(Box::new(GraphInstance {
             program: Arc::clone(program),
@@ -92,6 +98,12 @@ pub(crate) enum NodeState {
         current: usize,
         running: bool,
     },
+    /// The child's instance (own node state and blackboard, REQ-B-11); `running`: the child
+    /// returned Running at the last tick and has not been halted since (ASM-096 a).
+    Subgraph {
+        child: Box<dyn BehaviorInstance>,
+        running: bool,
+    },
 }
 
 impl NodeState {
@@ -130,6 +142,16 @@ impl NodeState {
                 current: f.initial,
                 running: false,
             },
+            Kind::Subgraph(s) => Self::Subgraph {
+                child: s
+                    .behavior
+                    .instantiate(rate)
+                    .map_err(|e| InstantiateError::Subgraph {
+                        id: s.behavior.id().clone(),
+                        source: Box::new(e),
+                    })?,
+                running: false,
+            },
         })
     }
 }
@@ -164,6 +186,10 @@ impl BehaviorInstance for GraphInstance {
         reset_all(&self.program, &mut self.states, self.program.root);
     }
 
+    fn halt_running(&mut self) {
+        halt_node(&self.program, &mut self.states, self.program.root);
+    }
+
     fn output(&self, port: &str) -> Option<BbValue> {
         let key = self.program.outputs.get(port)?;
         self.bb.get(key).cloned()
@@ -188,7 +214,8 @@ pub(crate) fn is_running(program: &Program, states: &[NodeState], idx: usize) ->
         (Kind::Parallel { .. }, NodeState::Parallel { slots }) => slots.contains(&Slot::Running),
         (Kind::Action(_), NodeState::Action { running, .. })
         | (Kind::Repeat { .. }, NodeState::Repeat { running, .. })
-        | (Kind::Fsm(_), NodeState::Fsm { running, .. }) => *running,
+        | (Kind::Fsm(_), NodeState::Fsm { running, .. })
+        | (Kind::Subgraph(_), NodeState::Subgraph { running, .. }) => *running,
         (Kind::Timeout { .. }, NodeState::Timeout { started, .. }) => started.is_some(),
         (Kind::Cooldown { child, .. } | Kind::Inverter(child) | Kind::SucceedAlways(child), _) => {
             is_running(program, states, *child)
@@ -243,6 +270,12 @@ fn reset_all(program: &Program, states: &mut [NodeState], idx: usize) {
                 reset_all(program, states, c);
             }
             return;
+        }
+        // The child's own instance halt: its cooldown timers reset too (ASM-096 c).
+        (Kind::Subgraph(_), NodeState::Subgraph { child, running }) => {
+            *running = false;
+            child.halt();
+            None
         }
         _ => None,
     };
@@ -310,6 +343,11 @@ pub(crate) fn halt_node(program: &Program, states: &mut [NodeState], idx: usize)
                 halt_node(program, states, node);
             }
         }
+        // A parent halt of the child, Running-only inside it (ASM-096 a, ADR 0013 amendment).
+        (Kind::Subgraph(_), NodeState::Subgraph { child, running }) => {
+            *running = false;
+            child.halt_running();
+        }
         _ => {}
     }
 }
@@ -366,6 +404,7 @@ impl Walk<'_, '_, '_, '_> {
             Kind::Cooldown { child, .. } => decorator::cooldown(self, idx, *child),
             Kind::Timeout { child, .. } => decorator::timeout(self, idx, *child),
             Kind::Fsm(f) => fsm::tick(self, idx, f),
+            Kind::Subgraph(s) => subgraph::tick(self, idx, s),
         }
     }
 

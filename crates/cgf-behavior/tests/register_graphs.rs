@@ -2,7 +2,7 @@
 //! fills `ComponentInfo`, and rejects cycles, duplicates and dangling references.
 //! Requirements: REQ-B-9, REQ-B-10, REQ-B-13, ADR 0011, ADR 0014, ASM-091.
 //!
-//! Step 4 of M3: written before WI-10; every test is ignored with that work item.
+//! Step 4 of M3: written before WI-10; un-ignored in WI-10.
 
 #![forbid(unsafe_code)]
 
@@ -29,7 +29,6 @@ fn register(bench: &mut Bench, graphs: Vec<GraphDef>) -> Result<(), GraphRegistr
 
 /// Every permutation of three graphs a -> b -> c registers, whatever the input order.
 #[test]
-#[ignore = "WI-10"]
 fn registers_in_dependency_order_regardless_of_input_order() {
     let orders = [
         [0, 1, 2],
@@ -64,7 +63,6 @@ fn registers_in_dependency_order_regardless_of_input_order() {
 /// description, `param_types` from `Interface::types` (binding-only `entity` and `position`
 /// params included), outputs, subgraph references and result text.
 #[test]
-#[ignore = "WI-10"]
 fn fills_component_info_from_the_graph() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -122,7 +120,6 @@ fn fills_component_info_from_the_graph() {
 /// REQ-T-3: the registered behavior's parameter schema is the interface's object schema, so the
 /// loader validates call sites against it; binding-only params are not in it.
 #[test]
-#[ignore = "WI-10"]
 fn param_schema_of_a_registered_graph_is_the_interface_schema() {
     let mut bench = Bench::new();
     let mut b = B::new();
@@ -151,7 +148,6 @@ fn param_schema_of_a_registered_graph_is_the_interface_schema() {
 /// ASM-091: a subgraph cycle cannot come out of the loader, but `register_graphs` rejects it
 /// anyway instead of recursing: a two-graph cycle and a self-reference.
 #[test]
-#[ignore = "WI-10"]
 fn rejects_a_cycle_defensively() {
     for graphs in [
         vec![
@@ -173,7 +169,6 @@ fn rejects_a_cycle_defensively() {
 
 /// An ID already registered (under any kind) is a registry error and the first one is kept.
 #[test]
-#[ignore = "WI-10"]
 fn rejects_a_duplicate_id() {
     let mut bench = Bench::new();
     register(
@@ -206,7 +201,6 @@ fn rejects_a_duplicate_id() {
 
 /// A subgraph or leaf the registry does not know is `Unresolved`, naming the graph and the ID.
 #[test]
-#[ignore = "WI-10"]
 fn rejects_dangling_references() {
     let mut bench = Bench::new();
     let mut b = B::new();
@@ -232,7 +226,6 @@ fn rejects_dangling_references() {
 /// ADR 0014: a `{ param }` reference with no argument and no default is a build error, not a
 /// panic (the loader prevents it; the factory still checks).
 #[test]
-#[ignore = "WI-10"]
 fn unbound_param_reference_is_a_build_error() {
     let mut bench = Bench::new();
     let mut b = B::new();

@@ -1,7 +1,7 @@
 //! AT-7: scoped blackboards and node state are per instance (REQ-B-11, ADR 0014).
 //! Requirements: REQ-B-11, REQ-B-5, ADR 0014, ASM-071.
 //!
-//! Step 4 of M3: written before WI-10; every test is ignored with that work item.
+//! Step 4 of M3: written before WI-10; un-ignored in WI-10.
 
 #![forbid(unsafe_code)]
 
@@ -14,7 +14,6 @@ use serde_json::json;
 /// REQ-B-11: two `subgraph` nodes of the same child graph in one parent have separate
 /// blackboards: one writes `mine`, the other reads it unset.
 #[test]
-#[ignore = "WI-10"]
 fn two_instances_of_one_subgraph_in_one_graph_have_separate_blackboards() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -51,7 +50,6 @@ fn two_instances_of_one_subgraph_in_one_graph_have_separate_blackboards() {
 /// blackboard: instance 1 sits at a Running child of a `memory` sequence and has a key set; a
 /// second instance starts at the first child and reads the key unset.
 #[test]
-#[ignore = "WI-10"]
 fn two_entities_with_one_graph_share_no_node_state() {
     let bench = Bench::new();
     let mut b = B::new();
@@ -92,7 +90,6 @@ fn two_entities_with_one_graph_share_no_node_state() {
 /// REQ-B-11: a child cannot read its parent's blackboard: a key of the parent is not visible by
 /// name in the child.
 #[test]
-#[ignore = "WI-10"]
 fn child_cannot_read_parent_blackboard() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -124,7 +121,6 @@ fn child_cannot_read_parent_blackboard() {
 /// REQ-B-11: only bound output ports reach the parent; an unbound port and the child's other keys
 /// do not.
 #[test]
-#[ignore = "WI-10"]
 fn only_bound_outputs_reach_the_parent() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -169,7 +165,6 @@ fn only_bound_outputs_reach_the_parent() {
 /// ADR 0014 / ASM-088: an output whose child key is unset unsets the parent key ("including
 /// unset").
 #[test]
-#[ignore = "WI-10"]
 fn unset_output_unsets_parent_key() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -202,7 +197,6 @@ fn unset_output_unsets_parent_key() {
 /// ADR 0014: a blackboard lives as long as its instance; halting does not clear it. Tick 1 stores
 /// the key (the guard is true); after a halt, tick 2 (guard false) reads the stored value.
 #[test]
-#[ignore = "WI-10"]
 fn blackboard_survives_halt() {
     let bench = Bench::new();
     let mut b = B::new();

@@ -3,8 +3,7 @@
 //! indistinguishable (REQ-B-9), with defaults and `{ param }` substitution (REQ-B-10).
 //! Requirements: REQ-B-7, REQ-B-9, REQ-B-10, REQ-B-11, REQ-B-13, ADR 0011, ADR 0014, ASM-076.
 //!
-//! Step 4 of M3: written before WI-10; every test is ignored with that work item (they also need
-//! the WI-8 and WI-9 interpreter).
+//! Step 4 of M3: written before WI-10; un-ignored in WI-10.
 
 #![forbid(unsafe_code)]
 
@@ -24,7 +23,6 @@ fn parent_of(target: &str) -> cgf_core::GraphDef {
 
 /// AT-2: the `subgraph` node returns what its child graph returns.
 #[test]
-#[ignore = "WI-10"]
 fn subgraph_status_table() {
     for (word, status) in [
         ("success", Status::Success),
@@ -52,7 +50,6 @@ fn subgraph_status_table() {
 /// registered with `Provenance::Plugin` behave identically through one `subgraph` node: same
 /// statuses, same trace, same intents.
 #[test]
-#[ignore = "WI-10"]
 fn file_builtin_and_plugin_targets_are_indistinguishable() {
     let mut bench = Bench::new();
     let mut builtin = B::new();
@@ -100,7 +97,6 @@ fn file_builtin_and_plugin_targets_are_indistinguishable() {
 
 /// REQ-B-13: each registered target carries its own provenance, whatever it is called through.
 #[test]
-#[ignore = "WI-10"]
 fn registered_info_carries_each_provenance() {
     let mut bench = Bench::new();
     let mut builtin = B::new();
@@ -125,7 +121,6 @@ fn registered_info_carries_each_provenance() {
 
 /// REQ-B-10: an omitted optional param takes its default; a literal overrides it.
 #[test]
-#[ignore = "WI-10"]
 fn defaults_are_applied_and_literals_override() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -155,7 +150,6 @@ fn defaults_are_applied_and_literals_override() {
 /// ASM-076, REQ-B-10: `{ param }` references are substituted through two levels: the top graph's
 /// param reaches the middle graph's param, which reaches a leaf param.
 #[test]
-#[ignore = "WI-10"]
 fn param_substitution_works_through_two_levels() {
     let mut bench = Bench::new();
     let mut inner = B::new();
@@ -203,7 +197,6 @@ fn param_substitution_works_through_two_levels() {
 /// REQ-B-11, ADR 0014: every interface param is a read-only key of the same name in the child:
 /// the literal or default value is set at instantiation, and the child's writes are refused.
 #[test]
-#[ignore = "WI-10"]
 fn every_interface_param_is_a_read_only_key_in_the_child() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -236,7 +229,6 @@ fn every_interface_param_is_a_read_only_key_in_the_child() {
 /// ASM-078, ADR 0013: a child whose `instantiate` fails makes the parent's `instantiate` fail with
 /// `InstantiateError::Subgraph` naming the child.
 #[test]
-#[ignore = "WI-10"]
 fn child_instantiate_failure_makes_the_parents_fail_with_subgraph() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -261,7 +253,6 @@ fn child_instantiate_failure_makes_the_parents_fail_with_subgraph() {
 
 /// ADR 0013: halting the parent halts the child's Running nodes (once).
 #[test]
-#[ignore = "WI-10"]
 fn halting_the_parent_halts_the_child() {
     let mut bench = Bench::new();
     bench.register(vec![
@@ -281,7 +272,6 @@ fn halting_the_parent_halts_the_child() {
 /// REQ-B-10: `output(port)` returns an owned value for a declared output port after a tick, and
 /// `None` before the first tick, for an unset key and for an unknown port.
 #[test]
-#[ignore = "WI-10"]
 fn output_returns_owned_values_and_none_for_unset_or_unknown_ports() {
     let bench = Bench::new();
     let mut b = B::new();
@@ -306,7 +296,6 @@ fn output_returns_owned_values_and_none_for_unset_or_unknown_ports() {
 
 /// The trace of one `subgraph` node over several ticks is the child's trace (no extra lines).
 #[test]
-#[ignore = "WI-10"]
 fn subgraph_node_adds_no_trace_of_its_own() {
     let mut bench = Bench::new();
     bench.register(vec![

@@ -1,7 +1,7 @@
 //! AT-20 (runtime rows): `{ key = .. }` input bindings of `subgraph` nodes, ADR 0014, ASM-088.
 //! Requirements: REQ-B-10, REQ-B-11, REQ-B-12 (runtime side), ADR 0014, ASM-071, ASM-088.
 //!
-//! Step 4 of M3: written before WI-10; every test is ignored with that work item.
+//! Step 4 of M3: written before WI-10; un-ignored in WI-10.
 //!
 //! The parent copies a control slot into its own blackboard key every tick (`stub.action.put`);
 //! the subgraph node copies that key into the child's read-only param key before the child ticks;
@@ -39,7 +39,6 @@ fn parent(id: &str, child: &str, ty: BbType, key: &str, param: &str, slot: &str)
 /// ADR 0014: the parent's value is copied into the child before each child tick, so a change made
 /// by the parent in tick n is seen by the child in tick n.
 #[test]
-#[ignore = "WI-10"]
 fn bound_input_is_copied_in_before_each_child_tick() {
     let mut bench = Bench::new();
     bench.register(vec![
@@ -79,7 +78,6 @@ fn bound_input_is_copied_in_before_each_child_tick() {
 /// ADR 0014: an unset parent key gives an unset child key, also after it was set before (the
 /// child key does not keep the stale value).
 #[test]
-#[ignore = "WI-10"]
 fn unset_parent_key_gives_unset_child_key() {
     let mut bench = Bench::new();
     bench.register(vec![
@@ -118,7 +116,6 @@ fn unset_parent_key_gives_unset_child_key() {
 /// ADR 0014, ASM-088: an optional bound param whose parent key is unset stays unset in the child;
 /// its default is not substituted for a bound param.
 #[test]
-#[ignore = "WI-10"]
 fn unset_optional_bound_param_stays_unset_not_default() {
     let mut bench = Bench::new();
     bench.register(vec![
@@ -156,7 +153,6 @@ fn unset_optional_bound_param_stays_unset_not_default() {
 /// ADR 0014, ASM-088: a required bound param (no default) that is unset makes the node fail
 /// without ticking the child, and halts a child that was Running.
 #[test]
-#[ignore = "WI-10"]
 fn unset_required_bound_param_fails_without_ticking_and_halts_child() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -208,7 +204,6 @@ fn unset_required_bound_param_fails_without_ticking_and_halts_child() {
 /// ADR 0014, REQ-B-11: a child's write to an input key is refused (`ReadOnly`), the child keeps
 /// seeing the parent's value, and the parent's key is unchanged.
 #[test]
-#[ignore = "WI-10"]
 fn child_write_to_input_key_is_refused_and_parent_unchanged() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -252,7 +247,6 @@ fn child_write_to_input_key_is_refused_and_parent_unchanged() {
 /// ADR 0014, REQ-B-11: the child's own keys never reach the parent, even under the same name; only
 /// a bound output port does.
 #[test]
-#[ignore = "WI-10"]
 fn child_writes_reach_parent_only_through_bound_outputs() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -298,7 +292,6 @@ fn child_writes_reach_parent_only_through_bound_outputs() {
 /// ADR 0014: two subgraph nodes of one child graph, bound to different parent keys, each see their
 /// own value.
 #[test]
-#[ignore = "WI-10"]
 fn two_instances_bound_to_different_parent_keys_see_their_own_values() {
     let mut bench = Bench::new();
     let mut child = B::new();
@@ -354,7 +347,6 @@ fn two_instances_bound_to_different_parent_keys_see_their_own_values() {
 /// Checked for a graph target (types from `Interface::types`) and for a registered behavior (types
 /// from `ComponentInfo::param_types`).
 #[test]
-#[ignore = "WI-10"]
 fn integer_key_bound_to_number_param_arrives_as_number() {
     let big: i64 = (1 << 53) + 1;
     let mut bench = Bench::new();
@@ -439,7 +431,6 @@ fn integer_key_bound_to_number_param_arrives_as_number() {
 /// an input, a wrong type and a non-finite number; a valid call is visible to the next tick, and
 /// `None` unsets.
 #[test]
-#[ignore = "WI-10"]
 fn set_input_returns_the_blackboards_errors_and_feeds_the_next_tick() {
     let bench = Bench::new();
     let mut b = B::new();

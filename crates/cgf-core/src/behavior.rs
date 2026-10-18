@@ -214,6 +214,13 @@ pub trait BehaviorInstance: Send {
     /// Abandons a Running activation; the next tick starts fresh (blackboard kept, ADR 0014).
     fn halt(&mut self);
 
+    /// A parent halt (ADR 0013): halt what is Running and keep the state of finished nodes; the
+    /// default is the full reset of [`BehaviorInstance::halt`]. A `subgraph` node calls this when
+    /// a pre-empting ancestor halts it, so a cooling `cooldown` inside a graph keeps its timer.
+    fn halt_running(&mut self) {
+        self.halt();
+    }
+
     /// Value of a declared output port after the last tick (REQ-B-10), owned so an FFI bridge can
     /// return it; `None` = unset or no such port.
     fn output(&self, port: &str) -> Option<BbValue>;

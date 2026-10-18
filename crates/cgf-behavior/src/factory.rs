@@ -1,19 +1,20 @@
 //! The factory that turns a [`GraphDef`] into a [`Behavior`] (ADR 0011, ADR 0014).
 //!
-//! The node types of ADR 0013 are built except `subgraph` (WI-10): a graph with one is refused
-//! with [`GraphRegistrationError::Unsupported`].
+//! All node types of ADR 0013 are built. A `subgraph` node resolves its target through the
+//! registry at construction and builds it with the substituted call-site params at `build`.
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
 use cgf_core::{
-    Action, Behavior, BehaviorId, BuildError, ComponentId, Condition, Factory, GraphDef, Interface,
-    LeafRef, NodeDef, NodeKind, ParamSchema, ParamValue, Registry, RegistryError,
+    Action, BbType, BbValue, Behavior, BehaviorId, BuildError, ComponentId, Condition, Factory,
+    GraphDef, Interface, LeafRef, NodeDef, NodeKind, ParamSchema, ParamValue, Registry,
+    RegistryError, SubgraphRef,
 };
 
 use crate::instance::GraphBehavior;
-use crate::program::{self, Kind, Node, Program};
+use crate::program::{self, Input, Kind, Node, Program, Subgraph};
 
 /// Why a graph could not be registered or built into a behavior.
 ///
@@ -37,6 +38,12 @@ pub enum GraphRegistrationError {
     #[error("graph `{graph}` is part of a subgraph cycle")]
     Cycle {
         /// A graph on the cycle.
+        graph: BehaviorId,
+    },
+    /// A `subgraph` chain is longer than 16 behaviors (ASM-073).
+    #[error("graph `{graph}` is deeper than the 16-level subgraph limit")]
+    TooDeep {
+        /// The graph that crosses the limit.
         graph: BehaviorId,
     },
     /// A leaf or child factory rejected the graph's parameters.
@@ -73,6 +80,10 @@ enum Leaf {
     None,
     Condition(Arc<dyn Factory<dyn Condition>>),
     Action(Arc<dyn Factory<dyn Action>>),
+    Behavior {
+        factory: Arc<dyn Factory<dyn Behavior>>,
+        inputs: Vec<Input>,
+    },
 }
 
 /// Builds a [`Behavior`] from a [`GraphDef`]: merges defaults, substitutes `{ param }` references,
@@ -132,8 +143,52 @@ fn resolve(
             .action(&leaf.id)
             .map(|f| Leaf::Action(Arc::clone(f)))
             .ok_or_else(|| unresolved(leaf)),
+        NodeKind::Subgraph(call) => resolve_subgraph(def, node, call, registry),
         _ => Ok(Leaf::None),
     }
+}
+
+/// The target of a `subgraph` node and its input bindings: the type of each bound param comes
+/// from `ComponentInfo::param_types`; a param is required when it has no default, that is when
+/// it is binding-only (`entity`, `position`) or listed in the target's `required` schema property.
+fn resolve_subgraph(
+    def: &GraphDef,
+    node: &NodeDef,
+    call: &SubgraphRef,
+    registry: &Registry,
+) -> Result<Leaf, GraphRegistrationError> {
+    let unresolved = || GraphRegistrationError::Unresolved {
+        graph: def.id.clone(),
+        id: call.id.clone(),
+    };
+    let factory = registry.behavior(&call.id).ok_or_else(unresolved)?;
+    let info = registry.info(&call.id).ok_or_else(unresolved)?;
+    let required = factory.param_schema().as_json().get("required");
+    let mut inputs = Vec::with_capacity(call.inputs.len());
+    for (param, key) in &call.inputs {
+        let Some(&ty) = info.param_types.get(param) else {
+            return Err(GraphRegistrationError::Malformed {
+                graph: def.id.clone(),
+                reason: format!(
+                    "node `{}` binds `{param}`, which `{}` does not declare bindable",
+                    node.name, call.id
+                ),
+            });
+        };
+        let listed = required
+            .and_then(ParamValue::as_array)
+            .is_some_and(|names| names.iter().any(|n| n.as_str() == Some(param)));
+        inputs.push(Input {
+            param: param.as_str().into(),
+            key: key.as_str().into(),
+            required: listed || matches!(ty, BbType::Entity | BbType::Position),
+            to_number: ty == BbType::Number,
+        });
+    }
+    Ok(Leaf::Behavior {
+        factory: Arc::clone(factory),
+        inputs,
+    })
 }
 
 /// The interface defaults overlaid with the caller's `params`.
@@ -148,6 +203,33 @@ fn merge_args(
         _ => return Err(BuildError::new("parameters must be an object")),
     }
     Ok(args)
+}
+
+/// The values of the interface params that have a literal or default, typed by
+/// `Interface::types`. Bound params get theirs overwritten before each child tick.
+fn literals(
+    interface: &Interface,
+    args: &BTreeMap<String, ParamValue>,
+) -> Result<Vec<(Box<str>, BbValue)>, BuildError> {
+    let mut out = Vec::new();
+    for (name, ty) in &interface.types {
+        let Some(value) = args.get(name) else {
+            continue;
+        };
+        let typed = match ty {
+            BbType::Bool => value.as_bool().map(BbValue::Bool),
+            BbType::Number => value.as_f64().map(BbValue::Number),
+            BbType::Integer => value.as_i64().map(BbValue::Integer),
+            BbType::String => value.as_str().map(|s| BbValue::String(s.into())),
+            _ => None,
+        };
+        let typed = typed.ok_or_else(|| {
+            BuildError::new(format!("parameter `{name}` is not a literal `{ty}`"))
+                .at(format!("/{name}"))
+        })?;
+        out.push((name.as_str().into(), typed));
+    }
+    Ok(out)
 }
 
 impl GraphFactory {
@@ -204,6 +286,23 @@ impl GraphFactory {
                 duration: t.duration,
             },
             (NodeKind::Fsm(def), _) => Kind::Fsm(program::fsm(def).ok_or_else(fail)?),
+            (NodeKind::Subgraph(call), Leaf::Behavior { factory, inputs }) => {
+                let params = call
+                    .params
+                    .substitute(args)
+                    .map_err(|e| BuildError::new(format!("node `{}`: {e}", node.name)))?;
+                Kind::Subgraph(Subgraph {
+                    behavior: factory
+                        .build(&params)
+                        .map_err(|e| Self::leaf_error(node, &e))?,
+                    inputs: inputs.clone().into_boxed_slice(),
+                    outputs: call
+                        .outputs
+                        .iter()
+                        .map(|(port, key)| (port.as_str().into(), key.as_str().into()))
+                        .collect(),
+                })
+            }
             _ => return Err(fail()),
         })
     }
@@ -243,6 +342,7 @@ impl Factory<dyn Behavior> for GraphFactory {
                 .iter()
                 .map(|(port, out)| (port.clone(), out.from.clone()))
                 .collect(),
+            literals: literals(&def.interface, &args)?,
         };
         Ok(Arc::new(GraphBehavior {
             id: def.id.clone(),
