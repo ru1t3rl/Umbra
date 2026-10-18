@@ -33,7 +33,10 @@ Mark acceptance criteria with evidence (test names / command output summary). So
   - [ ] GeoJSON passes an RFC 7946 structure test; KML is well-formed XML with one `gx:Track` per entity; sampled coordinates equal the engine's `EntityDisplay` values to the written precision.
   - [ ] Manual check recorded here: walking skeleton opened in Google Earth or QGIS and played back.
   - [ ] All gates in `docs/build.md` pass; the A-001 freeze check passes; all M0-M3 tests pass unchanged.
-- [ ] M4 Plugin ABI v0 and SDK
+- [ ] M4 Plugin ABI v0 and SDK (plan `docs/plans/M4.md`, **Proposed**; ADRs 0019-0023 await the human)
+  - [ ] Example plugin loaded and driving entities (plan AT-8, AT-7).
+  - [ ] All plugin failure tests pass (gate 13, plan AT-4).
+  - [ ] A C example compiles against the header (plan AT-9, AT-2).
 - [ ] M5 Engine facade and control (REST + WebSocket)
   - Requirement (WI-10, ASM-098): the kernel tick thread must be spawned with an explicit stack of at least 4 MiB (the behavior recursion needs up to 1.5 MiB in a debug build).
 - [ ] M5b Live map, the first GUI slice (A-002; GUI track, starts after M5 passes, may run alongside M6 and M7; no engine milestone waits for it)
