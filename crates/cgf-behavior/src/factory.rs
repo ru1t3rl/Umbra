@@ -255,7 +255,8 @@ impl Factory<dyn Behavior> for GraphFactory {
 mod tests {
     use super::*;
     use cgf_core::{
-        Composite, Decorator, FsmDef, NodeId, ParamSchema, Provenance, StateDef, Version,
+        Composite, Decorator, ExitDef, FsmDef, NodeId, ParamSchema, ParamTemplate, Provenance,
+        StateDef, Status, TransitionDef, TransitionTarget, Trigger, Version,
     };
 
     fn graph(root: u32, nodes: Vec<NodeDef>) -> Arc<GraphDef> {
@@ -322,27 +323,79 @@ mod tests {
         ));
     }
 
+    fn fsm_graph(def: FsmDef, extra: Vec<NodeDef>) -> Arc<GraphDef> {
+        let mut nodes = vec![NodeDef::new("f", NodeKind::Fsm(def))];
+        nodes.extend(extra);
+        graph(0, nodes)
+    }
+
+    fn one_state(initial: usize) -> FsmDef {
+        FsmDef::new(initial, vec![StateDef::new("a", NodeId(1))])
+    }
+
     #[test]
-    fn an_fsm_with_a_bad_index_is_malformed_and_a_good_one_is_fine() {
-        let fsm = |initial: usize| {
-            NodeDef::new(
-                "f",
-                NodeKind::Fsm(FsmDef::new(initial, vec![StateDef::new("a", NodeId(1))])),
+    fn an_fsm_with_a_bad_shape_is_malformed_and_a_good_one_is_fine() {
+        let malformed = |def: FsmDef| {
+            matches!(
+                reason(fsm_graph(def, vec![seq(&[])])),
+                Some(GraphRegistrationError::Malformed { .. })
             )
         };
-        assert!(reason(graph(0, vec![fsm(0), seq(&[])])).is_none());
-        assert!(matches!(
-            reason(graph(0, vec![fsm(1), seq(&[])])),
-            Some(GraphRegistrationError::Malformed { .. })
+        assert!(reason(fsm_graph(one_state(0), vec![seq(&[])])).is_none());
+        assert!(malformed(one_state(1)));
+        assert!(malformed(FsmDef::new(
+            0,
+            vec![StateDef::new("a", NodeId(9))]
+        )));
+        assert!(malformed(
+            one_state(0).with_exit(ExitDef::new("x", Status::Running))
         ));
-        assert!(matches!(
-            reason(graph(
-                0,
-                vec![NodeDef::new(
-                    "f",
-                    NodeKind::Fsm(FsmDef::new(0, vec![StateDef::new("a", NodeId(9))]))
-                )]
+        assert!(malformed(one_state(0).with_transition(TransitionDef::new(
+            0,
+            TransitionTarget::State(0),
+            Trigger::On(Status::Running)
+        ))));
+    }
+
+    #[test]
+    fn an_action_inside_a_guard_is_malformed() {
+        let action = NodeDef::new(
+            "act",
+            NodeKind::Action(LeafRef::new(
+                ComponentId::new("stub.action").unwrap_or_else(|e| panic!("{e}")),
+                ParamTemplate::new(ParamValue::Null),
             )),
+        );
+        let guarded = |guard: NodeDef| {
+            let def = one_state(0).with_transition(TransitionDef::new(
+                0,
+                TransitionTarget::State(0),
+                Trigger::When(NodeId(2)),
+            ));
+            reason(fsm_graph(def, vec![seq(&[]), guard]))
+        };
+        // The action is refused by the guard check before leaf resolution.
+        let err = guarded(action);
+        assert!(
+            matches!(&err, Some(GraphRegistrationError::Malformed { reason, .. }) if reason.contains("guard `act`")),
+            "{err:?}"
+        );
+        // A sequence guard that contains an action is refused too.
+        let nested = NodeDef::new("g", NodeKind::Sequence(Composite::new(vec![NodeId(3)])));
+        let def = one_state(0).with_transition(TransitionDef::new(
+            0,
+            TransitionTarget::State(0),
+            Trigger::When(NodeId(2)),
+        ));
+        let action = NodeDef::new(
+            "act",
+            NodeKind::Action(LeafRef::new(
+                ComponentId::new("stub.action").unwrap_or_else(|e| panic!("{e}")),
+                ParamTemplate::new(ParamValue::Null),
+            )),
+        );
+        assert!(matches!(
+            reason(fsm_graph(def, vec![seq(&[]), nested, action])),
             Some(GraphRegistrationError::Malformed { .. })
         ));
     }

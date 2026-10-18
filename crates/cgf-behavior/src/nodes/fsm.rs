@@ -6,7 +6,7 @@
 //! resets the machine to `initial`; every other tick returns Running.
 //!
 //! Guards are ordinary nodes and are ticked like any other, so a guard may write the blackboard
-//! (a `store_as` condition, a `set` action). Guards are evaluated in file order and stop at the
+//! (a `store_as` condition). Guards are evaluated in file order and stop at the
 //! first Success, so a later guard's side effects happen only if the earlier ones failed; the
 //! writes are visible to the state node ticked in the same tick.
 
@@ -22,7 +22,8 @@ pub(crate) fn fresh(f: &Fsm) -> NodeState {
     }
 }
 
-/// Every child node (state nodes and guards) in file order.
+/// Every child node: the state nodes, then the guards, in file order. `program.rs` `children_of`
+/// lists an FSM's children the same way; keep them in step.
 pub(crate) fn children(f: &Fsm) -> impl Iterator<Item = usize> + '_ {
     let guards = f.transitions.iter().filter_map(|t| match t.when {
         When::Guard(g) => Some(g),
@@ -33,11 +34,10 @@ pub(crate) fn children(f: &Fsm) -> impl Iterator<Item = usize> + '_ {
 
 /// Ticks the FSM at `idx` once.
 pub(crate) fn tick(w: &mut Walk<'_, '_, '_, '_>, idx: usize, f: &Fsm) -> Status {
-    let current = match &w.states[idx] {
+    let mut current = match &w.states[idx] {
         NodeState::Fsm { current, .. } => *current,
         _ => return Status::Failure,
     };
-    let mut current = current;
     if let Some(to) = fire_guard(w, f, current) {
         // A parent halt: a state node that is not Running is left as it is (ASM-095).
         if let Some(&node) = f.states.get(current) {

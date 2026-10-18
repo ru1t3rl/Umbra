@@ -4,6 +4,8 @@
 //!
 //! Stub leaves (all log what they do into one shared [`Log`]):
 //! - condition `stub.cond.flag { name }`: returns the flag `name` of [`Controls`]; logs `cond:<name>`.
+//! - condition `stub.cond.store { key, value, flag }`: writes `value` to `key`, logs
+//!   `store:<key>=<ok>` then `cond:<flag>`, and returns the flag `flag`.
 //! - action `stub.action.script { name, script }`: returns the statuses of `script` in order (the
 //!   last one repeats); logs `tick:<name>` and `halt:<name>`; emits `Custom { payload: <name> }`.
 //! - action `stub.action.bb { op, key, label, value?, status? }`: `set`, `unset` or `read` a
@@ -151,6 +153,51 @@ impl Condition for FlagCondition {
         say(&self.log, format!("cond:{}", self.name));
         self.controls.flag(&self.name)
     }
+}
+
+/// Writes `value` to `key` on every check, then returns the flag (a condition with a side effect).
+struct StoreCondition {
+    id: ComponentId,
+    key: String,
+    value: BbValue,
+    flag: String,
+    log: Log,
+    controls: Arc<Controls>,
+}
+
+impl Condition for StoreCondition {
+    fn id(&self) -> &ComponentId {
+        &self.id
+    }
+
+    fn check(&self, _: &mut BehaviorContext<'_>, _: &EntityView<'_>, bb: &mut Blackboard) -> bool {
+        let result = bb.set(&self.key, self.value.clone());
+        say(&self.log, format!("store:{}={}", self.key, result.is_ok()));
+        say(&self.log, format!("cond:{}", self.flag));
+        self.controls.flag(&self.flag)
+    }
+}
+
+fn register_store(registry: &mut Registry, log: &Log, controls: &Arc<Controls>) {
+    let (l, c) = (Arc::clone(log), Arc::clone(controls));
+    registry
+        .register_condition(
+            Arc::new(StubFactory::<dyn Condition>::new(
+                "stub.cond.store",
+                Box::new(move |id, p| {
+                    Ok(Arc::new(StoreCondition {
+                        id: id.clone(),
+                        key: str_param(p, "key")?.to_string(),
+                        value: value_of(p.get("value").unwrap_or(&ParamValue::Null)),
+                        flag: str_param(p, "flag")?.to_string(),
+                        log: Arc::clone(&l),
+                        controls: Arc::clone(&c),
+                    }))
+                }),
+            )),
+            info(Provenance::Plugin),
+        )
+        .expect("register store");
 }
 
 // --- stub actions --------------------------------------------------------------------------------
@@ -453,6 +500,8 @@ impl Bench {
                 info(Provenance::Plugin),
             )
             .expect("register flag");
+
+        register_store(&mut registry, &log, &controls);
 
         let l = Arc::clone(&log);
         registry

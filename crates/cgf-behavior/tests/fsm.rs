@@ -535,18 +535,20 @@ fn parent_halt_resets_a_running_fsm_to_initial() {
     );
 }
 
-/// Guard side effects (plan WI-9 Risks): a guard may write the blackboard, even when it then
-/// fails; the write is visible to the state node ticked in the same tick; a guard after the first
-/// succeeding one is not evaluated.
+/// Guard side effects (plan WI-9 Risks): a guard condition may write the blackboard, even when it
+/// then fails; the write is visible to the state node ticked in the same tick; a guard after the
+/// first succeeding one is not evaluated.
 #[test]
 fn guard_may_write_the_blackboard_and_the_state_sees_it() {
     let bench = Bench::new();
     let mut b = B::new();
     let read = b.read("r", "k");
     let s1 = b.act("s1", &["running"]);
-    let write = b.set("w", "k", 7);
-    let flag = b.cond("g");
-    let guard = b.seq("guard", false, &[write, flag]);
+    let guard = b.leaf_cond(
+        "guard",
+        "stub.cond.store",
+        serde_json::json!({ "key": "k", "value": 7, "flag": "g" }),
+    );
     let never = b.cond("later");
     let def = FsmDef::new(0, vec![state("a", read), state("b", s1)])
         .with_transition(when(0, 1, guard))
@@ -564,12 +566,12 @@ fn guard_may_write_the_blackboard_and_the_state_sees_it() {
     assert_eq!(
         failing.trace,
         lines(&[
-            "set:w=ok",
+            "store:k=true",
             "cond:g",
             "cond:later",
             &common::read_line("r", Some(&cgf_core::BbValue::Integer(7))),
         ]),
         "the write survives the failing guard and the state reads it"
     );
-    assert_eq!(firing.trace, lines(&["set:w=ok", "cond:g", "tick:s1"]));
+    assert_eq!(firing.trace, lines(&["store:k=true", "cond:g", "tick:s1"]));
 }

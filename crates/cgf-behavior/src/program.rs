@@ -141,6 +141,8 @@ pub(crate) fn policy(p: ParallelPolicy) -> Option<Policy> {
     }
 }
 
+/// The children of a node, in file order. `nodes/fsm.rs` `children` lists an FSM's children the
+/// same way (states, then guards); keep them in step.
 fn children_of(kind: &NodeKind) -> Vec<NodeId> {
     match kind {
         NodeKind::Sequence(c) | NodeKind::Selector(c) => c.children.clone(),
@@ -180,7 +182,8 @@ pub(crate) fn validate(def: &GraphDef) -> Result<(), GraphRegistrationError> {
             | NodeKind::Cooldown(_)
             | NodeKind::Timeout(_) => true,
             NodeKind::Fsm(f) => {
-                fsm_shape(f).map_err(|reason| bad(format!("fsm `{}`: {reason}", node.name)))?;
+                fsm_shape(def, f)
+                    .map_err(|reason| bad(format!("fsm `{}`: {reason}", node.name)))?;
                 true
             }
             NodeKind::Parallel(p) => policy(p.policy).is_some(),
@@ -221,10 +224,16 @@ pub(crate) fn validate(def: &GraphDef) -> Result<(), GraphRegistrationError> {
     Ok(())
 }
 
-/// Checks the indices of an FSM: at least one state, `initial`, `from` and targets in range.
-fn fsm_shape(f: &FsmDef) -> Result<(), &'static str> {
+/// Checks an FSM: `initial`, `from` and targets in range, exits and `on` triggers only Success or
+/// Failure (so an FSM is Running exactly when it has not exited), guard subtrees made of
+/// `condition`, `inverter`, `sequence` and `selector` only (ADR 0012), so a guard never returns
+/// Running and never needs a halt.
+fn fsm_shape(def: &GraphDef, f: &FsmDef) -> Result<(), String> {
     if f.initial >= f.states.len() {
-        return Err("the initial state does not exist");
+        return Err("the initial state does not exist".to_string());
+    }
+    if f.exits.iter().any(|e| e.result == Status::Running) {
+        return Err("an exit maps to `running`; only success and failure are allowed".to_string());
     }
     for t in &f.transitions {
         let target_ok = match t.to {
@@ -232,13 +241,51 @@ fn fsm_shape(f: &FsmDef) -> Result<(), &'static str> {
             TransitionTarget::Exit(e) => e < f.exits.len(),
         };
         if t.from >= f.states.len() || !target_ok {
-            return Err("a transition names a state or exit that does not exist");
+            return Err("a transition names a state or exit that does not exist".to_string());
         }
-        if !matches!(t.trigger, Trigger::When(_) | Trigger::On(_)) {
-            return Err("a transition has a trigger this interpreter does not know");
+        match t.trigger {
+            Trigger::On(Status::Running) => {
+                return Err("an `on running` transition is not allowed".to_string());
+            }
+            Trigger::When(guard) => guard_shape(def, guard)?,
+            Trigger::On(_) => {}
+            _ => {
+                return Err("a transition has a trigger this interpreter does not know".to_string());
+            }
         }
     }
     Ok(())
+}
+
+/// Walks a guard subtree (iteratively; indices out of range are reported by the caller's tree
+/// walk) and refuses any node that could return Running.
+fn guard_shape(def: &GraphDef, guard: NodeId) -> Result<(), String> {
+    let mut stack = vec![index(guard)];
+    while let Some(at) = stack.pop() {
+        let Some(node) = def.nodes.get(at) else {
+            return Ok(());
+        };
+        match &node.kind {
+            NodeKind::Condition(_)
+            | NodeKind::Inverter(_)
+            | NodeKind::Sequence(_)
+            | NodeKind::Selector(_) => {}
+            other => {
+                return Err(format!(
+                    "guard `{}` contains a `{}` node; guards may contain only condition, \
+                     inverter, sequence and selector",
+                    node.name,
+                    kind_name(other)
+                ));
+            }
+        }
+        stack.extend(children_of(&node.kind).into_iter().map(index));
+    }
+    Ok(())
+}
+
+fn kind_name(kind: &NodeKind) -> &'static str {
+    kind.tag().name()
 }
 
 /// The FSM of `def`, already checked by [`fsm_shape`] through [`validate`].
