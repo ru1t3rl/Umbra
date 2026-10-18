@@ -1,231 +1,395 @@
-//! AT-8 (property): random forests of behavior graphs. Cycles and depth are reported exactly when
-//! the reference graph says so, broken graphs cause no cascade, and the order of the files does not
-//! matter.
-//! Requirements: REQ-B-12, REQ-T-2, REQ-K-4, ADR 0012, ASM-056, ASM-073.
+//! AT-8 (property): random forests of behavior graphs. Cycles, depth, versions and duplicate IDs
+//! are reported exactly where an independent reference model says so, broken graphs cause no
+//! cascade, and the order of the files does not matter.
+//! Requirements: REQ-B-12, REQ-T-2, REQ-K-4, ADR 0012, ASM-056, ASM-073, ASM-092 (c), ASM-106.
 //!
-//! Step 4 of M3: written before WI-13 and enabled with it. The acceptance check runs it at 1000
-//! cases.
+//! Step 4 of M3: written before WI-13 and enabled with it; strengthened after the WI-13 review.
+//! The acceptance check runs it at 1000 cases.
+//!
+//! The model (`expect`) works on plain indices: graph `i` has ID `test.g{i:02}`, so ID order is
+//! index order, while its file path `behaviors/g{paths[i]:02}` uses a separate random permutation,
+//! so a rule that used path order instead of ID order would disagree with the model.
 
 #![forbid(unsafe_code)]
 
 mod common;
 mod graph_support;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 use cgf_templates::{Diagnostic, SourceFile};
-use common::{lines, src};
+use common::{Row, lines, row, rows, src};
 use graph_support::graphs_with_depth;
 use proptest::prelude::*;
 
-/// A forest: `edges[i]` are the graphs that graph `i` calls; `limit` is the depth limit; `order`
-/// is a permutation of the graph indices (the order the files are given in).
-#[derive(Debug, Clone)]
-struct Forest {
-    edges: Vec<BTreeSet<usize>>,
-    limit: u32,
-    order: Vec<usize>,
+/// How a graph's file is damaged, if at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    /// Valid.
+    Clean,
+    /// A syntax error after the nodes; the `id` can still be recovered (ASM-054 rule 3).
+    Junk,
+    /// `version = 1`: the file parses but the reader reports an error (ASM-056, ASM-106 a).
+    ReaderError,
 }
 
-fn forest() -> impl Strategy<Value = Forest> {
-    (1usize..=30).prop_flat_map(|n| {
+/// A call: the target index and the `version` range of the call, `^m.0.0` for `Some(m)`.
+type Calls = BTreeMap<usize, Option<u8>>;
+
+/// A forest of graphs. `calls[i]` are the graphs graph `i` calls, in target order (node `c{k}` is
+/// the `k`-th target); `majors[i]` is the major version of graph `i`; `keys` order the files
+/// (graph files first, then one duplicate file per entry of `dups`).
+#[derive(Debug, Clone)]
+struct Forest {
+    calls: Vec<Calls>,
+    majors: Vec<u8>,
+    limit: u32,
+    keys: Vec<u32>,
+    paths: Vec<usize>,
+    modes: Vec<Mode>,
+    dups: BTreeSet<usize>,
+}
+
+/// Most files: 30 graphs and 6 duplicate files.
+const MAX_FILES: usize = 36;
+
+fn forest(damaged: bool) -> impl Strategy<Value = Forest> {
+    (1usize..=30).prop_flat_map(move |n| {
+        let mode = prop_oneof![8 => Just(Mode::Clean), 1 => Just(Mode::Junk), 1 => Just(Mode::ReaderError)];
         (
-            any::<bool>(),
-            prop::collection::vec(prop::collection::btree_set(0..n, 0..4), n),
+            (any::<bool>(), any::<bool>()),
+            prop::collection::vec(
+                prop::collection::btree_map(0..n, prop::option::of(1u8..=4), 0..4),
+                n,
+            ),
+            prop::collection::vec(1u8..=3, n),
             2u32..7,
+            prop::collection::vec(any::<u32>(), MAX_FILES),
             Just((0..n).collect::<Vec<_>>()).prop_shuffle(),
+            prop::collection::vec(mode, n),
+            prop::collection::btree_set(0..n, 0..6),
         )
-            .prop_map(|(acyclic, mut edges, limit, order)| {
-                if acyclic {
-                    for (i, targets) in edges.iter_mut().enumerate() {
-                        targets.retain(|&j| j > i);
+            .prop_map(
+                move |((acyclic, local), calls, majors, limit, keys, paths, modes, dups)| {
+                    let calls = calls
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, targets)| shape(i, n, targets, acyclic, local))
+                        .collect();
+                    Forest {
+                        calls,
+                        majors,
+                        limit,
+                        keys,
+                        paths,
+                        modes: if damaged { modes } else { vec![Mode::Clean; n] },
+                        dups: if damaged { dups } else { BTreeSet::new() },
                     }
-                }
-                Forest {
-                    edges,
-                    limit,
-                    order,
-                }
-            })
+                },
+            )
     })
+}
+
+/// Makes the random targets of graph `i` forward-only (`acyclic`) and/or close to `i` (`local`,
+/// which makes long chains likely).
+fn shape(i: usize, n: usize, targets: Calls, acyclic: bool, local: bool) -> Calls {
+    let mut out = Calls::new();
+    for (t, range) in targets {
+        let t = if local { (i + 1 + t % 3).min(n - 1) } else { t };
+        if !acyclic || t > i {
+            out.insert(t, range);
+        }
+    }
+    out
 }
 
 fn id(i: usize) -> String {
     format!("test.g{i:02}")
 }
 
-fn graph_file(forest: &Forest, i: usize, broken: bool) -> SourceFile {
-    let targets: Vec<usize> = forest.edges[i].iter().copied().collect();
+fn graph_path(f: &Forest, i: usize) -> PathBuf {
+    PathBuf::from(format!("behaviors/g{:02}.behavior.toml", f.paths[i]))
+}
+
+fn dup_path(j: usize) -> PathBuf {
+    PathBuf::from(format!("behaviors/zdup{j:02}.behavior.toml"))
+}
+
+/// Where the parts of a graph file are: line of node `c{k}`'s `ref` and `version`.
+struct Lines {
+    refs: Vec<u32>,
+    versions: Vec<Option<u32>>,
+}
+
+fn to_line(index: usize) -> u32 {
+    u32::try_from(index + 1).unwrap_or(u32::MAX)
+}
+
+fn graph_text(f: &Forest, i: usize) -> (String, Lines) {
+    let version = match f.modes[i] {
+        Mode::ReaderError => "version = 1".to_string(),
+        _ => format!("version = \"{}.0.0\"", f.majors[i]),
+    };
     let mut all = vec![
         "schema_version = 1".to_string(),
         format!("id = \"{}\"", id(i)),
-        "version = \"1.0.0\"".to_string(),
+        version,
         "root = \"r\"".to_string(),
         "[nodes.r]".to_string(),
     ];
-    if targets.is_empty() {
+    let mut at = Lines {
+        refs: Vec::new(),
+        versions: Vec::new(),
+    };
+    if f.calls[i].is_empty() {
         all.push("type = \"action\"".into());
         all.push("ref = \"stub.action.noop\"".into());
     } else {
         all.push("type = \"sequence\"".into());
-        let children: Vec<String> = (0..targets.len()).map(|k| format!("\"c{k}\"")).collect();
+        let children: Vec<String> = (0..f.calls[i].len()).map(|k| format!("\"c{k}\"")).collect();
         all.push(format!("children = [{}]", children.join(", ")));
-        for (k, t) in targets.iter().enumerate() {
+        for (k, (t, range)) in f.calls[i].iter().enumerate() {
             all.push(format!("[nodes.c{k}]"));
             all.push("type = \"subgraph\"".into());
             all.push(format!("ref = \"{}\"", id(*t)));
+            at.refs.push(to_line(all.len() - 1));
+            at.versions.push(range.map(|m| {
+                all.push(format!("version = \"^{m}.0.0\""));
+                to_line(all.len() - 1)
+            }));
         }
     }
-    if broken {
+    if f.modes[i] == Mode::Junk {
         all.push("this is not toml".into());
     }
     let refs: Vec<&str> = all.iter().map(String::as_str).collect();
-    src(&format!("behaviors/g{i:02}.behavior.toml"), &lines(&refs))
+    (lines(&refs), at)
 }
 
-fn load(forest: &Forest, broken: &BTreeSet<usize>) -> Vec<Diagnostic> {
-    let files: Vec<SourceFile> = forest
-        .order
-        .iter()
-        .map(|&i| graph_file(forest, i, broken.contains(&i)))
+/// The files in the order given to the loader: graph files, then the duplicates.
+fn files(f: &Forest, reversed: bool) -> Vec<SourceFile> {
+    let mut all: Vec<SourceFile> = (0..f.calls.len())
+        .map(|i| src(&graph_path(f, i).to_string_lossy(), &graph_text(f, i).0))
         .collect();
-    match graphs_with_depth(&files, forest.limit) {
+    for &j in &f.dups {
+        let text = lines(&[
+            "schema_version = 1",
+            &format!("id = \"{}\"", id(j)),
+            "version = \"1.0.0\"",
+            "root = \"r\"",
+            "[nodes.r]",
+            "type = \"action\"",
+            "ref = \"stub.action.noop\"",
+        ]);
+        all.push(src(&dup_path(j).to_string_lossy(), &text));
+    }
+    let mut order: Vec<usize> = (0..all.len()).collect();
+    order.sort_by_key(|&x| (f.keys[x], x));
+    if reversed {
+        order.reverse();
+    }
+    order.into_iter().map(|x| all[x].clone()).collect()
+}
+
+fn load(f: &Forest, reversed: bool) -> Vec<Diagnostic> {
+    match graphs_with_depth(&files(f, reversed), f.limit) {
         Ok(_) => Vec::new(),
         Err(d) => d.iter().cloned().collect(),
     }
 }
 
-/// Strongly connected components with a cycle: more than one graph, or one with a self-call.
-fn cyclic_components(edges: &[BTreeSet<usize>]) -> usize {
-    struct State<'a> {
-        edges: &'a [BTreeSet<usize>],
-        index: Vec<Option<usize>>,
-        low: Vec<usize>,
-        on_stack: Vec<bool>,
-        stack: Vec<usize>,
-        next: usize,
-        cyclic: usize,
-    }
-    fn visit(s: &mut State<'_>, v: usize) {
-        s.index[v] = Some(s.next);
-        s.low[v] = s.next;
-        s.next += 1;
-        s.stack.push(v);
-        s.on_stack[v] = true;
-        for &w in &s.edges[v] {
-            match s.index[w] {
-                None => {
-                    visit(s, w);
-                    s.low[v] = s.low[v].min(s.low[w]);
-                }
-                Some(iw) if s.on_stack[w] => s.low[v] = s.low[v].min(iw),
-                Some(_) => {}
+/// The rows of every diagnostic the model predicts: `subgraph_cycle`, `subgraph_too_deep`,
+/// `version_mismatch` and `duplicate_id` (the syntax and reader errors of damaged files are
+/// checked by count and file).
+fn expect(f: &Forest) -> Vec<Row> {
+    let n = f.calls.len();
+    let usable: Vec<bool> = (0..n)
+        .map(|i| f.modes[i] == Mode::Clean && !f.dups.contains(&i))
+        .collect();
+    // Edges of the reference graph: usable graph to usable graph (ASM-106 a, f).
+    let adj: Vec<Vec<usize>> = (0..n)
+        .map(|i| {
+            if usable[i] {
+                f.calls[i].keys().copied().filter(|&t| usable[t]).collect()
+            } else {
+                Vec::new()
             }
+        })
+        .collect();
+    let mut reach = vec![vec![false; n]; n];
+    for (v, targets) in adj.iter().enumerate() {
+        for &t in targets {
+            reach[v][t] = true;
         }
-        if Some(s.low[v]) == s.index[v] {
-            let mut size = 0;
-            while let Some(w) = s.stack.pop() {
-                s.on_stack[w] = false;
-                size += 1;
-                if w == v {
-                    break;
+    }
+    for k in 0..n {
+        for a in 0..n {
+            for b in 0..n {
+                if reach[a][k] && reach[k][b] {
+                    reach[a][b] = true;
                 }
             }
-            if size > 1 || s.edges[v].contains(&v) {
-                s.cyclic += 1;
+        }
+    }
+    let cyclic: Vec<bool> = (0..n).map(|v| reach[v][v]).collect();
+    let mut out: Vec<Row> = Vec::new();
+    let position = |v: usize, t: usize| f.calls[v].keys().position(|&x| x == t).unwrap_or(0);
+
+    // One cycle per strongly connected component, at the first reference of the shortest cycle
+    // through its smallest ID; ties go to the smallest target ID (ASM-092 c).
+    for v in (0..n).filter(|&v| cyclic[v]) {
+        if (0..v).any(|u| reach[v][u] && reach[u][v]) {
+            continue;
+        }
+        let mut dist = vec![usize::MAX; n];
+        for _ in 0..=n {
+            for u in 0..n {
+                for &t in &adj[u] {
+                    let via = if t == v { 1 } else { dist[t].saturating_add(1) };
+                    dist[u] = dist[u].min(via);
+                }
+            }
+        }
+        let shortest = adj[v]
+            .iter()
+            .map(|&w| dist_to(&dist, v, w))
+            .min()
+            .unwrap_or(0);
+        let first = adj[v]
+            .iter()
+            .copied()
+            .find(|&w| dist_to(&dist, v, w) == shortest)
+            .unwrap_or(v);
+        let line = to_line_of(f, v, position(v, first), false);
+        out.push(row("subgraph_cycle", graph_path(f, v), (line, 7)));
+    }
+
+    // Depth outside the cyclic components: a reference made by a graph whose longest chain from
+    // a root is exactly the limit (one per outgoing reference).
+    let acyclic: Vec<usize> = (0..n).filter(|&v| usable[v] && !cyclic[v]).collect();
+    let mut level = vec![1usize; n];
+    for _ in 0..=n {
+        for &v in &acyclic {
+            for &t in adj[v].iter().filter(|&&t| !cyclic[t]) {
+                level[t] = level[t].max(level[v] + 1);
             }
         }
     }
-    let n = edges.len();
-    let mut s = State {
-        edges,
-        index: vec![None; n],
-        low: vec![0; n],
-        on_stack: vec![false; n],
-        stack: Vec::new(),
-        next: 0,
-        cyclic: 0,
-    };
-    for v in 0..n {
-        if s.index[v].is_none() {
-            visit(&mut s, v);
+    let limit = usize::try_from(f.limit).unwrap_or(usize::MAX);
+    for &v in acyclic.iter().filter(|&&v| level[v] == limit) {
+        for &t in adj[v].iter().filter(|&&t| !cyclic[t]) {
+            let line = to_line_of(f, v, position(v, t), false);
+            out.push(row("subgraph_too_deep", graph_path(f, v), (line, 7)));
         }
     }
-    s.cyclic
+
+    // A call with a range no usable target satisfies, from any file that parsed.
+    for v in (0..n).filter(|&v| f.modes[v] != Mode::Junk) {
+        for (k, (&t, range)) in f.calls[v].iter().enumerate() {
+            if let Some(m) = range
+                && usable[t]
+                && *m != f.majors[t]
+            {
+                let line = to_line_of(f, v, k, true);
+                out.push(row("version_mismatch", graph_path(f, v), (line, 11)));
+            }
+        }
+    }
+
+    // The later file of a duplicated ID (the duplicate files sort last).
+    for &j in &f.dups {
+        out.push(row("duplicate_id", dup_path(j), (2, 6)));
+    }
+    out.sort();
+    out
 }
 
-/// Number of graphs on the longest chain of an acyclic forest (a graph with no calls counts 1).
-///
-/// WI-13 test fix: the first version assumed every edge points to a higher index, which holds only
-/// for the forests generated as "acyclic" by construction; a forest generated freely can also have
-/// no cycle (`2 -> 1 -> 0`), and its longest chain was undercounted. This memoised walk is correct
-/// for any acyclic forest.
-fn longest_chain(edges: &[BTreeSet<usize>]) -> usize {
-    fn chain(edges: &[BTreeSet<usize>], v: usize, memo: &mut Vec<Option<usize>>) -> usize {
-        if let Some(found) = memo[v] {
-            return found;
-        }
-        let best = 1 + edges[v]
-            .iter()
-            .map(|&w| chain(edges, w, memo))
-            .max()
-            .unwrap_or(0);
-        memo[v] = Some(best);
-        best
+/// Length of the shortest path from `w` to `v` plus the edge `v -> w`, as a cycle length.
+fn dist_to(dist: &[usize], v: usize, w: usize) -> usize {
+    if w == v { 1 } else { dist[w].saturating_add(1) }
+}
+
+/// The line of the `ref` (or the `version`) of the `k`-th call of graph `v`.
+fn to_line_of(f: &Forest, v: usize, k: usize, version: bool) -> u32 {
+    let at = graph_text(f, v).1;
+    if version {
+        at.versions[k].unwrap_or(0)
+    } else {
+        at.refs[k]
     }
-    let mut memo = vec![None; edges.len()];
-    (0..edges.len())
-        .map(|v| chain(edges, v, &mut memo))
-        .max()
-        .unwrap_or(0)
+}
+
+const MODELLED: [&str; 4] = [
+    "subgraph_cycle",
+    "subgraph_too_deep",
+    "version_mismatch",
+    "duplicate_id",
+];
+
+fn check(f: &Forest) -> Result<(), TestCaseError> {
+    let diagnostics = load(f, false);
+    let (modelled, other): (Vec<Diagnostic>, Vec<Diagnostic>) = diagnostics
+        .iter()
+        .cloned()
+        .partition(|d| MODELLED.contains(&d.code.as_str()));
+    let mut got = rows(&modelled);
+    got.sort();
+    prop_assert_eq!(got, expect(f));
+
+    // Every other diagnostic is the one error of a damaged file, and nothing else (ASM-056).
+    let junk: BTreeSet<PathBuf> = (0..f.calls.len())
+        .filter(|&i| f.modes[i] == Mode::Junk)
+        .map(|i| graph_path(f, i))
+        .collect();
+    let reader: BTreeSet<PathBuf> = (0..f.calls.len())
+        .filter(|&i| f.modes[i] == Mode::ReaderError)
+        .map(|i| graph_path(f, i))
+        .collect();
+    let mut syntax_in = BTreeSet::new();
+    let mut reader_in = BTreeSet::new();
+    for d in &other {
+        let path = d
+            .location
+            .as_ref()
+            .map(|l| l.path.clone())
+            .unwrap_or_default();
+        if d.code.as_str() == "syntax" {
+            prop_assert!(
+                syntax_in.insert(path),
+                "two syntax errors in one file: {}",
+                d
+            );
+        } else {
+            prop_assert!(reader_in.insert(path), "unexpected or repeated {}", d);
+        }
+    }
+    prop_assert_eq!(syntax_in, junk);
+    prop_assert_eq!(reader_in, reader);
+
+    // The order of the files does not matter.
+    prop_assert_eq!(load(f, true), diagnostics);
+    Ok(())
 }
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(1000))]
 
-    /// REQ-B-12: loading terminates; `subgraph_cycle` appears once per cycle (a strongly connected
-    /// component with a loop); in an acyclic forest `subgraph_too_deep` appears exactly when the
-    /// longest chain is longer than the limit; no other code appears (no cascade from a cycle);
-    /// and the same files in another order give identical diagnostics.
+    /// REQ-B-12: with clean files, loading terminates; `subgraph_cycle` appears once per cyclic
+    /// strongly connected component at the position ASM-092 (c) gives; `subgraph_too_deep` appears
+    /// at every reference of a graph at level == limit outside the cyclic components;
+    /// `version_mismatch` appears exactly for the calls whose range the target's version misses;
+    /// nothing else appears; and the files in another order give identical diagnostics.
     #[test]
-    fn subgraph_cycles_and_depth(forest in forest()) {
-        let diagnostics = load(&forest, &BTreeSet::new());
-
-        let cycles = diagnostics.iter().filter(|d| d.code.as_str() == "subgraph_cycle").count();
-        prop_assert_eq!(cycles, cyclic_components(&forest.edges));
-        let too_deep = diagnostics.iter().any(|d| d.code.as_str() == "subgraph_too_deep");
-        if cyclic_components(&forest.edges) == 0 {
-            let limit = usize::try_from(forest.limit).unwrap_or(usize::MAX);
-            prop_assert_eq!(too_deep, longest_chain(&forest.edges) > limit);
-        }
-        for d in &diagnostics {
-            prop_assert!(
-                matches!(d.code.as_str(), "subgraph_cycle" | "subgraph_too_deep"),
-                "unexpected {}",
-                d
-            );
-        }
-        let mut reordered = forest.clone();
-        reordered.order.reverse();
-        prop_assert_eq!(load(&reordered, &BTreeSet::new()), diagnostics);
+    fn subgraph_cycles_depth_and_versions(f in forest(false)) {
+        check(&f)?;
     }
 
-    /// ASM-056: graphs in files with a syntax error are "broken"; the graphs that call them get no
-    /// `unknown_id` or other cascade, whatever the shape of the forest.
+    /// ASM-056, ASM-106 a: graphs with a syntax error, a reader error or a duplicate ID are
+    /// known but unusable; calls to them cause no cascade (no `unknown_id`, no version check, no
+    /// cycle or depth through them), and the rest of the forest is still checked as above.
     #[test]
-    fn broken_graphs_cause_no_cascade(forest in forest(), pick in prop::collection::btree_set(0usize..30, 0..6)) {
-        let broken: BTreeSet<usize> = pick.into_iter().filter(|&i| i < forest.edges.len()).collect();
-
-        let diagnostics = load(&forest, &broken);
-
-        for d in &diagnostics {
-            prop_assert!(
-                matches!(d.code.as_str(), "syntax" | "subgraph_cycle" | "subgraph_too_deep"),
-                "unexpected {}",
-                d
-            );
-        }
-        let syntax = diagnostics.iter().filter(|d| d.code.as_str() == "syntax").count();
-        prop_assert_eq!(syntax, broken.len(), "one syntax error per broken file");
+    fn damaged_graphs_cause_no_cascade(f in forest(true)) {
+        check(&f)?;
     }
 }
