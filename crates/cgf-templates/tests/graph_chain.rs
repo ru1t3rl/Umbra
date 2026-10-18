@@ -490,3 +490,66 @@ fn a_visit_cut_short_by_the_depth_limit_does_not_hide_a_shallower_one() {
         "{d:?}"
     );
 }
+
+/// ASM-106 d: a leaf's own bad literal is reported at load even when another of its params is a
+/// `{ param }` with no default (unknown).
+#[test]
+fn a_leaf_literal_is_checked_next_to_an_unknown_param() {
+    let c = graph(
+        "test.c",
+        NUMBER_Y,
+        &[
+            "[nodes.r]",
+            "type = \"condition\"",
+            "ref = \"stub.cond.near\"",
+            "params = { range_m = { param = \"y\" }, store_as = 5 }",
+        ],
+    );
+
+    let d = found(&[("c", &c)]);
+
+    assert_eq!(d.len(), 1, "{d:?}");
+    assert_eq!(rows(&d)[0].1, std::path::PathBuf::from(path("c")), "{d:?}");
+    assert_eq!(
+        (rows(&d)[0].2, rows(&d)[0].3),
+        pos_after(&c, "store_as = "),
+        "{d:?}"
+    );
+}
+
+/// The same for a `subgraph` call: a bad literal next to an unknown pass-through.
+#[test]
+fn a_call_literal_is_checked_next_to_an_unknown_pass_through() {
+    let c = graph(
+        "test.c",
+        "{ y = { type = \"number\" }, z = { type = \"number\", maximum = 10 } }",
+        &NOOP,
+    );
+    let b = calls(
+        "test.b",
+        NUMBER,
+        "test.c",
+        "{ y = { param = \"x\" }, z = 99.0 }",
+    );
+
+    let d = found(&[("b", &b), ("c", &c)]);
+
+    assert_eq!(
+        rows(&d),
+        [row("param_out_of_range", path("b"), pos_after(&b, "z = "))]
+    );
+}
+
+/// No false positives: unknown params alone, and a leaf with only an unknown param, give no error.
+#[test]
+fn unknown_params_alone_give_no_error() {
+    let leaf = near_of("test.c", NUMBER_Y, "y");
+    let c = graph("test.d", MAX10, &NOOP);
+    let b = calls("test.b", NUMBER, "test.d", "{ y = { param = \"x\" } }");
+
+    assert_eq!(ok(graphs(&[src(&path("c"), &leaf)])).len(), 1);
+    assert_eq!(
+        ok(graphs(&[src(&path("b"), &b), src(&path("d"), &c)])).len(),
+        2
+    );
+}

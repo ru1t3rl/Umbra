@@ -285,7 +285,9 @@ fn parameters(
         }
     }
     let registered = callee.graph.is_none();
-    let mut found = if registered && substituted.dropped.is_empty() {
+    let mut found = if !substituted.dropped.is_empty() {
+        schema_errors(callee, &substituted.table, true)
+    } else if registered {
         let mut found = Vec::new();
         let id_at = table.get("ref").map_or(&at, |v| v.origin());
         let _ = set.loader.check_component(
@@ -297,7 +299,7 @@ fn parameters(
         );
         found
     } else {
-        schema_errors(callee, &substituted.table)
+        schema_errors(callee, &substituted.table, false)
     };
     found.retain(|d| d.code != DiagnosticCode::MissingParam);
     out.extend(match follow {
@@ -314,11 +316,20 @@ fn parameters(
     supplied
 }
 
-fn schema_errors(callee: &Callee<'_>, params: &LTable) -> Vec<Diagnostic> {
+/// The schema errors of `params`; with `partial`, some params are unknown, so what needs them
+/// (missing, object-level rules) is not checked.
+fn schema_errors(callee: &Callee<'_>, params: &LTable, partial: bool) -> Vec<Diagnostic> {
     let context = format!("{} `{}`", ComponentKind::Behavior.noun(), callee.id);
     CompiledSchema::compile(callee.schema).map_or_else(
         |_| Vec::new(),
-        |schema| schema.validate(&params.clone().into_value(), &context),
+        |schema| {
+            let value = params.clone().into_value();
+            if partial {
+                schema.validate_known(&value, &context)
+            } else {
+                schema.validate(&value, &context)
+            }
+        },
     )
 }
 

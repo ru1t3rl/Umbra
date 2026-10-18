@@ -6,9 +6,10 @@ use std::collections::BTreeSet;
 use cgf_core::{Access, ComponentKind, LeafRef};
 
 use super::Set;
-use super::bind::{Args, annotate, annotate_only, substitute};
+use super::bind::{Args, Source, annotate, annotate_only, substitute};
 use super::view::{View, check_refs};
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::schema::CompiledSchema;
 use crate::value::{LKind, LTable};
 
 /// Checks one leaf node of the graph `view` on its own: the parameters are checked with the
@@ -57,16 +58,48 @@ pub(super) fn values(
     }
     let substituted = substitute(&View::params_of(table), &args);
     if !substituted.dropped.is_empty() {
+        let found = known_errors(set, kind, leaf, &substituted.table);
+        out.extend(annotate_with(found, &substituted.sources, only));
         return;
     }
     let mut found = Vec::new();
     let _ = set
         .loader
         .check_component(kind, &leaf.id, id_at, &substituted.table, &mut found);
-    out.extend(match only {
-        Some(param) => annotate_only(found, &substituted.sources, param),
-        None => annotate(found, &substituted.sources),
-    });
+    out.extend(annotate_with(found, &substituted.sources, only));
+}
+
+fn annotate_with(
+    found: Vec<Diagnostic>,
+    sources: &[Source],
+    only: Option<&str>,
+) -> Vec<Diagnostic> {
+    match only {
+        Some(param) => annotate_only(found, sources, param),
+        None => annotate(found, sources),
+    }
+}
+
+/// The schema errors of the known values of a leaf some of whose params are unknown: no missing
+/// check, no object-level rule and no trial build (those need the unknown values).
+fn known_errors(
+    set: &Set<'_>,
+    kind: ComponentKind,
+    leaf: &LeafRef,
+    known: &LTable,
+) -> Vec<Diagnostic> {
+    let Some(schema) = set.loader.registry.param_schema(kind, &leaf.id) else {
+        return Vec::new();
+    };
+    let context = format!("{} `{}`", kind.noun(), leaf.id);
+    CompiledSchema::compile(schema).map_or_else(
+        |_| Vec::new(),
+        |schema| {
+            let mut found = schema.validate_known(&known.clone().into_value(), &context);
+            found.retain(|d| d.code != DiagnosticCode::MissingParam);
+            found
+        },
+    )
 }
 
 /// A parameter that names a blackboard key (`target_key`, `store_as`) must name a declared key (or

@@ -197,6 +197,26 @@ impl CompiledSchema {
         sort_and_dedup(&mut run.out);
         run.out
     }
+
+    /// Like [`Self::validate`] for an object some of whose properties are not known yet: every
+    /// property present is checked against its own sub-schema (type, range, enum, unknown keys),
+    /// but the object-level `required` and `oneOf` are not, because they depend on the absent
+    /// properties (ASM-106 d).
+    pub fn validate_known(&self, value: &LValue, context: &str) -> Vec<Diagnostic> {
+        let mut relaxed = self.clone();
+        let mut at = Some(self.root);
+        let mut hops = 0;
+        while let Some(node) = at.and_then(|i| relaxed.nodes.get_mut(i)) {
+            node.required.clear();
+            node.one_of.clear();
+            at = node.reference;
+            hops += 1;
+            if hops > relaxed.nodes.len() {
+                break;
+            }
+        }
+        relaxed.validate(value, context)
+    }
 }
 
 fn error(pointer: &str, message: impl Into<String>) -> SchemaError {
