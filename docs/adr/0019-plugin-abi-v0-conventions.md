@@ -86,21 +86,41 @@ Option 1, with these rules (they bind every later kind):
   opaque plugin-owned handles (`UmbraBehavior`, `UmbraInstance`) with explicit destroy callbacks; the host
   never dereferences them.
 - **Tokens instead of host pointers.** *(amended: R-B4)* Every host context a plugin can hold is an opaque
-  `u64` token, never a host pointer: `host_ctx` (one per loaded image), sink contexts and RNG tokens (one
-  per batch item and call). The host checks each token against its process table and the plugin's active
-  call record (slot and generation); a stale, foreign or out-of-call token returns an error code
-  (`UMBRA_ERR_STATE` or `UMBRA_ERR_INVALID_ARGUMENT`) and faults the capability, it is never dereferenced.
+  `u64` token, never a host pointer: `host_ctx` (one per image lifecycle), sink contexts and RNG tokens
+  (one per batch item and call). *(amended after the ABI re-review: RR-M2)* Every token is resolved
+  against the **calling thread's active-call record** (the top of a thread-local stack of in-progress
+  plugin calls, each entry = image id + call generation), never through a process-wide table. A record is
+  pushed for every host-to-plugin call, `init` and `shutdown` included. A callback that arrives on a thread
+  with no record for that image (another thread, or after `shutdown`) returns `UMBRA_ERR_STATE` without any
+  lookup; a token that does not match the record (stale, foreign, wrong item) returns `UMBRA_ERR_STATE` or
+  `UMBRA_ERR_INVALID_ARGUMENT` and faults the capability. Tokens are **checked, never dereferenced**. Layout:
+  `u32` generation in the high half, `u32` index in the low half, 0 is invalid; generations wrap, so a
+  wrapped generation can at worst misattribute a call to the wrong item of the same image, never cause
+  undefined behavior.
 - **Pointer lifetime (REQ-P-11).** Every data pointer the host passes is valid only during that call.
   *(amended: R-B4)* The `UmbraHostApi*` given to the entry point points at a process-lifetime static (one
-  per loaded image, never freed), so it is valid forever; calls through it outside the plugin's lifecycle
-  (before `init`, after `shutdown`) return `UMBRA_ERR_STATE`. No other shared address space is assumed, so
+  per image lifecycle, never freed; amended after the ABI re-review, RR-M1: a reloaded image gets a new one
+  with a new `host_ctx`), so it is valid forever; calls through it outside the plugin's lifecycle (before
+  `init`, after `shutdown`, or through an old lifecycle's `host_ctx`) return `UMBRA_ERR_STATE`.
+- **Reload** *(amended after the ABI re-review: RR-M1)*: after `shutdown`, the same image may receive
+  `umbra_plugin_entry` and `init` again in the same process (a new lifecycle, with a new `UmbraHostApi*`
+  and `host_ctx`). Plugins must reset their global state in `init`; the SDK replaces its stored host
+  pointer at the first entry call after a `shutdown`. No other shared address space is assumed, so
   an out-of-process or WASM host can marshal the same calls.
 - **Threads and re-entry.** The host never calls one plugin concurrently (it serialises calls per plugin)
   but may call it from different threads over time; C plugins must not rely on thread-local state.
   Plugins may not call back into the host from their own threads. *(amended: review minor)* Host callbacks
-  are leaf calls: they never call into any plugin. A plugin call that would re-enter the same plugin is
-  detected (in-call flag or `try_lock`) and is a fault, never a deadlock; a poisoned lock is handled
-  explicitly (the capability is faulted).
+  are leaf calls: they never call into any plugin. *(amended after the ABI re-review: RR-B1, replaces "in-call
+  flag or `try_lock`")* Calls into one image are serialised by a **blocking** per-image call lock, so
+  contention from other threads (parallel tests, two engines) only waits and never changes results
+  (REQ-K-4). Re-entry is detected on the **same thread only**, through the thread-local call stack: a call
+  into an image that already has a record on the current thread's stack is a fault (never a deadlock, the
+  lock is not taken). Only re-entry faults; contention never does. A poisoned lock is handled explicitly
+  (the capability is faulted).
+- **Lock order** *(amended after the ABI re-review: RR-M2)*: (1) the process-wide image table is never held
+  while plugin code runs or while an `Arc<LoadedImage>` may drop (dead weak entries are pruned lazily);
+  (2) the per-image call lock is held for the duration of a plugin call; (3) per-host fault state is a leaf
+  lock, taken after (2) inside callbacks; (4) `PluginLog` is a leaf that never calls into the host.
 - **Panics and unwinding.** No unwind crosses the boundary in either direction: the SDK catches panics in
   every exported function (REQ-P-7), the host catches them in every callback it exports. Plugins must be
   built with `panic = "unwind"` to get error codes; with `abort`, or on a crash, the process dies
@@ -112,13 +132,19 @@ Option 1, with these rules (they bind every later kind):
   cannot escape. If the SDK's `umbra_plugin_entry` panics it returns null.
 - **Entry (REQ-P-1).** One symbol, `const UmbraPluginDescriptor* umbra_plugin_entry(const UmbraHostApi*
   host)`; it may be called more than once and must return the same pointer to the same static descriptor
-  (amended: R-M2; a different pointer on a second call is a load error). The host calls it once per
-  loaded image per process (ADR 0021, amended: R-B5).
+  (amended: R-M2; a different pointer on a second call is a load error). *(amended after the ABI re-review:
+  RR-m4, replaces "once per loaded image per process")* The host calls it exactly twice per image lifecycle,
+  at the first load, with the same `UmbraHostApi*` (the second call checks the pointer is stable); hosts that
+  reuse a live image never call it (ADR 0021).
 - **Header text.** *(amended: R-M6)* The header must compile with `-std=c11 -Wall -Wextra -Werror -pedantic`
-  and MSVC `/W4 /WX`: opaque handles are declared as incomplete types (`typedef struct UmbraBehavior
-  UmbraBehavior;`), never zero-length arrays; `usize` maps to `size_t` (not `uintptr_t`); it provides
-  `UMBRA_EXPORT` (dllexport / default visibility) and `UMBRA_STR("literal")` for C authors (avoids the
-  `sizeof("x")` off-by-one and `char*`/`uint8_t*` sign warnings). Line endings are LF.
+  and MSVC `/std:c11 /W4 /WX` (`/std:c11` amended after the ABI re-review, RR-m1): opaque handles are
+  declared as incomplete types (`typedef struct UmbraBehavior UmbraBehavior;`), never zero-length arrays;
+  `usize` maps to `size_t` (not `uintptr_t`); it provides `UMBRA_EXPORT` (dllexport / default visibility),
+  `UMBRA_STR("literal")` (a compound literal, for expressions) and *(RR-m1)* `UMBRA_STR_INIT("literal")`
+  (`{ (const uint8_t *)("" lit), sizeof(lit) - 1 }`, for static initializers; the `""` forces a literal),
+  both in the header trailer after `UmbraStr` (they avoid the `sizeof("x")` off-by-one and
+  `char*`/`uint8_t*` sign warnings). `_Static_assert` and compound literals are C, not C++; acceptable
+  until the C++ check in M9 (nit). Line endings are LF.
 
 ## Consequences
 - Easier: C, C++ and C# authors get a plain header; Rust never reads an invalid enum or `bool`; growth
@@ -140,3 +166,14 @@ bounds, caps and copy-at-load; R-M6 header portability (`UMBRA_EXPORT`, `UMBRA_S
 types, `size_t`, LF); R-M7 64-bit only, generated C layout asserts (plan WI-4); R-M10 ABI 0.0 provisional
 until WI-14; minors: optional appended fields, SDK writes its own minor, re-entry and poisoning, first
 error message wins, `BbValue` invariants; nits: literal header fields, `UMBRA_STR`.
+
+## Amended 2026-10-18 after the ABI re-review
+The plugin-abi-engineer re-reviewed a6004e3: the layout is sound (verified field by field on x86_64,
+aarch64 and Windows x64); no layout changes. Follow-ups to R-B4/R-B5, applied above and marked "RR":
+RR-B1 a blocking per-image call lock across threads, re-entry detected on the same thread only through a
+thread-local call stack (replaces `try_lock`); RR-M1 reload after `shutdown` is allowed (new lifecycle,
+new `UmbraHostApi*` and `host_ctx`, plugins reset global state in `init`, the SDK replaces its stored host
+pointer); RR-M2 tokens resolved against the calling thread's active-call record (pushed for `init` and
+`shutdown` too), checked never dereferenced, `u32` generation + `u32` index with 0 invalid, and the lock
+order; RR-m1 `UMBRA_STR_INIT` and MSVC `/std:c11`; RR-m4 entry called exactly twice per image lifecycle;
+nit: `_Static_assert` and compound literals are not C++ (fine until M9).

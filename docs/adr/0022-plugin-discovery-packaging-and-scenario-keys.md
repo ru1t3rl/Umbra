@@ -38,6 +38,8 @@ Option 1.
   `plugin.toml`. Packages are loaded in path order, then by subdirectory name (bytes), so registration
   order is deterministic. Zero or several libraries in a package, a missing directory, or the same plugin
   ID twice (any paths, including the same file reached twice) are load errors naming both locations.
+  *(Superseded in part by the amendment below: "the same file reached twice" is an error only within one
+  host; another host reuses the image. Marked after the ABI re-review, 2026-10-18.)*
 - **`plugin.toml`** (optional, checked before the library is opened): `schema_version = 1`, `id`
   (`PluginId`, ADR 0002), `version` (semver), `abi = "<major>.<minor>"`, optional `name`; unknown keys are
   errors. An ABI the host cannot load (major differs, or minor newer, REQ-P-9) is rejected without opening

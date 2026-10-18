@@ -41,10 +41,11 @@ cleanly; the same macro emitting `#[allow(unsafe_code)]` or `#[expect(unsafe_cod
    excluded from export and declared in `after_includes` as incomplete types (`typedef struct
    UmbraBehavior UmbraBehavior;`, `typedef struct UmbraInstance UmbraInstance;`), together with
    `_Static_assert(sizeof(void*) == 8, ..)`, `UMBRA_EXPORT` (`__declspec(dllexport)` on Windows,
-   `__attribute__((visibility("default")))` elsewhere) and `UMBRA_STR(lit)`. `gen-header --check` compares
+   `__attribute__((visibility("default")))` elsewhere) and, in the `trailer` after `UmbraStr`, `UMBRA_STR(lit)`
+   and `UMBRA_STR_INIT(lit)` for static initializers (amended 2026-10-18 after the ABI re-review). `gen-header --check` compares
    with line endings normalised to LF (the repo's `.gitattributes` already forces LF, ASM-014).
 3. **C example**: (a) `examples/plugins/c-circle/plugin.c` is compiled with `-std=c11 -Wall -Wextra
-   -Werror -pedantic` (MSVC `/W4 /WX`) into a shared library and loaded by a host test that ticks an
+   -Werror -pedantic` (MSVC `/std:c11 /W4 /WX`; `/std:c11` amended 2026-10-18 after the ABI re-review) into a shared library and loaded by a host test that ticks an
    entity, using the `cc` crate (MIT OR Apache-2.0) as an `umbra-plugin-host` dev-dependency, and packaged
    by `xtask build-plugins` (also `cc`); a C compiler becomes a prerequisite of the local gate; (b) compile
    only. **Chosen: (a).** *(amended: R-M7)* The layout proof does not rely on hand-copied numbers: a host
