@@ -2,8 +2,7 @@
 //! patrol-and-engage example, as real processes.
 //! Requirements: M3 acceptance 1, REQ-K-4 (cross-process determinism), REQ-T-6, REQ-X-2, REQ-S-1.
 //!
-//! Step 4 of M3: written before WI-15/WI-16. Since WI-15 the CLI uses the standard registry, so the
-//! example's behaviors, sensors and graphs are known to it; the process rows of WI-16 stay ignored.
+//! Written in step 4 of M3; all rows run since WI-16 (the CLI uses the standard registry since WI-15).
 
 #![forbid(unsafe_code)]
 
@@ -72,7 +71,6 @@ fn run_example_prints_states_and_hash() {
 /// hasher seeds and address-space layouts, so hidden `RandomState` or pointer-ordered iteration
 /// shows up here.
 #[test]
-#[ignore = "WI-16"]
 fn patrol_and_engage_in_four_processes_is_byte_identical() {
     let args = [
         "--json",

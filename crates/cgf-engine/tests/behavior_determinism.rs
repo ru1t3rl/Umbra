@@ -7,10 +7,8 @@
 //! the state hash after every tick AND on the per-tick intents, contacts and status of every
 //! entity (`assert_same_behavior_trace`); the first divergence names the tick, entity and field.
 //!
-//! Step 4 of M3: written before WI-15/WI-16. `standard_registry()` is a `todo!()` stub, so every
-//! test is ignored with WI-16 (the work item that owns this gate; it needs WI-15's registry and
-//! engine wiring first). Gate 4 itself switches to `--test determinism --test behavior_determinism`
-//! in WI-16 (ASM-087); until then this target is not part of the gate command.
+//! Written in step 4 of M3; live since WI-16. Gate 4 runs `--test determinism --test
+//! behavior_determinism` (ASM-087).
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -67,7 +65,6 @@ fn run_stepped(chunks: &[u64], pause: bool) -> Trace {
 /// REQ-K-4: two as-fast-as-possible runs agree on every tick, although the wall-time scripts
 /// differ (wall time leaking into behavior or perception would make them differ).
 #[test]
-#[ignore = "WI-16"]
 fn given_patrol_and_engage_when_run_twice_with_different_wall_scripts_then_per_tick_hashes_intents_and_contacts_are_identical()
  {
     let scenario = load_example();
@@ -91,7 +88,6 @@ fn given_patrol_and_engage_when_run_twice_with_different_wall_scripts_then_per_t
 /// without a pause/resume at tick 100, give exactly the as-fast-as-possible hashes, intents and
 /// contacts.
 #[test]
-#[ignore = "WI-16"]
 fn given_patrol_and_engage_when_run_in_each_clock_mode_then_matches_afap() {
     let want = baseline();
     let ones = vec![1_u64; 1500];
@@ -135,7 +131,6 @@ fn given_patrol_and_engage_when_run_in_each_clock_mode_then_matches_afap() {
 /// REQ-K-3, REQ-K-4: switching the clock mode mid-run (as fast as possible, real time, stepped)
 /// changes nothing.
 #[test]
-#[ignore = "WI-16"]
 fn given_patrol_and_engage_with_clock_mode_switch_mid_run_then_matches_afap() {
     let mut engine = example_engine(None, None);
     let mut got = Trace::default();
@@ -174,7 +169,6 @@ fn fire_ticks(seed: u64, ticks: u64) -> (Vec<usize>, Option<cgf_engine::StateHas
 /// different final hashes (the RNG state is hashed), and among several seeds the tick sequence of
 /// `Fire` is not the same for all of them.
 #[test]
-#[ignore = "WI-16"]
 fn given_different_seeds_then_fire_sequence_and_hashes_differ() {
     let seeds = [1_u64, 2, 3, 4, 5, 6, 7, 8];
 
@@ -235,7 +229,6 @@ fn run_from_sources(scenario: &SourceFile, files: &[SourceFile]) -> Trace {
 
 /// REQ-K-4: the order in which graph and template files are given does not change the run.
 #[test]
-#[ignore = "WI-16"]
 fn given_graph_files_in_shuffled_order_then_identical_runs() {
     let n = file_count();
     let seven: Vec<usize> = (0..n).collect();
@@ -262,7 +255,6 @@ fn given_graph_files_in_shuffled_order_then_identical_runs() {
 /// REQ-B-16: the `[editor]` table is not part of the graph: changing it changes no hash, intent or
 /// contact on any tick.
 #[test]
-#[ignore = "WI-16"]
 fn given_editor_tables_changed_then_per_tick_hashes_identical() {
     let n = file_count();
     let seven: Vec<usize> = (0..n).collect();
@@ -293,7 +285,6 @@ fn given_editor_tables_changed_then_per_tick_hashes_identical() {
 /// graph) run identically in two independent loads and engines, and they really ran: blue-1
 /// emitted `Fire` at red-1.
 #[test]
-#[ignore = "WI-16"]
 fn nested_subgraph_and_fsm_run_identically_twice() {
     let first_run = instantiate_with(&load_example(), Duration::from_micros(500), None, None);
     let blue = id_of(&first_run, "blue-1");

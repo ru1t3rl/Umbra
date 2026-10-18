@@ -13,7 +13,7 @@ Run in that order and stop at the first failure; fix the cause, never weaken a g
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
-cargo test -p cgf-engine --test determinism --locked        # determinism gate (from M1; skipped in M0, ASM-019)
+cargo test -p cgf-engine --test determinism --test behavior_determinism --locked  # determinism gate (from M1; skipped in M0, ASM-019; behavior_determinism from M3, ASM-087)
 cargo xtask check-deps                                       # REQ-A-1..3 dependency rules + NFR-2 (REQ-A-4 is the GUI check, from M8)
 cargo deny check                                             # licenses, bans, sources, advisories
 cargo audit                                                  # vulnerabilities in Cargo.lock

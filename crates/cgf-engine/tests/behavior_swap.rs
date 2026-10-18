@@ -6,8 +6,7 @@
 //! `[behavior] ref`): in `a` blue-1 uses `example.behavior.patrol_and_engage`, in `b` it uses
 //! `example.behavior.follow_route` (a graph whose only node is `builtin.action.follow_route`).
 //!
-//! Step 4 of M3: the byte comparison is live; the run is ignored with WI-16 (it needs the standard
-//! registry).
+//! Written in step 4 of M3; both tests run since WI-16.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -77,7 +76,6 @@ fn fixtures_a_and_b_differ_in_exactly_one_template_file_and_one_key() {
 /// `a` it fires; in `b` it never fires and drives its route to the end. Red's run is
 /// the same in both (nothing in the scenario changed for it).
 #[test]
-#[ignore = "WI-16"]
 fn swapped_behavior_changes_intents_with_no_code_or_scenario_change() {
     let run = |side: &str| {
         let scenario = load(&fixture_dir(&format!("behavior_swap/{side}")));

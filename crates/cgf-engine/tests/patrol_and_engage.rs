@@ -2,9 +2,9 @@
 //! patrol-and-engage example runs: blue patrols, notices red, engages, fires and resumes.
 //! Requirements: M3 acceptance 1, REQ-B-6..B-12, REQ-K-5, REQ-T-6, ADR 0013, ADR 0014, ADR 0015.
 //!
-//! Step 4 of M3: written before WI-15/WI-16. The standard registry exists since WI-15; the
-//! tests tagged WI-16 stay ignored until WI-16, which owns the example's layout (this file bounds the ticks
-//! generously and checks events, not exact numbers). Layout (see the example's `scenario.toml`):
+//! Written in step 4 of M3; all tests run since WI-16, which ran the example (blue-1 at seed 7:
+//! first contact tick 328, approach 634, first `Fire` 1130, last `Fire` 1619, patrol resumed 1704).
+//! The file bounds the ticks generously and checks events, not exact numbers. Layout (see the example's `scenario.toml`):
 //! blue-1 starts at (0, 0) heading east with a two-leg route (50 m, then 800 m); red-1 starts at
 //! (1500 m east, 200 m north) heading west at 20 m/s; the visual sensor reaches 1200 m, the
 //! engage range is 900 m and the fire range 450 m. Patrol speed is 10 m/s, the approach speed
@@ -84,7 +84,6 @@ fn example_validates_with_no_diagnostics() {
 /// M3 acceptance 1: blue follows its route (the first waypoint is passed, `route_next` advances)
 /// and fires nothing until red is seen.
 #[test]
-#[ignore = "WI-16"]
 fn blue_follows_route_until_red_is_in_range() {
     let run = &*FULL_RUN;
 
@@ -122,7 +121,6 @@ fn blue_follows_route_until_red_is_in_range() {
 /// M3 acceptance 1: blue engages red: it approaches (`move_to` toward red's contact position),
 /// the FSM reaches `engage`, and `Fire { target: red, weapon }` is emitted.
 #[test]
-#[ignore = "WI-16"]
 fn blue_engages_red() {
     let run = &*FULL_RUN;
     let approach = first_tick(&run.trace, run.blue, approaching).expect("blue approaches");
@@ -161,7 +159,6 @@ fn blue_engages_red() {
 /// M3 acceptance 1: when red has left, blue resumes its patrol (route expansion again) and stops
 /// firing; red never fires and never has a behavior that engages.
 #[test]
-#[ignore = "WI-16"]
 fn blue_resumes_patrol_when_red_leaves_range() {
     let run = &*FULL_RUN;
     let last_fire = run
@@ -197,7 +194,6 @@ fn blue_resumes_patrol_when_red_leaves_range() {
 /// template: its behavior is `builtin.fsm.patrol_and_engage`, it has a status every tick, and it
 /// engages red too (the built-in graph engages hostiles inside its sensor range).
 #[test]
-#[ignore = "WI-16"]
 fn builtin_patrol_and_engage_entity_engages_too() {
     let run = &*FULL_RUN;
 
@@ -220,7 +216,6 @@ fn builtin_patrol_and_engage_entity_engages_too() {
 /// read-only key before each tick, and `move_to`/`fire` in the child act on it: the `Fire` names
 /// red, and the approach goes where red is. Nothing else connects the two graphs.
 #[test]
-#[ignore = "WI-16"]
 fn attack_subgraph_receives_target_through_binding() {
     let run = &*FULL_RUN;
 

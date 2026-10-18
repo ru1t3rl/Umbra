@@ -4,11 +4,10 @@
 # and resumes its patrol once the truck has left. A second blue tank uses the built-in graph
 # `builtin.fsm.patrol_and_engage` through the spec 7.1 style template.
 #
-# Provenance: written for M3 step 4 (test-engineer) so the acceptance tests have a subject; the
-# layout (2D numbers below, metres east/north of 52 N 4 E) was checked with a rough planar sketch
-# of the ground model only, NOT with a run of the engine. WI-16 (rust-engineer) must run it, record
-# the tick of first contact, of the approach and of the first `Fire` in the plan's running log, and
-# retune the numbers if needed (the tests only bound these ticks generously).
+# Provenance: written for M3 step 4 (test-engineer); run and checked in WI-16 with no change to the
+# numbers. Real ticks at 30 Hz for blue-1 (seed 7): first contact 328, approach (`move_to`) 634,
+# first `Fire` 1130, last `Fire` 1619 (5 shots), contact lost and patrol resumed 1704. The
+# contact is continuous from 328 to 1703, so there is no flicker at the fov edge.
 #
 #   blue-1   start (0, 0)      heading east   10 m/s   route (50, 0) then (800, 0)
 #   red-1    start (1500, 200) heading west   20 m/s   route to (-9000, 200)
