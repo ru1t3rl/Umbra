@@ -1,6 +1,8 @@
-# Umbra: Software Specification v0.2
+# Umbra: Software Specification v0.3
 
-*Computer Generated Forces engine: headless Rust simulation core, plugin SDK, optional control API and GUI.*
+*Umbra, a Computer Generated Forces (CGF) engine: headless Rust simulation core, plugin SDK, optional control API and GUI.*
+
+> **Changelog v0.2 -> v0.3 (amendment A-002, Umbra rename and visual timeline).** Renames the project to Umbra (D-35, ADR 0018: crates `umbra-*`, binary `umbra`, GUI scope `@umbra/`, C ABI prefix `umbra_`/`Umbra`/`UMBRA_`, env prefix `UMBRA_`); adds D-36, the optional and non-blocking M3b (deterministic `--trace`, GeoJSON/KML track export) and M5b (live map, the first GUI slice), and changes M8's scope to extend the M5b app; the map library is decided at M5b. **Compatibility:** no engine milestone acceptance criterion is weakened (M8's criteria are a superset); M0-M3 are content-identical to `pre-umbra` apart from the mechanical rename; file formats (`schema_version` 1), component IDs, the state hash (v2) and the plugin ABI are unchanged. Details: `docs/amendments/A-002-umbra-and-visual-timeline.md`.
 
 > **Changelog v0.1 -> v0.2 (amendment A-001, behavior graphs and subgraphs).** Adds D-26, D-27, section 8.1 (REQ-B-6..17), REQ-X-10..12, `condition`/`action` plugin kinds, and milestone changes to M3, M5, M7 and new M8b. **Compatibility:** M0-M2 deliverables are frozen and unchanged. Existing template and scenario files stay valid; behavior graphs reuse the M2 loader, registry and validation pipeline. Details: `docs/amendments/A-001-behavior-graphs.md`.
 
@@ -78,6 +80,8 @@ A Computer Generated Force (CGF) simulates many autonomous entities (vehicles, a
 | D-32 | **Perception: core `Sensor` and `Contact`; kernel Perception phase on pre-tick state; `builtin.visual` (range, fov, line of sight with eye height) in `umbra-engine`; optional placement `force`, different forces are hostile** (ADR 0015) | M3 perception deliverable; deterministic; additive scenario key; O(n^2) accepted until M9 | New `umbra-perception` crate; forces in templates |
 | D-33 | **Intent set v1 (`INTENT_SET_VERSION = 1`)**: all REQ-B-2 variants defined; `FollowRoute` expanded by the kernel route code, `SetHeading` applied; `Fire`, `Spawn`, `Despawn`, `Custom` recorded only until M5 (ADR 0016) | M4 ABI mirrors a complete, closed set; reuses the M1 route code | Adding variants only when consumed |
 | D-34 | **Semantic versions via the `semver` crate in `umbra-core`** (ADR 0017) | Cargo's range semantics, no dependencies, reused for plugin versions in M4 | Hand-rolled semver subset |
+| D-35 | **The project is Umbra, a CGF engine; full rename**: crates `umbra-*`, binary `umbra`, GUI scope `@umbra/`, C ABI prefix `umbra_`/`Umbra`/`UMBRA_`, env prefix `UMBRA_`, schema IDs `urn:umbra:schema:<name>:v<N>`; "CGF" stays the domain term; M0-M3 content-identical to `pre-umbra` apart from the mechanical rename; tags kept (ADR 0018, A-002) | One name before M4 fixes the ABI and header names; cheapest now (no external users) | Docs-only rename; rename after M4 (needs an ABI major bump) |
+| D-36 | **Earlier visual feedback**: optional, non-blocking M3b (deterministic `--trace`, offline GeoJSON/KML export) and M5b (live map as the first real GUI slice in `gui/`, extended by M8); map library decided at M5b (A-002) | Behavior debugging and seeing runs long before M8; M8 builds on M5b instead of replacing it; engine milestones unchanged | Wait for M8; a throwaway viewer; any GUI inside the engine (D-1) |
 
 ## 3. System overview
 
@@ -280,7 +284,8 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 
 ## 13. GUI (separate deliverable, after M5)
 
-- React + TypeScript, built with Vite; small store (e.g. Zustand); map library decided at M8 behind a `MapView` component interface.
+- React + TypeScript, built with Vite; small store (e.g. Zustand); map library decided at M5b behind a `MapView` component interface.
+- **Live map first (A-002, milestone M5b):** the live map with moving entities is the first GUI slice, built after M5 as the start of the real `gui/` app (generated client, stream store, `MapView`, dashboard shell with the map only). M8 extends that app with the remaining v1 features and Windows packaging instead of replacing it.
 - API client generated from `api/openapi.json` (`openapi-typescript` + `openapi-fetch`); stream types generated from the shared schema. No hand-written duplicates.
 - **Windows app:** Tauri shell loading the same build; may spawn `umbra` as a sidecar or connect to a remote engine URL.
 - v1 features: connect to engine, load scenario, run controls, map with live entities, entity inspector, template browser, plugin/adapter status, log view. Template/scenario editing UI comes later, driven by JSON Schemas.
@@ -329,13 +334,17 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 | M1 | Walking skeleton | Kernel, clock modes, ECS, `SimRng`, coordinates, `ground.kinematic`, hard-coded entity, CLI prints state, state hash | Determinism test passes; coordinate tests pass; entity follows a waypoint list |
 | M2 | Templates and scenarios | TOML loader, inheritance, registry, validation errors, `validate` command, JSON Schemas | REQ-T-1..6 tested including cycle and unknown-ID errors; example scenario with 3 templates runs |
 | M3 | Declarative behavior | Behavior-tree interpreter with `fsm` and `subgraph` nodes, graph format and loader (REQ-B-6..17), subgraph resolution, versioning and cycle detection, built-in conditions/actions, catalog data model, intents pipeline, perception (visual sensor) | Patrol-and-engage scenario (tree with an embedded FSM and a reusable subgraph) runs deterministically; swapping a behavior needs only a template change; REQ-B-6..17 tested incl. cycle, version-mismatch and scoped-blackboard isolation; all M2 template/scenario fixtures still pass unchanged |
+| **M3b** (new, optional) | Run trace and track export | `umbra run --trace` (per tick: contacts, behavior nodes ticked with status, intents); `umbra run --export` of a run as GeoJSON and KML tracks; deterministic and offline | Trace and exports byte-identical across runs and 4 processes for both reference scenarios; enabling them leaves state hashes unchanged (`849026656b7b42d2`, `3a7bfda0a76111b9`); patrol_and_engage trace shows blue-1's first contact at tick 328 and first `Fire` at 1130; GeoJSON passes an RFC 7946 structure test, KML well-formed with one `gx:Track` per entity; manual playback check recorded; all M0-M3 tests pass unchanged |
 | M4 | Plugin ABI v0 and SDK | `umbra-plugin-api`, host, SDK, `export_plugin!`, behavior plugin kind, example plugin, generated C header | Example plugin loaded and driving entities; all plugin failure tests pass; a C example compiles against the header |
 | M5 | Engine facade and control | `EngineHandle`, snapshots, `umbra-server` REST + WebSocket, committed OpenAPI, stream schema, behavior catalog and validation endpoints (REQ-X-10, X-11) | OpenAPI drift check passes; a script or generated client runs a scenario end to end; slow-client test passes; catalog and validate endpoints covered by contract tests |
+| **M5b** (new) | Live map (first GUI slice) | `gui/` Bun workspace and tooling; `@umbra/engine-client` (generated), `@umbra/engine-stream`, `@umbra/ui-kit` (minimum), `@umbra/map-view` (`MapView` interface and first implementation), `@umbra/shell-dashboard` (map only), app with runtime config; map-library ADR | Playwright against a real headless engine running `walking_skeleton` in stepped mode: all entities shown, positions after `step(n)` match the engine's entity list within tolerance; `verify-frontend` passes and `gen:api` gives no diff; GUI uses no engine source; no engine acceptance criterion changed |
 | M6 | Networking and DIS | `umbra-net`, loopback adapter, DIS adapter (as plugin), publish thresholds, ghosts and dead reckoning | Two engine instances exchange entities over DIS on localhost; no echo loops; golden-packet tests pass |
 | M7 | More plugin kinds and replay | Motion model, sensor, network, condition and action plugin kinds; air/sea models; recording/replay | A third-party-style example plugin of each kind in `examples/`; replay reproduces state hashes |
-| M8 | GUI and Windows app | React app, generated client, Tauri packaging, `MapView` | Web and Windows builds both show live entities from a running engine; GUI uses no engine source |
+| **M8** (changed scope) | Full GUI and Windows app | Extends the M5b app (MapView, generated client and stream from M5b): entity inspector, scenario/run controls, template browser, plugin/adapter status, log view, settings, dashboard extended; Tauri packaging for Windows | Web and Windows builds both show live entities from a running engine; selecting an entity shows its details in the inspector; the template browser lists templates with parameter forms from their schemas; plugin status lists plugins, capabilities and faults; the M5b e2e tests still pass; GUI uses no engine source |
 | M8b | Behavior editor | `@umbra/behavior-editor`, `@umbra/shell-behaviors`, subgraph library, convert-selection-to-subgraph, validation display | A user builds a tree with a nested subgraph in the GUI, saves it, and the engine runs it; invalid graphs show engine validation errors; `builtin` and `plugin` graphs are read-only |
 | M9 | HLA and hardening | HLA adapter with chosen RTI, C# plugin sample, benchmark tuning, docs | HLA interop test against a reference federate; NFR-1 target met |
+
+Ordering (A-002): the mandatory engine milestones M0, M1, M2, M3, M4, M5, M6, M7, M9 keep strict order. M3b is optional and non-blocking: it may be picked up any time after M3 passes, only when the human asks, and no milestone depends on it. M5b may start once M5 passes and may run alongside M6 and M7; no engine milestone waits for it. M8 starts after both M7 and M5b; M8b follows M8.
 
 ## 18. Risks and mitigations
 
@@ -356,5 +365,5 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 3. ~~M3: Behavior trees vs FSM~~ **Resolved (A-001, D-26):** behavior tree primary, with `fsm` and `subgraph` as node types.
 4. **M5:** Is command access control needed (more than one operator)? Currently out of scope.
 5. **M6:** Reuse an existing DIS crate or implement PDUs in-house (depends on license and coverage).
-6. **M8:** Map library (MapLibre 2D vs Cesium 3D).
+6. **M5b** (moved from M8 by A-002, D-36): Map library (MapLibre 2D vs Cesium 3D). Decided by an ADR in M5b; the A-002 proposal is MapLibre GL JS.
 7. **M9:** Which RTI(s) to support first, and which FOM (RPR-FOM version).

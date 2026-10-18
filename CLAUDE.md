@@ -3,7 +3,7 @@
 Source of truth: `docs/SPEC.md` (export of the "Umbra: Software Specification"). Requirement IDs (REQ-*, NFR-*, D-*, A-*) are referenced in code comments, commits and PRs.
 
 ## Ground rules
-1. Build strictly in milestone order (spec section 17). Never start Mn+1 before Mn's acceptance criteria pass.
+1. Build strictly in milestone order (spec section 17). Never start Mn+1 before Mn's acceptance criteria pass. The mandatory engine milestones are M0-M7 and M9; the optional M3b and the GUI-track M5b follow the A-002 ordering rules (see Amendments).
 2. MUST/SHOULD/MAY in the spec carry their RFC meaning. Do not silently reverse a decision (D-*). If you think one is wrong, stop and write an ADR proposal in `docs/adr/` and ask the human.
 3. Ambiguity: pick the simplest option consistent with KISS/SOLID/DRY, record it in `docs/assumptions.md`, continue.
 4. Dependencies point inward (REQ-A-1..4). `umbra-core` depends on no workspace crate. `umbra-sdk` depends only on `umbra-plugin-api`.
@@ -40,13 +40,13 @@ Frontend rules live in `gui/CLAUDE.md` and `docs/frontend-architecture.md` (they
 5. `build-engineer` runs full verification (skill `verify-and-build`).
 6. Only then mark acceptance criteria met in `docs/milestones.md`.
 
-## Frontend workflow (milestone M8 and earlier GUI slices)
+## Frontend workflow (milestones M5b, M8 and M8b)
 1. `frontend-architect` plans packages (feature vs shell, tier, public API).
 2. `frontend-test-engineer` writes failing tests (`write-frontend-tests`).
 3. `frontend-engineer` implements via `add-feature` / `add-feature-shell`, using `generate-api-client` after contract changes.
 4. `code-reviewer` applies `review-frontend-change`.
 5. `build-engineer` / anyone runs `verify-frontend` before done.
-GUI work may begin after M5 (the API exists); it must never block or change engine milestones.
+GUI work may begin after M5 (the API exists); the first GUI slice is M5b (live map), which M8 extends. GUI work must never block or change engine milestones.
 
 ## Model policy
 Each agent pins its model in frontmatter (full IDs, so behavior does not shift when aliases move). Bump IDs deliberately when upgrading.
@@ -65,4 +65,6 @@ Rules:
 ## Amendments
 `docs/amendments/` holds accepted spec amendments; they override `docs/SPEC.md` text where they differ until SPEC.md is updated.
 - A-001 (behavior graphs, subgraphs, editor; decisions D-26, D-27): see docs/amendments/A-001-behavior-graphs.md. M0-M2 are frozen: additive changes only; M2 fixtures must keep passing; a breaking change requires an ADR with a migration plan.
-Skills: `add-subgraph`, `add-behavior-node`.
+  Skills: `add-subgraph`, `add-behavior-node`.
+- A-002 (Umbra rename; visual timeline; decisions D-35, D-36): see docs/amendments/A-002-umbra-and-visual-timeline.md and ADR 0018. M3b (trace and GeoJSON/KML export) is optional and non-blocking, picked up only when the human asks. M5b (live map) is the first GUI slice, after M5; M8 extends it. Mandatory engine milestones keep strict order.
+  Ordering: M3b may be picked up any time after M3 passes, in its own work items; no milestone depends on it and M4 does not wait for it. M5b starts after M5 passes and may run alongside M6 and M7; no engine milestone waits for it. M8 starts only after both M7 and M5b; M8b follows M8.

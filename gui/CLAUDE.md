@@ -12,7 +12,7 @@ Applies to everything under `gui/`. Full architecture: `docs/frontend-architectu
 | F-5 | **Zustand** for client/stream state, **TanStack Query** for REST data | Small, no boilerplate; separate server-cache from live state |
 | F-6 | **Biome** for lint + format, **dependency-cruiser** for architecture rules | One fast tool plus an enforcer for layer rules |
 | F-7 | **`bun test`** (+ happy-dom, Testing Library) for unit/component tests, **Playwright** for e2e | KISS; fewer tools |
-| F-8 | Map library hidden behind a `MapView` interface in a feature (MapLibre vs Cesium decided at M8) | Swappable, keeps decision cheap |
+| F-8 | Map library hidden behind a `MapView` interface in a feature (MapLibre vs Cesium decided at M5b, A-002) | Swappable, keeps decision cheap |
 
 ## Structure
 ```

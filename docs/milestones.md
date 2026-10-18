@@ -2,6 +2,8 @@
 
 Mark acceptance criteria with evidence (test names / command output summary). Source: spec section 17.
 
+> **Names in M0-M3 evidence (D-35, ADR 0018 C9).** Evidence recorded before tag `umbra-rename` used the `cgf-*` names (crates `cgf-*`, Rust paths `cgf_*`, command `cgf-cli`). Paths and commands in it were renamed mechanically by ADR 0018, so it is given here in post-rename names; the tags `m0-done`..`m3-done` and `pre-umbra` keep the original names. `umbra demo` in the M1 evidence refers to the command then called `cgf-cli demo`, which was removed in M2 and never existed under the new name.
+
 - [x] M0 Foundations (2026-10-17, tag `m0-done`; plan and log in `docs/plans/M0.md`)
   - [x] ~~CI green on Windows + Linux~~: **waived** by the human (ADR 0004 / D-19, no CI). Replaced by: full local gate (`docs/build.md`) passes on Linux at `e785518`: fmt, clippy `-D warnings`, test (187 passed, 0 failed), `cargo xtask check-deps` ok, `cargo deny check` ok, `cargo audit` no findings, `cargo doc -D warnings` ok, release build ok; determinism and from-Mn gates skipped (ASM-019). Windows not run (NFR-3 unverified).
   - [x] Dependency-rule check fails when a rule is violated (tested): `xtask/tests/check_rules.rs` (AT-2..AT-5, AT-7), `xtask/tests/check_deps.rs` (AT-5, AT-6: `given_violating_fixture_when_check_deps_runs_then_exit_code_1_and_lists_each_violation`, laundering fixtures `launder_patch`, `launder_config_patch`, `launder_same_name`, `launder_fake_external`, `launder_unsafe_patch` exit 1), `xtask/tests/check_unsafe.rs`, `xtask/tests/check_lints.rs`, `xtask/tests/repo_config.rs`. Mutation checks recorded in the M0 running log.
@@ -24,11 +26,23 @@ Mark acceptance criteria with evidence (test names / command output summary). So
   - [x] All M2 template/scenario fixtures still pass unchanged (A-001 constraints): `crates/umbra-cli/tests/m2_compat.rs` 3/3 (`walking_skeleton_final_hash_is_the_m2_value` -> `849026656b7b42d2`, `ok: 4 files checked`, `spec_7_1_template_validates_with_standard_registry`); `sh scripts/m2-compat.sh` checks 1, 2, 2b and 3 ok (914 test names at `m2-done`, 1497 now, only additions, none newly ignored). Checklist at `eebc70f`: (1) 0 of 68 M2 fixture files changed; (2) 0 of 109 M1/M2 test and bench files changed; (2b) inline `#[cfg(test)]` regions unchanged except the one approved edit `all_lists_every_kind_once` (ADR 0011, 353f88b); (3) every M2 test name present and passing; (4) as above; (5) public API additive only (5 rewritten `pub use` lines, all additions); (6) `SCHEMA_VERSION` 1, `template.v1.schema.json` byte-identical, `scenario.v1.schema.json` +1 optional line (`force`), `behavior.v1.schema.json` new. State hash stays v2 (ASM-081).
   - Full local gate (`docs/build.md`) passes on Linux at `eebc70f` (rustc 1.99.1): gates 1-9 and 14 (gate 3: 122 test binaries, 1499 passed, 0 failed, 0 ignored; `cargo audit` 114 crates, no advisories); 10-13 and 15 not active yet. No `#[ignore]` left in `crates/`. Every WI-1..WI-17 reviewed (review record in `docs/plans/M3.md`). Windows not run (NFR-3 unverified; `stack_budget.rs` numbers are Linux only).
   - Deliverables: `umbra-behavior` crate (interpreter: composites, decorators, FSM, subgraph with input bindings and outputs; eight built-in conditions and actions; `register_graphs`), core behavior, blackboard, perception, graph and catalog types (ADR 0011, ADR 0013, ADR 0014), intent set v1 (ADR 0016), kernel Perception and Behavior phases, `SetHeading` in `builtin.ground.kinematic`, `*.behavior.toml` format v1 with located diagnostics through the M2 loader (ADR 0012), `builtin.visual` and placement `force` (ADR 0015), `standard_registry` with the built-in graphs, `umbra schema behavior`, the patrol-and-engage example, `semver` dependency (ADR 0017), `docs/behavior.md`; `docs/templates.md` and `docs/architecture.md` updated.
+- [ ] M3b Run trace and track export (optional, non-blocking, A-002; picked up only when the human asks; M4 does not wait for it)
+  - [ ] For `walking_skeleton` and `patrol_and_engage`, `--trace` output and both export files are byte-identical across two runs and across 4 processes (same seed).
+  - [ ] Enabling `--trace` and/or `--export` leaves per-tick state hashes unchanged: final `849026656b7b42d2` (walking skeleton) and `3a7bfda0a76111b9` (patrol_and_engage, tick 4200).
+  - [ ] The patrol_and_engage trace shows blue-1's first contact at tick 328 and its first `Fire` at tick 1130.
+  - [ ] GeoJSON passes an RFC 7946 structure test; KML is well-formed XML with one `gx:Track` per entity; sampled coordinates equal the engine's `EntityDisplay` values to the written precision.
+  - [ ] Manual check recorded here: walking skeleton opened in Google Earth or QGIS and played back.
+  - [ ] All gates in `docs/build.md` pass; the A-001 freeze check passes; all M0-M3 tests pass unchanged.
 - [ ] M4 Plugin ABI v0 and SDK
 - [ ] M5 Engine facade and control (REST + WebSocket)
   - Requirement (WI-10, ASM-098): the kernel tick thread must be spawned with an explicit stack of at least 4 MiB (the behavior recursion needs up to 1.5 MiB in a debug build).
+- [ ] M5b Live map, the first GUI slice (A-002; GUI track, starts after M5 passes, may run alongside M6 and M7; no engine milestone waits for it)
+  - [ ] Playwright against a real headless `umbra` engine serving `walking_skeleton` in stepped mode: all entities appear on the map; after `step(n)` through the generated client, the entity layer's positions equal the engine's entity list for that tick (within a stated coordinate tolerance), and the markers have moved.
+  - [ ] `bun run typecheck`, `lint`, `test`, `check:deps` and `test:e2e` pass (`verify-frontend`); `bun run gen:api` produces no diff.
+  - [ ] The GUI imports no engine source (REQ-A-4, enforced by dependency-cruiser).
+  - [ ] M5b changes no engine crate behavior and no engine acceptance criterion; any contract gap is a separate, additive `update-openapi` work item that never reopens M5.
 - [ ] M6 Networking and DIS
 - [ ] M7 More plugin kinds and replay
-- [ ] M8 GUI and Windows app
+- [ ] M8 Full GUI and Windows app (scope changed by A-002: extends the M5b app with entity inspector, scenario/run controls, template browser, plugin/adapter status, log view, settings, extended dashboard, and Tauri packaging for Windows; starts after M7 and M5b)
 - [ ] M8b Behavior editor (A-001)
 - [ ] M9 HLA and hardening

@@ -8,23 +8,25 @@ Companion to spec sections 12-13 and `gui/CLAUDE.md`. Defines how the GUI is org
 - **App** (`src/`): bootstraps providers (query client, engine connection, theme), builds the router from shell route definitions, reads runtime config (engine URL). Almost no code.
 
 ## 2. Initial inventory (plan, adjust via ADR)
-| Package | Type | Tier | Purpose |
-|---|---|---|---|
-| `@umbra/ui-kit` | feature | foundation | Design tokens, primitives (Button, Panel, Table, Toast), i18n helper |
-| `@umbra/engine-client` | feature | foundation | Generated REST client, typed hooks wrapper, connection/config |
-| `@umbra/engine-stream` | feature | foundation | WebSocket connection, encoding negotiation (json/msgpack), subscription filters, entity store |
-| `@umbra/map-view` | feature | domain | `MapView` interface + implementation (library chosen M8), entity layer |
-| `@umbra/entity-inspector` | feature | domain | Entity list/detail panel |
-| `@umbra/scenario-control` | feature | domain | Load scenario, start/pause/step/stop, clock mode |
-| `@umbra/template-browser` | feature | domain | Browse templates, render param forms from JSON Schema |
-| `@umbra/plugin-status` | feature | domain | Plugins, capabilities, adapters, faults |
-| `@umbra/log-view` | feature | domain | Engine log stream |
-| `@umbra/behavior-editor` | feature | domain | Node-and-arrow graph canvas (xyflow/React Flow behind an interface), property forms from catalog JSON Schemas, validation display, subgraph library panel, convert-selection-to-subgraph, `[editor]` layout persistence (A-001, M8b) |
-| `@umbra/shell-dashboard` | shell | | Map + controls + inspector |
-| `@umbra/shell-templates` | shell | | Template browser page |
-| `@umbra/shell-plugins` | shell | | Plugin/adapter status page |
-| `@umbra/shell-settings` | shell | | Engine connection and app settings |
-| `@umbra/shell-behaviors` | shell | | Behavior list, editor, validation and (later) live preview page (A-001, M8b) |
+Milestone column (A-002, D-36): M5b (live map) is the first GUI slice and delivers the workspace scaffold, the `src/` app (providers, router, runtime `/config.json`) and the packages marked M5b; M8 extends that app instead of replacing it.
+
+| Package | Type | Tier | Purpose | Milestone |
+|---|---|---|---|---|
+| `@umbra/ui-kit` | feature | foundation | Design tokens, primitives (Button, Panel, Table, Toast), i18n helper | M5b (minimum: i18n helper, Panel); rest M8 |
+| `@umbra/engine-client` | feature | foundation | Generated REST client, typed hooks wrapper, connection/config | M5b |
+| `@umbra/engine-stream` | feature | foundation | WebSocket connection, encoding negotiation (json/msgpack), subscription filters, entity store | M5b (JSON encoding with the negotiation hook) |
+| `@umbra/map-view` | feature | domain | `MapView` interface + implementation (library chosen at M5b by ADR), entity layer | M5b |
+| `@umbra/entity-inspector` | feature | domain | Entity list/detail panel | M8 |
+| `@umbra/scenario-control` | feature | domain | Load scenario, start/pause/step/stop, clock mode | M8 |
+| `@umbra/template-browser` | feature | domain | Browse templates, render param forms from JSON Schema | M8 |
+| `@umbra/plugin-status` | feature | domain | Plugins, capabilities, adapters, faults | M8 |
+| `@umbra/log-view` | feature | domain | Engine log stream | M8 |
+| `@umbra/behavior-editor` | feature | domain | Node-and-arrow graph canvas (xyflow/React Flow behind an interface), property forms from catalog JSON Schemas, validation display, subgraph library panel, convert-selection-to-subgraph, `[editor]` layout persistence (A-001, M8b) | M8b |
+| `@umbra/shell-dashboard` | shell | | Map + controls + inspector | M5b (map only); M8 adds controls and inspector |
+| `@umbra/shell-templates` | shell | | Template browser page | M8 |
+| `@umbra/shell-plugins` | shell | | Plugin/adapter status page | M8 |
+| `@umbra/shell-settings` | shell | | Engine connection and app settings | M8 |
+| `@umbra/shell-behaviors` | shell | | Behavior list, editor, validation and (later) live preview page (A-001, M8b) | M8b |
 
 ## 3. Dependency graph
 ```
