@@ -488,3 +488,51 @@ fn refused_call_site_value_is_reported_once() {
         )]
     );
 }
+
+const SPOT: &str = r#"{"type":"object","properties":{"spot":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"],"additionalProperties":false}},"additionalProperties":false,"examples":[{}]}"#;
+
+fn spot_registry() -> Registry {
+    let schema =
+        cgf_core::ParamSchema::from_json_str(SPOT).unwrap_or_else(|e| panic!("spot schema: {e}"));
+    let mut registry = registry();
+    register_twin(&mut registry, "test.twin.spot", &schema, &[]);
+    registry
+}
+
+/// A `missing_param` below the root of a registered behavior's params stays (only the root ones
+/// are recomputed by the loader): at a template, and never a silent drop of the template.
+#[test]
+fn nested_missing_param_of_a_registered_behavior_is_kept_at_a_template() {
+    let registry = spot_registry();
+    let tank = tank("test.twin.spot", "{ spot = { x = 1.0 } }");
+
+    let d = errors(common::loader(&registry).templates_from_sources(&[src(TEMPLATE, &tank)]));
+
+    assert_eq!(
+        rows(&d),
+        [row("missing_param", TEMPLATE, pos_of(&tank, "{ x = 1.0 }"))]
+    );
+}
+
+/// The same at a `subgraph` call site.
+#[test]
+fn nested_missing_param_of_a_registered_behavior_is_kept_at_a_call_site() {
+    let registry = spot_registry();
+    let outer = caller(
+        "test.graph.outer",
+        "test.twin.spot",
+        None,
+        "{ spot = { x = 1.0 } }",
+        &[],
+    );
+
+    let d = errors(
+        common::loader(&registry)
+            .graphs_from_sources(&[src(GRAPH, &outer)], cgf_core::Provenance::File),
+    );
+
+    assert_eq!(
+        rows(&d),
+        [row("missing_param", GRAPH, pos_of(&outer, "{ x = 1.0 }"))]
+    );
+}

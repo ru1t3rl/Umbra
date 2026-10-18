@@ -303,7 +303,7 @@ fn parameters(
         schema_errors(callee, &substituted.table, false)
     };
     if !partial {
-        found.retain(|d| d.code != DiagnosticCode::MissingParam);
+        crate::components::drop_root_missing(&mut found, substituted.table.origin());
     }
     let refused = refused(&substituted.table, &found);
     out.extend(match follow {

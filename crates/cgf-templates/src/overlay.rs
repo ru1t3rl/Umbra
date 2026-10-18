@@ -7,7 +7,8 @@
 
 use cgf_core::{ComponentId, ComponentKind, ParamValue};
 
-use crate::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::components::drop_root_missing;
+use crate::diagnostic::Diagnostic;
 use crate::graph_resolve::{Graphs, LoadedGraphs};
 use crate::loader::{GraphScope, Loader};
 use crate::schema::CompiledSchema;
@@ -86,7 +87,13 @@ impl Overlay<'_> {
         let json = self
             .loader
             .check_component(kind, id, id_at, &clean, &mut schema);
-        schema.retain(|d| d.code != DiagnosticCode::MissingParam);
+        let all = schema.clone();
+        drop_root_missing(&mut schema, clean.origin());
+        // Never drop a template without a diagnostic.
+        if json.is_none() && found.is_empty() && schema.is_empty() {
+            debug_assert!(false, "a failed behavior check reported nothing");
+            schema = all;
+        }
         let failed = !found.is_empty() || !schema.is_empty();
         out.extend(found);
         out.extend(schema);

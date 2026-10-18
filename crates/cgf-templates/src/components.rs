@@ -158,6 +158,13 @@ impl Loader<'_> {
     }
 }
 
+/// Drops the `missing_param` diagnostics located at the root `params` table `root`: the loader
+/// recomputes those for behaviors (binding-only params included). Nested ones stay (ASM-107).
+pub(crate) fn drop_root_missing(found: &mut Vec<Diagnostic>, root: &Origin) {
+    let at = root.location();
+    found.retain(|d| d.code != DiagnosticCode::MissingParam || d.location.as_ref() != Some(&at));
+}
+
 /// The note of an `unknown_*` error for a file with syntax errors that may define the name
 /// (ASM-054 rule 3).
 pub(crate) fn syntax_note(path: &Path) -> String {
