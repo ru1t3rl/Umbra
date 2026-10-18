@@ -1,20 +1,27 @@
 #!/bin/sh
-# M3 compatibility proof, checklist items 1-3 and 2b (docs/plans/M3.md, A-001 constraints 1-5; AT-18).
-# build-engineer runs it in WI-16 and WI-18. Needs git, cargo, awk and the tag m2-done.
+# M0-M2 freeze proof, checklist items 1-3 and 2b (docs/plans/M3.md, A-001 constraints 1-5; AT-18),
+# rebased on the rename (ADR 0018, Migration 4). Needs git, cargo, awk and the tags m2-done, umbra-rename.
 #
-#   scripts/m2-compat.sh [--keep] [TAG]    run the checks (default tag m2-done); exit 0 = all pass
-#   scripts/m2-compat.sh --self-test       prove checks 1, 2 and 2b can fail (scratch worktree)
+#   scripts/m2-compat.sh [--keep] [BASELINE]   run the checks; exit 0 = all pass
+#   scripts/m2-compat.sh --self-test           prove checks 1, 2 and 2b can fail (scratch worktree)
+#
+# Two tags (ADR 0018): CONTENT baseline = BASELINE, default umbra-rename (the rename commit; checks 1, 2
+# and 2b compare the working tree to its content with a plain `git diff`). SCOPE = the files that existed
+# at m2-done, with the path rule P1 applied (crates/cgf-<x>/ becomes crates/umbra-<x>/), so the frozen
+# set stays M0-M2 (C10) and M3 files are not covered. Check 3 reads the test names at m2-done and maps
+# the old package and binary names (B1/B2) before comparing.
 #
 # 1.  M2 fixtures and the walking-skeleton example: no modified, deleted or renamed file (new
 #     files are allowed, M3 adds fixtures).
 # 2.  No M1/M2 test or benchmark file modified, deleted or renamed.
 # 2b. In an M2-era `src` file, no line from the first `#[cfg(test)]` onward (the whole file for
 #     `tests.rs`) is removed, changed or added to (an inserted `#[ignore]` or early `return;`
-#     would disable a test): no line may be removed or inserted there; the one allowlisted change is the approved edit of
-#     `all_lists_every_kind_once` in crates/umbra-core/src/registry.rs (ADR 0011).
-# 3.  The M2 test-name baseline, regenerated from the tag in a scratch worktree under target/ (the
+#     would disable a test). There is no allowlist: the ADR 0011 edit of `all_lists_every_kind_once`
+#     in crates/umbra-core/src/registry.rs is part of the baseline.
+# 3.  The M2 test-name baseline, regenerated from m2-done in a scratch worktree under target/ (the
 #     default target directory, never /tmp), is a subset of the test names now, keyed by
-#     package, test binary and name; the baseline build must succeed and list >= 900 tests. A
+#     package, test binary and name, after mapping cgf-<x> to umbra-<x>, cgf_<x> to umbra_<x> and the
+#     cgf-cli unit-test binary cgf_cli to umbra; the baseline build must succeed and list >= 900 tests. A
 #     test that was not ignored at the tag must not be ignored now (`--list --ignored` compared).
 set -eu
 
@@ -23,7 +30,8 @@ root=$(pwd)
 work="$root/target/m2-compat"
 keep=0
 self_test=0
-tag=m2-done
+tag=umbra-rename
+scope_tag=m2-done
 for arg in "$@"; do
     case "$arg" in
         --keep) keep=1 ;;
@@ -44,47 +52,51 @@ trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 git rev-parse --verify -q "$tag^{commit}" >/dev/null || { echo "FAIL: unknown tag $tag"; exit 1; }
+git rev-parse --verify -q "$scope_tag^{commit}" >/dev/null || { echo "FAIL: unknown tag $scope_tag"; exit 1; }
 
-# check_1_2 TAG: prints failures, returns 1 on any. Runs in the current directory (a git tree).
+# p1: the path rule P1 of ADR 0018.
+p1() { sed 's#^crates/cgf-#crates/umbra-#'; }
+# rename_names: package and binary names of m2-done to the current ones (B1, B2; cgf_cli unit tests -> umbra).
+rename_names() { sed -e 's/^cgf-cli::cgf_cli::/umbra-cli::umbra::/' -e 's/cgf-/umbra-/g' -e 's/cgf_/umbra_/g'; }
+
+# scope_files SCOPE_TAG EREGEX: the files of SCOPE_TAG matching the regex, with P1 applied.
+scope_files() { git ls-tree -r --name-only "$1" | grep -E "$2" | p1; }
+
+# changed_files CONTENT_TAG FILES: files (one per line) that are modified, deleted or renamed against CONTENT_TAG.
+changed_files() {
+    _t=$1; _f=$2
+    [ -n "$_f" ] || return 0
+    printf '%s\n' "$_f" | xargs git diff --name-only --diff-filter=MDR "$_t" --
+}
+
+# check_1_2 CONTENT_TAG SCOPE_TAG: prints failures, returns 1 on any. Runs in the current directory (a git tree).
 check_1_2() {
-    _tag=$1; _bad=0
-    echo "== 1. fixtures and example unchanged since $_tag"
-    _c=$(git diff --name-only --diff-filter=MDR "$_tag" -- \
-        ':(glob)crates/*/tests/fixtures/**' 'examples/scenarios/walking_skeleton')
+    _tag=$1; _scope=$2; _bad=0
+    echo "== 1. M2 fixtures and the walking-skeleton example unchanged since $_tag (scope $_scope)"
+    _c=$(changed_files "$_tag" "$(scope_files "$_scope" '^(crates/[^/]+/tests/fixtures/|examples/scenarios/walking_skeleton(/|$))')")
     if [ -n "$_c" ]; then echo "FAIL: changed fixture files:"; echo "$_c"; _bad=1; else echo ok; fi
-    echo "== 2. M1/M2 test and bench files unchanged since $_tag"
-    _c=$(git diff --name-only --diff-filter=MDR "$_tag" -- \
-        ':(glob)crates/*/tests/**' ':(glob)crates/*/benches/**')
+    echo "== 2. M1/M2 test and bench files unchanged since $_tag (scope $_scope)"
+    _c=$(changed_files "$_tag" "$(scope_files "$_scope" '^crates/[^/]+/(tests|benches)/')")
     if [ -n "$_c" ]; then echo "FAIL: changed test files:"; echo "$_c"; _bad=1; else echo ok; fi
     return "$_bad"
 }
 
-# check_2b TAG: inline test regions of M2-era src files. Runs in the current directory.
+# check_2b CONTENT_TAG SCOPE_TAG: inline test regions of M2-era src files. Runs in the current directory.
 check_2b() {
-    _tag=$1; _bad=0
-    echo "== 2b. inline #[cfg(test)] regions of M2-era src files unchanged since $_tag"
-    for f in $(git ls-tree -r --name-only "$_tag" -- crates | grep '/src/.*\.rs$'); do
+    _tag=$1; _scope=$2; _bad=0
+    echo "== 2b. inline #[cfg(test)] regions of M2-era src files unchanged since $_tag (scope $_scope)"
+    for f in $(git ls-tree -r --name-only "$_scope" -- crates | grep '/src/.*\.rs$' | p1); do
         [ -f "$f" ] || { echo "FAIL: $f was deleted"; _bad=1; continue; }
         case "$f" in
             */tests.rs) start=1 ;;
             *) start=$(git show "$_tag:$f" | grep -n '#\[cfg(test)\]' | head -n 1 | cut -d: -f1 || true) ;;
         esac
         [ -n "${start:-}" ] || continue
-        # Allowlisted range: the approved test edit (ADR 0011) at the tag's line numbers.
-        if [ "$f" = crates/umbra-core/src/registry.rs ]; then
-            range=$(git show "$_tag:$f" | awk '
-                /fn all_lists_every_kind_once/ { s = NR }
-                s && !e && /^    }$/ && NR > s { e = NR }
-                END { if (s && e) print s, e }')
-        else
-            range="0 0"
-        fi
-        set -- $range
-        _out=$(git diff -U0 "$_tag" -- "$f" | awk -v start="$start" -v allow_s="$1" -v allow_e="$2" -v file="$f" '
+        _out=$(git diff -U0 "$_tag" -- "$f" | awk -v start="$start" -v file="$f" '
             /^@@/ { split($2, a, ","); old = substr(a[1], 2) + 0; if (a[2] == "0") old++; next }
             /^---/ || /^\+\+\+/ { next }
-            /^-/ { if (old >= start && !(old >= allow_s && old <= allow_e)) print file ":" old ": " $0; old++; next }
-            /^\+/ { if (old > start && !(old > allow_s && old <= allow_e)) print file ":" old ": " $0 }')
+            /^-/ { if (old >= start) print file ":" old ": " $0; old++; next }
+            /^\+/ { if (old > start) print file ":" old ": " $0 }')
         if [ -n "$_out" ]; then echo "FAIL: changed or added test-region lines:"; echo "$_out"; _bad=1; fi
     done
     [ "$_bad" -eq 0 ] && echo ok
@@ -148,40 +160,48 @@ if [ "$self_test" -eq 1 ]; then
         if "$@" >/dev/null 2>&1; then got=PASS; else got=FAIL; fi
         if [ "$got" = "$want" ]; then echo "self-test ok: $desc -> $got"; else echo "self-test WRONG: $desc -> $got (wanted $want)"; st=1; fi
     }
-    expect PASS "clean tree, checks 1 and 2" check_1_2 "$tag"
-    expect PASS "clean tree, check 2b" check_2b "$tag"
+    expect PASS "clean tree, checks 1 and 2" check_1_2 "$tag" "$scope_tag"
+    expect PASS "clean tree, check 2b" check_2b "$tag" "$scope_tag"
     echo "// mutation" >> crates/umbra-core/tests/ids.rs
-    expect FAIL "modified M2 test file" check_1_2 "$tag"
+    expect FAIL "modified M2 test file" check_1_2 "$tag" "$scope_tag"
     git checkout -q -- crates/umbra-core/tests/ids.rs
     rm -f crates/umbra-engine/tests/determinism.rs
-    expect FAIL "deleted M2 test file" check_1_2 "$tag"
+    expect FAIL "deleted M2 test file" check_1_2 "$tag" "$scope_tag"
     git checkout -q -- crates/umbra-engine/tests/determinism.rs
     echo "# mutation" >> examples/scenarios/walking_skeleton/README.md
-    expect FAIL "modified walking-skeleton file" check_1_2 "$tag"
+    expect FAIL "modified walking-skeleton file" check_1_2 "$tag" "$scope_tag"
     git checkout -q -- examples/scenarios/walking_skeleton/README.md
     f=$(git ls-files 'crates/umbra-templates/tests/fixtures/*' | head -n 1)
     echo "# mutation" >> "$f"
-    expect FAIL "modified M2 fixture file" check_1_2 "$tag"
+    expect FAIL "modified M2 fixture file" check_1_2 "$tag" "$scope_tag"
     git checkout -q -- "$f"
     # 2b: change the closing line of the inline test module of an M2-era src file.
     sed -i '$ s/}$/} \/\/ mutation/' crates/umbra-templates/src/diagnostic.rs
-    expect FAIL "changed line in an inline test region" check_2b "$tag"
+    expect FAIL "changed line in an inline test region" check_2b "$tag" "$scope_tag"
     git checkout -q -- .
     git checkout -q -- .
     # 2b rejects additions too: an inserted #[ignore] or an early return disables an M2 inline test.
     sed -i '0,/^    #\[test\]$/s//    #[test]\n    #[ignore]/' crates/umbra-templates/src/diagnostic.rs
-    expect FAIL "#[ignore] inserted mid-module in an M2 inline test" check_2b "$tag"
+    expect FAIL "#[ignore] inserted mid-module in an M2 inline test" check_2b "$tag" "$scope_tag"
     git checkout -q -- .
     sed -i '0,/fn display_is_path_line_col_error_code_message_then_notes() {/s//&\n        return;/' crates/umbra-templates/src/diagnostic.rs
-    expect FAIL "return; inserted into an M2 inline test body" check_2b "$tag"
+    expect FAIL "return; inserted into an M2 inline test body" check_2b "$tag" "$scope_tag"
     git checkout -q -- .
     echo "// addition at the end of the test module" >> crates/umbra-templates/src/diagnostic.rs
-    expect FAIL "line appended to an M2 inline test region" check_2b "$tag"
+    expect FAIL "line appended to an M2 inline test region" check_2b "$tag" "$scope_tag"
     git checkout -q -- .
     sed -i '0,/^#\[test\]$/s//#[test]\n#[ignore]/' crates/umbra-core/tests/ids.rs
-    expect FAIL "M2 integration test newly marked #[ignore]" check_1_2 "$tag"
+    expect FAIL "M2 integration test newly marked #[ignore]" check_1_2 "$tag" "$scope_tag"
     git checkout -q -- .
-    # Check 3 failure paths.
+    # Scope is M0-M2: a changed M3-era test file is not covered, and the ADR 0011 edit has no allowlist.
+    echo "// mutation" >> crates/umbra-behavior/tests/composites.rs
+    expect PASS "modified M3-era test file is out of scope" check_1_2 "$tag" "$scope_tag"
+    git checkout -q -- .
+    sed -i '0,/fn all_lists_every_kind_once/s//&\n        let _ = 0;/' crates/umbra-core/src/registry.rs
+    expect FAIL "edit of the ADR 0011 test is no longer allowlisted" check_2b "$tag" "$scope_tag"
+    git checkout -q -- .
+    # Check 3 failure paths and the name mapping.
+    expect PASS "name mapping: package, binary and unit-test binary" test "$(printf 'cgf-cli::cgf_cli::t\ncgf-core::cgf_core::u\ncgf-core::ids::cgf_x\n' | rename_names | tr '\n' ' ')" = "umbra-cli::umbra::t umbra-core::umbra_core::u umbra-core::ids::umbra_x "
     expect FAIL "list of a missing package" list_pkg "$work/selftest" "$work/selftest-target" no-such-package "$work/selftest.raw"
     expect FAIL "baseline below the floor" check_floor 10
     expect PASS "baseline at the floor" check_floor 900
@@ -198,17 +218,20 @@ if [ "$self_test" -eq 1 ]; then
 fi
 
 status=0
-check_1_2 "$tag" || status=1
-check_2b "$tag" || status=1
+check_1_2 "$tag" "$scope_tag" || status=1
+check_2b "$tag" "$scope_tag" || status=1
 
-echo "== 3. every test name of $tag still exists and is not newly ignored"
+echo "== 3. every test name of $scope_tag still exists (names mapped) and is not newly ignored"
 mkdir -p "$work"
 git worktree prune
 rm -rf "$work/tree"
-git worktree add --detach "$work/tree" "$tag"
+git worktree add --detach "$work/tree" "$scope_tag"
 
 list "$work/tree" "$work/baseline-target" "$work/m2-tests.txt" || status=1
 list "$work/tree" "$work/baseline-target" "$work/m2-ignored.txt" --ignored || status=1
+for k in m2-tests m2-ignored; do
+    rename_names < "$work/$k.txt" | sort -u > "$work/$k.mapped" && mv "$work/$k.mapped" "$work/$k.txt"
+done
 list "$root" "$root/target" "$work/now-tests.txt" || status=1
 list "$root" "$root/target" "$work/now-ignored.txt" --ignored || status=1
 
@@ -217,7 +240,7 @@ echo "baseline: $base tests, now: $(wc -l < "$work/now-tests.txt") tests"
 check_floor "$base" || status=1
 missing=$(comm -23 "$work/m2-tests.txt" "$work/now-tests.txt")
 if [ -n "$missing" ]; then
-    echo "FAIL: tests of $tag missing now:"; echo "$missing"; status=1
+    echo "FAIL: tests of $scope_tag missing now:"; echo "$missing"; status=1
 else
     echo "ok (only additions)"
 fi
