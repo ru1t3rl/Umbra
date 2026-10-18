@@ -353,3 +353,42 @@ fn behavior_view_and_snapshot_carry_force_route_contacts_status_and_intents() {
         ids(&[2, 3])
     );
 }
+
+/// ADR 0016: with no route, `[Despawn, FollowRoute, Hold]` expands to `[Despawn, Hold]`.
+#[test]
+fn follow_route_between_intents_without_route_leaves_the_others() {
+    let model = Stub::new("test.model.still", Motion::Stationary);
+    let mut k = kernel(1);
+    let intents = vec![Intent::Despawn, Intent::FollowRoute, Intent::Hold];
+    k.spawn_with(
+        owned(at(0.0), &model),
+        agent(emitting("test.behavior.between", intents)),
+    )
+    .expect("spawn_with");
+
+    k.tick().expect("tick");
+
+    assert_eq!(
+        k.snapshot().entities[0].intents,
+        vec![Intent::Despawn, Intent::Hold]
+    );
+}
+
+/// ADR 0016: on a finished route the expansion is `[Hold]`, spliced at the `FollowRoute` position.
+#[test]
+fn follow_route_on_a_finished_route_splices_hold_in_place() {
+    let model = Stub::new("test.model.still", Motion::Stationary);
+    let mut k = kernel(1);
+    let mut init = owned(at(0.0), &model);
+    init.route = Some(route(vec![at(0.0)], 6.0));
+    let intents = vec![Intent::Despawn, Intent::FollowRoute, Intent::Hold];
+    k.spawn_with(init, agent(emitting("test.behavior.finished", intents)))
+        .expect("spawn_with");
+
+    k.tick().expect("tick");
+
+    assert_eq!(
+        k.snapshot().entities[0].intents,
+        vec![Intent::Despawn, Intent::Hold, Intent::Hold]
+    );
+}

@@ -13,7 +13,7 @@ use cgf_core::{
 };
 
 use crate::error::{KernelError, RouteParam};
-use crate::kernel::{AgentInit, EntityInit, RouteInit};
+use crate::kernel::{EntityInit, RouteInit};
 use crate::systems::perception::Scratch;
 
 /// The motion model instance of an entity (REQ-M-4).
@@ -190,16 +190,17 @@ impl World {
 
     /// Validates `init` and adds the entity under the next id (from 1, never reused, REQ-C-2).
     pub(crate) fn spawn(&mut self, init: EntityInit, rng: SimRng) -> Result<EntityId, KernelError> {
-        self.spawn_with(init, AgentInit::default(), || Ok(None), rng)
+        self.spawn_with(init, None, Vec::new(), || Ok(None), rng)
     }
 
-    /// Like [`World::spawn`] with the force and sensors of `agent`; `slot` builds the behavior
+    /// Like [`World::spawn`] with a force and sensors; `slot` builds the behavior
     /// slot and runs only after state, route and id have been validated (ASM-093 (g)). Nothing
     /// changes on error, and no id is consumed.
     pub(crate) fn spawn_with(
         &mut self,
         init: EntityInit,
-        agent: AgentInit,
+        force: Option<Force>,
+        sensors: Vec<Arc<dyn Sensor>>,
         slot: impl FnOnce() -> Result<Option<BehaviorSlot>, KernelError>,
         rng: SimRng,
     ) -> Result<EntityId, KernelError> {
@@ -219,13 +220,11 @@ impl World {
         if let Some(route) = route {
             builder.add(route);
         }
-        if let Some(force) = agent.force {
+        if let Some(force) = force {
             builder.add(ForceTag(force));
         }
-        if !agent.sensors.is_empty() {
-            builder
-                .add(Sensors(agent.sensors))
-                .add(Contacts(Vec::new()));
+        if !sensors.is_empty() {
+            builder.add(Sensors(sensors)).add(Contacts(Vec::new()));
             self.sensor_owners += 1;
         }
         if let Some(slot) = slot {

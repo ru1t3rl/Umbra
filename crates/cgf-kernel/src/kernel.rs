@@ -154,7 +154,11 @@ impl Kernel {
         agent: AgentInit,
     ) -> Result<EntityId, KernelError> {
         let rate = self.clock.now().rate();
-        let behavior = agent.behavior.clone();
+        let AgentInit {
+            force,
+            behavior,
+            sensors,
+        } = agent;
         // Instantiation runs after the entity has been validated (ASM-093 (g)).
         let slot = move || {
             behavior
@@ -168,7 +172,7 @@ impl Kernel {
                 .transpose()
                 .map_err(KernelError::from)
         };
-        self.world.spawn_with(init, agent, slot, self.rng)
+        self.world.spawn_with(init, force, sensors, slot, self.rng)
     }
 
     /// Runs one tick through the six phases in [`Phase::ALL`] order and advances the clock by
