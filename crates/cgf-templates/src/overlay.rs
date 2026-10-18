@@ -26,16 +26,29 @@ impl<'a> Loader<'a> {
     pub(crate) fn overlay(&'a self, loaded: &'a LoadedGraphs) -> Overlay<'a> {
         let graphs = Graphs::new(self, loaded);
         let mut schemas = self.schemas.clone();
+        let mut silent = graphs.silent();
         for graph in loaded.set.iter() {
             let Ok(id) = ComponentId::new(graph.id.as_str()) else {
                 continue;
             };
-            if let Ok(compiled) = CompiledSchema::compile(&graph.interface.params) {
-                schemas.insert((ComponentKind::Behavior, id), compiled);
+            let compiled = CompiledSchema::compile(&graph.interface.params);
+            // The reader compiled every interface fragment, so the assembled schema compiles.
+            debug_assert!(
+                compiled.is_ok(),
+                "a usable graph's interface schema compiles"
+            );
+            match compiled {
+                Ok(compiled) => {
+                    schemas.insert((ComponentKind::Behavior, id), compiled);
+                }
+                // Stay silent rather than report an `unknown_id` for a graph that exists.
+                Err(_) => {
+                    silent.insert(id);
+                }
             }
         }
         let scope = GraphScope {
-            silent: graphs.silent(),
+            silent,
             unreadable: graphs.unreadable(),
         };
         Overlay {

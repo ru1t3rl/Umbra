@@ -20,12 +20,16 @@ pub(crate) struct Graphs<'a> {
 }
 
 impl<'a> Graphs<'a> {
-    /// The facts about the IDs of `loaded`. `loader` is the plain loader (its registry decides
-    /// which IDs clash); the set-level diagnostics were reported by `load_graphs` already.
+    /// The facts about the IDs of `graphs`, as `load_graphs` found them. `loader` is the plain
+    /// loader.
     pub(crate) fn new(loader: &'a Loader<'a>, graphs: &'a LoadedGraphs) -> Self {
-        let mut ignored = Vec::new();
         Self {
-            set: Set::new(loader, &graphs.reads, &mut ignored),
+            set: Set {
+                loader,
+                reads: &graphs.reads,
+                known: graphs.known.clone(),
+                unreadable: graphs.unreadable.clone(),
+            },
         }
     }
 
@@ -44,13 +48,14 @@ impl<'a> Graphs<'a> {
         self.set.unreadable.clone()
     }
 
-    /// Checks a template's use of `id` as a top-level behavior when `id` is a usable graph, and
-    /// returns the params the schema check should see: `params` without the entries that hold a
-    /// `{ key }` or `{ param }` form (reported `invalid_binding` here: a top-level behavior has no
-    /// blackboard and no enclosing interface). `None` when `id` is not a usable graph.
+    /// Checks a template's use of `id` as a top-level behavior when `id` is a usable graph or a
+    /// registered behavior, and returns the params the schema check should see: `params` without
+    /// the entries that hold a `{ key }` or `{ param }` form (reported `invalid_binding` here: a
+    /// top-level behavior has no blackboard and no enclosing interface, ADR 0014). `None` for any
+    /// other `id`.
     ///
     /// Required params that are missing (binding-only ones included) are reported unless
-    /// `partial`, and every supplied value is followed down the chain like a call-site value.
+    /// `partial`; the values a graph is given are followed down the chain like call-site values.
     pub(crate) fn check_use(
         &self,
         id: &ComponentId,
@@ -58,7 +63,10 @@ impl<'a> Graphs<'a> {
         partial: bool,
         out: &mut Vec<Diagnostic>,
     ) -> Option<LTable> {
-        if !matches!(self.set.resolve(id), Resolved::Graph(_)) {
+        if !matches!(
+            self.set.resolve(id),
+            Resolved::Graph(_) | Resolved::Registered(_)
+        ) {
             return None;
         }
         let mut bound = BTreeSet::new();

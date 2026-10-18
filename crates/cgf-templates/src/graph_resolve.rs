@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use cgf_core::{ComponentId, ComponentInfo, ComponentKind, GraphDef, NodeKind, Provenance};
 
-use crate::components::article;
+use crate::components::{article, syntax_note};
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::graph_read::{GraphRead, read_graph};
 use crate::loader::Loader;
@@ -66,9 +66,14 @@ pub(crate) struct LoadedGraphs {
     pub(crate) diagnostics: Vec<Diagnostic>,
     /// The files as read, for the checks of template uses (WI-14).
     pub(crate) reads: Vec<GraphRead>,
+    /// What each recovered ID stands for in the load.
+    known: BTreeMap<ComponentId, Known>,
+    /// Files with syntax errors whose `id` could not be recovered.
+    unreadable: Vec<PathBuf>,
 }
 
 /// What an ID of a graph file stands for in the load.
+#[derive(Clone)]
 enum Known {
     /// A clean graph with a unique ID: the index of its file.
     Usable(usize),
@@ -181,13 +186,7 @@ impl<'a> Set<'a> {
     fn unknown_behavior(&self, id: &ComponentId, at: &Origin) -> Diagnostic {
         let mut found = self.loader.unknown_id(ComponentKind::Behavior, id, at);
         for path in &self.unreadable {
-            found = found.with_note(
-                format!(
-                    "may be defined in {}, which has syntax errors",
-                    path.display()
-                ),
-                None,
-            );
+            found = found.with_note(syntax_note(path), None);
         }
         found
     }
@@ -264,10 +263,15 @@ impl Loader<'_> {
                 used.contains(&id).then(|| (id, Arc::new(g.clone())))
             })
             .collect();
+        let Set {
+            known, unreadable, ..
+        } = set;
         LoadedGraphs {
             set: GraphSet { graphs },
             diagnostics,
             reads,
+            known,
+            unreadable,
         }
     }
 }

@@ -305,6 +305,7 @@ fn parameters(
     if !partial {
         found.retain(|d| d.code != DiagnosticCode::MissingParam);
     }
+    let refused = refused(&substituted.table, &found);
     out.extend(match follow {
         Some(param) => annotate_only(found, &substituted.sources, param),
         None => annotate(found, &substituted.sources),
@@ -314,9 +315,31 @@ fn parameters(
         supplied.insert(name.clone(), None);
     }
     for (name, _) in params.iter() {
-        supplied.insert(name.to_string(), substituted.table.get(name).cloned());
+        // A value the interface refused is not followed: its error is reported once (ASM-107 d).
+        let value = substituted
+            .table
+            .get(name)
+            .filter(|_| !refused.contains(name));
+        supplied.insert(name.to_string(), value.cloned());
     }
     supplied
+}
+
+/// The params of `params` with a diagnostic of `found` located inside their value.
+fn refused(params: &LTable, found: &[Diagnostic]) -> BTreeSet<String> {
+    params
+        .iter()
+        .filter(|(_, entry)| {
+            let span = entry.value().origin().span();
+            let path = entry.value().origin().path();
+            found.iter().any(|d| {
+                d.location.as_ref().is_some_and(|at| {
+                    at.path == path && span.start <= at.span.start && at.span.end <= span.end
+                })
+            })
+        })
+        .map(|(name, _)| name.to_string())
+        .collect()
 }
 
 /// `missing_param` at `at` for every required param of `callee` that `params` lacks and `bound`
@@ -351,19 +374,22 @@ pub(super) fn template_use(
     partial: bool,
     out: &mut Vec<Diagnostic>,
 ) {
-    let Resolved::Graph(target) = set.resolve(id) else {
-        return;
+    let (callee, target) = match set.resolve(id) {
+        Resolved::Graph(target) => (graph_callee(id, target), Some(target)),
+        Resolved::Registered(info) => (registered_callee(set, id, info), None),
+        Resolved::Unknown | Resolved::Silent => return,
     };
-    let Some(callee) = graph_callee(id, target) else {
-        return;
-    };
+    let Some(callee) = callee else { return };
     if !partial {
         let at = params.origin();
         missing(&callee, params, &|name| bound.contains(name), at, out);
     }
+    // A registered behavior is covered by its dry run; a graph's values are followed down.
+    let Some(target) = target else { return };
+    let refused = refused(params, &schema_errors(&callee, params, true));
     let mut seen = Seen::new();
     let mut chain = Chain::new(set.depth_limit().min(MAX_CHAIN), &mut seen);
-    for (name, entry) in params.iter() {
+    for (name, entry) in params.iter().filter(|(name, _)| !refused.contains(*name)) {
         let name = name.to_string();
         propagate(set, (&target, id), (&name, entry.value()), &mut chain, out);
     }

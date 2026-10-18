@@ -1,6 +1,8 @@
 //! Component checks shared by templates and scenarios: registry lookup, parameter schema
 //! validation and a trial `Factory::build` (REQ-T-1, REQ-T-3, ASM-058, ASM-063, ASM-064).
 
+use std::path::Path;
+
 use cgf_core::{BuildError, ComponentId, ComponentKind, ParamValue, Registry};
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
@@ -116,11 +118,7 @@ impl Loader<'_> {
             .with_note(note, None);
         if kind == ComponentKind::Behavior {
             for path in &self.scope.unreadable {
-                let note = format!(
-                    "may be defined in {}, which has syntax errors",
-                    path.display()
-                );
-                found = found.with_note(note, None);
+                found = found.with_note(syntax_note(path), None);
             }
         }
         found
@@ -158,6 +156,15 @@ impl Loader<'_> {
             _ => Err(BuildError::new("component kind not supported")),
         }
     }
+}
+
+/// The note of an `unknown_*` error for a file with syntax errors that may define the name
+/// (ASM-054 rule 3).
+pub(crate) fn syntax_note(path: &Path) -> String {
+    format!(
+        "may be defined in {}, which has syntax errors",
+        path.display()
+    )
 }
 
 /// "a" or "an" before `noun`.

@@ -8,6 +8,7 @@
 mod common;
 mod graph_support;
 
+use cgf_core::{BbType, Registry};
 use cgf_templates::{Diagnostic, SourceFile, TemplateSet};
 use common::{errors, fixture_path, lines, ok, pos_after, pos_of, row, rows, src};
 use graph_support::{caller, minimal, one_graph, register_twin, registry, with_interface};
@@ -74,16 +75,50 @@ fn shape(found: &[Diagnostic], from: &str, to: &str) -> Vec<(String, u32, u32, S
         .collect()
 }
 
+/// Loads `params` as the template's `[behavior] params` once with the graph and once with its
+/// registered twin, and checks that both succeed with the same params or fail with the same
+/// diagnostics (codes, positions, messages but for the ID).
+fn assert_same(graph_text: &str, graph: &str, twin_registry: &Registry, twin: &str, params: &str) {
+    let by_graph = load(&[
+        src("behaviors/child.behavior.toml", graph_text),
+        src(TEMPLATE, &tank(graph, params)),
+    ]);
+    let by_twin =
+        common::loader(twin_registry).templates_from_sources(&[src(TEMPLATE, &tank(twin, params))]);
+
+    match (by_graph, by_twin) {
+        (Ok(g), Ok(t)) => {
+            let behavior = |set: &TemplateSet| {
+                set.iter()
+                    .next()
+                    .and_then(|r| r.behavior.as_ref().map(|b| b.params.clone()))
+            };
+            assert_eq!(behavior(&g), behavior(&t), "{params}");
+        }
+        (Err(g), Err(t)) => {
+            let g: Vec<Diagnostic> = g.iter().cloned().collect();
+            let t: Vec<Diagnostic> = t.iter().cloned().collect();
+            assert_eq!(shape(&g, graph, "ID"), shape(&t, twin, "ID"), "{params}");
+        }
+        (g, t) => panic!(
+            "{params}: graph ok = {}, twin ok = {}",
+            g.is_ok(),
+            t.is_ok()
+        ),
+    }
+}
+
 /// Plan risk: the scoped overlay must not diverge from the registry path. A graph and a
-/// registered behavior with the same parameter schema give the same diagnostics (same codes, same
-/// positions, same messages but for the ID) for every schema-level mistake, and the same params.
+/// registered behavior with the same parameter schema give the same diagnostics for every
+/// schema-level mistake, no `params` line, and binding forms, and the same params when valid.
 #[test]
 fn graph_and_registered_twin_with_the_same_schema_agree() {
     let child = with_interface("test.graph.child", CHILD_PARAMS);
     let schema = one_graph(&child).interface.params.clone();
     let mut twin_registry = registry();
-    register_twin(&mut twin_registry, "test.twin.child", &schema);
+    register_twin(&mut twin_registry, "test.twin.child", &schema, &[]);
     let cases = [
+        "",
         "{ count = 1 }",
         "{ count = 1, label = \"y\" }",
         "{ }",
@@ -92,39 +127,51 @@ fn graph_and_registered_twin_with_the_same_schema_agree() {
         "{ count = 0 }",
         "{ count = 1, label = 5 }",
         "{ count = 1.5 }",
+        "{ count = { key = \"k\" } }",
+        "{ count = 1, label = { param = \"p\" } }",
     ];
     for params in cases {
-        let by_graph = load(&[
-            src("behaviors/child.behavior.toml", &child),
-            src(TEMPLATE, &tank("test.graph.child", params)),
-        ]);
-        let by_twin = common::loader(&twin_registry)
-            .templates_from_sources(&[src(TEMPLATE, &tank("test.twin.child", params))]);
+        assert_same(
+            &child,
+            "test.graph.child",
+            &twin_registry,
+            "test.twin.child",
+            params,
+        );
+    }
+}
 
-        match (by_graph, by_twin) {
-            (Ok(g), Ok(t)) => {
-                let behavior = |set: &TemplateSet| {
-                    set.iter()
-                        .next()
-                        .and_then(|r| r.behavior.as_ref().map(|b| b.params.clone()))
-                };
-                assert_eq!(behavior(&g), behavior(&t), "{params}");
-            }
-            (Err(g), Err(t)) => {
-                let g: Vec<Diagnostic> = g.iter().cloned().collect();
-                let t: Vec<Diagnostic> = t.iter().cloned().collect();
-                assert_eq!(
-                    shape(&g, "test.graph.child", "ID"),
-                    shape(&t, "test.twin.child", "ID"),
-                    "{params}"
-                );
-            }
-            (g, t) => panic!(
-                "{params}: graph ok = {}, twin ok = {}",
-                g.is_ok(),
-                t.is_ok()
-            ),
-        }
+/// The same with a binding-only param (`target: entity`): a graph and a registered behavior that
+/// declares it bindable both require it at a template (ADR 0014).
+#[test]
+fn graph_and_bindable_registered_twin_agree() {
+    let bound = with_interface(
+        "test.graph.bound",
+        "params = { target = { type = \"entity\" }, n = { type = \"integer\", default = 1 } }",
+    );
+    let schema = one_graph(&bound).interface.params.clone();
+    let mut twin_registry = registry();
+    register_twin(
+        &mut twin_registry,
+        "test.twin.bound",
+        &schema,
+        &[("target", BbType::Entity), ("n", BbType::Integer)],
+    );
+    for params in [
+        "",
+        "{ }",
+        "{ n = 2 }",
+        "{ n = \"x\" }",
+        "{ target = { key = \"k\" } }",
+        "{ target = { key = \"k\" }, n = 2 }",
+    ] {
+        assert_same(
+            &bound,
+            "test.graph.bound",
+            &twin_registry,
+            "test.twin.bound",
+            params,
+        );
     }
 }
 
@@ -328,13 +375,8 @@ fn own_params_of_an_inherited_graph_are_checked_when_the_chain_is_broken() {
     assert_eq!(
         rows(&d),
         [
-            // The interface (`number`) and the leaf that uses the param (`range_m`) each refuse
-            // the string, as for a `subgraph` call site.
-            row(
-                "param_wrong_type",
-                "templates/child.toml",
-                pos_of(&child, "\"far\"")
-            ),
+            // The interface refuses the string once; the leaf that uses the param is not asked
+            // about a value that is already refused (ASM-107 d).
             row(
                 "param_wrong_type",
                 "templates/child.toml",
@@ -417,5 +459,32 @@ fn validate_path_and_load_scenario_agree_on_call_site_errors() {
             ),
             row("unknown_param", &template, pos_of(&text, "extra")),
         ]
+    );
+}
+
+/// ASM-107 d: a `subgraph` call site behaves like a template use: a value the callee's interface
+/// refuses is reported once, not again by the leaf that uses the param.
+#[test]
+fn refused_call_site_value_is_reported_once() {
+    let outer = caller(
+        "test.graph.outer",
+        "test.graph.patrol",
+        None,
+        "{ engage_range_m = \"far\" }",
+        &[],
+    );
+
+    let d = errors(graph_support::graphs(&[
+        src(GRAPH, &patrol()),
+        src("behaviors/outer.behavior.toml", &outer),
+    ]));
+
+    assert_eq!(
+        rows(&d),
+        [row(
+            "param_wrong_type",
+            "behaviors/outer.behavior.toml",
+            pos_of(&outer, "\"far\"")
+        )]
     );
 }

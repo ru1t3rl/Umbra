@@ -409,11 +409,7 @@ fn sensors_are_looked_up_and_validated_by_id() {
 /// action were refused as unsupported.
 #[test]
 fn trial_build_runs_real_dry_runs_for_behavior_sensor_condition_and_action() {
-    let behavior = tank(
-        "stub.behavior.ext",
-        "{ speed = 13.0, target = { key = \"k\" } }",
-    );
-    let behavior = behavior.replace(", target = { key = \"k\" }", "");
+    let behavior = tank("stub.behavior.plain", "{ speed = 13.0 }");
     let sensor = template(
         "tank.s",
         &[],
@@ -468,4 +464,47 @@ fn trial_build_runs_real_dry_runs_for_behavior_sensor_condition_and_action() {
             row("param_invalid", GRAPH, pos_after(&leaves, "duration_s = ")),
         ]
     );
+}
+
+/// ADR 0014 applies to registered behaviors too: one with a required binding-only param
+/// (`stub.behavior.ext` declares `target: entity`) is `missing_param` at the template's `params`
+/// table, besides the dry run of the values it was given.
+#[test]
+fn registered_behavior_with_required_binding_only_param_is_missing_param() {
+    let tank = tank("stub.behavior.ext", "{ speed = 13.0 }");
+
+    let d = errors(load(&[src(TEMPLATE, &tank)]));
+
+    assert_eq!(
+        rows(&d),
+        [
+            row("missing_param", TEMPLATE, behavior_params_at(&tank)),
+            row("param_invalid", TEMPLATE, pos_after(&tank, "speed = ")),
+        ]
+    );
+    assert!(d[0].message.contains("target"), "{}", d[0].message);
+}
+
+/// ADR 0014: `{ key }` and `{ param }` forms in the params of a registered behavior are
+/// `invalid_binding` at the form, not `param_wrong_type`; the required binding-only param given as
+/// such a form is not also missing.
+#[test]
+fn binding_forms_for_registered_behaviors_are_invalid_binding() {
+    let key = tank("stub.behavior.ext", "{ target = { key = \"k\" } }");
+    let param = tank("stub.behavior.plain", "{ speed = { param = \"p\" } }");
+    let nested = tank("stub.behavior.plain", "{ speed = [ { key = \"k\" } ] }");
+
+    for (text, form) in [
+        (&key, "{ key = \"k\" }"),
+        (&param, "{ param = \"p\" }"),
+        (&nested, "{ key = \"k\" }"),
+    ] {
+        let d = errors(load(&[src(TEMPLATE, text)]));
+
+        assert_eq!(
+            rows(&d),
+            [row("invalid_binding", TEMPLATE, pos_of(text, form))],
+            "{text}"
+        );
+    }
 }

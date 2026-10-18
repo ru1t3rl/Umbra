@@ -269,16 +269,27 @@ pub fn registry() -> Registry {
     registry
 }
 
-/// Registers `id` as a plain behavior (no bindable params) with exactly `schema`: the "twin" of a
-/// graph whose interface produced that schema (WI-14 equivalence test).
-pub fn register_twin(registry: &mut Registry, id: &str, schema: &ParamSchema) {
+/// Registers `id` as a behavior with exactly `schema` and the given bindable params (`types`,
+/// binding-only ones are `entity` and `position`): the "twin" of a graph whose interface produced
+/// that schema (WI-14 equivalence test).
+pub fn register_twin(
+    registry: &mut Registry,
+    id: &str,
+    schema: &ParamSchema,
+    types: &[(&str, BbType)],
+) {
     let leaf = Leaf {
         id: cid(id),
         schema: schema.clone(),
         unlucky: None,
     };
+    let described = types
+        .iter()
+        .fold(info(Provenance::Plugin), |i, (name, ty)| {
+            i.with_param_type(*name, *ty)
+        });
     registry
-        .register_behavior(Arc::new(leaf), info(Provenance::Plugin))
+        .register_behavior(Arc::new(leaf), described)
         .unwrap_or_else(|e| panic!("{e}"));
 }
 

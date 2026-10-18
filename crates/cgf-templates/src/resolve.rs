@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use cgf_core::{ComponentId, ComponentKind, ParamValue, Provenance, TemplateId};
 
+use crate::components::syntax_note;
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::graph_read::is_graph_path;
 use crate::graph_resolve::GraphSet;
@@ -334,9 +335,7 @@ pub(crate) struct LoadedTemplates {
 /// The notes of an `unknown_template` error: files that may define the name but could not be
 /// used (ASM-054 rule 3).
 pub(crate) fn missing_template_notes(syntax: &[PathBuf], unread: &[PathBuf]) -> Vec<String> {
-    let syntax = syntax
-        .iter()
-        .map(|p| format!("may be defined in {}, which has syntax errors", p.display()));
+    let syntax = syntax.iter().map(|p| syntax_note(p));
     let unread = unread.iter().map(|p| {
         format!(
             "may be defined under {}, which could not be read",

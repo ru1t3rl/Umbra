@@ -32,7 +32,7 @@ One template per file. Keys:
 | `extends` | string | optional parent template ID (single inheritance) |
 | `description` | string | optional, not inherited |
 | `[motion]` | table | `model` (component ID), `params` (table) |
-| `[behavior]` | table | `ref` (a registered behavior or a `*.behavior.toml` graph of the same load), `params`. Unknown IDs are `unknown_id`; `{ key = .. }` and `{ param = .. }` forms in `params` are `invalid_binding`; a graph's required params (binding-only ones included) must be given (`missing_param`) |
+| `[behavior]` | table | `ref` (a registered behavior or a `*.behavior.toml` graph of the same load), `params`. Unknown IDs are `unknown_id`; `{ key = .. }` and `{ param = .. }` forms in `params` are `invalid_binding`; a graph (or registered behavior) with a required binding-only param cannot be a template behavior (`missing_param`) |
 | `[[sensors]]` | array of tables | `kind` (required, a registered sensor), `params`; resolved into the template and dry-run through the sensor's factory |
 | `[network.<adapter>]` | tables | adapter name `[a-z][a-z0-9_]*`; contents are opaque (REQ-T-4) |
 
