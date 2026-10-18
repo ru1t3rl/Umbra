@@ -1,6 +1,7 @@
 # ADR 0022: Plugin discovery, packaging and scenario keys
 
-- **Status**: Accepted (human project owner, 2026-10-18; proposed by the architect in the M4 plan `docs/plans/M4.md`)
+- **Status**: Accepted (human project owner, 2026-10-18; proposed by the architect in the M4 plan `docs/plans/M4.md`).
+  Amended 2026-10-18 after the ABI design review (approved by the human): see the section at the end.
 - **Requirement IDs**: REQ-P-9, REQ-P-10, REQ-P-7, REQ-T-2, REQ-T-5, REQ-T-6, REQ-S-1, NFR-3, D-25 (ADR 0010),
   A-001 constraint 3, ADR 0002
 - **Affected**: `umbra-templates` (scenario reader, `scenario.v1.schema.json`), `umbra-plugin-host`,
@@ -52,3 +53,18 @@ Option 1.
 - Harder: an example scenario cannot point at a build directory portably, so the example passes
   `--plugin-path target/plugins` (documented); per-plugin selection inside a directory needs a later key.
 - Revisit if users need to select plugins by ID or version range (a new additive key, e.g. `[[plugin]]`).
+
+## Amended 2026-10-18 after the ABI design review (approved by the human)
+These rules refine "Package layout" and replace "the same plugin ID twice ... including the same file
+reached twice" in the Decision:
+- **Names and order** (review minor): package directory names must be valid UTF-8 (a non-UTF-8 name is a
+  `Discovery` error naming the path, on every OS, so ordering never depends on UTF-16 or locale); packages
+  are ordered by those UTF-8 bytes. Library file names are matched by extension only.
+- **Symlinks** (review minor): a symlinked package directory or library is followed; identity (duplicates,
+  the image table) uses the canonical path of the library.
+- **Same image twice** (R-B5, ADR 0021): within one host, a library whose canonical path, or (after
+  opening) whose `umbra_plugin_entry` address, matches an image this host already loaded is a `Duplicate`
+  error naming both locations, found **before the entry is called**. A different image declaring an
+  already-loaded plugin ID is also `Duplicate`. Another host in the same process reuses the image instead.
+- **Manifest vs descriptor**: unchanged; on a reused image the copied descriptor is compared again with the
+  new package's `plugin.toml`.
