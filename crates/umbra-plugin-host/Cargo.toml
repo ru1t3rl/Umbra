@@ -12,5 +12,9 @@ repository.workspace = true
 umbra-core = { path = "../umbra-core" }
 umbra-plugin-api = { path = "../umbra-plugin-api" }
 
+[dev-dependencies]
+# tests/c_header.rs compiles generated layout asserts against the header (ADR 0023 item 3, R-M7).
+cc.workspace = true
+
 [lints]
 workspace = true

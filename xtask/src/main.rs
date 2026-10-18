@@ -1,7 +1,9 @@
 //! `cargo xtask` entry point.
 //!
-//! CLI contract: `cargo xtask check-deps [--manifest-path <path>]`; exit 0 clean,
-//! 1 on violations, 2 on load or usage error.
+//! CLI contract (exit 0 clean, 1 on violations or drift, 2 on load, tool or usage error):
+//! - `cargo xtask check-deps [--manifest-path <path>]` (REQ-A-1..3, NFR-2);
+//! - `cargo xtask gen-header [--check] [--crate-dir <dir>]` (REQ-SDK-2, gate 11); the crate directory
+//!   defaults to `crates/umbra-plugin-api`.
 
 #![forbid(unsafe_code)]
 #![expect(
@@ -11,11 +13,12 @@
 )]
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
 use xtask::deps::{RULES, ResolvedGraph, Violation, Workspace, check_workspace};
+use xtask::header::{self, Outcome};
 
 fn main() -> ExitCode {
     match run() {
@@ -32,14 +35,61 @@ fn main() -> ExitCode {
 fn run() -> Result<bool> {
     let mut args = std::env::args_os().skip(1);
     let Some(sub) = args.next() else {
-        bail!("usage: cargo xtask check-deps [--manifest-path <path>]");
+        bail!(
+            "usage: cargo xtask check-deps [--manifest-path <path>] | gen-header [--check] [--crate-dir <dir>]"
+        );
     };
     match sub.to_str() {
         Some("check-deps") => check_deps(args),
+        Some("gen-header") => gen_header(args),
         _ => bail!(
-            "unknown subcommand `{}`; available: check-deps",
+            "unknown subcommand `{}`; available: check-deps, gen-header",
             sub.to_string_lossy()
         ),
+    }
+}
+
+fn gen_header(mut args: impl Iterator<Item = OsString>) -> Result<bool> {
+    let mut check = false;
+    let mut crate_dir: Option<PathBuf> = None;
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--check") => check = true,
+            Some("--crate-dir") => {
+                let dir = args.next().context("--crate-dir needs a value")?;
+                if crate_dir.replace(dir.into()).is_some() {
+                    bail!("--crate-dir given more than once");
+                }
+            }
+            _ => bail!("unknown argument `{}`", arg.to_string_lossy()),
+        }
+    }
+    let crate_dir = crate_dir.unwrap_or_else(|| {
+        let xtask_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        xtask_dir
+            .parent()
+            .unwrap_or(xtask_dir)
+            .join("crates/umbra-plugin-api")
+    });
+    match header::run(&crate_dir, check)? {
+        Outcome::Current => {
+            println!(
+                "gen-header: ok ({} is current)",
+                crate_dir.join(header::HEADER_PATH).display()
+            );
+            Ok(true)
+        }
+        Outcome::Drift { path, line } => {
+            println!(
+                "gen-header: {} differs from the generated header from line {line}; run `cargo xtask gen-header`",
+                path.display()
+            );
+            Ok(false)
+        }
+        Outcome::Written(path) => {
+            println!("gen-header: wrote {}", path.display());
+            Ok(true)
+        }
     }
 }
 

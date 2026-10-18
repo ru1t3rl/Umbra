@@ -92,7 +92,7 @@ pub struct UmbraCapability {
     /// Kind-specific JSON metadata (behavior: ADR 0020), at most `UMBRA_MAX_METADATA_LEN` bytes; may be
     /// empty.
     pub metadata: UmbraStr,
-    /// The kind's vtable (behavior: [`crate::UmbraBehaviorVTable`]), 8-byte aligned, non-null.
+    /// The kind's vtable (behavior: `UmbraBehaviorVTable`), 8-byte aligned, non-null.
     pub vtable: *const c_void,
 }
 

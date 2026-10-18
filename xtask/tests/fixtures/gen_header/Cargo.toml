@@ -1,0 +1,8 @@
+# gen-header fixture (M4 WI-4, AT-2), see ../README.md. Own workspace, no dependencies.
+[workspace]
+
+[package]
+name = "gen-header-fixture"
+version = "0.1.0"
+edition = "2024"
+publish = false

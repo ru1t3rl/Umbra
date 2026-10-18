@@ -68,7 +68,7 @@ pub const UMBRA_ERR_STATE: UmbraCode = 6;
 /// supported in v0; the other numbers are reserved and rejected as unsupported; `0` and unknown values
 /// are invalid.
 pub type UmbraCapabilityKind = u32;
-/// A behavior (vtable [`crate::UmbraBehaviorVTable`], ADR 0020).
+/// A behavior (vtable `UmbraBehaviorVTable`, ADR 0020).
 pub const UMBRA_CAPABILITY_BEHAVIOR: UmbraCapabilityKind = 1;
 /// Reserved: motion model (M7).
 pub const UMBRA_CAPABILITY_MOTION_MODEL: UmbraCapabilityKind = 2;
@@ -100,7 +100,7 @@ pub const UMBRA_STATUS_RUNNING: UmbraStatus = 3;
 
 // ---------------------------------------------------------------- intent kinds (ADR 0016, set v1)
 
-/// Kind of a [`crate::UmbraIntent`], written by the plugin; `0` and unknown values are refused by the
+/// Kind of a `UmbraIntent`, written by the plugin; `0` and unknown values are refused by the
 /// intent sink.
 pub type UmbraIntentKind = u32;
 /// Move to `position` (ECEF).
@@ -124,7 +124,7 @@ pub const UMBRA_INTENT_CUSTOM: UmbraIntentKind = 9;
 
 // ---------------------------------------------------------------- value types (BbValue)
 
-/// Type tag of a [`crate::UmbraValue`], written by its producer; `0` and unknown values are invalid.
+/// Type tag of a `UmbraValue`, written by its producer; `0` and unknown values are invalid.
 pub type UmbraValueType = u32;
 /// `boolean` holds 0 or 1.
 pub const UMBRA_VALUE_BOOL: UmbraValueType = 1;

@@ -1,0 +1,9 @@
+# Minimal cbindgen configuration for the gen-header fixture.
+language = "C"
+style = "type"
+no_includes = true
+sys_includes = ["stdint.h"]
+include_guard = "GEN_HEADER_FIXTURE_H"
+
+[export]
+include = ["FixtureStruct"]

@@ -1,4 +1,7 @@
 * text=auto eol=lf
+# The plugin C header (and C sources) stay LF on every OS; gen-header --check also normalises (ADR 0019).
+*.h text eol=lf
+*.c text eol=lf
 *.png binary
 *.ico binary
 *.dll binary

@@ -89,3 +89,11 @@ in the real repo): `entry_macro` stands in for `umbra-sdk`, `plugin` (a `cdylib`
 - `forbid_external_expect`: the macro also emits `#[expect(unsafe_code, reason = ..)]`. Expected: error
   E0453 (an inner `allow`/`expect` cannot override `forbid`), which is why `export_plugin!` emits no lint
   attribute.
+
+## gen_header (M4 WI-4, AT-2; `xtask/tests/gen_header.rs`)
+Not a `check-deps` fixture: a one-struct crate (own `[workspace]`, no dependencies, committed `Cargo.lock`)
+with its own `cbindgen.toml` and the header the pinned `cbindgen` 0.29.4 generates for it
+(`include/umbra_plugin_api.h`, written by `cargo xtask gen-header --crate-dir xtask/tests/fixtures/gen_header`).
+The tests check it as is (current), and copies under `CARGO_TARGET_TMPDIR` with a field appended to
+`src/lib.rs` (drift, exit 1), with a CRLF header (not drift) and with a hand-edited header (write mode
+restores it). Regenerate the committed header only when the pinned `cbindgen` version changes.

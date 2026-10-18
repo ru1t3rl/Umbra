@@ -5,7 +5,13 @@ Toolchain is pinned in `rust-toolchain.toml` (Rust 1.99.1, edition 2024, resolve
 ## Prerequisites
 ```
 cargo install --locked cargo-deny@0.20.2 cargo-audit@0.22.2
+cargo install --locked cbindgen@0.29.4
 ```
+From M4 also a C compiler (gcc or clang on Linux and macOS, MSVC on Windows), found by the `cc` crate
+(`CC` overrides it). `cbindgen` (MPL-2.0) is a pinned tool, never a dependency (ADR 0023 item 2, ASM-009):
+`cargo xtask gen-header` refuses any other `cbindgen --version` and runs `cbindgen` from `PATH` or the
+program named by the `CBINDGEN` environment variable. Gate 3 needs both too (`xtask/tests/gen_header.rs`,
+`crates/umbra-plugin-host/tests/c_header.rs`).
 
 ## Local gate (canonical, ADR 0004 / D-19)
 There is no CI gate: this list, run in this order, is the definition of done (CLAUDE.md rule 8, NFR-3/4/5). Stop at the first failure; fix the cause, never weaken a gate. The `verify-and-build` skill follows this list. Commands are identical on Linux and Windows; on Windows also check path handling and `.dll` plugin loading, on Linux `.so`.
@@ -22,7 +28,7 @@ There is no CI gate: this list, run in this order, is the definition of done (CL
 | 8 | Docs, warnings are errors | `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked` | M0 |
 | 9 | Release build | `cargo build --workspace --release --locked` | M0 |
 | 10 | Schema drift | `cargo xtask gen-api --check` | from M5 |
-| 11 | C header drift | `cargo xtask gen-header --check` | from M4 |
+| 11 | C header drift (REQ-SDK-2) | `cargo xtask gen-header --check` | from M4 (active from WI-4) |
 | 12 | Plugin build | `cargo xtask build-plugins --release` | from M4 |
 | 13 | Plugin failure matrix | `cargo test -p umbra-plugin-host --test plugin_failures` | from M4 |
 | 14 | Benchmarks compile | `cargo bench -p umbra-kernel --bench tick --no-run --locked` | from M1 |
@@ -37,8 +43,10 @@ Rows marked "from Mn" are skipped, and reported as skipped, before that mileston
 |---|---|
 | `cargo xtask check-deps [--manifest-path <path>]` | Verifies the dependency rules REQ-A-1..3 in two passes against the table in `xtask/src/deps/rules.rs`: (1) every declared direct edge (`cargo metadata --no-deps`; all kinds, targets, renames; unknown workspace crates and non-member path dependencies are violations, ASM-006); (2) the resolved graph by package id (`cargo metadata --offline --locked --all-features`, all platforms), which catches laundering through `[patch]`, `[replace]`, git, registry or same-name packages and rejects every non-member path package, however it entered the graph (ASM-005, ASM-006). Declared dependencies that use a workspace crate name without being a path dependency on that member are violations too. Also checks that every member sets `lints.workspace = true` (parsed with `toml`) and that every target root (lib, bin, test, example, bench, build script) outside `umbra-plugin-api`, `umbra-plugin-host`, `umbra-sdk` has `#![forbid(unsafe_code)]` (parsed with `syn`; NFR-2, ASM-024). With `--manifest-path`, cargo runs in that manifest's directory so its `.cargo/config.toml` applies. Prints one line per violation, sorted. Exit 0 clean, 1 violations, 2 load or usage error (also: missing or stale `Cargo.lock`, or a dependency not in the local cache; run `cargo fetch --locked` once online). The declared-pass violations are printed before the resolved graph is loaded, so they are visible even when it then fails. Exit 2 fails the gate (it is not a skip). |
 
+| `cargo xtask gen-header [--check] [--crate-dir <dir>]` | Runs the pinned `cbindgen` (0.29.4) on `crates/umbra-plugin-api` (or `<dir>`) with its `cbindgen.toml` and writes `include/umbra_plugin_api.h`; with `--check` compares instead, with line endings normalised to LF (REQ-SDK-2, gate 11, ADR 0023 item 2). Exit 0 current or written, 1 drift (prints the first differing line; run `cargo xtask gen-header` and commit the header), 2 if `cbindgen` is missing or another version (prints the install line), or on a usage or I/O error. |
+
 Example violation line: `REQ-A-1: umbra-core -> umbra-kernel (normal) not allowed; umbra-core may depend on: (none)`.
-Negative tests: `cargo test -p xtask` (fixtures in `xtask/tests/fixtures/`, see the README there).
+Negative tests: `cargo test -p xtask` (fixtures in `xtask/tests/fixtures/`, see the README there). The C layout of the header is checked by `crates/umbra-plugin-host/tests/c_header.rs` (gate 3): `_Static_assert`s generated from the Rust layout, compiled with `-std=c11 -pedantic -Wall -Wextra -Werror` (MSVC `/std:c11 /W4 /WX`).
 
 More `cargo xtask` subcommands will be documented here as they are added.
 

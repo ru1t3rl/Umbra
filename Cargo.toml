@@ -14,6 +14,8 @@ repository = "https://example.invalid/umbra"
 
 [workspace.dependencies]
 anyhow = "1"
+# Compiles C against umbra_plugin_api.h in tests (ADR 0023 item 3); dev-only in umbra-plugin-host.
+cc = "1.2"
 hecs = { version = "0.11.2", default-features = false }
 proptest = "1"
 semver = { version = "1", default-features = false, features = ["std"] }
