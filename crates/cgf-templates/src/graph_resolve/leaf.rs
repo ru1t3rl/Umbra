@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use cgf_core::{Access, ComponentKind, LeafRef};
 
 use super::Set;
-use super::bind::{Args, annotate, substitute};
+use super::bind::{Args, annotate, annotate_only, substitute};
 use super::view::{View, check_refs};
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::value::{LKind, LTable};
@@ -32,20 +32,20 @@ pub(super) fn check(
     let schema = set.loader.registry.param_schema(kind, &leaf.id);
     let bad = check_refs(view, schema, &params, out);
     blackboard_keys(set, view, leaf, &params, out);
-    values(set, kind, leaf, table, &view.defaults(), &bad, out);
+    values(set, kind, leaf, table, (&view.defaults(), &bad), None, out);
 }
 
 /// Validates the parameters of a leaf with `{ param }` references replaced by `args` (schema and
 /// trial build, errors at the supplying value with a note at the reference). Names in `bad` are
-/// treated as unknown. A leaf with a reference of unknown value is not checked. The leaf must be
-/// registered.
+/// treated as unknown. A leaf with a reference of unknown value is not checked. With `only`, just
+/// the errors inside a value supplied for that param are kept. The leaf must be registered.
 pub(super) fn values(
     set: &Set<'_>,
     kind: ComponentKind,
     leaf: &LeafRef,
     table: &LTable,
-    args: &Args,
-    bad: &BTreeSet<String>,
+    (args, bad): (&Args, &BTreeSet<String>),
+    only: Option<&str>,
     out: &mut Vec<Diagnostic>,
 ) {
     let id_at = table
@@ -63,7 +63,10 @@ pub(super) fn values(
     let _ = set
         .loader
         .check_component(kind, &leaf.id, id_at, &substituted.table, &mut found);
-    out.extend(annotate(found, &substituted.sources));
+    out.extend(match only {
+        Some(param) => annotate_only(found, &substituted.sources, param),
+        None => annotate(found, &substituted.sources),
+    });
 }
 
 /// A parameter that names a blackboard key (`target_key`, `store_as`) must name a declared key (or

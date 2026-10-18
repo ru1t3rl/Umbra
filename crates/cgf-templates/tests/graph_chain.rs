@@ -57,6 +57,7 @@ const NOOP: [&str; 3] = [
     "ref = \"stub.action.noop\"",
 ];
 const NUMBER: &str = "{ x = { type = \"number\" } }";
+const NUMBER_Y: &str = "{ y = { type = \"number\" } }";
 const MAX10: &str = "{ y = { type = \"number\", maximum = 10 } }";
 
 /// A leaf `stub.cond.near` whose `range_m` is the param `p`.
@@ -312,4 +313,180 @@ fn a_ladder_of_double_calls_is_followed_once_per_graph() {
     let loaded = graph_support::graphs_with_depth(&files, 64);
 
     assert_eq!(ok(loaded).len(), 41);
+}
+
+/// What a diagnostic says apart from the file it came from: code, position, message, notes.
+fn shown(d: &[Diagnostic]) -> Vec<String> {
+    d.iter()
+        .map(|d| format!("{d:?}").replace("behaviors/z_a", "behaviors/a"))
+        .collect()
+}
+
+/// ASM-106 d (N1): a callee's own bad literal is reported by its own graph's check; following a
+/// value down the chain adds no second report and no chain note to it, whatever the file names.
+#[test]
+fn a_callees_own_bad_literal_gets_no_chain_note() {
+    let c = graph(
+        "test.c",
+        "{ y = { type = \"number\" }, z = { type = \"number\", maximum = 10 } }",
+        &NOOP,
+    );
+    let b = calls(
+        "test.b",
+        NUMBER,
+        "test.c",
+        "{ y = { param = \"x\" }, z = 99.0 }",
+    );
+    let a = calls("test.a", "", "test.b", "{ x = 1.0 }");
+
+    let plain = found(&[("a", &a), ("b", &b), ("c", &c)]);
+    let renamed = found(&[("z_a", &a), ("b", &b), ("c", &c)]);
+
+    assert_eq!(
+        rows(&plain),
+        [row("param_out_of_range", path("b"), pos_after(&b, "z = "))]
+    );
+    assert!(note_text(&plain[0]).is_empty(), "{:?}", plain[0].notes);
+    assert_eq!(shown(&plain), shown(&renamed));
+}
+
+/// Same for a leaf: its own `store_as = 5` is reported once, with no chain note.
+#[test]
+fn a_leaf_own_bad_literal_gets_no_chain_note() {
+    let c = graph(
+        "test.c",
+        "{ y = { type = \"number\", default = 5.0 } }",
+        &[
+            "[nodes.r]",
+            "type = \"condition\"",
+            "ref = \"stub.cond.near\"",
+            "params = { range_m = { param = \"y\" }, store_as = 5 }",
+        ],
+    );
+    let b = calls("test.b", NUMBER, "test.c", "{ y = { param = \"x\" } }");
+    let a = calls("test.a", "", "test.b", "{ x = 1.0 }");
+
+    let plain = found(&[("a", &a), ("b", &b), ("c", &c)]);
+    let renamed = found(&[("z_a", &a), ("b", &b), ("c", &c)]);
+
+    assert_eq!(plain.len(), 1, "{plain:?}");
+    assert_eq!(
+        plain[0].location.as_ref().map(|l| l.path.clone()),
+        Some(path("c").into())
+    );
+    assert!(!note_text(&plain[0]).contains("reached through"));
+    assert_eq!(shown(&plain), shown(&renamed));
+}
+
+/// ASM-106 d (N2): a rung calls the next one with all params passed through and once per param
+/// with that one replaced by a literal. Following each value on its own is linear in values times
+/// graphs; the whole-set memo took 23 s here.
+#[test]
+fn many_params_and_many_calls_stay_fast() {
+    const P: usize = 4;
+    const N: usize = 16;
+    let params = format!(
+        "{{ {} }}",
+        (0..P)
+            .map(|k| format!("p{k} = {{ type = \"number\" }}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    let mut texts = Vec::new();
+    for i in 0..N {
+        let mut nodes = vec!["[nodes.r]".to_string(), "type = \"sequence\"".to_string()];
+        if i + 1 == N {
+            let kids: Vec<String> = (0..P).map(|k| format!("\"l{k}\"")).collect();
+            nodes.push(format!("children = [{}]", kids.join(", ")));
+            for k in 0..P {
+                nodes.push(format!("[nodes.l{k}]"));
+                nodes.push("type = \"action\"".into());
+                nodes.push("ref = \"stub.action.wait\"".into());
+                nodes.push(format!(
+                    "params = {{ duration_s = {{ param = \"p{k}\" }} }}"
+                ));
+            }
+        } else {
+            let kids: Vec<String> = (0..=P).map(|k| format!("\"c{k}\"")).collect();
+            nodes.push(format!("children = [{}]", kids.join(", ")));
+            for k in 0..=P {
+                nodes.push(format!("[nodes.c{k}]"));
+                nodes.push("type = \"subgraph\"".into());
+                nodes.push(format!("ref = \"test.g{:02}\"", i + 1));
+                let args: Vec<String> = (0..P)
+                    .map(|j| {
+                        if j == k {
+                            format!("p{j} = {}.5", i + 1)
+                        } else {
+                            format!("p{j} = {{ param = \"p{j}\" }}")
+                        }
+                    })
+                    .collect();
+                nodes.push(format!("params = {{ {} }}", args.join(", ")));
+            }
+        }
+        let refs: Vec<&str> = nodes.iter().map(String::as_str).collect();
+        texts.push((
+            format!("g{i:02}"),
+            graph(&format!("test.g{i:02}"), &params, &refs),
+        ));
+    }
+    // The load runs on its own thread so a regression fails by timeout (wall-clock timing inside
+    // the test is disallowed, REQ-K-4); the old whole-set memo needed 18-23 s here.
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let files: Vec<SourceFile> = texts.iter().map(|(n, t)| src(&path(n), t)).collect();
+        let loaded = graph_support::graphs_with_depth(&files, 64);
+        let _ = send.send(loaded.map(|set| set.len()).map_err(|_| ()));
+    });
+
+    let result = receive.recv_timeout(std::time::Duration::from_secs(5));
+
+    assert_eq!(result, Ok(Ok(N)), "did not load within 5 s");
+}
+
+/// ASM-106 d: a graph first reached at the depth limit, where its callees are cut off, is explored
+/// fully when the same value reaches it again by a shorter way.
+#[test]
+fn a_visit_cut_short_by_the_depth_limit_does_not_hide_a_shallower_one() {
+    let t = near_of("test.t", NUMBER_Y, "y");
+    let step = |id: &str, next: &str| calls(id, NUMBER_Y, next, "{ y = { param = \"y\" } }");
+    let l1 = step("test.l1", "test.l2");
+    let l2 = step("test.l2", "test.t");
+    let two = |name: &str, first: &str, second: &str| {
+        graph(
+            name,
+            NUMBER_Y,
+            &[
+                "[nodes.r]",
+                "type = \"sequence\"",
+                "children = [\"a\", \"b\"]",
+                "[nodes.a]",
+                "type = \"subgraph\"",
+                &format!("ref = \"{first}\""),
+                "params = { y = { param = \"y\" } }",
+                "[nodes.b]",
+                "type = \"subgraph\"",
+                &format!("ref = \"{second}\""),
+                "params = { y = { param = \"y\" } }",
+            ],
+        )
+    };
+    let m = two("test.m", "test.l1", "test.l2");
+    let top = calls("test.top", "", "test.m", "{ y = -5.0 }");
+    let items = [
+        ("t", &t),
+        ("l1", &l1),
+        ("l2", &l2),
+        ("m", &m),
+        ("top", &top),
+    ];
+    let files: Vec<SourceFile> = items.iter().map(|(n, x)| src(&path(n), x)).collect();
+
+    let d = errors(graph_support::graphs_with_depth(&files, 3));
+
+    assert!(
+        d.iter().any(|d| d.code.as_str() == "param_out_of_range"),
+        "{d:?}"
+    );
 }

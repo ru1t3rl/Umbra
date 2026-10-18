@@ -36,7 +36,8 @@ pub struct LoaderOptions {
     /// The most graphs on one `subgraph` chain, the referencing root graph included. 0 means 1
     /// (a graph alone). `register_graphs` in `cgf-behavior` always applies
     /// [`cgf_core::DEFAULT_MAX_SUBGRAPH_DEPTH`], so a limit above it accepts chains that
-    /// registration then refuses (ASM-073).
+    /// registration then refuses (ASM-073). Values supplied at a call site are followed only to
+    /// `MAX_CHAIN` (256) graphs deep, whatever this says (ASM-106 d).
     pub max_subgraph_depth: u32,
 }
 

@@ -146,27 +146,60 @@ fn replace(value: &LValue, args: &Args, sources: &mut Vec<Source>) -> Option<LVa
     Some(LValue::synthetic(value.origin(), kind))
 }
 
+/// The source that substituted the value a diagnostic is located in, if any.
+fn hit<'s>(diagnostic: &Diagnostic, sources: &'s [Source]) -> Option<&'s Source> {
+    let at = diagnostic.location.as_ref()?;
+    sources.iter().find(|s| {
+        let span = s.value.span();
+        s.value.path() == at.path && span.start <= at.span.start && at.span.end <= span.end
+    })
+}
+
+fn noted(mut diagnostic: Diagnostic, source: &Source) -> Diagnostic {
+    diagnostic.notes.push(Note {
+        message: format!("the value of parameter `{}` is used here", source.name),
+        location: Some(source.reference.location()),
+    });
+    diagnostic
+}
+
 /// Adds to every diagnostic located inside a substituted value a note at the reference that
 /// supplied the value.
 pub(super) fn annotate(found: Vec<Diagnostic>, sources: &[Source]) -> Vec<Diagnostic> {
     found
         .into_iter()
-        .map(|mut diagnostic| {
-            let hit = diagnostic.location.as_ref().and_then(|at| {
-                sources.iter().find(|s| {
-                    let span = s.value.span();
-                    s.value.path() == at.path
-                        && span.start <= at.span.start
-                        && at.span.end <= span.end
-                })
-            });
-            if let Some(source) = hit {
-                diagnostic.notes.push(Note {
-                    message: format!("the value of parameter `{}` is used here", source.name),
-                    location: Some(source.reference.location()),
-                });
-            }
-            diagnostic
+        .map(|d| match hit(&d, sources) {
+            Some(source) => noted(d, source),
+            None => d,
         })
         .collect()
+}
+
+/// Like [`annotate`], but keeps only the diagnostics located inside a value substituted for a
+/// reference to `param`: the rest belong to the graph's own literals and defaults, which are
+/// checked where they are written (ASM-106 d).
+pub(super) fn annotate_only(
+    found: Vec<Diagnostic>,
+    sources: &[Source],
+    param: &str,
+) -> Vec<Diagnostic> {
+    found
+        .into_iter()
+        .filter_map(|d| {
+            let source = hit(&d, sources).filter(|s| s.name == param)?;
+            Some(noted(d, source))
+        })
+        .collect()
+}
+
+/// Whether `value` holds a `{ param = <name> }` reference anywhere.
+pub(super) fn mentions(value: &LValue, name: &str) -> bool {
+    if let Some(found) = param_name(value) {
+        return found == name;
+    }
+    match value.kind() {
+        LKind::Table(table) => table.iter().any(|(_, e)| mentions(e.value(), name)),
+        LKind::Array(items) => items.iter().any(|i| mentions(i, name)),
+        _ => false,
+    }
 }

@@ -2,14 +2,15 @@
 //! target resolves, its version fits the range, params and input bindings fit its interface, and
 //! output bindings fit its ports.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use cgf_core::{
     BbType, ComponentId, ComponentInfo, ComponentKind, LeafRef, NodeKind, ParamSchema, SubgraphRef,
     Version,
 };
 
-use super::bind::{Args, annotate, param_refs, substitute};
+use super::bind::{Args, annotate, annotate_only, mentions, param_refs, substitute};
 use super::view::{View, check_refs};
 use super::{Resolved, Set, leaf};
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
@@ -35,8 +36,19 @@ struct Callee<'a> {
 /// recursion stays small whatever the option says).
 const MAX_CHAIN: usize = 256;
 
-/// The (graph, supplied values) pairs already followed (ASM-106 d).
-pub(super) type Seen = BTreeSet<String>;
+/// One supplied value followed into one graph (ASM-106 d): the graph, the param, and where the
+/// value is written.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) struct Visit {
+    graph: String,
+    param: String,
+    file: PathBuf,
+    span: (usize, usize),
+}
+
+/// The visits already made, with the chain depth left when each was made: a visit cut short by the
+/// depth limit does not stop a later, shallower one (ASM-106 d).
+pub(super) type Seen = BTreeMap<Visit, usize>;
 
 /// Per graph: the parent keys output bindings write, to find a second writer (ASM-088).
 pub(super) type Written = BTreeMap<String, Origin>;
@@ -72,19 +84,18 @@ pub(super) fn check(
         &callee,
         (view, &view.defaults()),
         (call, table),
-        true,
+        None,
         out,
     );
     outputs(&callee, view, call, table, written, out);
     if let Some(target) = &callee.graph {
         let limit = set.depth_limit().min(MAX_CHAIN);
-        propagate(
-            set,
-            (target, &call.id),
-            &supplied,
-            &mut Chain::new(limit, seen),
-            out,
-        );
+        let mut chain = Chain::new(limit, seen);
+        for (param, value) in &supplied {
+            if let Some(value) = value {
+                propagate(set, (target, &call.id), (param, value), &mut chain, out);
+            }
+        }
     }
 }
 
@@ -241,16 +252,17 @@ fn used_as_reference(target: &View<'_>, param: &str) -> Option<Origin> {
 /// Literal and referenced values against the target's interface; missing params. `known` are the
 /// values of the calling graph's params. Returns the values this call supplies, by param (`None`:
 /// bound at run time or not known now). With `report`, bad `{ param }` references and missing
-/// params are reported too; when following supplied values down a chain they were reported
-/// already.
+/// params are reported too; when following the value of `follow` down a chain they were reported
+/// already, and only the errors inside a value supplied for that param are kept.
 fn parameters(
     set: &Set<'_>,
     callee: &Callee<'_>,
     (view, known): (&View<'_>, &Args),
     (call, table): (&SubgraphRef, &LTable),
-    report: bool,
+    follow: Option<&str>,
     out: &mut Vec<Diagnostic>,
 ) -> Args {
+    let report = follow.is_none();
     let params = View::without(&View::params_of(table), call.inputs.keys());
     let bad = if report {
         check_refs(view, Some(callee.schema), &params, out)
@@ -288,7 +300,10 @@ fn parameters(
         schema_errors(callee, &substituted.table)
     };
     found.retain(|d| d.code != DiagnosticCode::MissingParam);
-    out.extend(annotate(found, &substituted.sources));
+    out.extend(match follow {
+        Some(param) => annotate_only(found, &substituted.sources, param),
+        None => annotate(found, &substituted.sources),
+    });
     let mut supplied = Args::new();
     for name in call.inputs.keys() {
         supplied.insert(name.clone(), None);
@@ -379,27 +394,40 @@ impl<'s> Chain<'s> {
     }
 }
 
-/// Follows the values a call supplies down the chain (REQ-B-10, ASM-076, ASM-106 d): the leaves of
-/// `target` that use a supplied param are checked again with the values, and so are the params of
-/// its own `subgraph` nodes against their callees' interfaces, which in turn pass values on. Errors
-/// show at the supplying value, with a note at the `{ param }` reference and, below the first
-/// callee, the chain of graphs. A graph already on the chain is not entered again (cycles are
-/// reported elsewhere), and a (graph, values) pair is followed once.
+/// Follows each value a call supplies down the chain on its own (REQ-B-10, ASM-076, ASM-106 d):
+/// the leaves of `target` that use the param are checked again with the value, and so are the
+/// params of its own `subgraph` nodes against their callees' interfaces, which in turn pass the
+/// value on. The other params of each graph are their defaults, or unknown and unchecked. Errors
+/// inside the value show at the supplying value, with a note at the `{ param }` reference and,
+/// below the first callee, the chain of graphs. A graph already on the chain is not entered again
+/// (cycles are reported elsewhere), and a (graph, param, value) is followed once, so the work is
+/// bounded by values times graphs.
 fn propagate(
     set: &Set<'_>,
     (target, id): (&View<'_>, &ComponentId),
-    supplied: &Args,
+    (param, value): (&String, &LValue),
     chain: &mut Chain<'_>,
     out: &mut Vec<Diagnostic>,
 ) {
     if chain.path.contains(id) || chain.path.len() >= chain.limit {
         return;
     }
-    let mut args = target.defaults();
-    args.extend(supplied.iter().map(|(k, v)| (k.clone(), v.clone())));
-    if !chain.seen.insert(format!("{id}|{args:?}")) {
+    let at = value.origin();
+    let span = at.span();
+    let visit = Visit {
+        graph: id.to_string(),
+        param: param.clone(),
+        file: at.path().to_path_buf(),
+        span: (span.start, span.end),
+    };
+    let left = chain.limit - chain.path.len();
+    if chain.seen.get(&visit).is_some_and(|&done| done >= left) {
         return;
     }
+    chain.seen.insert(visit, left);
+    let supplied = Args::from([(param.clone(), Some(value.clone()))]);
+    let mut args = target.defaults();
+    args.extend(supplied.clone());
     chain.path.push(id.clone());
     let mut found = Vec::new();
     let mut leaves = Vec::new();
@@ -410,24 +438,12 @@ fn propagate(
         };
         match &def.kind {
             NodeKind::Condition(l) => {
-                leaf_again(
-                    set,
-                    (target, ComponentKind::Condition),
-                    l,
-                    table,
-                    (&args, supplied),
-                    &mut leaves,
-                );
+                let kind = ComponentKind::Condition;
+                leaf_again(set, (target, kind), l, table, (&args, param), &mut leaves);
             }
             NodeKind::Action(l) => {
-                leaf_again(
-                    set,
-                    (target, ComponentKind::Action),
-                    l,
-                    table,
-                    (&args, supplied),
-                    &mut leaves,
-                );
+                let kind = ComponentKind::Action;
+                leaf_again(set, (target, kind), l, table, (&args, param), &mut leaves);
             }
             NodeKind::Subgraph(call) => {
                 let callee = match set.resolve(&call.id) {
@@ -442,14 +458,20 @@ fn propagate(
                     &callee,
                     (target, &args),
                     (call, table),
-                    false,
+                    Some(param),
                     &mut checked,
                 );
                 let mut via = chain.path.clone();
                 via.push(call.id.clone());
                 found.extend(through(checked, &via));
-                if let Some(next) = &callee.graph {
-                    propagate(set, (next, &call.id), &passed, chain, &mut deeper);
+                let Some(next) = &callee.graph else { continue };
+                let params = View::params_of(table);
+                for (name, value) in &passed {
+                    let uses = params.get(name).is_some_and(|v| mentions(v, param));
+                    if let (true, Some(value)) = (uses, value) {
+                        let to = (name, value);
+                        propagate(set, (next, &call.id), to, chain, &mut deeper);
+                    }
                 }
             }
             _ => {}
@@ -481,7 +503,7 @@ fn leaf_again(
     (target, kind): (&View<'_>, ComponentKind),
     leaf_ref: &LeafRef,
     table: &LTable,
-    (args, supplied): (&Args, &Args),
+    (args, param): (&Args, &str),
     out: &mut Vec<Diagnostic>,
 ) {
     if !set
@@ -492,12 +514,9 @@ fn leaf_again(
         return;
     }
     let params = View::params_of(table);
-    let touched = param_refs(&params)
-        .iter()
-        .any(|r| matches!(supplied.get(&r.name), Some(Some(_))));
-    if touched {
+    if param_refs(&params).iter().any(|r| r.name == param) {
         let schema = set.loader.registry.param_schema(kind, &leaf_ref.id);
         let bad = check_refs(target, schema, &params, &mut Vec::new());
-        leaf::values(set, kind, leaf_ref, table, args, &bad, out);
+        leaf::values(set, kind, leaf_ref, table, (args, &bad), Some(param), out);
     }
 }
