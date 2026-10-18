@@ -102,13 +102,17 @@ impl<'r> Loader<'r> {
     ///
     /// # Errors
     /// Every diagnostic of every file and of the set, sorted.
-    #[expect(clippy::todo, reason = "M3 WI-12 stub")]
     pub fn graphs_from_sources(
         &self,
-        _files: &[SourceFile],
-        _source: Provenance,
+        files: &[SourceFile],
+        source: Provenance,
     ) -> Result<GraphSet, Diagnostics> {
-        todo!("M3 WI-12")
+        let refs: Vec<&SourceFile> = files.iter().collect();
+        let loaded = self.load_graphs(&refs, source);
+        match Diagnostics::new(loaded.diagnostics) {
+            Some(errors) => Err(errors),
+            None => Ok(loaded.set),
+        }
     }
 
     /// Loads a set of template files.

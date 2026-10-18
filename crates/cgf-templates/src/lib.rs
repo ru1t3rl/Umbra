@@ -14,6 +14,7 @@
 pub(crate) mod components;
 pub mod diagnostic;
 pub(crate) mod discover;
+pub(crate) mod graph_read;
 pub mod graph_resolve;
 pub mod loader;
 pub(crate) mod position;

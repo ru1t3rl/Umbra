@@ -81,6 +81,17 @@ impl<'f> Reader<'f> {
         }
     }
 
+    /// `value` as a boolean, or `wrong_type`.
+    pub(crate) fn boolean(&mut self, name: &str, value: &LValue) -> Option<bool> {
+        match value.kind() {
+            LKind::Boolean(b) => Some(*b),
+            other => {
+                self.wrong_type(name, "a boolean", other, value.origin());
+                None
+            }
+        }
+    }
+
     /// `value` as an integer, or `wrong_type`.
     pub(crate) fn integer(&mut self, name: &str, value: &LValue) -> Option<i64> {
         match value.kind() {

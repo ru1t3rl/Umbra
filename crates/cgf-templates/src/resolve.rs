@@ -4,9 +4,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use cgf_core::{ComponentId, ComponentKind, ParamValue, TemplateId};
+use cgf_core::{ComponentId, ComponentKind, ParamValue, Provenance, TemplateId};
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
+use crate::graph_read::is_graph_path;
 use crate::loader::Loader;
 use crate::source::SourceFile;
 use crate::template::{RawComponent, RawTemplate, read_template};
@@ -94,9 +95,13 @@ impl Loader<'_> {
         files: &[SourceFile],
         unread: &[PathBuf],
     ) -> LoadedTemplates {
-        let mut sorted: Vec<&SourceFile> = files.iter().collect();
+        // ASM-074: `*.behavior.toml` sources are graphs, read by the graph reader.
+        let (graph_files, mut sorted): (Vec<&SourceFile>, Vec<&SourceFile>) =
+            files.iter().partition(|f| is_graph_path(f.path()));
         sorted.sort_by(|a, b| a.path().cmp(b.path()));
+        let graphs = self.load_graphs(&graph_files, Provenance::File);
         let mut set = SetBuilder::default();
+        set.diagnostics.extend(graphs.diagnostics);
         for file in sorted {
             set.add_file(file);
         }

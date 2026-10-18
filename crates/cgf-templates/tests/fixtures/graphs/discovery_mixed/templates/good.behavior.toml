@@ -1,0 +1,13 @@
+# Fixture: a valid behavior graph (no diagnostics).
+# Provenance: hand-written for M3 WI-12.
+schema_version = 1
+id = "disc.graph.good"
+version = "1.0.0"
+root = "r"
+
+[nodes.r]
+type = "action"
+ref = "stub.action.noop"
+
+[editor]
+positions = { r = [0, 0] }

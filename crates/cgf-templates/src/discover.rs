@@ -7,7 +7,10 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use cgf_core::Provenance;
+
 use crate::diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, sort_and_dedup};
+use crate::graph_read::is_graph_path;
 use crate::loader::{Loader, ValidationReport};
 use crate::resolve::LoadedTemplates;
 use crate::scenario::Scenario;
@@ -247,7 +250,12 @@ impl Loader<'_> {
                 return;
             }
         };
-        if is_scenario(&file) {
+        if is_graph_path(path) {
+            // ASM-074: a graph file is checked on its own (WI-12); WI-13 adds its siblings.
+            files.push(path.to_path_buf());
+            let loaded = self.load_graphs(&[&file], Provenance::File);
+            diagnostics.extend(loaded.diagnostics);
+        } else if is_scenario(&file) {
             let load = self.scenario_pipeline(&file);
             files.extend(load.files);
             diagnostics.extend(load.diagnostics);
@@ -268,7 +276,7 @@ impl Loader<'_> {
         let me = identity(file.path());
         let mut sources: Vec<SourceFile> = read_all(&siblings, &mut ignored, &mut unread)
             .into_iter()
-            .filter(|s| identity(s.path()) != me && !is_scenario(s))
+            .filter(|s| identity(s.path()) != me && !is_scenario_source(s))
             .collect();
         sources.push(file.clone());
         let loaded = self.load_templates(&sources, &unread);
@@ -303,7 +311,8 @@ impl Loader<'_> {
                 }
             }
         }
-        let (scenarios, templates): (Vec<_>, Vec<_>) = sources.into_iter().partition(is_scenario);
+        let (scenarios, templates): (Vec<_>, Vec<_>) =
+            sources.into_iter().partition(is_scenario_source);
         let mut sets: BTreeMap<BTreeSet<PathBuf>, LoadedTemplates> = BTreeMap::new();
         self.load_set(&templates, &unread, &mut sets, diagnostics);
         for scenario in &scenarios {
@@ -390,7 +399,8 @@ fn collect_templates(
             }
         }
     }
-    let (scenarios, templates): (Vec<_>, Vec<_>) = sources.into_iter().partition(is_scenario);
+    let (scenarios, templates): (Vec<_>, Vec<_>) =
+        sources.into_iter().partition(is_scenario_source);
     let mut files: Vec<PathBuf> = templates
         .iter()
         .chain(&scenarios)
@@ -402,6 +412,12 @@ fn collect_templates(
         unread,
         files,
     }
+}
+
+/// A scenario file: has a `[scenario]` table and is not a behavior graph (ASM-074: the
+/// `*.behavior.toml` suffix decides first).
+fn is_scenario_source(file: &SourceFile) -> bool {
+    !is_graph_path(file.path()) && is_scenario(file)
 }
 
 fn has_syntax_errors(file: &SourceFile) -> bool {

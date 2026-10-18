@@ -1,0 +1,11 @@
+# Fixture: a behavior graph with one unknown top-level key (line 7).
+# Provenance: hand-written for M3 WI-12.
+schema_version = 1
+id = "disc.graph.bad"
+version = "1.0.0"
+root = "r"
+colour = 1
+
+[nodes.r]
+type = "action"
+ref = "stub.action.noop"

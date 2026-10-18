@@ -87,7 +87,6 @@ fn names(def: &GraphDef, ids: &[NodeId]) -> Vec<String> {
 
 /// REQ-B-6: a valid file reads into the `GraphDef` the file says, `[editor]` excluded.
 #[test]
-#[ignore = "WI-12"]
 fn valid_graph_reads_into_graph_def() {
     let def = one_graph(&valid());
 
@@ -162,7 +161,6 @@ fn valid_graph_reads_into_graph_def() {
 /// REQ-B-16: the `[editor]` table never reaches the `GraphDef`: with and without it the graphs
 /// are equal.
 #[test]
-#[ignore = "WI-12"]
 fn editor_table_contents_are_dropped() {
     let with = valid();
     let without = with
@@ -177,7 +175,6 @@ fn editor_table_contents_are_dropped() {
 /// ASM-075: a datetime inside `[editor]` is still rejected (the M2 parse-stage value rules apply),
 /// at the value.
 #[test]
-#[ignore = "WI-12"]
 fn datetime_in_editor_is_unsupported_value() {
     let text = format!(
         "{}[editor]\nsaved = 1979-05-27T07:32:00Z\n",
@@ -192,7 +189,6 @@ fn datetime_in_editor_is_unsupported_value() {
 
 /// ASM-075: `[editor]` must be a table.
 #[test]
-#[ignore = "WI-12"]
 fn editor_that_is_not_a_table_is_wrong_type() {
     let text = lines(&[
         "schema_version = 1",
@@ -307,7 +303,6 @@ const ALL_TYPES: &[&str] = &[
 /// AT-2, REQ-B-7: all twelve node types are readable: one graph uses each, and the reader keeps
 /// the settings.
 #[test]
-#[ignore = "WI-12"]
 fn every_node_type_is_readable() {
     let text = lines(ALL_TYPES);
 
@@ -340,7 +335,6 @@ fn every_node_type_is_readable() {
 
 /// REQ-T-5: version 1 is accepted.
 #[test]
-#[ignore = "WI-12"]
 fn graph_schema_version_1_accepted() {
     let set = ok(graphs(&[src(PATH, &minimal("test.graph.v1"))]));
 
@@ -350,7 +344,6 @@ fn graph_schema_version_1_accepted() {
 /// REQ-T-5: a newer version is rejected at its value and the file stops there (the unknown key
 /// after it is not reported).
 #[test]
-#[ignore = "WI-12"]
 fn graph_schema_version_newer_rejected_and_file_stops() {
     let text = lines(&["schema_version = 2", "colour = \"red\"", "id = 5"]);
 
@@ -369,7 +362,6 @@ fn graph_schema_version_newer_rejected_and_file_stops() {
 /// REQ-T-5: a missing `schema_version` is `missing_key` (location of an absent key: code, file and
 /// message only).
 #[test]
-#[ignore = "WI-12"]
 fn graph_schema_version_missing_is_missing_key() {
     let text = minimal("test.graph.v").replacen("schema_version = 1\n", "", 1);
 
@@ -390,7 +382,6 @@ fn graph_schema_version_missing_is_missing_key() {
 
 /// REQ-T-5: `schema_version = 0` is `invalid_value` at the value.
 #[test]
-#[ignore = "WI-12"]
 fn graph_schema_version_zero_is_invalid_value() {
     let text = minimal("test.graph.v").replacen("schema_version = 1", "schema_version = 0", 1);
 
@@ -399,7 +390,6 @@ fn graph_schema_version_zero_is_invalid_value() {
 
 /// REQ-T-5: a string `schema_version` is `wrong_type` at the value.
 #[test]
-#[ignore = "WI-12"]
 fn graph_schema_version_string_is_wrong_type() {
     let text = minimal("test.graph.v").replacen("schema_version = 1", "schema_version = \"1\"", 1);
 
@@ -410,7 +400,6 @@ fn graph_schema_version_string_is_wrong_type() {
 
 /// REQ-B-6: a file without `id`, `version` and `root` reports each as `missing_key`, all at once.
 #[test]
-#[ignore = "WI-12"]
 fn missing_id_version_root_each_reported() {
     let text = lines(&[
         "schema_version = 1",
@@ -437,7 +426,6 @@ fn missing_id_version_root_each_reported() {
 
 /// REQ-B-14 (AT-10): `version` is required.
 #[test]
-#[ignore = "WI-12"]
 fn version_is_required() {
     let text = minimal("test.graph.nover").replacen("version = \"1.0.0\"\n", "", 1);
 
@@ -453,9 +441,9 @@ fn version_is_required() {
 }
 
 /// REQ-B-14 (AT-10): `version` must be semver (`MAJOR.MINOR.PATCH`), `invalid_version` at the
-/// value; a non-string version is `wrong_type`.
+/// value; a non-string version is `wrong_type`. The value is at 3:11 in `minimal` (the plan's
+/// `pos_after(&text, "version = ")` would find the end of `schema_version = ` on line 1 first).
 #[test]
-#[ignore = "WI-12"]
 fn version_must_be_semver() {
     for bad in ["1.0", "v1.0.0", "latest", "1.0.0.0", "01.0.0", ""] {
         let text = minimal("test.graph.v").replacen(
@@ -466,20 +454,16 @@ fn version_must_be_semver() {
 
         assert_eq!(
             graph_rows(&text),
-            [row("invalid_version", PATH, pos_after(&text, "version = "))],
+            [row("invalid_version", PATH, (3, 11))],
             "{bad:?}"
         );
     }
     let text = minimal("test.graph.v").replacen("version = \"1.0.0\"", "version = 1", 1);
-    assert_eq!(
-        graph_rows(&text),
-        [row("wrong_type", PATH, pos_after(&text, "version = "))]
-    );
+    assert_eq!(graph_rows(&text), [row("wrong_type", PATH, (3, 11))]);
 }
 
 /// AT-1: `invalid_semver_is_invalid_version_at_value`: the plan's name for the single case.
 #[test]
-#[ignore = "WI-12"]
 fn invalid_semver_is_invalid_version_at_value() {
     let text = minimal("test.graph.v").replacen("version = \"1.0.0\"", "version = \"1.0\"", 1);
 
@@ -489,15 +473,15 @@ fn invalid_semver_is_invalid_version_at_value() {
     );
 }
 
-/// ADR 0002: the graph `id` follows the component ID grammar: `invalid_id` at the value.
+/// ADR 0002: the graph `id` follows the component ID grammar: `invalid_id` at the offending
+/// character (the M2 convention of `Reader::id`: here the `T` after the opening quote).
 #[test]
-#[ignore = "WI-12"]
 fn graph_id_that_breaks_the_grammar_is_invalid_id() {
     let text = minimal("Test.Graph");
 
     assert_eq!(
         graph_rows(&text),
-        [row("invalid_id", PATH, pos_of(&text, "\"Test.Graph\""))]
+        [row("invalid_id", PATH, pos_of(&text, "Test.Graph"))]
     );
 }
 
@@ -506,7 +490,6 @@ fn graph_id_that_breaks_the_grammar_is_invalid_id() {
 /// REQ-T-2: unknown keys are errors at every level (top level, `[interface]`, a node, an FSM node,
 /// a transition), a bad `[blackboard]` type is `invalid_value`; all are reported together, sorted.
 #[test]
-#[ignore = "WI-12"]
 fn unknown_key_in_node_interface_blackboard_fsm_reported() {
     let text = lines(&[
         "schema_version = 1",
@@ -683,7 +666,6 @@ const SETTINGS_CASES: [(&[&str], bool, &str, &str); 13] = [
 /// REQ-B-7: node settings of the wrong type or out of range are reported at the value; a missing
 /// required setting is `missing_key`.
 #[test]
-#[ignore = "WI-12"]
 fn node_settings_wrong_type_and_range_reported() {
     let cases = SETTINGS_CASES;
     for (settings, with_leaf, code, before) in cases {
@@ -705,7 +687,6 @@ fn node_settings_wrong_type_and_range_reported() {
 /// REQ-T-2: absent required settings are `missing_key` (code, file and message): `child` of an
 /// inverter, `ref` of a condition and `type` of a node.
 #[test]
-#[ignore = "WI-12"]
 fn node_missing_required_settings_are_missing_key() {
     let cases: [(&[&str], &str); 3] = [
         (&["type = \"inverter\""], "child"),
@@ -731,7 +712,6 @@ fn node_missing_required_settings_are_missing_key() {
 /// ADR 0012: node, state, exit and blackboard key names are `[a-z][a-z0-9_]*` (and at most
 /// `MAX_ID_LEN` bytes, with a bounded echo of the offender); `invalid_value` at the name.
 #[test]
-#[ignore = "WI-12"]
 fn names_follow_the_segment_grammar_with_a_bounded_echo() {
     let long = "k".repeat(129);
     let blackboard = |key: &str| {
@@ -790,7 +770,6 @@ fn names_follow_the_segment_grammar_with_a_bounded_echo() {
 /// ASM-074: a `*.behavior.toml` source is a graph, any other `.toml` is a template; the suffix is
 /// case-sensitive. The same text is accepted as a graph and rejected as a template.
 #[test]
-#[ignore = "WI-12"]
 fn behavior_toml_suffix_is_a_graph_other_toml_is_a_template() {
     let template = alpha_template("tank.base", None, "1.0");
     let graph = minimal("test.graph.suffix");
@@ -809,7 +788,6 @@ fn behavior_toml_suffix_is_a_graph_other_toml_is_a_template() {
 
 /// REQ-T-2: errors of graph files and template files come out in one list, sorted by path.
 #[test]
-#[ignore = "WI-12"]
 fn errors_in_graph_and_template_files_reported_in_one_sorted_list() {
     let template = lines(&[
         "schema_version = 1",
@@ -837,7 +815,6 @@ fn errors_in_graph_and_template_files_reported_in_one_sorted_list() {
 
 /// REQ-T-2: a graph diagnostic renders in the M2 format `path:line:col: error[code]: message`.
 #[test]
-#[ignore = "WI-12"]
 fn rendered_graph_diagnostic_uses_the_m2_format() {
     let text = minimal("test.graph.render").replacen("root = \"r\"", "root = \"r\"\ncolour = 1", 1);
 
@@ -871,7 +848,6 @@ proptest! {
     /// NFR-2: no input makes the graph reader or the graph set resolution panic; the result is a
     /// graph set or diagnostics.
     #[test]
-    #[ignore = "WI-12"]
     fn graph_parse_never_panics(text in graph_text()) {
         let result = graphs(&[SourceFile::new(PATH, text)]);
         prop_assert!(result.is_ok() || result.is_err());
