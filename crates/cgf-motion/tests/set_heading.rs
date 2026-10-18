@@ -1,9 +1,8 @@
 //! AT-14 (WI-7 rows): `Intent::SetHeading` in `builtin.ground.kinematic`.
 //! Requirements: REQ-B-2, REQ-M-1, ADR 0016, ASM-082, ASM-048.
 //!
-//! Step 4 of M3: written before WI-7. Tests that fail today (the model ignores `SetHeading`) are
-//! ignored with the work item that makes them pass; tests of rules that already hold (a later
-//! `MoveTo` wins, `Hold` wins, a non-finite heading is ignored) are live and must stay green.
+//! Step 4 of M3: written before WI-7. Tests that failed before the model handled `SetHeading`
+//! were ignored with that work item; WI-7 made them all live.
 //!
 //! Parameters are the same as `ground_kinematic.rs` (18 m/s, 40 deg/s, 2.5 m/s^2) at 30 Hz.
 
@@ -107,7 +106,6 @@ fn run(from: KinematicState, intents: &[Intent], steps: usize) -> Vec<KinematicS
 
 /// REQ-B-2, ADR 0016: `SetHeading` steers toward the heading, limited by the turn rate.
 #[test]
-#[ignore = "WI-7"]
 fn given_set_heading_when_stepped_then_heading_turns_by_exactly_one_turn_step() {
     let states = run(
         start(0.0, 10.0),
@@ -120,7 +118,6 @@ fn given_set_heading_when_stepped_then_heading_turns_by_exactly_one_turn_step() 
 
 /// REQ-B-2: the entity reaches the commanded heading and then keeps it.
 #[test]
-#[ignore = "WI-7"]
 fn given_set_heading_when_stepped_long_enough_then_heading_is_reached_and_held() {
     let target = FRAC_PI_2;
     let steps = 120; // 90 deg at 40 deg/s is 2.25 s = 68 steps at 30 Hz.
@@ -138,7 +135,6 @@ fn given_set_heading_when_stepped_long_enough_then_heading_is_reached_and_held()
 
 /// REQ-B-2: the shorter way round is taken across north.
 #[test]
-#[ignore = "WI-7"]
 fn given_set_heading_across_north_when_stepped_then_it_turns_the_short_way() {
     let from = 350.0_f64.to_radians();
     let to = 10.0_f64.to_radians();
@@ -169,7 +165,6 @@ fn given_set_heading_when_stationary_then_heading_does_not_change() {
 
 /// ASM-030, ADR 0016: the last of `MoveTo` and `SetHeading` steers; a later `SetHeading` wins.
 #[test]
-#[ignore = "WI-7"]
 fn given_move_to_then_set_heading_when_stepped_then_set_heading_wins() {
     // MoveTo is due east; SetHeading (later) asks for due north, which is the current heading.
     let intents = [

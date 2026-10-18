@@ -88,11 +88,21 @@ impl GroundKinematic {
     fn resolve(&self, intents: &[Intent]) -> Resolved {
         let mut hold = false;
         let mut destination = None;
+        let mut heading = None;
         let mut set_speed = None;
         for intent in intents {
             match intent {
                 Intent::Hold => hold = true,
-                Intent::MoveTo { destination: d } if is_finite_ecef(*d) => destination = Some(*d),
+                Intent::MoveTo { destination: d } if is_finite_ecef(*d) => {
+                    destination = Some(*d);
+                    heading = None;
+                }
+                // ADR 0016: the last of `MoveTo` and `SetHeading` steers; a non-finite heading
+                // is ignored like a non-finite destination.
+                Intent::SetHeading(h) if h.0.is_finite() => {
+                    heading = Some(h.0);
+                    destination = None;
+                }
                 // ASM-048: a non-finite speed request means "stop".
                 Intent::SetSpeed(v) => set_speed = Some(if v.0.is_finite() { v.0 } else { 0.0 }),
                 _ => {}
@@ -102,6 +112,7 @@ impl GroundKinematic {
         if hold {
             return Resolved {
                 destination: None,
+                heading: None,
                 cruise: 0.0,
             };
         }
@@ -112,6 +123,7 @@ impl GroundKinematic {
         };
         Resolved {
             destination,
+            heading,
             cruise,
         }
     }
@@ -124,6 +136,8 @@ fn is_finite_ecef(p: Ecef) -> bool {
 /// Intents reduced by the ASM-030 rules.
 struct Resolved {
     destination: Option<Ecef>,
+    /// Commanded true heading (rad) when `SetHeading` was the last steering intent.
+    heading: Option<f64>,
     cruise: f64,
 }
 
@@ -178,8 +192,9 @@ impl MotionModel for GroundKinematic {
 
     /// One step of the ground model.
     ///
-    /// 1. Intents are resolved (ASM-030): `Hold` wins; otherwise the last `MoveTo` and the last
-    ///    `SetSpeed` win; no intent decelerates to a stop; unknown variants are ignored.
+    /// 1. Intents are resolved (ASM-030): `Hold` wins; otherwise the last of `MoveTo` and
+    ///    `SetHeading` steers (ADR 0016; the entity turns to the heading, then holds it) and the
+    ///    last `SetSpeed` wins; no intent decelerates to a stop; unknown variants are ignored.
     /// 2. Speed moves toward the desired speed by at most `max_accel * dt`, heading toward the
     ///    destination bearing by at most `max_turn_rate * dt`.
     ///    The desired speed uses the discrete stopping speed, so a decelerating entity reaches
@@ -216,9 +231,14 @@ impl MotionModel for GroundKinematic {
         let accel_step = p.max_accel.0 * dt;
         let mut new_speed = speed + (desired - speed).clamp(-accel_step, accel_step);
         let turn_step = p.max_turn_rate.0 * dt;
-        let new_heading = match &toward {
-            Some(a) if new_speed > 0.0 => {
-                math::wrap_pi(Radians(heading + a.error.clamp(-turn_step, turn_step))).0
+        let turn_error = toward.as_ref().map(|a| a.error).or_else(|| {
+            resolved
+                .heading
+                .map(|h| math::wrap_pi(Radians(h - heading)).0)
+        });
+        let new_heading = match turn_error {
+            Some(error) if new_speed > 0.0 => {
+                math::wrap_pi(Radians(heading + error.clamp(-turn_step, turn_step))).0
             }
             _ => heading,
         };
