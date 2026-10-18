@@ -188,34 +188,29 @@ impl CompiledSchema {
     /// Every violation of `value`, located at the offending value (or its object for a missing
     /// key), sorted by position.
     pub fn validate(&self, value: &LValue, context: &str) -> Vec<Diagnostic> {
+        self.run(value, context, false)
+    }
+
+    /// Like [`Self::validate`] for an object some of whose properties are not known yet (ASM-106
+    /// d). Every property present is checked against its own sub-schema (type, range, enum,
+    /// unknown keys, nested `required`). Only the root object, following a root `$ref` chain, is
+    /// relaxed: its `required` is not enforced, and its `oneOf` passes when at least one branch
+    /// passes with that branch's own `required` relaxed too; when none does, the errors of the
+    /// closest branch are reported as `validate` does.
+    pub fn validate_known(&self, value: &LValue, context: &str) -> Vec<Diagnostic> {
+        self.run(value, context, true)
+    }
+
+    fn run(&self, value: &LValue, context: &str, partial: bool) -> Vec<Diagnostic> {
         let mut run = Run {
             schema: self,
             context,
+            partial,
             out: Vec::new(),
         };
         run.node(self.root, value, &mut Vec::new());
         sort_and_dedup(&mut run.out);
         run.out
-    }
-
-    /// Like [`Self::validate`] for an object some of whose properties are not known yet: every
-    /// property present is checked against its own sub-schema (type, range, enum, unknown keys),
-    /// but the object-level `required` and `oneOf` are not, because they depend on the absent
-    /// properties (ASM-106 d).
-    pub fn validate_known(&self, value: &LValue, context: &str) -> Vec<Diagnostic> {
-        let mut relaxed = self.clone();
-        let mut at = Some(self.root);
-        let mut hops = 0;
-        while let Some(node) = at.and_then(|i| relaxed.nodes.get_mut(i)) {
-            node.required.clear();
-            node.one_of.clear();
-            at = node.reference;
-            hops += 1;
-            if hops > relaxed.nodes.len() {
-                break;
-            }
-        }
-        relaxed.validate(value, context)
     }
 }
 
@@ -487,6 +482,8 @@ fn number(value: &Value, at: &str) -> Result<f64, SchemaError> {
 struct Run<'a> {
     schema: &'a CompiledSchema,
     context: &'a str,
+    /// The root object may lack properties (`validate_known`).
+    partial: bool,
     out: Vec<Diagnostic>,
 }
 
@@ -632,6 +629,7 @@ impl Run<'_> {
             let mut sub = Run {
                 schema: self.schema,
                 context: self.context,
+                partial: self.partial,
                 out: Vec::new(),
             };
             sub.node(branch, value, path);
@@ -641,7 +639,7 @@ impl Run<'_> {
                 best = Some(sub.out);
             }
         }
-        if matching == 1 {
+        if matching == 1 || (matching > 1 && self.partial && path.is_empty()) {
             return;
         }
         if matching == 0 {
@@ -658,7 +656,8 @@ impl Run<'_> {
     }
 
     fn check_table(&mut self, node: &Node, value: &LValue, table: &LTable, path: &mut Vec<String>) {
-        for name in &node.required {
+        let relaxed = self.partial && path.is_empty();
+        for name in node.required.iter().filter(|_| !relaxed) {
             if table.get(name).is_none() {
                 let what = format!("missing required parameter `{}`", dotted(path, name));
                 let message = format!("{}: {what}", self.context);

@@ -94,11 +94,7 @@ fn known_errors(
     let context = format!("{} `{}`", kind.noun(), leaf.id);
     CompiledSchema::compile(schema).map_or_else(
         |_| Vec::new(),
-        |schema| {
-            let mut found = schema.validate_known(&known.clone().into_value(), &context);
-            found.retain(|d| d.code != DiagnosticCode::MissingParam);
-            found
-        },
+        |schema| schema.validate_known(&known.clone().into_value(), &context),
     )
 }
 

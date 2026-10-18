@@ -285,7 +285,8 @@ fn parameters(
         }
     }
     let registered = callee.graph.is_none();
-    let mut found = if !substituted.dropped.is_empty() {
+    let partial = !substituted.dropped.is_empty();
+    let mut found = if partial {
         schema_errors(callee, &substituted.table, true)
     } else if registered {
         let mut found = Vec::new();
@@ -301,7 +302,9 @@ fn parameters(
     } else {
         schema_errors(callee, &substituted.table, false)
     };
-    found.retain(|d| d.code != DiagnosticCode::MissingParam);
+    if !partial {
+        found.retain(|d| d.code != DiagnosticCode::MissingParam);
+    }
     out.extend(match follow {
         Some(param) => annotate_only(found, &substituted.sources, param),
         None => annotate(found, &substituted.sources),
