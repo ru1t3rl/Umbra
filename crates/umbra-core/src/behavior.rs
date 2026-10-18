@@ -189,6 +189,32 @@ impl<'a> IntentBuffer<'a> {
 /// use umbra_core::{Behavior, BehaviorInstance};
 /// fn _accepts(_: Arc<dyn Behavior>, _: Box<dyn BehaviorInstance>) {}
 /// ```
+///
+/// Backward compatibility (M4, additive): an impl written before `batch` and `as_any_mut`
+/// existed compiles unchanged.
+///
+/// ```
+/// use umbra_core::*;
+/// struct B(BehaviorId);
+/// struct I;
+/// impl BehaviorInstance for I {
+///     fn tick(&mut self, _: &mut BehaviorContext<'_>, _: &EntityView<'_>,
+///             _: &mut IntentBuffer<'_>) -> Status { Status::Success }
+///     fn halt(&mut self) {}
+///     fn output(&self, _: &str) -> Option<BbValue> { None }
+///     fn set_input(&mut self, _: &str, _: Option<BbValue>) -> Result<(), BlackboardError> {
+///         Ok(())
+///     }
+/// }
+/// impl Behavior for B {
+///     fn id(&self) -> &BehaviorId { &self.0 }
+///     fn instantiate(&self, _: TickRate) -> Result<Box<dyn BehaviorInstance>, InstantiateError> {
+///         Ok(Box::new(I))
+///     }
+/// }
+/// assert!(B(BehaviorId::new("a.b.c").unwrap()).batch().is_none());
+/// assert!(I.as_any_mut().is_none());
+/// ```
 pub trait Behavior: Send + Sync {
     /// The behavior's ID.
     fn id(&self) -> &BehaviorId;
@@ -199,6 +225,13 @@ pub trait Behavior: Send + Sync {
     /// [`InstantiateError`] if the instance cannot be created at `rate` (not expected after
     /// validation).
     fn instantiate(&self, rate: TickRate) -> Result<Box<dyn BehaviorInstance>, InstantiateError>;
+
+    /// REQ-B-4, ADR 0020: the batch that ticks this behavior's instances together with those of
+    /// every behavior returning the same `Arc` (the kernel groups with `Arc::ptr_eq`). Default:
+    /// `None`, the instance is ticked through [`BehaviorInstance::tick`] as before.
+    fn batch(&self) -> Option<Arc<dyn BehaviorBatch>> {
+        None
+    }
 }
 
 /// Per-entity state of a [`Behavior`].
@@ -236,6 +269,77 @@ pub trait BehaviorInstance: Send {
     /// # Errors
     /// The blackboard's error: undeclared param, not an input key, wrong type or non-finite number.
     fn set_input(&mut self, param: &str, value: Option<BbValue>) -> Result<(), BlackboardError>;
+
+    /// Lets a [`BehaviorBatch`] recognise its own instances by downcasting (ADR 0020). Default:
+    /// `None`. Only `'static` types can return `Some(self)` (`dyn Any` requires `'static`); an
+    /// instance borrowing non-`'static` data must keep the default and is then ticked through
+    /// [`BehaviorInstance::tick`] by the batch.
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        None
+    }
+}
+
+/// Ticks a group of instances together (REQ-B-4, ADR 0020).
+///
+/// Contract: deterministic; every item gets the status, intents and RNG draws its own
+/// `instance.tick(..)` would give for per-instance state; the kernel calls it once per group per
+/// tick. An item whose instance the batch does not recognise is ticked through
+/// [`BehaviorInstance::tick`] (see [`tick_each`]); never a panic.
+pub trait BehaviorBatch: Send + Sync {
+    /// Ticks every item, writing each item's `status` and appending to its `out`.
+    fn tick_batch(&self, items: &mut [BatchItem<'_>]);
+}
+
+/// One member of a batch call: the same arguments as [`BehaviorInstance::tick`] plus the result.
+#[non_exhaustive]
+pub struct BatchItem<'a> {
+    /// Time and the entity's own RNG stream.
+    pub ctx: BehaviorContext<'a>,
+    /// The entity being ticked.
+    pub entity: EntityView<'a>,
+    /// The entity's instance.
+    pub instance: &'a mut dyn BehaviorInstance,
+    /// The entity's intent buffer.
+    pub out: IntentBuffer<'a>,
+    /// Result; starts at [`Status::Failure`] so an item a faulty batch leaves unwritten is a
+    /// failure, never a success.
+    pub status: Status,
+}
+
+impl fmt::Debug for BatchItem<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BatchItem")
+            .field("entity", &self.entity.id)
+            .field("status", &self.status)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a> BatchItem<'a> {
+    /// Creates an item with status [`Status::Failure`].
+    pub fn new(
+        ctx: BehaviorContext<'a>,
+        entity: EntityView<'a>,
+        instance: &'a mut dyn BehaviorInstance,
+        out: IntentBuffer<'a>,
+    ) -> Self {
+        Self {
+            ctx,
+            entity,
+            instance,
+            out,
+            status: Status::Failure,
+        }
+    }
+}
+
+/// The reference semantics of a batch: ticks each item's instance in slice order.
+pub fn tick_each(items: &mut [BatchItem<'_>]) {
+    for item in items {
+        item.status = item
+            .instance
+            .tick(&mut item.ctx, &item.entity, &mut item.out);
+    }
 }
 
 /// A boolean check. Never emits intents.

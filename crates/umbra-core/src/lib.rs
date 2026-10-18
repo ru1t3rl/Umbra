@@ -23,6 +23,7 @@
 //! - [`intent`], [`ownership`], [`terrain`], [`motion`]: [`Intent`], [`Ownership`],
 //!   [`TerrainProvider`], [`KinematicState`] and the [`MotionModel`] trait (REQ-B-2, REQ-K-5,
 //!   REQ-C-6, REQ-M-1).
+//! - [`plugin`]: [`PluginFaultPolicy`] (REQ-P-7, ADR 0021).
 //!
 //! Dependency rule (REQ-A-1): this crate depends on no other workspace crate.
 //! It contains no `unsafe` code and never reads the wall clock (REQ-K-4).
@@ -42,6 +43,7 @@ pub mod motion;
 pub mod ownership;
 pub mod params;
 pub mod perception;
+pub mod plugin;
 pub mod registry;
 pub mod rng;
 pub mod terrain;
@@ -49,9 +51,9 @@ pub mod time;
 pub mod units;
 
 pub use behavior::{
-    Action, ActionInstance, BbType, BbValue, Behavior, BehaviorContext, BehaviorInstance,
-    Blackboard, BlackboardError, Condition, EntityView, InstantiateError, IntentBuffer, RouteView,
-    Status,
+    Action, ActionInstance, BatchItem, BbType, BbValue, Behavior, BehaviorBatch, BehaviorContext,
+    BehaviorInstance, Blackboard, BlackboardError, Condition, EntityView, InstantiateError,
+    IntentBuffer, RouteView, Status, tick_each,
 };
 pub use catalog::{
     Access, BlackboardParam, Catalog, CatalogEntry, CatalogError, CatalogKind, ComponentInfo,
@@ -78,6 +80,7 @@ pub use params::{ParamSchema, ParamSchemaError, ParamValue};
 pub use perception::{
     Contact, ContactBuffer, Force, ForceError, Observer, SenseContext, Sensor, Target, hostile,
 };
+pub use plugin::PluginFaultPolicy;
 pub use registry::{BuildError, ComponentKind, Factory, Registry, RegistryError};
 pub use rng::{RngStream, SimRng, SplitMix64, StreamKey};
 pub use terrain::{FlatTerrain, TerrainProvider};
