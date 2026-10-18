@@ -81,6 +81,8 @@ pub enum SchemaKind {
     Template,
     /// The scenario file format.
     Scenario,
+    /// The behavior graph file format (`*.behavior.toml`).
+    Behavior,
     /// The parameter schema of a registered component, of any kind.
     Component {
         /// The component ID, for example `builtin.ground.kinematic`.

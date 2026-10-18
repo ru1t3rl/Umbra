@@ -21,17 +21,48 @@ use clap::Parser;
 use tracing_subscriber::filter::LevelFilter;
 
 use args::{Cli, Command, RunArgs, SchemaArgs, SchemaKind, ValidateArgs};
-use cgf_engine::builtins::builtin_registry;
+use cgf_engine::builtins::standard_registry;
 use cgf_engine::scenario::{
     Diagnostic, Diagnostics, RunOptions, ScenarioError, instantiate, load_scenario, validate_path,
 };
 use cgf_engine::{
-    ComponentId, ComponentKind, SCENARIO_FILE_SCHEMA, StdWallClock, TEMPLATE_FILE_SCHEMA,
+    BEHAVIOR_FILE_SCHEMA, ComponentId, ComponentKind, SCENARIO_FILE_SCHEMA, StdWallClock,
+    TEMPLATE_FILE_SCHEMA,
 };
 use output::Format;
 
+/// Stack of the thread that runs the command. Behavior graphs are ticked by recursion and need up
+/// to about 1.5 MiB in a debug build (ASM-098); the main thread has only 1 MiB on Windows.
+const STACK_BYTES: usize = 8 * 1024 * 1024;
+
+/// Runs the command on a thread with an explicit stack (ASM-098, ASM-109). Arguments are parsed on
+/// the main thread, so usage errors and `--help` behave as before (exit code 2 and 0). A panic
+/// of the command thread is re-raised here with its original payload, so the message and the exit
+/// status (101) are the same as when the command ran on the main thread.
 fn main() -> ExitCode {
-    let result = match Cli::parse().command {
+    let cli = Cli::parse();
+    // Named `main` so that a panic message reads `thread 'main' panicked`, as it did before.
+    let spawned = std::thread::Builder::new()
+        .name("main".into())
+        .stack_size(STACK_BYTES)
+        .spawn(move || command(cli));
+    match spawned {
+        Ok(handle) => handle
+            .join()
+            .unwrap_or_else(|payload| std::panic::resume_unwind(payload)),
+        Err(error) => {
+            // A failed write to a closed stderr leaves nothing more to report.
+            let _ = writeln!(
+                io::stderr(),
+                "error: cannot start the command thread: {error}"
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn command(cli: Cli) -> ExitCode {
+    let result = match cli.command {
         Command::Run(args) => run(&args),
         Command::Validate(args) => validate(&args),
         Command::Schema(args) => schema(&args),
@@ -67,7 +98,7 @@ fn report_invalid(diagnostics: &[Diagnostic]) -> ExitCode {
 
 fn run(args: &RunArgs) -> Result<ExitCode> {
     init_logging(args.log_level)?;
-    let registry = builtin_registry().context("building the component registry")?;
+    let registry = standard_registry().context("building the component registry")?;
     let scenario = match load_scenario(&registry, &args.scenario) {
         Ok(scenario) => scenario,
         Err(ScenarioError::Invalid(diagnostics)) => {
@@ -131,7 +162,7 @@ fn run(args: &RunArgs) -> Result<ExitCode> {
 }
 
 fn validate(args: &ValidateArgs) -> Result<ExitCode> {
-    let registry = builtin_registry().context("building the component registry")?;
+    let registry = standard_registry().context("building the component registry")?;
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
     for path in &args.paths {
@@ -170,6 +201,7 @@ fn schema(args: &SchemaArgs) -> Result<ExitCode> {
     let text = match &args.which {
         SchemaKind::Template => TEMPLATE_FILE_SCHEMA.to_string(),
         SchemaKind::Scenario => SCENARIO_FILE_SCHEMA.to_string(),
+        SchemaKind::Behavior => BEHAVIOR_FILE_SCHEMA.to_string(),
         SchemaKind::Component { id } => component_schema(id)?,
     };
     writeln!(io::stdout().lock(), "{}", text.trim_end()).context("writing output")?;
@@ -178,7 +210,7 @@ fn schema(args: &SchemaArgs) -> Result<ExitCode> {
 
 /// The pretty-printed parameter schema of component `id`, searching every kind (ASM-063).
 fn component_schema(id: &str) -> Result<String> {
-    let registry = builtin_registry().context("building the component registry")?;
+    let registry = standard_registry().context("building the component registry")?;
     let id = ComponentId::new(id).with_context(|| format!("invalid component id {id:?}"))?;
     ComponentKind::ALL
         .iter()

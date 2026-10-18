@@ -2,8 +2,8 @@
 //! patrol-and-engage example, as real processes.
 //! Requirements: M3 acceptance 1, REQ-K-4 (cross-process determinism), REQ-T-6, REQ-X-2, REQ-S-1.
 //!
-//! Step 4 of M3: written before WI-15/WI-16. The CLI still uses the M2 registry, so the example's
-//! behaviors, sensors and graphs are unknown to it and the tests are ignored with WI-15.
+//! Step 4 of M3: written before WI-15/WI-16. Since WI-15 the CLI uses the standard registry, so the
+//! example's behaviors, sensors and graphs are known to it; the process rows of WI-16 stay ignored.
 
 #![forbid(unsafe_code)]
 
@@ -30,7 +30,6 @@ fn run(extra: &[&str]) -> Output {
 
 /// REQ-T-6: the example directory validates: the scenario, four templates and three graphs.
 #[test]
-#[ignore = "WI-15"]
 fn validate_example_ok() {
     let dir = example_dir();
 
@@ -49,7 +48,6 @@ fn validate_example_ok() {
 /// REQ-S-1, M3 acceptance 1: `run` prints the state lines of all three entities and a 16-digit
 /// final state hash.
 #[test]
-#[ignore = "WI-15"]
 fn run_example_prints_states_and_hash() {
     let out = run(&["--ticks", "300"]);
 

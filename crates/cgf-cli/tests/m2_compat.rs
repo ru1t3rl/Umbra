@@ -48,7 +48,6 @@ fn walking_skeleton_still_validates_with_four_files() {
 /// standard registry: `builtin.visual`, `builtin.fsm.patrol_and_engage` with its `aggression`
 /// parameter, the `network.dis` table). In M2 this was `unknown_id` for the sensor and behavior.
 #[test]
-#[ignore = "WI-15"]
 fn spec_7_1_template_validates_with_standard_registry() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/spec_7_1");
 
