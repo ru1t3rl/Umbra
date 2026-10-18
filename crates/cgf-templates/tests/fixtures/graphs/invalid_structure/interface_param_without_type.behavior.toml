@@ -8,4 +8,4 @@ params = { x = { default = 1.0 } }
 
 [nodes.a]
 type = "action"
-ref = "builtin.action.wait"
+ref = "stub.action.noop"

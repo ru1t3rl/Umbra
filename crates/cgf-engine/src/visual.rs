@@ -21,8 +21,6 @@ const DEFAULT_EYE_HEIGHT_M: f64 = 2.0;
 const MAX_RANGE_M: f64 = 100_000.0;
 /// Horizontal offsets below this have no meaningful bearing, meters (ASM-108).
 const NO_BEARING_M: f64 = 1.0e-3;
-/// Largest `eye_height_m` (ASM-108).
-const MAX_EYE_HEIGHT_M: f64 = 1000.0;
 
 /// Builds `builtin.visual` from `{ range_m, fov_deg, eye_height_m? }`.
 #[derive(Debug)]
@@ -73,8 +71,8 @@ impl Factory<dyn Sensor> for VisualSensorFactory {
         if !(fov > 0.0 && fov <= 360.0) {
             return Err(BuildError::new("`fov_deg` must be in (0, 360]").at("/fov_deg"));
         }
-        if !(0.0..=MAX_EYE_HEIGHT_M).contains(&eye) {
-            return Err(BuildError::new("`eye_height_m` must be in [0, 1000]").at("/eye_height_m"));
+        if eye < 0.0 {
+            return Err(BuildError::new("`eye_height_m` must be at least 0").at("/eye_height_m"));
         }
         Ok(Arc::new(VisualSensor {
             id: self.id.clone(),
@@ -119,12 +117,11 @@ impl VisualSensor {
         math::wrap_pi(Radians(bearing.0 - heading.0)).0.abs() <= self.half_fov.0
     }
 
-    /// Whether the terrain shows the two points raised by the eye height along local up.
-    fn has_line_of_sight(&self, terrain: &dyn TerrainProvider, a: Ecef, b: Ecef) -> bool {
-        match (self.raised(a), self.raised(b)) {
-            (Some(from), Some(to)) => terrain.line_of_sight(from, to),
-            _ => false,
-        }
+    /// Whether the terrain shows `to` from `from` (the observer's point, raised once per call)
+    /// with `to` raised by the eye height along local up.
+    fn has_line_of_sight(&self, terrain: &dyn TerrainProvider, from: Ecef, to: Ecef) -> bool {
+        self.raised(to)
+            .is_some_and(|to| terrain.line_of_sight(from, to))
     }
 
     fn raised(&self, p: Ecef) -> Option<Ecef> {
@@ -148,6 +145,10 @@ impl Sensor for VisualSensor {
     ) {
         let me = observer.state.position;
         let frame = LocalFrame::at(me.to_geodetic());
+        // An observer whose raised point is not finite sees nothing.
+        let Some(eyes) = self.raised(me) else {
+            return;
+        };
         let heading = frame
             .euler_from_orientation(observer.state.orientation)
             .heading;
@@ -158,7 +159,7 @@ impl Sensor for VisualSensor {
             let within_range = range.0 <= self.range.0;
             if !within_range
                 || !self.in_fov(&frame, heading, there)
-                || !self.has_line_of_sight(ctx.terrain, me, there)
+                || !self.has_line_of_sight(ctx.terrain, eyes, there)
             {
                 continue;
             }

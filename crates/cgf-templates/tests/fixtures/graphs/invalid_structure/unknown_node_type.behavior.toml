@@ -5,4 +5,4 @@ root = "a"
 
 [nodes.a]
 type = "teleport"
-ref = "builtin.action.wait"
+ref = "stub.action.noop"

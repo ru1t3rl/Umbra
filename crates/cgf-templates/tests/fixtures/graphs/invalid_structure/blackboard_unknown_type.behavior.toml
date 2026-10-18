@@ -8,4 +8,4 @@ target = "colour"
 
 [nodes.a]
 type = "action"
-ref = "builtin.action.wait"
+ref = "stub.action.noop"

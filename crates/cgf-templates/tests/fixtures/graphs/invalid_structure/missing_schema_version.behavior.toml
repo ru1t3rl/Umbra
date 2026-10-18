@@ -4,4 +4,4 @@ root = "a"
 
 [nodes.a]
 type = "action"
-ref = "builtin.action.wait"
+ref = "stub.action.noop"

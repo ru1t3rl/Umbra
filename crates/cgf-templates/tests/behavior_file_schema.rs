@@ -8,13 +8,14 @@
 #![forbid(unsafe_code)]
 
 mod common;
+mod graph_support;
 
 use std::path::{Path, PathBuf};
 
 use cgf_core::ParamSchema;
 use cgf_templates::value::parse;
 use cgf_templates::{BEHAVIOR_FILE_SCHEMA, CompiledSchema, Diagnostic, SourceFile};
-use common::{fixture_path, loader, registry};
+use common::fixture_path;
 
 fn compiled() -> CompiledSchema {
     let parsed = ParamSchema::from_json_str(BEHAVIOR_FILE_SCHEMA)
@@ -188,18 +189,50 @@ fn schema_rejects_every_structurally_invalid_fixture() {
     for path in files {
         let found = violations(&schema, &source_at(&path));
         assert!(!found.is_empty(), "the schema accepts {}", path.display());
+        for violation in &found {
+            let at = violation.location.as_ref();
+            assert!(
+                at.is_some_and(|l| l.path.ends_with(&path) && l.line >= 1),
+                "{}: a violation without a location: {violation:?}",
+                path.display()
+            );
+        }
     }
 }
 
-/// The reader and the schema agree on the invalid fixtures (the reader is authoritative).
+/// What the reader says about each structurally invalid fixture, and the keyword the schema
+/// violation points at (the first violation's context path ends with it).
+const EXPECTED: [(&str, &str); 12] = [
+    ("blackboard_unknown_type", "invalid_value"),
+    ("children_not_an_array", "wrong_type"),
+    ("fsm_transition_with_both_triggers", "invalid_value"),
+    ("fsm_transition_without_trigger", "invalid_value"),
+    ("interface_param_without_type", "missing_key"),
+    ("missing_nodes", "missing_key"),
+    ("missing_schema_version", "missing_key"),
+    ("node_without_type", "missing_key"),
+    ("repeat_count_zero", "invalid_value"),
+    ("unknown_node_key", "unknown_key"),
+    ("unknown_node_type", "invalid_value"),
+    ("unknown_top_level_key", "unknown_key"),
+];
+
+/// The reader and the schema agree on the invalid fixtures (the reader is authoritative): the
+/// reader reports exactly one error per fixture, with the expected structural code. The fixtures
+/// use `stub.action.noop` from the stub registry, so no `unknown_id` or parameter error can make
+/// this pass for another reason.
 #[test]
 fn the_reader_also_rejects_every_structurally_invalid_fixture() {
-    let (registry, _) = registry();
-    let loader = loader(&registry);
+    let dir = fixture_path("graphs/invalid_structure");
 
-    for path in graph_files(&fixture_path("graphs/invalid_structure")) {
-        let read = loader.graphs_from_sources(&[source_at(&path)], cgf_core::Provenance::File);
-        assert!(read.is_err(), "the reader accepts {}", path.display());
+    for (name, code) in EXPECTED {
+        let text = std::fs::read_to_string(dir.join(format!("{name}.behavior.toml")))
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        let codes: Vec<&str> = graph_support::graph_errors(&text)
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect();
+        assert_eq!(codes, [code], "{name}");
     }
 }
 

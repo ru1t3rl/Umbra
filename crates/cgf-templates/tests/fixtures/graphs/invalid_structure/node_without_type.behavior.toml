@@ -4,4 +4,4 @@ version = "1.0.0"
 root = "a"
 
 [nodes.a]
-ref = "builtin.action.wait"
+ref = "stub.action.noop"

@@ -308,6 +308,11 @@ fn a_refused_spawn_consumes_no_id_and_changes_no_hash() {
     };
 
     let refused = engine.spawn_with(spec(), agent).err();
+    assert_eq!(
+        engine.state_hash(),
+        before,
+        "a refused spawn changes nothing"
+    );
     let id = engine
         .spawn_with(spec(), AgentInit::default())
         .expect("spawns");
@@ -318,12 +323,12 @@ fn a_refused_spawn_consumes_no_id_and_changes_no_hash() {
             InstantiateError::Other { .. }
         )))
     ));
+    assert_eq!(id, EntityId::new(1).expect("first id"));
     assert_ne!(
         engine.state_hash(),
         before,
         "the second spawn changed the world"
     );
-    assert_eq!(id, EntityId::new(1).expect("first id"));
 }
 
 /// `spawn(spec)` is `spawn_with(spec, AgentInit::default())` to the bit.

@@ -50,7 +50,7 @@ fn build(
         ComponentKind::Sensor => registry.sensor(id)?.build(p).err().and_then(found),
         ComponentKind::Condition => registry.condition(id)?.build(p).err().and_then(found),
         ComponentKind::Action => registry.action(id)?.build(p).err().and_then(found),
-        _ => None,
+        _ => Some(format!("unhandled kind {kind:?}")),
     }
 }
 

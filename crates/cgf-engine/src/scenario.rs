@@ -148,8 +148,9 @@ fn build_agent(
 }
 
 /// Builds terrain, motion models, behaviors and sensors through the registry and spawns in file
-/// order. The scenario's file graphs are registered first ([`scenario_registry`]). Placements
-/// without behavior, sensors and force are spawned with [`Engine::spawn`] exactly as in M2.
+/// order. The scenario's file graphs are registered first ([`scenario_registry`]). Every placement is
+/// spawned with [`Engine::spawn_with`]; one without behavior, sensors and force gets
+/// `AgentInit::default()`, which is bit-identical to [`Engine::spawn`] (ASM-109 a).
 ///
 /// # Errors
 /// [`EngineError`]; after a successful validation only the spawn checks can fail. A behavior that

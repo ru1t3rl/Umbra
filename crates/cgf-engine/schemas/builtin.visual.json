@@ -18,7 +18,6 @@
     "eye_height_m": {
       "type": "number",
       "minimum": 0,
-      "maximum": 1000,
       "default": 2.0,
       "description": "Height of the eyes above the entity's position in meters, for the line-of-sight test."
     }

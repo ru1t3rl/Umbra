@@ -14,7 +14,8 @@ use super::{bb_type, check_name, shown};
 use crate::diagnostic::DiagnosticCode;
 use crate::reader::Reader;
 use crate::schema::CompiledSchema;
-use crate::value::{LTable, LValue, Origin};
+use crate::source::SourceFile;
+use crate::value::{LTable, LValue, Origin, parse};
 
 /// Reads the optional `[interface]` of the graph table; a graph without one has no params and no
 /// outputs. `None` when anything in it is wrong.
@@ -64,7 +65,15 @@ fn assemble(
     if !params.required.is_empty() {
         schema["required"] = json!(params.required);
     }
-    schema["examples"] = json!([example(&params)]);
+    let example = example(&params);
+    let Ok(without_example) = ParamSchema::from_json_str(&schema.to_string()) else {
+        let message = "the interface parameters could not be assembled into a schema".to_string();
+        reader.error(DiagnosticCode::InvalidValue, message, at);
+        return None;
+    };
+    if example_is_valid(&without_example, &example) {
+        schema["examples"] = json!([example]);
+    }
     let Ok(schema) = ParamSchema::from_json_str(&schema.to_string()) else {
         let message = "the interface parameters could not be assembled into a schema".to_string();
         reader.error(DiagnosticCode::InvalidValue, message, at);
@@ -104,6 +113,43 @@ fn example(params: &Params) -> ParamValue {
     ParamValue::Object(object)
 }
 
+/// Whether `example` satisfies `schema`: the example is written as TOML and checked with the
+/// ADR 0009 validator, so a guess that violates a keyword is left out (ASM-110).
+fn example_is_valid(schema: &ParamSchema, example: &ParamValue) -> bool {
+    let Some(text) = toml_inline(example) else {
+        return false;
+    };
+    let Ok(compiled) = CompiledSchema::compile(schema) else {
+        return false;
+    };
+    let file = SourceFile::new("example.toml", format!("x = {text}\n"));
+    let (table, syntax) = parse(&file);
+    syntax.is_empty()
+        && table
+            .as_ref()
+            .and_then(|t| t.get("x"))
+            .is_some_and(|x| compiled.validate(x, "example").is_empty())
+}
+
+/// A JSON value as an inline TOML value; `None` for `null`, which TOML cannot write.
+fn toml_inline(value: &ParamValue) -> Option<String> {
+    match value {
+        ParamValue::Null => None,
+        ParamValue::Array(items) => {
+            let items: Option<Vec<String>> = items.iter().map(toml_inline).collect();
+            items.map(|items| format!("[{}]", items.join(", ")))
+        }
+        ParamValue::Object(map) => {
+            let items: Option<Vec<String>> = map
+                .iter()
+                .map(|(k, v)| toml_inline(v).map(|v| format!("{} = {v}", json!(k))))
+                .collect();
+            items.map(|items| format!("{{ {} }}", items.join(", ")))
+        }
+        other => Some(other.to_string()),
+    }
+}
+
 /// The first `enum` member, else the lowest value a numeric fragment allows, else the zero of
 /// its type. Best effort: it only has to document the shape.
 fn simplest_value(fragment: &ParamValue) -> ParamValue {
@@ -121,14 +167,25 @@ fn simplest_value(fragment: &ParamValue) -> ParamValue {
                 .or_else(|| number("maximum"))
                 .unwrap_or(0.0);
             if integer {
-                format!("{:.0}", value.trunc())
-                    .parse::<i64>()
-                    .map_or_else(|_| json!(0), |n| json!(n))
+                integer_of(value.trunc())
             } else {
                 json!(value)
             }
         }
         _ => ParamValue::Null,
+    }
+}
+
+/// `value` (integral) as a JSON integer; 0 outside the exactly representable range.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "range-checked: |value| < 2^53, so the cast is exact"
+)]
+fn integer_of(value: f64) -> ParamValue {
+    if value.abs() < 9.0e15 {
+        json!(value as i64)
+    } else {
+        json!(0)
     }
 }
 
