@@ -6,6 +6,9 @@
 //! `[behavior] ref`): in `a` blue-1 uses `example.behavior.patrol_and_engage`, in `b` it uses
 //! `example.behavior.follow_route` (a graph whose only node is `builtin.action.follow_route`).
 //!
+//! The fixtures deliberately keep the 120 deg fov layout (the shipped example uses a different
+//! one) as scenario-level fov coverage; this is recorded in the Running log of the M3 plan.
+//!
 //! Written in step 4 of M3; both tests run since WI-16.
 
 #![forbid(unsafe_code)]

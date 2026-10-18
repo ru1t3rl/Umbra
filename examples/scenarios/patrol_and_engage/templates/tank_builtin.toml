@@ -1,5 +1,6 @@
-# Spec section 7.1 style template: the built-in graph and the visual sensor, plus an `aggression`
-# parameter as in the spec's example (`builtin.fsm.patrol_and_engage` must declare it).
+# Based on the spec section 7.1 template (the built-in graph, the visual sensor and its `aggression`
+# parameter), but it now differs from 7.1: `fov_deg = 360.0` (7.1: 120) and `engage_range_m = 1500.0`
+# (7.1 leaves the graph default, 3000 m), so red leaves blue-2's engage range, not its fov (WI-16).
 schema_version = 1
 id = "example.tank.builtin"
 extends = "example.ground_vehicle"

@@ -69,7 +69,7 @@ Gaps and notes: the plan's `validate_path_never_builds_an_engine` is `validate_p
 
 ## M3
 
-Written against `todo!()` stubs (step 4, commits e2561bc, 1827784, 039f434, f4c3edc); all of it stays green through `#[ignore = "WI-n"]` on the 252 tests that cannot pass yet (the ignore names the work item that makes them pass; un-ignore in that WI). 14 of the 266 new tests pass already (marked "live"). Counts are `tests (ignored)` per file. Plan table: `docs/plans/M3.md`, "Acceptance tests for the test-engineer". Gate 4 runs the M2 `determinism` target and `behavior_determinism` since WI-16 (ASM-087); no test is ignored any more (all 14 WI-16 tests are live). `scripts/m2-compat.sh` runs the compatibility checklist items 1-3 (AT-18).
+Written against `todo!()` stubs (step 4, commits e2561bc, 1827784, 039f434, f4c3edc); until each work item landed, the suite stayed green through `#[ignore = "WI-n"]` on the 252 tests that could not pass yet (the ignore named the work item that made them pass, and that WI un-ignored them). 14 of the 266 new tests passed from the start (marked "live"). Counts are `tests (ignored)` per file. Plan table: `docs/plans/M3.md`, "Acceptance tests for the test-engineer". Gate 4 runs the M2 `determinism` target and `behavior_determinism` since WI-16 (ASM-087); no test is ignored any more (all 14 WI-16 tests are live). `scripts/m2-compat.sh` runs the compatibility checklist items 1-3 (AT-18).
 
 | AT | REQ-ID | Type | Test file(s) | Status |
 |---|---|---|---|---|

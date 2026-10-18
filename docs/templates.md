@@ -5,6 +5,14 @@ Source of truth for the format: ADR 0010 (decisions), ASM-053..ASM-069 (details)
 (printed by `cgf-cli schema template|scenario`) describe the structure for editors; they are hand-written,
 use only the ADR 0009 subset, and the reader is authoritative where they differ (REQ-T-3, NFR-5, D-14).
 
+Behavior graph files (`*.behavior.toml`, M3) have their own reference: `docs/behavior.md`.
+
+> **Migration note (M3).** From M3 a file whose name ends in `.behavior.toml` (case-sensitive) is a
+> behavior graph, whatever it contains (ADR 0012, ASM-074). An M2 template or scenario saved under such a
+> name is no longer read as a template or scenario; rename it (for example `tank.toml`). `load_scenario`
+> on such a file reports `not_a_scenario` ("is a behavior graph"). Every other file name is classified
+> exactly as in M2.
+
 Files are TOML 1.1. Datetimes and `nan`/`inf` are rejected everywhere. Units are given by key suffix:
 `_m`, `_s`, `_deg`, `_dps`, `_mps`, `_mps2`, `_hz`. Unknown keys are errors everywhere.
 
@@ -32,8 +40,8 @@ One template per file. Keys:
 | `extends` | string | optional parent template ID (single inheritance) |
 | `description` | string | optional, not inherited |
 | `[motion]` | table | `model` (component ID), `params` (table) |
-| `[behavior]` | table | `ref` (a registered behavior or a `*.behavior.toml` graph of the same load), `params`. Unknown IDs are `unknown_id`; `{ key = .. }` and `{ param = .. }` forms in `params` are `invalid_binding`; a graph (or registered behavior) with a required binding-only param cannot be a template behavior (`missing_param`) |
-| `[[sensors]]` | array of tables | `kind` (required, a registered sensor), `params`; resolved into the template and dry-run through the sensor's factory |
+| `[behavior]` | table | `ref` (a registered behavior, e.g. a built-in graph, or a `*.behavior.toml` graph of the same load), `params`; see "Behaviors and sensors" below |
+| `[[sensors]]` | array of tables | `kind` (required, a registered sensor such as `builtin.visual`), `params`; resolved into the template and dry-run through the sensor's factory |
 | `[network.<adapter>]` | tables | adapter name `[a-z][a-z0-9_]*`; contents are opaque (REQ-T-4) |
 
 Every resolved template must name a motion model (in itself or in an ancestor): otherwise `missing_key`.
@@ -68,8 +76,34 @@ Chains are folded root first. `id`, `extends`, `description` and `schema_version
 - Errors are located where the offending value is written, so an error inherited from a parent is reported
   once, in the parent's file.
 
+### Behaviors and sensors (M3)
+Since M3 `[behavior]` and `[[sensors]]` resolve: the merged (resolved) template carries them and every
+placement of it is spawned with that behavior and those sensors (ASM-083, ASM-107). They are validated
+like the motion model, with these rules for behavior params (ADR 0014):
+- `ref` must name a `Behavior`: a registered one (the built-in graphs `builtin.fsm.patrol_and_engage` and
+  `builtin.subgraph.engage_target`, plugins from M4) or a graph file of the same load. An unknown ID is
+  `unknown_id`; a condition or action is `unknown_id` with "`x` is a condition, not a behavior". To give
+  an entity a single action, wrap it in a one-node graph (`docs/behavior.md`).
+- `params` are literals only. The graph forms `{ key = "<key>" }` (input binding) and `{ param = "<name>" }`
+  (reference) are `invalid_binding` anywhere in template `params`, because a template's behavior has no
+  parent blackboard and no enclosing interface.
+- `params` are checked against the graph's `[interface]` (`missing_param`, `unknown_param`,
+  `param_wrong_type`, `param_out_of_range`, at the template's value), then followed into the graph's
+  leaves and subgraph calls, so a value that breaks a leaf's range deep in the graph is reported at the
+  template with notes along the chain (`docs/behavior.md`, "Load-time checks").
+- A behavior with a **required binding-only param** (`type = "entity"` or `"position"` in its interface)
+  cannot be a template behavior: it can only be called as a subgraph with a `{ key }` binding, so the
+  template gets `missing_param`. `builtin.subgraph.engage_target` is such a behavior.
+- Behaviors are not overridable per placement (scenario overrides stay motion-only, ASM-083): swapping a
+  behavior is a template change.
+
+Sensor `params` are validated against the sensor's schema and dry-run; an entity without a sensor has no
+contacts, so conditions such as `builtin.cond.enemy_in_range` never succeed for it.
+
 ## Scenario files
-A file with a top-level `scenario` table is a scenario; any other `.toml` file is a template (ASM-053).
+A file whose name ends in `.behavior.toml` is a behavior graph (M3, ASM-074; see the migration note
+above). Of the other `.toml` files, one with a top-level `scenario` table is a scenario and any other is a
+template (ASM-053).
 
 | Key | Type | Notes |
 |---|---|---|
@@ -80,15 +114,16 @@ A file with a top-level `scenario` table is a scenario; any other `.toml` file i
 | `duration_s` | number > 0 | required; run length is `ceil(duration_s * hz)` ticks (a product within two ULPs of a whole number counts as that number, so 0.1 s at 30 Hz is 3 ticks; ASM-066) |
 | `clock` | `afap` \| `realtime` \| `stepped` \| `scaled` | default `afap` |
 | `time_scale` | number in [0.001, 1000000] | required with `clock = "scaled"`, an error otherwise |
-| `template_paths` | array of strings | directories relative to the scenario file, searched recursively for `*.toml` |
+| `template_paths` | array of strings | directories relative to the scenario file, searched recursively for `*.toml` (templates and `*.behavior.toml` graphs) |
 | `[terrain]` | table | `provider` (default `builtin.terrain.flat`), `params` (default `{ height_m = 0.0 }` for the default provider) |
 | `[[entities]]` | array of tables | spawned in file order |
 
 Entity keys: `template` (required), `position` (required), `name`, `group`, `heading_deg` (default 0),
-`speed_mps` (>= 0, default 0), `force` (optional, `[a-z][a-z0-9_]*`, at most 128 bytes; entities with different forces are hostile, an entity without one is neutral; ASM-079), `[entities.overrides.motion]` (`model`, `params`; merged over the template's
+`speed_mps` (>= 0, default 0), `force` (optional, `[a-z][a-z0-9_]*`, at most 128 bytes; absent means neutral; two entities are hostile iff both have a force and the forces differ, so a neutral entity is never hostile to anyone; a bad name is `invalid_value`, a non-string `wrong_type`; ADR 0015, ASM-079), `[entities.overrides.motion]` (`model`, `params`; merged over the template's
 motion and validated again, errors located in the scenario), `[entities.route]` (`waypoints` non-empty,
 `arrival_radius_m` > 0, `cruise_speed_mps` > 0). Duplicate non-empty names are `duplicate_name`. Every
-template found under `template_paths` is validated, not only the referenced ones; any error fails the load.
+template and graph found under `template_paths` is validated, not only the referenced ones; any error fails
+the load.
 
 ### Positions (ASM-044)
 Everywhere a position is accepted (entity `position`, route `waypoints`), exactly one form:
@@ -131,7 +166,11 @@ cyclic template produce no follow-on errors.
 | `unknown_param` | A parameter the component's schema does not define |
 | `param_invalid` | `enum`/`const`/`oneOf` violation, or a combination the factory rejected |
 | `duplicate_name` | Two entities with one name |
-| `not_a_scenario` | A file given as a scenario has no `[scenario]` table |
+| `not_a_scenario` | A file given as a scenario has no `[scenario]` table, or is a `*.behavior.toml` graph |
+
+Graph files add their own codes (`unknown_node`, `node_reused`, `invalid_binding`, `subgraph_cycle`, ...)
+and reuse several of these; they are listed in `docs/behavior.md`, "Diagnostics". `invalid_binding` and
+`missing_param` also appear at a template's `[behavior] params` (see "Behaviors and sensors").
 
 ## Component parameter schemas (the JSON Schema subset, ADR 0009)
 Components supply their own parameter schema. The validator supports: `type` (string or list; `integer`
@@ -173,3 +212,26 @@ Flat terrain at a constant height above the WGS-84 ellipsoid.
 provider = "builtin.terrain.flat"
 params = { height_m = 0.0 }
 ```
+
+### `builtin.visual` (sensor, M3)
+Perfect-detection visual sensor (ADR 0015, ASM-080, ASM-108). An entity is a contact when it is within
+`range_m` (3D distance, inclusive), inside the horizontal field of view centred on the observer's heading
+(edge inclusive), and the terrain gives line of sight between the two entities' eyes.
+
+| Parameter | Unit | Bound |
+|---|---|---|
+| `range_m` (required) | m | > 0, <= 100000 |
+| `fov_deg` (required) | degrees | > 0, <= 360 (360 sees all around) |
+| `eye_height_m` (default 2) | m | >= 0 |
+
+With `eye_height_m = 0` two entities on smooth ground (flat or curved) never see each other: the straight
+line between them dips below the surface. Details and the behavior side: `docs/behavior.md`, "Perception".
+```toml
+[[sensors]]
+kind = "builtin.visual"
+params = { range_m = 3000.0, fov_deg = 120.0 }
+```
+
+### Behaviors, conditions and actions (M3)
+The built-in graphs, conditions and actions are listed with their parameters in `docs/behavior.md`,
+"Built-in catalog".

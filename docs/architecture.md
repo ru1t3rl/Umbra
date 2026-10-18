@@ -5,15 +5,38 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 ## Crates (current)
 | Crate | Path | Role | Workspace deps |
 |---|---|---|---|
-| `cgf-core` | `crates/cgf-core` | IDs, time, units; `math` (single site for non-exact float functions, ADR 0003), `geo` (Vec3, Quaternion, Euler), `coords` (WGS-84, ECEF, geodetic, ENU/NED, LocalFrame, Position), `hash` (canonical state hasher, ADR 0007), `rng` (SimRng, ADR 0006), and the motion domain `intent`, `ownership`, `terrain`, `motion` (M1), `params` (`ParamValue` = `serde_json::Value`, `ParamSchema`) and `registry` (`Registry`, `Factory<T>`, `ComponentKind`; M2, ADR 0008) | none (REQ-A-1); external: `thiserror`, `serde_json`, `semver` (ADR 0017) |
-| `cgf-kernel` | `crates/cgf-kernel` | Clock (four modes, wall-clock site), hecs-backed world, fixed six-phase tick pipeline, state hash, snapshot (M1) | `cgf-core` (REQ-A-2) |
-| `cgf-motion` | `crates/cgf-motion` | Built-in motion models, `builtin.ground.kinematic` (M1) | `cgf-core` |
-| `cgf-behavior` | `crates/cgf-behavior` | Behavior graph interpreter: composites, decorators, FSM, subgraphs, built-in conditions and actions (M3; WI-1 scaffold, no modules yet) | `cgf-core` only (section 4) |
-| `cgf-templates` | `crates/cgf-templates` | Template and scenario reading, inheritance, schema validation, located diagnostics (M2; WI-1 scaffold, no modules yet) | `cgf-core` only (section 4) |
-| `cgf-engine` | `crates/cgf-engine` | Embeddable synchronous facade, placement by ECEF or lat/lon/alt, the M1 hard-coded demo is replaced by `examples/scenarios/walking_skeleton/` (M2); built-in registry, `builtin.terrain.flat`, scenario load/validate/instantiate, `ControlFlow` run callbacks (M2) | `cgf-core`, `cgf-kernel`, `cgf-motion`, `cgf-templates` |
-| `cgf-cli` | `crates/cgf-cli` | Binary; `run`, `validate`, `schema` commands (M2; `demo` removed) | `cgf-engine` |
+| `cgf-core` | `crates/cgf-core` | IDs, time, units; `math` (single site for non-exact float functions, ADR 0003), `geo` (Vec3, Quaternion, Euler), `coords` (WGS-84, ECEF, geodetic, ENU/NED, LocalFrame, Position), `hash` (canonical state hasher, ADR 0007), `rng` (SimRng, ADR 0006), and the motion domain `intent`, `ownership`, `terrain`, `motion` (M1), `params` (`ParamValue` = `serde_json::Value`, `ParamSchema`) and `registry` (`Registry`, `Factory<T>`, `ComponentKind`; M2, ADR 0008); M3: `behavior` (`Behavior`/`BehaviorInstance`, `Condition`, `Action`, `Blackboard`, `IntentBuffer`), `perception` (`Sensor`, `Contact`, `Force`), `graph` (`GraphDef`, the validated, format-free graph that `cgf-templates` produces and `cgf-behavior` compiles), `catalog` (`Catalog`, `ComponentInfo`, `Provenance`), registry kinds `Condition`/`Action`, `TerrainProvider::line_of_sight` (ADR 0011, 0013-0016) | none (REQ-A-1); external: `thiserror`, `serde_json`, `semver` (ADR 0017) |
+| `cgf-kernel` | `crates/cgf-kernel` | Clock (four modes, wall-clock site), hecs-backed world, fixed six-phase tick pipeline, state hash, snapshot (M1); M3: Perception and Behavior phase systems, `AgentInit` and `Kernel::spawn_with` (force, behavior, sensors), snapshot fields `force`, `behavior`, `status`, `intents`, `contacts` | `cgf-core` (REQ-A-2) |
+| `cgf-motion` | `crates/cgf-motion` | Built-in motion models, `builtin.ground.kinematic` (M1; `SetHeading` in M3) | `cgf-core` |
+| `cgf-behavior` | `crates/cgf-behavior` | Behavior graph interpreter (M3): compiles a `cgf_core::GraphDef` into a shared program and runs per-entity instances (composites, decorators, FSM, subgraphs, halt, input and output copies); the eight built-in conditions and actions (`register_builtins`); `register_graphs` adds graphs to a `Registry` as behaviors. Knows no file format: it never sees TOML (ADR 0011) | `cgf-core` only (section 4); external: `thiserror`, `serde_json`. Tests may not use `cgf-templates` or `cgf-motion` (dev edges are checked, ASM-005) |
+| `cgf-templates` | `crates/cgf-templates` | Template and scenario reading, inheritance, schema validation, located diagnostics (M2); M3: `*.behavior.toml` graph reader and graph-set validation (`graph_read`, `graph_resolve`), template `[behavior]`/`[[sensors]]` resolution against graphs of the same load (`overlay`), placement `force`, `behavior.v1.schema.json` | `cgf-core` only (section 4) |
+| `cgf-engine` | `crates/cgf-engine` | Embeddable synchronous facade, placement by ECEF or lat/lon/alt, the M1 hard-coded demo is replaced by `examples/scenarios/walking_skeleton/` (M2); built-in registry, `builtin.terrain.flat`, scenario load/validate/instantiate, `ControlFlow` run callbacks (M2); M3: `builtin.visual` sensor, the two built-in graphs (`behaviors/*.behavior.toml`), `standard_registry` (`builtin_registry` keeps its M2 contents, ASM-084), `scenario_registry` (a registry clone with the scenario's file graphs), `Engine::spawn_with` | `cgf-core`, `cgf-kernel`, `cgf-motion`, `cgf-templates`, `cgf-behavior` |
+| `cgf-cli` | `crates/cgf-cli` | Binary; `run`, `validate`, `schema` commands (M2; `demo` removed); M3: all commands use `standard_registry()`, `schema behavior`, the command runs on a thread with an 8 MiB stack (ASM-098, ASM-109) | `cgf-engine` |
+
+`cgf-templates` and `cgf-behavior` do not know each other: the first turns graph files into `GraphDef`s
+(a `cgf-core` type), the second runs them, and `cgf-engine` is the one place that composes both (ADR
+0011). Graph files, built-in graphs and (from M4) plugin behaviors all reach the kernel as
+`Behavior` factories in the one registry (D-8); the kernel sees only the `cgf-core` traits.
 
 Planned crates (section 4) are added in their own milestones; no placeholders (ASM-010).
+
+## Tick pipeline (`cgf-kernel`, REQ-K-2)
+Every tick runs the six phases of `Phase::ALL` in this order. Perception, Behavior and Motion act on
+**Owned** entities only (REQ-K-5); Remote entities are never ticked, but they are perceived.
+
+| Phase | What it does |
+|---|---|
+| Ingest | Network and command input (empty until the adapters and the server exist) |
+| Perception | For each Owned entity with sensors, in `EntityId` order: run its sensors against every other entity (Owned and Remote) as it was before the tick; merge contacts per target (first sensor wins), sort by id (ADR 0015) |
+| Behavior | For each Owned entity, in `EntityId` order: clear its intents; tick its behavior instance with its own state, route view and contacts (it can only append intents), then expand the first `FollowRoute` into the route stand-in's intents; an entity without a behavior runs the M1 route stand-in unchanged (ASM-082) |
+| Motion | Motion models turn intents into new kinematic state (ASM-030, ASM-094) |
+| Events | Event dispatch, empty so far: `Fire`, `Spawn`, `Despawn` and `Custom` intents are recorded in the snapshot, not applied, until M5 (ADR 0016) |
+| Publish | Output to observers, empty so far (the server and adapters come later) |
+
+Each entity has its own contact vector, intent buffer and hashed RNG stream and sees only pre-tick
+state, so the outcome does not depend on the order in which entities are visited (ADR 0013). The state
+hash stays v2: behavior state, contacts and intents are not hashed; gate 4 compares per-tick intents and
+contacts as well (ASM-081, ASM-087). Behavior semantics: `docs/behavior.md`.
 
 ## Dependency rules
 - REQ-A-1: `cgf-core` depends on no workspace crate.
