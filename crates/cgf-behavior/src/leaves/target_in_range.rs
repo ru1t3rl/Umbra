@@ -10,7 +10,6 @@ use cgf_core::{
 use super::{ConditionLeaf, check_keys, contact_in, info, key_name, positive};
 
 const ID: &str = "builtin.cond.target_in_range";
-const DESCRIPTION: &str = "Succeeds when the entity stored in the blackboard key target_key is a current contact within range_m meters. Fails when the key is unset or the entity is not (or no longer) a contact.";
 
 struct TargetInRange {
     id: ComponentId,
@@ -43,16 +42,15 @@ impl Condition for TargetInRange {
 }
 
 pub(super) fn register(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.register_condition(
-        Arc::new(ConditionLeaf::new(
-            ID,
-            include_str!("../../schemas/builtin.cond.target_in_range.json"),
-            build,
-        )),
-        info(DESCRIPTION).with_blackboard_param(BlackboardParam::new(
-            "target_key",
-            BbType::Entity,
-            Access::Read,
-        )),
-    )
+    let factory = ConditionLeaf::new(
+        ID,
+        include_str!("../../schemas/builtin.cond.target_in_range.json"),
+        build,
+    );
+    let info = info(&factory).with_blackboard_param(BlackboardParam::new(
+        "target_key",
+        BbType::Entity,
+        Access::Read,
+    ));
+    registry.register_condition(Arc::new(factory), info)
 }

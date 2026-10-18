@@ -67,8 +67,8 @@ pub use graph::{
 };
 pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher};
 pub use id::{
-    BehaviorId, ComponentId, EntityId, IdError, MAX_ID_LEN, MotionModelId, PluginId, TemplateId,
-    WeaponId,
+    BehaviorId, ComponentId, EntityId, IdError, MAX_ID_LEN, MotionModelId, NameError, PluginId,
+    TemplateId, WeaponId, validate_name,
 };
 pub use intent::{INTENT_SET_VERSION, Intent};
 pub use motion::{KinematicState, MotionModel};

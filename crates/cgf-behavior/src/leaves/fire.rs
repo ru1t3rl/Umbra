@@ -11,7 +11,6 @@ use cgf_core::{
 use super::{ActionLeaf, check_keys, contact_in, info, key_name, weapon};
 
 const ID: &str = "builtin.action.fire";
-const DESCRIPTION: &str = "Fires weapon at the entity stored in the blackboard key target_key (emits Fire) and succeeds in the same tick. Fails, without an intent, when the key is unset or the entity is not a current contact. Fire is only recorded in this version; it has no effect on the target.";
 
 struct Fire {
     id: ComponentId,
@@ -68,16 +67,15 @@ impl ActionInstance for FireInstance {
 }
 
 pub(super) fn register(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.register_action(
-        Arc::new(ActionLeaf::new(
-            ID,
-            include_str!("../../schemas/builtin.action.fire.json"),
-            build,
-        )),
-        info(DESCRIPTION).with_blackboard_param(BlackboardParam::new(
-            "target_key",
-            BbType::Entity,
-            Access::Read,
-        )),
-    )
+    let factory = ActionLeaf::new(
+        ID,
+        include_str!("../../schemas/builtin.action.fire.json"),
+        build,
+    );
+    let info = info(&factory).with_blackboard_param(BlackboardParam::new(
+        "target_key",
+        BbType::Entity,
+        Access::Read,
+    ));
+    registry.register_action(Arc::new(factory), info)
 }

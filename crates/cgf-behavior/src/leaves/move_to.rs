@@ -8,10 +8,9 @@ use cgf_core::{
     ParamValue, Registry, RegistryError, Status, TickRate,
 };
 
-use super::{ActionLeaf, check_keys, contact_in, info, key_name, non_negative, positive};
+use super::{ActionLeaf, check_keys, contact_in, info, key_name, positive};
 
 const ID: &str = "builtin.action.move_to";
-const DESCRIPTION: &str = "Moves toward the entity stored in the blackboard key target_key at speed_mps (emits SetSpeed and MoveTo). Running while the target is farther than arrival_radius_m, Success once it is within that distance. Fails when the key is unset or the entity is not a current contact.";
 
 struct MoveTo {
     id: ComponentId,
@@ -32,7 +31,7 @@ fn build(id: &ComponentId, params: &ParamValue) -> Result<Arc<dyn Action>, Build
         id: id.clone(),
         target_key: key_name(params, "target_key")?,
         speed_mps: positive(params, "speed_mps")?,
-        arrival_radius_m: non_negative(params, "arrival_radius_m")?,
+        arrival_radius_m: positive(params, "arrival_radius_m")?,
     }))
 }
 
@@ -75,16 +74,15 @@ impl ActionInstance for MoveToInstance {
 }
 
 pub(super) fn register(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.register_action(
-        Arc::new(ActionLeaf::new(
-            ID,
-            include_str!("../../schemas/builtin.action.move_to.json"),
-            build,
-        )),
-        info(DESCRIPTION).with_blackboard_param(BlackboardParam::new(
-            "target_key",
-            BbType::Entity,
-            Access::Read,
-        )),
-    )
+    let factory = ActionLeaf::new(
+        ID,
+        include_str!("../../schemas/builtin.action.move_to.json"),
+        build,
+    );
+    let info = info(&factory).with_blackboard_param(BlackboardParam::new(
+        "target_key",
+        BbType::Entity,
+        Access::Read,
+    ));
+    registry.register_action(Arc::new(factory), info)
 }

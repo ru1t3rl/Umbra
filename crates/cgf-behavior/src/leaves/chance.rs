@@ -10,7 +10,6 @@ use cgf_core::{
 use super::{ConditionLeaf, check_keys, info, probability};
 
 const ID: &str = "builtin.cond.chance";
-const DESCRIPTION: &str = "Succeeds with the given probability. Every evaluation draws exactly one number from the entity's own random stream, so results depend on the scenario seed and repeat exactly with the same seed. Probability 0 never succeeds and 1 always does.";
 
 struct Chance {
     id: ComponentId,
@@ -38,12 +37,11 @@ impl Condition for Chance {
 }
 
 pub(super) fn register(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.register_condition(
-        Arc::new(ConditionLeaf::new(
-            ID,
-            include_str!("../../schemas/builtin.cond.chance.json"),
-            build,
-        )),
-        info(DESCRIPTION),
-    )
+    let factory = ConditionLeaf::new(
+        ID,
+        include_str!("../../schemas/builtin.cond.chance.json"),
+        build,
+    );
+    let info = info(&factory);
+    registry.register_condition(Arc::new(factory), info)
 }

@@ -139,6 +139,48 @@ pub(crate) fn validate_segment(s: &str) -> Result<(), SegmentError> {
     Ok(())
 }
 
+/// Why a string was rejected as a name by [`validate_name`]. Errors echo at most a bounded prefix
+/// of the input.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum NameError {
+    /// The name is empty.
+    #[error("name is empty")]
+    Empty,
+    /// The name exceeds [`MAX_ID_LEN`] bytes; `prefix` is only a bounded prefix of it.
+    #[error("name {prefix:?} is {len} bytes; max is {max}", max = MAX_ID_LEN)]
+    TooLong {
+        /// A prefix of the offending input (at most 64 bytes).
+        prefix: String,
+        /// Real length in bytes.
+        len: usize,
+    },
+    /// The first character is not `a-z`.
+    #[error("name must start with a lowercase letter a-z")]
+    InvalidStart,
+    /// A later character is not `a-z`, `0-9` or `_`.
+    #[error("name has an invalid character at byte {index}; use a-z, 0-9 and _")]
+    InvalidChar {
+        /// Byte offset of the first invalid character.
+        index: usize,
+    },
+}
+
+/// Checks a name against the one segment grammar `[a-z][a-z0-9_]*` (at most [`MAX_ID_LEN`]
+/// bytes), used for blackboard keys, node, state and exit names and force names (ADR 0015,
+/// ASM-079).
+///
+/// # Errors
+/// The [`NameError`] describing the first violation.
+pub fn validate_name(s: &str) -> Result<(), NameError> {
+    validate_segment(s).map_err(|e| match e {
+        SegmentError::Empty => NameError::Empty,
+        SegmentError::TooLong { prefix, len } => NameError::TooLong { prefix, len },
+        SegmentError::InvalidStart => NameError::InvalidStart,
+        SegmentError::InvalidChar { index } => NameError::InvalidChar { index },
+    })
+}
+
 /// Validates `s` against the ADR 0002 grammar.
 fn validate(s: &str) -> Result<(), IdError> {
     if s.is_empty() {

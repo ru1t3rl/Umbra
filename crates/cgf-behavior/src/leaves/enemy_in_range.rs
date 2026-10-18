@@ -10,7 +10,6 @@ use cgf_core::{
 use super::{ConditionLeaf, check_keys, info, key_name, positive};
 
 const ID: &str = "builtin.cond.enemy_in_range";
-const DESCRIPTION: &str = "Succeeds when a hostile contact is within range_m meters. Hostile means both entities have a force and the forces differ; an entity without a force is neutral and never hostile. With store_as, the nearest hostile contact (ties: lowest entity id) is written to that blackboard key.";
 
 struct EnemyInRange {
     id: ComponentId,
@@ -65,16 +64,15 @@ impl Condition for EnemyInRange {
 }
 
 pub(super) fn register(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.register_condition(
-        Arc::new(ConditionLeaf::new(
-            ID,
-            include_str!("../../schemas/builtin.cond.enemy_in_range.json"),
-            build,
-        )),
-        info(DESCRIPTION).with_blackboard_param(BlackboardParam::new(
-            "store_as",
-            BbType::Entity,
-            Access::Write,
-        )),
-    )
+    let factory = ConditionLeaf::new(
+        ID,
+        include_str!("../../schemas/builtin.cond.enemy_in_range.json"),
+        build,
+    );
+    let info = info(&factory).with_blackboard_param(BlackboardParam::new(
+        "store_as",
+        BbType::Entity,
+        Access::Write,
+    ));
+    registry.register_condition(Arc::new(factory), info)
 }

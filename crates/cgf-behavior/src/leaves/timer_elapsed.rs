@@ -10,7 +10,6 @@ use cgf_core::{
 use super::{ConditionLeaf, check_keys, info, positive};
 
 const ID: &str = "builtin.cond.timer_elapsed";
-const DESCRIPTION: &str = "Succeeds once the simulation time since the start of the run is at least duration_s seconds, rounded up to whole ticks. It measures the run, not the time since the node last ran; use a cooldown or timeout node for relative time.";
 
 struct TimerElapsed {
     id: ComponentId,
@@ -41,12 +40,11 @@ impl Condition for TimerElapsed {
 }
 
 pub(super) fn register(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.register_condition(
-        Arc::new(ConditionLeaf::new(
-            ID,
-            include_str!("../../schemas/builtin.cond.timer_elapsed.json"),
-            build,
-        )),
-        info(DESCRIPTION),
-    )
+    let factory = ConditionLeaf::new(
+        ID,
+        include_str!("../../schemas/builtin.cond.timer_elapsed.json"),
+        build,
+    );
+    let info = info(&factory);
+    registry.register_condition(Arc::new(factory), info)
 }

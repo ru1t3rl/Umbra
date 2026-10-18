@@ -10,7 +10,6 @@ use cgf_core::{
 use super::{ActionLeaf, check_keys, info};
 
 const ID: &str = "builtin.action.follow_route";
-const DESCRIPTION: &str = "Follows the entity's initial route using the kernel's route following. Running until the last waypoint is reached, then Success. Fails when the entity has no route. Takes no parameters.";
 
 struct FollowRoute {
     id: ComponentId,
@@ -61,12 +60,11 @@ impl ActionInstance for FollowRouteInstance {
 }
 
 pub(super) fn register(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.register_action(
-        Arc::new(ActionLeaf::new(
-            ID,
-            include_str!("../../schemas/builtin.action.follow_route.json"),
-            build,
-        )),
-        info(DESCRIPTION),
-    )
+    let factory = ActionLeaf::new(
+        ID,
+        include_str!("../../schemas/builtin.action.follow_route.json"),
+        build,
+    );
+    let info = info(&factory);
+    registry.register_action(Arc::new(factory), info)
 }

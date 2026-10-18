@@ -1,8 +1,7 @@
 //! AT-11: every result path of the built-in conditions and actions (ASM-077).
 //! Requirements: REQ-B-15, REQ-B-16, REQ-T-3, ASM-077, ASM-078, ASM-079, ASM-091.
 //!
-//! Step 4 of M3: written before WI-11. `register_builtins` is a `todo!()` stub, so every test is
-//! ignored with that work item. Choices the plan leaves open (recorded in the plan's running
+//! Written in step 4, before WI-11; un-ignored by WI-11. Choices the plan leaves open (recorded in the plan's running
 //! log): `enemy_in_range` and `target_in_range` compare `Contact::range` with `range_m`;
 //! `move_to` emits `SetSpeed(speed_mps)` and `MoveTo { contact position }` while Running and is
 //! Success when the contact is within `arrival_radius_m`; `wait` is Running for `n` ticks counted
@@ -808,15 +807,15 @@ fn follow_route_emits_the_intent_on_the_completion_tick() {
     assert_eq!(done, (Status::Success, vec![Intent::FollowRoute]));
 }
 
-/// `move_to` with a zero arrival radius succeeds only at distance zero, and holds no state: a
+/// `move_to` holds no state: a
 /// target lost then found again is simply approached again.
 #[test]
 fn move_to_is_stateless_between_ticks() {
-    let params = json!({ "target_key": "target", "speed_mps": 8.0, "arrival_radius_m": 0.0 });
+    let params = json!({ "target_key": "target", "speed_mps": 8.0, "arrival_radius_m": 0.5 });
     let mut act = action(MOVE_TO, &params);
     let mut bb = bb_with_target();
     bb.set("target", BbValue::Entity(eid(3))).expect("declared");
-    let here = contact(3, 0.0, Some("red"));
+    let here = contact(3, 0.25, Some("red"));
     let near = contact(3, 1.0, Some("red"));
 
     let a = tick(act.as_mut(), 0, std::slice::from_ref(&near), None, &mut bb);
@@ -914,7 +913,12 @@ fn fire_fires_every_tick_and_halt_is_a_no_op() {
 #[test]
 fn unknown_keys_wrong_types_and_non_tables_are_located_errors() {
     let registry = registry();
-    let cases: [(&str, serde_json::Value, &str); 8] = [
+    let cases: [(&str, serde_json::Value, &str); 9] = [
+        (
+            MOVE_TO,
+            json!({ "target_key": "t", "speed_mps": 1.0, "arrival_radius_m": 0.0 }),
+            "/arrival_radius_m",
+        ),
         (FOLLOW, json!({ "speed": 1 }), "/speed"),
         (
             CHANCE,
@@ -979,7 +983,7 @@ fn key_and_weapon_grammar_are_enforced() {
     assert_eq!(bad_weapon.and_then(|e| e.param).as_deref(), Some("/weapon"));
 }
 
-/// A condition's product reports the ID it was built for (Factory contract).
+/// Every leaf's product reports the ID it was built for (Factory contract).
 #[test]
 fn products_carry_their_factory_id() {
     let registry = registry();
@@ -1014,4 +1018,128 @@ fn registering_builtins_twice_is_a_duplicate_error() {
 
     assert!(again.is_err());
     assert_eq!(registry.ids(ComponentKind::Condition).len(), 4);
+    assert_eq!(registry.ids(ComponentKind::Action).len(), 4);
+}
+
+// --- review follow-up -----------------------------------------------------------------------------
+
+fn set_target(bb: &mut Blackboard, id: u64) {
+    bb.set("target", BbValue::Entity(eid(id)))
+        .expect("declared");
+}
+
+/// The key names an entity that is not among the contacts, even though others are present.
+#[test]
+fn move_to_and_fire_fail_when_only_other_contacts_exist() {
+    let others = [contact(2, 10.0, Some("red")), contact(4, 20.0, Some("red"))];
+    let mut bb = bb_with_target();
+    set_target(&mut bb, 3);
+    let mut go = action(
+        MOVE_TO,
+        &json!({ "target_key": "target", "speed_mps": 8.0, "arrival_radius_m": 5.0 }),
+    );
+    let mut shoot = action(
+        FIRE,
+        &json!({ "target_key": "target", "weapon": "example.weapon.main_gun" }),
+    );
+
+    let a = tick(go.as_mut(), 0, &others, None, &mut bb);
+    let b = tick(shoot.as_mut(), 0, &others, None, &mut bb);
+
+    assert_eq!(a, (Status::Failure, vec![]));
+    assert_eq!(b, (Status::Failure, vec![]));
+}
+
+/// A failed `enemy_in_range` leaves an earlier `store_as` value alone (ASM-100 a).
+#[test]
+fn failed_enemy_in_range_keeps_the_previous_store_as_value() {
+    let cond = condition(ENEMY, &json!({ "range_m": 100.0, "store_as": "target" }));
+    let mut bb = bb_with_target();
+    set_target(&mut bb, 9);
+
+    let seen = check(
+        cond.as_ref(),
+        0,
+        Some(&force("blue")),
+        &[contact(2, 500.0, Some("red"))],
+        &mut bb,
+    );
+
+    assert!(!seen);
+    assert_eq!(bb.get("target"), Some(&BbValue::Entity(eid(9))));
+}
+
+/// While approaching, `move_to` emits exactly `SetSpeed` then `MoveTo` (ASM-077).
+#[test]
+fn move_to_running_emits_exactly_set_speed_then_move_to() {
+    let mut act = action(
+        MOVE_TO,
+        &json!({ "target_key": "target", "speed_mps": 8.0, "arrival_radius_m": 50.0 }),
+    );
+    let far = contact(3, 500.0, Some("red"));
+    let mut bb = bb_with_target();
+    set_target(&mut bb, 3);
+
+    let moving = tick(act.as_mut(), 0, std::slice::from_ref(&far), None, &mut bb);
+
+    assert_eq!(
+        moving,
+        (
+            Status::Running,
+            vec![
+                Intent::SetSpeed(MetersPerSecond(8.0)),
+                Intent::MoveTo {
+                    destination: far.position
+                }
+            ]
+        )
+    );
+}
+
+/// A key that holds a value of another type is not a target: every user of it fails.
+#[test]
+fn a_target_key_holding_a_non_entity_value_is_not_a_target() {
+    let near = [contact(3, 10.0, Some("red"))];
+    let mut bb = Blackboard::default();
+    bb.declare("target", BbType::Integer);
+    bb.set("target", BbValue::Integer(3)).expect("declared");
+    let cond = condition(TARGET, &json!({ "target_key": "target", "range_m": 100.0 }));
+    let mut go = action(
+        MOVE_TO,
+        &json!({ "target_key": "target", "speed_mps": 8.0, "arrival_radius_m": 5.0 }),
+    );
+    let mut shoot = action(
+        FIRE,
+        &json!({ "target_key": "target", "weapon": "example.weapon.main_gun" }),
+    );
+
+    assert!(!check(cond.as_ref(), 0, None, &near, &mut bb));
+    assert_eq!(
+        tick(go.as_mut(), 0, &near, None, &mut bb),
+        (Status::Failure, vec![])
+    );
+    assert_eq!(
+        tick(shoot.as_mut(), 0, &near, None, &mut bb),
+        (Status::Failure, vec![])
+    );
+}
+
+/// REQ-B-17: the catalog description of every leaf is the description of its schema.
+#[test]
+fn catalog_description_equals_schema_description() {
+    let registry = registry();
+    for (kind, ids) in [
+        (ComponentKind::Condition, CONDITIONS),
+        (ComponentKind::Action, ACTIONS),
+    ] {
+        for id in ids {
+            let schema = registry.param_schema(kind, &cid(id)).expect("schema");
+            let want = schema.as_json()["description"]
+                .as_str()
+                .expect("description");
+            let got = &registry.info(&cid(id)).expect("info").description;
+            assert!(!want.is_empty(), "{id}");
+            assert_eq!(got, want, "{id}");
+        }
+    }
 }

@@ -81,10 +81,24 @@ pub(crate) type ConditionLeaf = LeafFactory<dyn Condition>;
 /// A factory for an action.
 pub(crate) type ActionLeaf = LeafFactory<dyn Action>;
 
-/// Catalog metadata of a built-in leaf: provenance `Builtin`, the package version (ASM-077).
-pub(crate) fn info(description: &str) -> ComponentInfo {
-    let version =
-        Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| Version::new(0, 0, 0));
+/// Catalog metadata of a built-in leaf: provenance `Builtin`, the package version and, as the
+/// description, the `description` of the leaf's parameter schema, the one source of the
+/// user-facing text (REQ-B-17, ASM-077).
+///
+/// # Panics
+/// Never in practice: `CARGO_PKG_VERSION` is a valid version (compile-time constant).
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time constant, not external input"
+)]
+pub(crate) fn info<T: ?Sized>(factory: &LeafFactory<T>) -> ComponentInfo {
+    let version = Version::parse(env!("CARGO_PKG_VERSION")).expect("package version is semver");
+    let description = factory
+        .param_schema()
+        .as_json()
+        .get("description")
+        .and_then(ParamValue::as_str)
+        .unwrap_or_default();
     ComponentInfo::new(description, Provenance::Builtin, version)
 }
 
@@ -132,16 +146,6 @@ pub(crate) fn positive(params: &ParamValue, key: &str) -> Result<f64, BuildError
     }
 }
 
-/// A required number of at least zero.
-pub(crate) fn non_negative(params: &ParamValue, key: &str) -> Result<f64, BuildError> {
-    let n = number(params, key)?;
-    if n >= 0.0 {
-        Ok(n)
-    } else {
-        Err(BuildError::new(format!("`{key}` must not be negative")).at(pointer(key)))
-    }
-}
-
 /// A required number in `[0, 1]`.
 pub(crate) fn probability(params: &ParamValue, key: &str) -> Result<f64, BuildError> {
     let n = number(params, key)?;
@@ -161,11 +165,11 @@ fn text<'a>(params: &'a ParamValue, key: &str) -> Result<&'a str, BuildError> {
         .ok_or_else(|| BuildError::new(format!("`{key}` must be a string")).at(pointer(key)))
 }
 
-/// A required blackboard key name (`[a-z][a-z0-9_]*`, the one segment grammar of ADR 0015).
+/// A required blackboard key name (`[a-z][a-z0-9_]*`, the one name grammar of ADR 0015).
 pub(crate) fn key_name(params: &ParamValue, key: &str) -> Result<Box<str>, BuildError> {
     let name = text(params, key)?;
-    cgf_core::Force::new(name)
-        .map(|_| Box::from(name))
+    cgf_core::validate_name(name)
+        .map(|()| Box::from(name))
         .map_err(|e| {
             BuildError::new(format!("`{key}` is not a valid key name: {e}")).at(pointer(key))
         })
@@ -190,5 +194,37 @@ pub(crate) fn contact_in<'a>(
     let Some(BbValue::Entity(id)) = bb.get(key) else {
         return None;
     };
-    entity.contacts.iter().find(|c| c.entity == *id)
+    let at = entity
+        .contacts
+        .binary_search_by_key(id, |c| c.entity)
+        .ok()?;
+    entity.contacts.get(at)
+}
+
+#[cfg(test)]
+mod tests {
+    use cgf_core::Registry;
+
+    /// Every embedded ID and schema parses, so `LeafFactory::new` cannot panic, and the catalog
+    /// description is the schema's `description` for every leaf (one source, REQ-B-17).
+    #[test]
+    fn embedded_ids_and_schemas_are_valid_and_descriptions_come_from_the_schemas() {
+        let mut registry = Registry::new();
+        super::register(&mut registry).unwrap_or_else(|e| panic!("{e}"));
+        let mut checked = 0;
+        for kind in [
+            cgf_core::ComponentKind::Condition,
+            cgf_core::ComponentKind::Action,
+        ] {
+            for id in registry.ids(kind) {
+                let schema = registry.param_schema(kind, id).map(|s| s.as_json().clone());
+                let text = schema.as_ref().and_then(|s| s["description"].as_str());
+                let info = registry.info(id);
+                assert!(text.is_some_and(|t| !t.is_empty()), "{id}");
+                assert_eq!(info.map(|i| i.description.as_str()), text, "{id}");
+                checked += 1;
+            }
+        }
+        assert_eq!(checked, 8);
+    }
 }

@@ -11,7 +11,6 @@ use cgf_core::{
 use super::{ActionLeaf, check_keys, info, positive};
 
 const ID: &str = "builtin.action.wait";
-const DESCRIPTION: &str = "Holds position (emits Hold) for duration_s seconds, rounded up to whole ticks and counted from the node's first tick. Running until then, then Success. Starts over after it has finished or has been halted.";
 
 struct Wait {
     id: ComponentId,
@@ -78,12 +77,11 @@ impl ActionInstance for WaitInstance {
 }
 
 pub(super) fn register(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.register_action(
-        Arc::new(ActionLeaf::new(
-            ID,
-            include_str!("../../schemas/builtin.action.wait.json"),
-            build,
-        )),
-        info(DESCRIPTION),
-    )
+    let factory = ActionLeaf::new(
+        ID,
+        include_str!("../../schemas/builtin.action.wait.json"),
+        build,
+    );
+    let info = info(&factory);
+    registry.register_action(Arc::new(factory), info)
 }

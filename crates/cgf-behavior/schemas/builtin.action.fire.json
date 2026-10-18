@@ -1,11 +1,11 @@
 {
   "title": "builtin.action.fire parameters",
-  "description": "Fires a weapon at the entity stored in a blackboard key (emits Fire) and succeeds in the same tick. Fails, without an intent, if the key is unset or the entity is not a current contact. In this version Fire is only recorded; it has no effect on the target.",
+  "description": "Fires the weapon named by `weapon` at the entity stored in the blackboard key target_key and succeeds in the same tick. Fails, without firing, when the key is unset or the entity is not a current contact. Firing is only recorded in this version; it has no effect on the target. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
   "type": "object",
   "properties": {
     "target_key": {
       "type": "string",
-      "description": "Blackboard key of type entity that holds the target (read only)."
+      "description": "Blackboard key of type entity that holds the target The leaf only reads this key.."
     },
     "weapon": {
       "type": "string",

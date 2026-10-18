@@ -1,6 +1,6 @@
 {
   "title": "builtin.action.follow_route parameters",
-  "description": "Follows the entity's initial route. Takes no parameters.",
+  "description": "Follows the route and cruise speed given in the scenario. Running until the last waypoint is reached, then Success; it keeps holding at the last waypoint after Success. Fails when the entity has no route. Takes no parameters.",
   "type": "object",
   "properties": {},
   "additionalProperties": false,
