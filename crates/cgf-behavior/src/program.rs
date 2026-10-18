@@ -4,7 +4,10 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use cgf_core::{Action, BbType, Condition, GraphDef, NodeId, NodeKind, ParallelPolicy, Seconds};
+use cgf_core::{
+    Action, BbType, Condition, FsmDef, GraphDef, NodeId, NodeKind, ParallelPolicy, Seconds, Status,
+    TransitionTarget, Trigger,
+};
 
 use crate::factory::GraphRegistrationError;
 
@@ -50,6 +53,41 @@ pub(crate) enum Kind {
         child: usize,
         duration: Seconds,
     },
+    Fsm(Fsm),
+}
+
+/// Where a transition goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum To {
+    /// A position in [`Fsm::states`].
+    State(usize),
+    /// A position in [`Fsm::exits`].
+    Exit(usize),
+}
+
+/// What fires a transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum When {
+    /// The guard node (arena index) returns Success.
+    Guard(usize),
+    /// The state node finished with this status.
+    Done(Status),
+}
+
+/// One transition, in file order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Transition {
+    pub from: usize,
+    pub to: To,
+    pub when: When,
+}
+
+/// A finite state machine (ADR 0013): state and guard nodes are arena indices.
+pub(crate) struct Fsm {
+    pub initial: usize,
+    pub states: Box<[usize]>,
+    pub exits: Box<[Status]>,
+    pub transitions: Box<[Transition]>,
 }
 
 impl Kind {
@@ -66,6 +104,7 @@ impl Kind {
             Kind::Repeat { .. } => "repeat",
             Kind::Cooldown { .. } => "cooldown",
             Kind::Timeout { .. } => "timeout",
+            Kind::Fsm(_) => "fsm",
         }
     }
 }
@@ -109,6 +148,15 @@ fn children_of(kind: &NodeKind) -> Vec<NodeId> {
         NodeKind::Inverter(d) | NodeKind::SucceedAlways(d) => vec![d.child],
         NodeKind::Repeat(r) => vec![r.child],
         NodeKind::Cooldown(t) | NodeKind::Timeout(t) => vec![t.child],
+        NodeKind::Fsm(f) => f
+            .states
+            .iter()
+            .map(|s| s.node)
+            .chain(f.transitions.iter().filter_map(|t| match t.trigger {
+                Trigger::When(guard) => Some(guard),
+                _ => None,
+            }))
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -131,6 +179,10 @@ pub(crate) fn validate(def: &GraphDef) -> Result<(), GraphRegistrationError> {
             | NodeKind::Repeat(_)
             | NodeKind::Cooldown(_)
             | NodeKind::Timeout(_) => true,
+            NodeKind::Fsm(f) => {
+                fsm_shape(f).map_err(|reason| bad(format!("fsm `{}`: {reason}", node.name)))?;
+                true
+            }
             NodeKind::Parallel(p) => policy(p.policy).is_some(),
             _ => false,
         };
@@ -167,4 +219,54 @@ pub(crate) fn validate(def: &GraphDef) -> Result<(), GraphRegistrationError> {
         );
     }
     Ok(())
+}
+
+/// Checks the indices of an FSM: at least one state, `initial`, `from` and targets in range.
+fn fsm_shape(f: &FsmDef) -> Result<(), &'static str> {
+    if f.initial >= f.states.len() {
+        return Err("the initial state does not exist");
+    }
+    for t in &f.transitions {
+        let target_ok = match t.to {
+            TransitionTarget::State(s) => s < f.states.len(),
+            TransitionTarget::Exit(e) => e < f.exits.len(),
+        };
+        if t.from >= f.states.len() || !target_ok {
+            return Err("a transition names a state or exit that does not exist");
+        }
+        if !matches!(t.trigger, Trigger::When(_) | Trigger::On(_)) {
+            return Err("a transition has a trigger this interpreter does not know");
+        }
+    }
+    Ok(())
+}
+
+/// The FSM of `def`, already checked by [`fsm_shape`] through [`validate`].
+pub(crate) fn fsm(def: &FsmDef) -> Option<Fsm> {
+    let transitions = def
+        .transitions
+        .iter()
+        .map(|t| {
+            let to = match t.to {
+                TransitionTarget::State(s) => To::State(s),
+                TransitionTarget::Exit(e) => To::Exit(e),
+            };
+            let when = match t.trigger {
+                Trigger::When(g) => When::Guard(index(g)),
+                Trigger::On(s) => When::Done(s),
+                _ => return None,
+            };
+            Some(Transition {
+                from: t.from,
+                to,
+                when,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(Fsm {
+        initial: def.initial,
+        states: def.states.iter().map(|s| index(s.node)).collect(),
+        exits: def.exits.iter().map(|e| e.result).collect(),
+        transitions: transitions.into_boxed_slice(),
+    })
 }

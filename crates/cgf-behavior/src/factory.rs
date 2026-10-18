@@ -1,7 +1,7 @@
 //! The factory that turns a [`GraphDef`] into a [`Behavior`] (ADR 0011, ADR 0014).
 //!
-//! M3 WI-8 builds the node types of ADR 0013 except `fsm` and `subgraph` (WI-9, WI-10): a graph
-//! with one of those is refused with [`GraphRegistrationError::Unsupported`].
+//! The node types of ADR 0013 are built except `subgraph` (WI-10): a graph with one is refused
+//! with [`GraphRegistrationError::Unsupported`].
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -203,6 +203,7 @@ impl GraphFactory {
                 child: ix(t.child),
                 duration: t.duration,
             },
+            (NodeKind::Fsm(def), _) => Kind::Fsm(program::fsm(def).ok_or_else(fail)?),
             _ => return Err(fail()),
         })
     }
@@ -322,14 +323,27 @@ mod tests {
     }
 
     #[test]
-    fn fsm_nodes_are_unsupported_until_wi_9() {
-        let fsm = NodeDef::new(
-            "f",
-            NodeKind::Fsm(FsmDef::new(0, vec![StateDef::new("a", NodeId(1))])),
-        );
+    fn an_fsm_with_a_bad_index_is_malformed_and_a_good_one_is_fine() {
+        let fsm = |initial: usize| {
+            NodeDef::new(
+                "f",
+                NodeKind::Fsm(FsmDef::new(initial, vec![StateDef::new("a", NodeId(1))])),
+            )
+        };
+        assert!(reason(graph(0, vec![fsm(0), seq(&[])])).is_none());
         assert!(matches!(
-            reason(graph(0, vec![fsm, seq(&[])])),
-            Some(GraphRegistrationError::Unsupported { .. })
+            reason(graph(0, vec![fsm(1), seq(&[])])),
+            Some(GraphRegistrationError::Malformed { .. })
+        ));
+        assert!(matches!(
+            reason(graph(
+                0,
+                vec![NodeDef::new(
+                    "f",
+                    NodeKind::Fsm(FsmDef::new(0, vec![StateDef::new("a", NodeId(9))]))
+                )]
+            )),
+            Some(GraphRegistrationError::Malformed { .. })
         ));
     }
 }

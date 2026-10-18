@@ -10,7 +10,7 @@ use cgf_core::{
     BlackboardError, EntityView, InstantiateError, IntentBuffer, Seconds, Status, TickRate,
 };
 
-use crate::nodes::{composite, decorator};
+use crate::nodes::{composite, decorator, fsm};
 use crate::program::{Kind, Node, Program};
 
 /// A built graph: the shared program of one parameter binding.
@@ -86,6 +86,12 @@ pub(crate) enum NodeState {
         ticks: u64,
         started: Option<u64>,
     },
+    /// `current` is a position in the FSM's states; `running` is false after an exit, a halt and
+    /// before the first tick (then `current` is `initial`).
+    Fsm {
+        current: usize,
+        running: bool,
+    },
 }
 
 impl NodeState {
@@ -119,6 +125,10 @@ impl NodeState {
             Kind::Timeout { duration, .. } => Self::Timeout {
                 ticks: ticks(*duration)?,
                 started: None,
+            },
+            Kind::Fsm(f) => Self::Fsm {
+                current: f.initial,
+                running: false,
             },
         })
     }
@@ -177,7 +187,8 @@ pub(crate) fn is_running(program: &Program, states: &[NodeState], idx: usize) ->
         }
         (Kind::Parallel { .. }, NodeState::Parallel { slots }) => slots.contains(&Slot::Running),
         (Kind::Action(_), NodeState::Action { running, .. })
-        | (Kind::Repeat { .. }, NodeState::Repeat { running, .. }) => *running,
+        | (Kind::Repeat { .. }, NodeState::Repeat { running, .. })
+        | (Kind::Fsm(_), NodeState::Fsm { running, .. }) => *running,
         (Kind::Timeout { .. }, NodeState::Timeout { started, .. }) => started.is_some(),
         (Kind::Cooldown { child, .. } | Kind::Inverter(child) | Kind::SucceedAlways(child), _) => {
             is_running(program, states, *child)
@@ -226,6 +237,13 @@ fn reset_all(program: &Program, states: &mut [NodeState], idx: usize) {
             Some(*child)
         }
         (Kind::Inverter(child) | Kind::SucceedAlways(child), _) => Some(*child),
+        (Kind::Fsm(f), state) => {
+            *state = fsm::fresh(f);
+            for c in fsm::children(f) {
+                reset_all(program, states, c);
+            }
+            return;
+        }
         _ => None,
     };
     if let Some(child) = child {
@@ -283,6 +301,15 @@ pub(crate) fn halt_node(program: &Program, states: &mut [NodeState], idx: usize)
         (Kind::Cooldown { child, .. } | Kind::Inverter(child) | Kind::SucceedAlways(child), _) => {
             halt_node(program, states, *child);
         }
+        (Kind::Fsm(f), state) => {
+            let current = match std::mem::replace(state, fsm::fresh(f)) {
+                NodeState::Fsm { current, .. } => current,
+                _ => f.initial,
+            };
+            if let Some(&node) = f.states.get(current) {
+                halt_node(program, states, node);
+            }
+        }
         _ => {}
     }
 }
@@ -338,6 +365,7 @@ impl Walk<'_, '_, '_, '_> {
             Kind::Repeat { child, count } => decorator::repeat(self, idx, *child, *count),
             Kind::Cooldown { child, .. } => decorator::cooldown(self, idx, *child),
             Kind::Timeout { child, .. } => decorator::timeout(self, idx, *child),
+            Kind::Fsm(f) => fsm::tick(self, idx, f),
         }
     }
 

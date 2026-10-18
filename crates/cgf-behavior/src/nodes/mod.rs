@@ -2,3 +2,4 @@
 
 pub(crate) mod composite;
 pub(crate) mod decorator;
+pub(crate) mod fsm;
