@@ -226,10 +226,20 @@ fn resolve_subgraph(
     })
 }
 
-/// The schema's `required` list must be the params without a default (binding-only params are
+/// A key may not be both declared and a param (ADR 0014), and the schema's `required` list must be the params without a default (binding-only params are
 /// not in the schema); `resolve_subgraph` and callers' `Input::required` rely on it.
 fn check_required(def: &GraphDef) -> Result<(), GraphRegistrationError> {
     let interface = &def.interface;
+    if let Some(key) = def
+        .blackboard
+        .keys()
+        .find(|k| interface.types.contains_key(*k))
+    {
+        return Err(GraphRegistrationError::Malformed {
+            graph: def.id.clone(),
+            reason: format!("`{key}` is both a blackboard key and an interface param (ADR 0014)"),
+        });
+    }
     let mut expected: Vec<&str> = interface
         .types
         .iter()

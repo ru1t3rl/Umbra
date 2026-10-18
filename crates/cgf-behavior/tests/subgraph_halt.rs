@@ -275,15 +275,16 @@ mod refused {
     };
     use std::sync::Arc;
 
-    struct Refusing(BehaviorId, common::Log);
-    struct RefusingInstance(common::Log, u32);
+    /// `bad_output`: `output` returns a string for an integer key instead of refusing inputs.
+    struct Refusing(BehaviorId, common::Log, bool);
+    struct RefusingInstance(common::Log, u32, bool);
 
     impl Behavior for Refusing {
         fn id(&self) -> &BehaviorId {
             &self.0
         }
         fn instantiate(&self, _: TickRate) -> Result<Box<dyn BehaviorInstance>, InstantiateError> {
-            Ok(Box::new(RefusingInstance(Arc::clone(&self.1), 0)))
+            Ok(Box::new(RefusingInstance(Arc::clone(&self.1), 0, self.2)))
         }
     }
     impl BehaviorInstance for RefusingInstance {
@@ -303,11 +304,11 @@ mod refused {
             self.0.lock().expect("log").push("halt:running".to_string());
         }
         fn output(&self, _: &str) -> Option<BbValue> {
-            None
+            self.2.then(|| BbValue::String("x".into()))
         }
         fn set_input(&mut self, param: &str, _: Option<BbValue>) -> Result<(), BlackboardError> {
             self.1 += 1;
-            if self.1 > 1 {
+            if self.1 > 1 && !self.2 {
                 return Err(BlackboardError::Undeclared { key: param.into() });
             }
             Ok(())
@@ -325,7 +326,7 @@ mod refused {
                     "test.target.refusing",
                     Box::new({
                         let log = Arc::clone(&bench.log);
-                        move |_, _| Ok(Arc::new(Refusing(id.clone(), Arc::clone(&log))))
+                        move |_, _| Ok(Arc::new(Refusing(id.clone(), Arc::clone(&log), false)))
                     }),
                 )),
                 common::info(cgf_core::Provenance::Plugin).with_param_type("p", BbType::Integer),
@@ -365,5 +366,45 @@ mod refused {
             !steps[2].trace.contains(&"halt:running".to_string()),
             "no second halt"
         );
+    }
+
+    /// A refused output copy (a mistyped value) behaves the same: the Running child is halted once
+    /// through `halt_running`, the node fails, and nothing is halted again afterwards.
+    #[test]
+    fn refused_output_halts_a_running_child_and_fails() {
+        let mut bench = Bench::new();
+        let id = common::bid("test.target.badout");
+        bench
+            .registry
+            .register_behavior(
+                Arc::new(common::StubFactory::<dyn Behavior>::new(
+                    "test.target.badout",
+                    Box::new({
+                        let log = Arc::clone(&bench.log);
+                        move |_, _| Ok(Arc::new(Refusing(id.clone(), Arc::clone(&log), true)))
+                    }),
+                )),
+                common::info(cgf_core::Provenance::Plugin).with_output("o", BbType::Integer),
+            )
+            .expect("register");
+        let mut b = B::new();
+        let guard = b.cond("guard");
+        let node = b.subgraph(
+            "call",
+            call("test.target.badout", json!({})).with_output("o", "k"),
+        );
+        let root = b.seq("root", false, &[guard, node]);
+        bench.register(vec![
+            b.graph("test.graph.parent", root)
+                .with_blackboard_key("k", BbType::Integer),
+        ]);
+        let mut run = bench.run_registered("test.graph.parent", &json!({}));
+
+        let steps = drive(&mut run, &bench, "guard", &[true, false]);
+
+        assert_eq!(steps[0].status, Status::Failure);
+        let halts = |s: &Step| s.trace.iter().filter(|l| *l == "halt:running").count();
+        assert_eq!(halts(&steps[0]), 1, "{:?}", steps[0].trace);
+        assert_eq!(halts(&steps[1]), 0, "no second halt: {:?}", steps[1].trace);
     }
 }

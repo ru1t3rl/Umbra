@@ -62,7 +62,7 @@ fn input_from_an_undeclared_parent_key_is_refused() {
 }
 
 #[test]
-fn input_of_an_incompatible_type_is_refused_and_integer_to_number_is_not() {
+fn input_of_an_incompatible_type_is_refused() {
     let reason = malformed(&[("k", BbType::Bool)], base().with_input("target", "k"));
     assert!(
         reason.contains("`target`") && reason.contains("`k`"),
@@ -97,7 +97,7 @@ fn output_to_a_read_only_param_key_is_refused() {
     assert!(reason.contains("read-only"), "{reason}");
 }
 
-/// A valid binding set still registers (`integer` to `integer`, output to a declared key).
+/// A compatible binding registers: an `integer` parent key feeds a `number` param.
 #[test]
 fn compatible_bindings_register() {
     let mut bench = Bench::new();
@@ -150,11 +150,11 @@ fn a_failing_batch_registers_nothing() {
     let mut unresolved = B::new();
     let missing = unresolved.leaf_action("x", "stub.action.missing", json!({}));
     let unresolved = unresolved.graph("test.graph.z_unresolved", missing);
-    let mut cyclic = B::new();
-    let c = cyclic.seq("loop", false, &[]);
-    let mut cyclic = cyclic.graph("test.graph.z_cyclic", c);
-    cyclic.root = cgf_core::NodeId(7);
-    for bad in [unresolved, cyclic] {
+    let mut bad_root = B::new();
+    let c = bad_root.seq("loop", false, &[]);
+    let mut bad_root = bad_root.graph("test.graph.z_bad_root", c);
+    bad_root.root = cgf_core::NodeId(7);
+    for bad in [unresolved, bad_root] {
         let mut bench = Bench::new();
         let before = bench.registry.ids(cgf_core::ComponentKind::Behavior).len();
 
@@ -181,4 +181,26 @@ fn no_graph() -> GraphDef {
     let mut b = B::new();
     let leaf = b.act("leaf", &["success"]);
     b.graph_with("test.graph.b_good", no_interface(), leaf)
+}
+
+/// ADR 0014: a key may not be both in `[blackboard]` and an interface param.
+#[test]
+fn blackboard_key_that_is_also_a_param_is_refused() {
+    let mut b = B::new();
+    let leaf = b.act("leaf", &["success"]);
+    let graph = b
+        .graph_with(
+            "test.graph.dup",
+            iface(&json!({ "n": { "type": "integer", "default": 1 } })),
+            leaf,
+        )
+        .with_blackboard_key("n", BbType::Integer);
+    let mut bench = Bench::new();
+
+    let result = register(&mut bench, vec![graph]);
+
+    assert!(
+        matches!(&result, Err(GraphRegistrationError::Malformed { reason, .. }) if reason.contains("`n`")),
+        "{result:?}"
+    );
 }
