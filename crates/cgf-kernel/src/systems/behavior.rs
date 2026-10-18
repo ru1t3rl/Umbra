@@ -55,27 +55,32 @@ pub(crate) fn run(e: EntityMut<'_>, ctx: &TickContext<'_>) {
 }
 
 /// Replaces the first `FollowRoute` in place with the stand-in's intents for this tick and drops
-/// the others (ADR 0016). Without a route the expansion is empty.
+/// the others (ADR 0016). Without a route the expansion is empty. Allocation-free once the vector
+/// has its capacity: the steer output is appended at the end and rotated into place.
 fn expand_follow_route(
     intents: &mut Vec<Intent>,
-    mut route: Option<&mut Route>,
+    route: Option<&mut Route>,
     state: &KinematicState,
 ) {
-    if !intents.iter().any(|i| matches!(i, Intent::FollowRoute)) {
+    let Some(p) = intents
+        .iter()
+        .position(|i| matches!(i, Intent::FollowRoute))
+    else {
         return;
+    };
+    let mut index = 0;
+    intents.retain(|i| {
+        let keep = index <= p || !matches!(i, Intent::FollowRoute);
+        index += 1;
+        keep
+    });
+    intents.remove(p);
+    let before = intents.len();
+    if let Some(r) = route {
+        route::steer(r, state.position, intents);
     }
-    let mut expanded = Vec::with_capacity(intents.len() + 1);
-    let mut done = false;
-    for intent in intents.drain(..) {
-        if matches!(intent, Intent::FollowRoute) {
-            if !std::mem::replace(&mut done, true)
-                && let Some(r) = route.as_deref_mut()
-            {
-                route::steer(r, state.position, &mut expanded);
-            }
-        } else {
-            expanded.push(intent);
-        }
+    let pushed = intents.len() - before;
+    if let Some(tail) = intents.get_mut(p..) {
+        tail.rotate_right(pushed);
     }
-    *intents = expanded;
 }

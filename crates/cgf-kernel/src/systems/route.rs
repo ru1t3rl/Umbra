@@ -1,7 +1,8 @@
 //! The M1 route-following stand-in for the Behavior phase (REQ-K-2, ASM-029).
 //!
-//! Removed in M3 when the behavior runtime takes over route following. It reads the entity's
-//! position and writes intents; it never touches entity state (REQ-B-1).
+//! It stays in M3 (ASM-082, ADR 0016): it is the default for Owned entities without a behavior
+//! and the expansion of the `FollowRoute` intent. It reads the entity's position and writes
+//! intents; it never touches entity state (REQ-B-1).
 
 use cgf_core::{Ecef, Intent, LocalFrame, MetersPerSecond, math};
 

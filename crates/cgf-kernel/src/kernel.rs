@@ -15,7 +15,7 @@ use crate::error::KernelError;
 use crate::pipeline::{PHASE_COUNT, Phase, TickContext, TickReport};
 use crate::state;
 use crate::systems::{behavior, motion, perception};
-use crate::world::World;
+use crate::world::{BehaviorSlot, World};
 
 /// Kernel construction parameters.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -154,12 +154,21 @@ impl Kernel {
         agent: AgentInit,
     ) -> Result<EntityId, KernelError> {
         let rate = self.clock.now().rate();
-        let instance = agent
-            .behavior
-            .as_ref()
-            .map(|b| b.instantiate(rate))
-            .transpose()?;
-        self.world.spawn_with(init, agent, instance, self.rng)
+        let behavior = agent.behavior.clone();
+        // Instantiation runs after the entity has been validated (ASM-093 (g)).
+        let slot = move || {
+            behavior
+                .map(|b| {
+                    b.instantiate(rate).map(|instance| BehaviorSlot {
+                        id: b.id().clone(),
+                        instance,
+                        last: None,
+                    })
+                })
+                .transpose()
+                .map_err(KernelError::from)
+        };
+        self.world.spawn_with(init, agent, slot, self.rng)
     }
 
     /// Runs one tick through the six phases in [`Phase::ALL`] order and advances the clock by
@@ -252,8 +261,8 @@ impl Kernel {
     }
 }
 
-/// Runs the systems of one phase. Behavior and Motion touch only `Owned` entities (REQ-K-5);
-/// the other phases have no systems in M1.
+/// Runs the systems of one phase. Perception, Behavior and Motion act for `Owned` entities only
+/// (REQ-K-5); Ingest, Events and Publish have no systems yet.
 fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>) {
     match phase {
         Phase::Perception => perception::run(world, ctx),

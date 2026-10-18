@@ -14,6 +14,7 @@ use cgf_core::{
 
 use crate::error::{KernelError, RouteParam};
 use crate::kernel::{AgentInit, EntityInit, RouteInit};
+use crate::systems::perception::Scratch;
 
 /// The motion model instance of an entity (REQ-M-4).
 pub(crate) struct MotionRef(pub(crate) Arc<dyn MotionModel>);
@@ -122,9 +123,14 @@ type RefQuery<'a> = (
 pub(crate) struct World {
     ecs: hecs::World,
     index: BTreeMap<EntityId, hecs::Entity>,
+    /// Behavior slots by entity. Kept in sync with `index` by `spawn_with`; any removal path
+    /// (despawn, M5) must update `index`, `behaviors` and `sensor_owners` together.
     behaviors: BTreeMap<EntityId, BehaviorSlot>,
+    /// Number of entities with sensors; kept in sync with `index` like `behaviors`.
     sensor_owners: usize,
     next_id: Option<EntityId>,
+    /// Perception buffers reused across ticks (ASM-093 (f)); taken out while the phase runs.
+    pub(crate) perception: Scratch,
 }
 
 fn is_finite(v: cgf_core::Vec3) -> bool {
@@ -174,6 +180,7 @@ impl World {
             behaviors: BTreeMap::new(),
             sensor_owners: 0,
             next_id: EntityId::new(1),
+            perception: Scratch::default(),
         }
     }
 
@@ -183,21 +190,23 @@ impl World {
 
     /// Validates `init` and adds the entity under the next id (from 1, never reused, REQ-C-2).
     pub(crate) fn spawn(&mut self, init: EntityInit, rng: SimRng) -> Result<EntityId, KernelError> {
-        self.spawn_with(init, AgentInit::default(), None, rng)
+        self.spawn_with(init, AgentInit::default(), || Ok(None), rng)
     }
 
-    /// Like [`World::spawn`] with the behavior-side parts; `instance` is the already instantiated
-    /// `agent.behavior`. Nothing changes on error, and no id is consumed.
+    /// Like [`World::spawn`] with the force and sensors of `agent`; `slot` builds the behavior
+    /// slot and runs only after state, route and id have been validated (ASM-093 (g)). Nothing
+    /// changes on error, and no id is consumed.
     pub(crate) fn spawn_with(
         &mut self,
         init: EntityInit,
         agent: AgentInit,
-        instance: Option<Box<dyn BehaviorInstance>>,
+        slot: impl FnOnce() -> Result<Option<BehaviorSlot>, KernelError>,
         rng: SimRng,
     ) -> Result<EntityId, KernelError> {
         validate_state(&init.state)?;
         let route = init.route.as_ref().map(validate_route).transpose()?;
         let id = self.next_id.ok_or(KernelError::IdsExhausted)?;
+        let slot = slot()?;
         self.next_id = id.get().checked_add(1).and_then(EntityId::new);
         let mut builder = hecs::EntityBuilder::new();
         builder
@@ -219,15 +228,8 @@ impl World {
                 .add(Contacts(Vec::new()));
             self.sensor_owners += 1;
         }
-        if let (Some(behavior), Some(instance)) = (agent.behavior, instance) {
-            self.behaviors.insert(
-                id,
-                BehaviorSlot {
-                    id: behavior.id().clone(),
-                    instance,
-                    last: None,
-                },
-            );
+        if let Some(slot) = slot {
+            self.behaviors.insert(id, slot);
         }
         let entity = self.ecs.spawn(builder.build());
         self.index.insert(id, entity);
@@ -236,6 +238,10 @@ impl World {
 
     /// Visits every entity mutably, in ascending id order.
     pub(crate) fn for_each_mut(&mut self, mut f: impl FnMut(EntityMut<'_>)) {
+        debug_assert!(
+            self.behaviors.keys().all(|id| self.index.contains_key(id)),
+            "every behavior slot belongs to an indexed entity"
+        );
         for (id, entity) in &self.index {
             let Ok((ownership, state, motion, intents, route, rng, force, contacts)) =
                 self.ecs.query_one_mut::<MutQuery<'_>>(*entity)
