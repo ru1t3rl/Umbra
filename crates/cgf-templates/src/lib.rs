@@ -17,6 +17,7 @@ pub(crate) mod discover;
 pub(crate) mod graph_read;
 pub mod graph_resolve;
 pub mod loader;
+pub(crate) mod overlay;
 pub(crate) mod position;
 pub(crate) mod reader;
 pub mod resolve;

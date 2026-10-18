@@ -8,7 +8,9 @@ use cgf_core::{ComponentId, ComponentKind, ParamValue, Provenance, TemplateId};
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
 use crate::graph_read::is_graph_path;
+use crate::graph_resolve::GraphSet;
 use crate::loader::Loader;
+use crate::overlay::Overlay;
 use crate::source::SourceFile;
 use crate::template::{RawComponent, RawTemplate, read_template};
 use crate::value::{LEntry, LTable, Origin};
@@ -100,8 +102,10 @@ impl Loader<'_> {
             files.iter().partition(|f| is_graph_path(f.path()));
         sorted.sort_by(|a, b| a.path().cmp(b.path()));
         let graphs = self.load_graphs(&graph_files, Provenance::File);
+        // Templates resolve on a loader that also knows this load's graphs (WI-14).
+        let overlay = self.overlay(&graphs);
         let mut set = SetBuilder::default();
-        set.diagnostics.extend(graphs.diagnostics);
+        set.diagnostics.extend(graphs.diagnostics.iter().cloned());
         for file in sorted {
             set.add_file(file);
         }
@@ -118,11 +122,13 @@ impl Loader<'_> {
                 .flatten();
             match chain {
                 Some(chain) => {
-                    if let Some(resolved) = self.resolve_one(&chain, &mut local) {
+                    if let Some(resolved) = overlay.resolve_one(&chain, &mut local) {
                         templates.insert(def.id.clone(), resolved);
                     }
                 }
-                None => self.check_partial(template, &set.known_ancestors(template), &mut local),
+                None => {
+                    overlay.check_partial(template, &set.known_ancestors(template), &mut local);
+                }
             }
             set.diagnostics.extend(local);
         }
@@ -130,12 +136,15 @@ impl Loader<'_> {
         unusable.retain(|id| !templates.contains_key(id));
         LoadedTemplates {
             set: TemplateSet { templates },
+            graphs: graphs.set.clone(),
             diagnostics: set.diagnostics,
             unusable,
             unreadable: set.unreadable,
         }
     }
+}
 
+impl Overlay<'_> {
     /// What a template says itself, when its chain cannot be resolved: its own component IDs,
     /// its own `[[sensors]]` list (which replaces the parent's), and parameters of a model that
     /// differs from the nearest known ancestor's (the parent's parameters are dropped then).
@@ -170,17 +179,17 @@ impl Loader<'_> {
                     let params = own.params.clone().unwrap_or_else(|| {
                         LTable::from_entries(own.origin.clone(), BTreeMap::new())
                     });
-                    let _ = self.check_component(kind, id, at, &params, out);
+                    let _ = self.check(kind, id, at, &params, out);
                 }
                 Some((id, at)) => {
-                    if self.check_registered(kind, id, at, out) {
-                        self.check_own_params(kind, id, own.params.as_ref(), out);
+                    if self.loader.check_registered(kind, id, at, out) {
+                        self.check_own(kind, id, own.params.as_ref(), out);
                     }
                 }
                 // The model comes from a readable ancestor: check what the child writes.
                 None => {
                     if let Some(id) = &ancestor {
-                        self.check_own_params(kind, id, own.params.as_ref(), out);
+                        self.check_own(kind, id, own.params.as_ref(), out);
                     }
                 }
             }
@@ -197,20 +206,18 @@ impl Loader<'_> {
     ) -> Option<ResolvedTemplate> {
         let head = chain.first()?;
         let motion = self.resolve_motion(head, chain, out);
-        let mut ok = motion.is_some();
-        ok &= self.check_behavior(chain, out);
-        ok &= self.check_sensors(chain, out);
+        let behavior = self.check_behavior(chain, out);
+        let sensors = self.check_sensors(chain, out);
         let (id, params, located) = motion?;
-        ok.then(|| ResolvedTemplate {
+        Some(ResolvedTemplate {
             id: head.id.0.clone(),
             chain: chain.iter().map(|t| t.id.0.clone()).collect(),
             description: head.description.clone(),
             motion: ComponentRef { id, params },
             network: merge_network(chain),
             source: head.source.clone(),
-            // M3 WI-14 fills the behavior and the sensors.
-            behavior: None,
-            sensors: Vec::new(),
+            behavior: behavior.ok()?,
+            sensors: sensors?,
             located,
         })
     }
@@ -235,15 +242,19 @@ impl Loader<'_> {
             return None;
         };
         let params = merged?.table();
-        let json =
-            self.check_component(ComponentKind::MotionModel, &id, &id_origin, &params, out)?;
+        let json = self.check(ComponentKind::MotionModel, &id, &id_origin, &params, out)?;
         Some((id.clone(), json, LocatedMotion { id_origin, params }))
     }
 
-    /// Behaviors have no registry entries in M2 (ASM-055): their IDs are `unknown_id`.
-    fn check_behavior(&self, chain: &[&RawTemplate], out: &mut Vec<Diagnostic>) -> bool {
+    /// The merged `[behavior]`: `Ok(None)` when the chain has none, `Err` when it has errors. The
+    /// ID is a registered behavior or a graph of the load (ASM-083).
+    fn check_behavior(
+        &self,
+        chain: &[&RawTemplate],
+        out: &mut Vec<Diagnostic>,
+    ) -> Result<Option<ComponentRef>, Failed> {
         let Some(merged) = merge_component(chain, |t| t.behavior.as_ref()) else {
-            return true;
+            return Ok(None);
         };
         let Some((id, at)) = merged.id.clone() else {
             let message = "`[behavior]` has no `ref`".to_string();
@@ -252,41 +263,65 @@ impl Loader<'_> {
                 message,
                 Some(merged.fallback.location()),
             ));
-            return false;
+            return Err(Failed);
         };
         let params = merged.table();
-        self.check_component(ComponentKind::Behavior, &id, &at, &params, out)
-            .is_some()
+        let json = self
+            .check(ComponentKind::Behavior, &id, &at, &params, out)
+            .ok_or(Failed)?;
+        Ok(Some(ComponentRef { id, params: json }))
     }
 
     /// Sensors replace as a whole: the most derived `[[sensors]]` list wins.
-    fn check_sensors(&self, chain: &[&RawTemplate], out: &mut Vec<Diagnostic>) -> bool {
+    fn check_sensors(
+        &self,
+        chain: &[&RawTemplate],
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<Vec<ComponentRef>> {
         match chain.iter().find_map(|t| t.sensors.as_ref()) {
             Some(sensors) => self.check_sensor_list(sensors, out),
-            None => true,
+            None => Some(Vec::new()),
         }
     }
 
-    fn check_sensor_list(&self, sensors: &[RawComponent], out: &mut Vec<Diagnostic>) -> bool {
-        let mut ok = true;
+    /// Every sensor is checked; `None` when one has errors.
+    fn check_sensor_list(
+        &self,
+        sensors: &[RawComponent],
+        out: &mut Vec<Diagnostic>,
+    ) -> Option<Vec<ComponentRef>> {
+        let mut checked = Some(Vec::new());
         for sensor in sensors {
             let Some((id, at)) = &sensor.id else { continue };
             let params = sensor
                 .params
                 .clone()
                 .unwrap_or_else(|| LTable::from_entries(sensor.origin.clone(), BTreeMap::new()));
-            ok &= self
-                .check_component(ComponentKind::Sensor, id, at, &params, out)
-                .is_some();
+            let json = self.check(ComponentKind::Sensor, id, at, &params, out);
+            checked = match (checked, json) {
+                (Some(mut list), Some(params)) => {
+                    list.push(ComponentRef {
+                        id: id.clone(),
+                        params,
+                    });
+                    Some(list)
+                }
+                _ => None,
+            };
         }
-        ok
+        checked
     }
 }
+
+/// A section that has errors (reported already).
+struct Failed;
 
 /// The outcome of loading a set of template files.
 pub(crate) struct LoadedTemplates {
     /// The templates that resolved cleanly.
     pub(crate) set: TemplateSet,
+    /// The behavior graphs of the load (ASM-107).
+    pub(crate) graphs: GraphSet,
     /// Every diagnostic, unsorted.
     pub(crate) diagnostics: Vec<Diagnostic>,
     /// IDs that exist (or may exist) but could not be used; references to them are not reported

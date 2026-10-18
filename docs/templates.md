@@ -32,8 +32,8 @@ One template per file. Keys:
 | `extends` | string | optional parent template ID (single inheritance) |
 | `description` | string | optional, not inherited |
 | `[motion]` | table | `model` (component ID), `params` (table) |
-| `[behavior]` | table | `ref` (component ID), `params`. In M2 no behavior is registered, so any `ref` is `unknown_id` |
-| `[[sensors]]` | array of tables | `kind` (required), `params`. In M2 any `kind` is `unknown_id` |
+| `[behavior]` | table | `ref` (a registered behavior or a `*.behavior.toml` graph of the same load), `params`. Unknown IDs are `unknown_id`; `{ key = .. }` and `{ param = .. }` forms in `params` are `invalid_binding`; a graph's required params (binding-only ones included) must be given (`missing_param`) |
+| `[[sensors]]` | array of tables | `kind` (required, a registered sensor), `params`; resolved into the template and dry-run through the sensor's factory |
 | `[network.<adapter>]` | tables | adapter name `[a-z][a-z0-9_]*`; contents are opaque (REQ-T-4) |
 
 Every resolved template must name a motion model (in itself or in an ancestor): otherwise `missing_key`.
@@ -85,7 +85,7 @@ A file with a top-level `scenario` table is a scenario; any other `.toml` file i
 | `[[entities]]` | array of tables | spawned in file order |
 
 Entity keys: `template` (required), `position` (required), `name`, `group`, `heading_deg` (default 0),
-`speed_mps` (>= 0, default 0), `[entities.overrides.motion]` (`model`, `params`; merged over the template's
+`speed_mps` (>= 0, default 0), `force` (optional, `[a-z][a-z0-9_]*`, at most 128 bytes; entities with different forces are hostile, an entity without one is neutral; ASM-079), `[entities.overrides.motion]` (`model`, `params`; merged over the template's
 motion and validated again, errors located in the scenario), `[entities.route]` (`waypoints` non-empty,
 `arrival_radius_m` > 0, `cruise_speed_mps` > 0). Duplicate non-empty names are `duplicate_name`. Every
 template found under `template_paths` is validated, not only the referenced ones; any error fails the load.

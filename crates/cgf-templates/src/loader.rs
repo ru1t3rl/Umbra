@@ -1,6 +1,6 @@
 //! The loader entry points (REQ-T-1..6).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use cgf_core::{ComponentId, ComponentKind, Provenance, Registry};
@@ -58,11 +58,24 @@ pub struct ValidationReport {
     pub diagnostics: Vec<Diagnostic>,
 }
 
+/// What a scoped loader knows about the graph files of its load (WI-14, `overlay.rs`); empty for
+/// a plain loader.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct GraphScope {
+    /// IDs of graphs that exist but cannot be used (syntax or other errors, duplicates): naming
+    /// one is not an `unknown_id`, its own error is reported elsewhere (ASM-056).
+    pub(crate) silent: BTreeSet<ComponentId>,
+    /// Graph files with syntax errors whose `id` is gone, named in a note of `unknown_id`
+    /// (ASM-054 rule 3).
+    pub(crate) unreadable: Vec<PathBuf>,
+}
+
 /// Loads and validates templates and scenarios against a registry.
 pub struct Loader<'r> {
     pub(crate) registry: &'r Registry,
     pub(crate) schemas: BTreeMap<(ComponentKind, ComponentId), CompiledSchema>,
     pub(crate) options: LoaderOptions,
+    pub(crate) scope: GraphScope,
 }
 
 impl<'r> Loader<'r> {
@@ -102,6 +115,7 @@ impl<'r> Loader<'r> {
             registry,
             schemas,
             options,
+            scope: GraphScope::default(),
         })
     }
 

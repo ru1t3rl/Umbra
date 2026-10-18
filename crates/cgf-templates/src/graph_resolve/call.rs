@@ -2,7 +2,7 @@
 //! target resolves, its version fits the range, params and input bindings fit its interface, and
 //! output bindings fit its ports.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use cgf_core::{
@@ -275,14 +275,14 @@ fn parameters(
     }
     let substituted = substitute(&params, &known);
     let at = View::params_origin(table);
-    for name in callee.required.iter().filter(|_| report) {
-        if params.get(name).is_none() && !call.inputs.contains_key(name) {
-            let message = format!(
-                "behavior `{}`: missing required parameter `{name}`",
-                callee.id
-            );
-            out.push(error(DiagnosticCode::MissingParam, message, &at));
-        }
+    if report {
+        missing(
+            callee,
+            &params,
+            &|name| call.inputs.contains_key(name),
+            &at,
+            out,
+        );
     }
     let registered = callee.graph.is_none();
     let partial = !substituted.dropped.is_empty();
@@ -317,6 +317,56 @@ fn parameters(
         supplied.insert(name.to_string(), substituted.table.get(name).cloned());
     }
     supplied
+}
+
+/// `missing_param` at `at` for every required param of `callee` that `params` lacks and `bound`
+/// does not cover (a run-time input binding). The loader computes it for call sites and templates
+/// alike; the schema's own `missing_param` is dropped (ASM-106 e).
+fn missing(
+    callee: &Callee<'_>,
+    params: &LTable,
+    bound: &dyn Fn(&str) -> bool,
+    at: &Origin,
+    out: &mut Vec<Diagnostic>,
+) {
+    for name in &callee.required {
+        if params.get(name).is_none() && !bound(name) {
+            let message = format!(
+                "behavior `{}`: missing required parameter `{name}`",
+                callee.id
+            );
+            out.push(error(DiagnosticCode::MissingParam, message, at));
+        }
+    }
+}
+
+/// A template's `[behavior]` use of the graph `id` (WI-14): the same checks as a `subgraph` call
+/// site. `params` are the template's merged params without the entries named in `bound` (forms
+/// that were rejected already). Required params are checked unless `partial`; then each supplied
+/// value is followed down the chain (ASM-106 d). Does nothing when `id` is not a usable graph.
+pub(super) fn template_use(
+    set: &Set<'_>,
+    id: &ComponentId,
+    (params, bound): (&LTable, &BTreeSet<String>),
+    partial: bool,
+    out: &mut Vec<Diagnostic>,
+) {
+    let Resolved::Graph(target) = set.resolve(id) else {
+        return;
+    };
+    let Some(callee) = graph_callee(id, target) else {
+        return;
+    };
+    if !partial {
+        let at = params.origin();
+        missing(&callee, params, &|name| bound.contains(name), at, out);
+    }
+    let mut seen = Seen::new();
+    let mut chain = Chain::new(set.depth_limit().min(MAX_CHAIN), &mut seen);
+    for (name, entry) in params.iter() {
+        let name = name.to_string();
+        propagate(set, (&target, id), (&name, entry.value()), &mut chain, out);
+    }
 }
 
 /// The schema errors of `params`; with `partial`, some params are unknown, so what needs them

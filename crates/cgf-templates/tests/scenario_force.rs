@@ -63,7 +63,6 @@ fn placement_without_force_is_neutral() {
 
 /// ADR 0015: a valid `force` is kept on the placement.
 #[test]
-#[ignore = "WI-14"]
 fn placement_force_is_kept() {
     let scenario = ok(load(&scenario_text(&["force = \"blue_team_2\""])));
 
@@ -74,7 +73,6 @@ fn placement_force_is_kept() {
 /// `invalid_value` at the value (with a bounded echo of the offender); a non-string is
 /// `wrong_type`.
 #[test]
-#[ignore = "WI-14"]
 fn force_grammar_is_checked_at_the_value() {
     let long = "f".repeat(129);
     for bad in ["Blue", "1st", "blue-team", "", long.as_str()] {
@@ -96,14 +94,13 @@ fn force_grammar_is_checked_at_the_value() {
     let text = scenario_text(&["force = 5"]);
     assert_eq!(
         rows(&errors(load(&text))),
-        [row("wrong_type", SCENARIO, pos_of(&text, "5"))]
+        [row("wrong_type", SCENARIO, pos_after(&text, "force = "))]
     );
 }
 
 /// ADR 0010: `force` is an additive key: the scenario file schema lists it as an optional property
 /// of an entity, and `schema_version` stays 1.
 #[test]
-#[ignore = "WI-14"]
 fn scenario_file_schema_lists_force_as_optional_and_version_stays_one() {
     let schema: serde_json::Value = serde_json::from_str(cgf_templates::SCENARIO_FILE_SCHEMA)
         .unwrap_or_else(|e| panic!("scenario schema is JSON: {e}"));
@@ -123,7 +120,6 @@ fn scenario_file_schema_lists_force_as_optional_and_version_stays_one() {
 /// `template_paths`: the graph is in `Scenario::graphs`, the template resolves to it, and the
 /// placement carries its force.
 #[test]
-#[ignore = "WI-14"]
 fn scenario_loads_graphs_from_its_template_paths() {
     let registry = registry();
 
@@ -150,7 +146,6 @@ fn scenario_loads_graphs_from_its_template_paths() {
 /// REQ-T-6: `validate_path` and `load_scenario` agree on graph errors: the same diagnostics, in
 /// the same order, at the graph file's positions.
 #[test]
-#[ignore = "WI-14"]
 fn validate_path_and_load_scenario_agree_on_graph_errors() {
     let registry = registry();
     let reader = common::loader(&registry);
@@ -169,4 +164,116 @@ fn validate_path_and_load_scenario_agree_on_graph_errors() {
             row("unreachable_node", &graph, pos_of(&text, "idle")),
         ]
     );
+}
+
+const GRAPH_PATH: &str = "behaviors/patrol.behavior.toml";
+
+fn patrol() -> String {
+    lines(&[
+        "schema_version = 1",
+        "id = \"test.graph.patrol\"",
+        "version = \"1.0.0\"",
+        "root = \"main\"",
+        "[nodes.main]",
+        "type = \"action\"",
+        "ref = \"stub.action.noop\"",
+    ])
+}
+
+fn armed_veh() -> String {
+    lines(&[
+        "schema_version = 1",
+        "id = \"x.veh\"",
+        "[motion]",
+        "model = \"stub.motion.alpha\"",
+        "params = { a = 1.0 }",
+        "[behavior]",
+        "ref = \"test.graph.patrol\"",
+        "[[sensors]]",
+        "kind = \"stub.sensor.eye\"",
+        "params = { range_m = 900.0 }",
+    ])
+}
+
+/// REQ-B-6 (ASM-083): `scenario_from_sources` takes graph sources among the template sources; the
+/// scenario carries the graph, and every placement carries its template's behavior and sensors.
+#[test]
+fn scenario_from_sources_with_graph_sources() {
+    let registry = registry();
+    let text = scenario_text(&["force = \"red\""]);
+
+    let scenario = ok(common::loader(&registry).scenario_from_sources(
+        &src(SCENARIO, &text),
+        &[src("veh.toml", &armed_veh()), src(GRAPH_PATH, &patrol())],
+    ));
+
+    assert_eq!(
+        scenario
+            .graphs
+            .iter()
+            .map(|g| g.id.as_str())
+            .collect::<Vec<_>>(),
+        ["test.graph.patrol"]
+    );
+    let placement = &scenario.entities[0];
+    assert_eq!(
+        placement.behavior.as_ref().map(|b| b.id.as_str()),
+        Some("test.graph.patrol")
+    );
+    assert_eq!(
+        placement
+            .sensors
+            .iter()
+            .map(|s| (s.id.as_str(), s.params.clone()))
+            .collect::<Vec<_>>(),
+        [("stub.sensor.eye", serde_json::json!({ "range_m": 900.0 }))]
+    );
+    assert_eq!(placement.force, Force::new("red").ok());
+}
+
+/// A scenario with no graph files has an empty graph set and placements without a behavior (M2
+/// behavior unchanged).
+#[test]
+fn scenario_without_graphs_has_none() {
+    let scenario = ok(load(&scenario_text(&[])));
+
+    assert!(scenario.graphs.is_empty());
+    assert_eq!(scenario.entities[0].behavior, None);
+    assert_eq!(scenario.entities[0].sensors.len(), 0);
+}
+
+/// A graph error in the sources of `scenario_from_sources` is reported there too.
+#[test]
+fn scenario_from_sources_reports_graph_errors() {
+    let registry = registry();
+    let broken = patrol().replace("root = \"main\"", "root = \"ghost\"");
+
+    let found = errors(common::loader(&registry).scenario_from_sources(
+        &src(SCENARIO, &scenario_text(&[])),
+        &[src("veh.toml", &veh()), src(GRAPH_PATH, &broken)],
+    ));
+
+    assert_eq!(
+        rows(&found),
+        [row(
+            "unknown_node",
+            GRAPH_PATH,
+            pos_of(&broken, "\"ghost\"")
+        )]
+    );
+}
+
+/// The scenario file schema accepts a placement with `force` (and the reader agrees).
+#[test]
+fn scenario_file_schema_accepts_a_force() {
+    let schema = cgf_core::ParamSchema::from_json_str(cgf_templates::SCENARIO_FILE_SCHEMA)
+        .unwrap_or_else(|e| panic!("scenario schema is JSON: {e}"));
+    let compiled = cgf_templates::CompiledSchema::compile(&schema)
+        .unwrap_or_else(|e| panic!("scenario schema compiles: {e}"));
+    let file = src(SCENARIO, &scenario_text(&["force = \"blue_team_2\""]));
+    let (table, syntax) = cgf_templates::value::parse(&file);
+    assert_eq!(syntax.len(), 0);
+    let root = table.unwrap_or_else(|| panic!("a root table")).into_value();
+
+    assert_eq!(compiled.validate(&root, "scenario").len(), 0);
 }

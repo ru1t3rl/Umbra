@@ -3,7 +3,7 @@
 //! Requirements: REQ-B-6, REQ-B-10, REQ-B-12, REQ-T-1, REQ-T-3, ADR 0010, ADR 0014, ADR 0015,
 //! ASM-055, ASM-056, ASM-083.
 //!
-//! Step 4 of M3: written before WI-14; every test is ignored with that work item. Graph sources
+//! Step 4 of M3: written before WI-14 (now all live). Graph sources
 //! and template sources are loaded together through `Loader::templates_from_sources` (graphs
 //! resolve against the registry plus the graphs of the same load); the stub registry is
 //! `graph_support::registry`. Positions follow the M2 conventions (see `graph_resolve.rs`).
@@ -15,7 +15,7 @@ mod graph_support;
 
 use cgf_core::ParamValue;
 use cgf_templates::{SourceFile, TemplateSet};
-use common::{Row, errors, lines, ok, pos_after, pos_of, row, rows, src};
+use common::{Row, errors, lines, ok, pos_after, pos_of, pos_of_nth, row, rows, src};
 use graph_support::{registry, with_interface};
 use serde_json::json;
 
@@ -68,6 +68,13 @@ fn tank(graph: &str, params: &str) -> String {
     template("tank.blue", &[], &refs)
 }
 
+/// Where the `params` value of the `[behavior]` section starts: the second `params = ` (the first
+/// is the motion model's).
+fn behavior_params_at(text: &str) -> (u32, u32) {
+    let (line, column) = pos_of_nth(text, "params = ", 1);
+    (line, column + 9)
+}
+
 fn load(files: &[SourceFile]) -> Result<TemplateSet, cgf_templates::Diagnostics> {
     let registry = registry();
     common::loader(&registry).templates_from_sources(files)
@@ -83,7 +90,6 @@ fn template_rows(graph: &str, tank_text: &str) -> Vec<Row> {
 /// REQ-B-6: a template `[behavior] ref` can name a graph of the same load; the resolved template
 /// carries the behavior with its parameters.
 #[test]
-#[ignore = "WI-14"]
 fn template_ref_to_file_graph_of_the_same_load_resolves() {
     let tank = tank("test.graph.patrol", "{ engage_range_m = 2000.0 }");
 
@@ -124,7 +130,6 @@ fn template_ref_to_unknown_graph_is_unknown_id() {
 
 /// ASM-056: a template that names a graph from a broken file gets no cascade error of its own.
 #[test]
-#[ignore = "WI-14"]
 fn template_ref_to_broken_graph_gives_no_cascade() {
     let broken = format!("{}this is not toml\n", patrol());
     let tank = tank("test.graph.patrol", "");
@@ -161,7 +166,6 @@ fn template_ref_to_a_condition_says_it_is_a_condition() {
 /// REQ-B-10 (AT-6): a required param missing in the template's `params` is `missing_param` at the
 /// table.
 #[test]
-#[ignore = "WI-14"]
 fn call_site_missing_param() {
     let tank = tank("test.graph.child", "{ }");
 
@@ -169,11 +173,7 @@ fn call_site_missing_param() {
 
     assert_eq!(
         rows(&d),
-        [row(
-            "missing_param",
-            TEMPLATE,
-            pos_after(&tank, "params = ")
-        )]
+        [row("missing_param", TEMPLATE, behavior_params_at(&tank))]
     );
     assert_eq!(
         d[0].message,
@@ -183,7 +183,6 @@ fn call_site_missing_param() {
 
 /// REQ-B-10 (AT-6): an undeclared param is `unknown_param` at its key.
 #[test]
-#[ignore = "WI-14"]
 fn call_site_unknown_param() {
     let tank = tank("test.graph.child", "{ count = 1, extra = 2 }");
 
@@ -195,7 +194,6 @@ fn call_site_unknown_param() {
 
 /// REQ-B-10 (AT-6): a value of the wrong type is `param_wrong_type` at the value.
 #[test]
-#[ignore = "WI-14"]
 fn call_site_wrong_type() {
     let tank = tank("test.graph.child", "{ count = \"many\" }");
 
@@ -207,7 +205,6 @@ fn call_site_wrong_type() {
 
 /// REQ-B-10 (AT-6): a value out of range is `param_out_of_range` at the value.
 #[test]
-#[ignore = "WI-14"]
 fn call_site_out_of_range() {
     let tank = tank("test.graph.child", "{ count = 0 }");
 
@@ -224,7 +221,6 @@ fn call_site_out_of_range() {
 /// ADR 0014 (AT-20): a top-level behavior has no parent blackboard, so `{ key = .. }` in template
 /// `[behavior] params` is `invalid_binding` at the form.
 #[test]
-#[ignore = "WI-14"]
 fn key_form_in_template_behavior_params_is_invalid_binding() {
     let graph = with_interface(
         "test.graph.child",
@@ -245,7 +241,6 @@ fn key_form_in_template_behavior_params_is_invalid_binding() {
 /// ADR 0014: a graph whose interface has a required binding-only param (`entity`) cannot be a
 /// top-level behavior: `missing_param` at the template's `params` table.
 #[test]
-#[ignore = "WI-14"]
 fn graph_with_required_binding_only_param_as_template_behavior_is_missing_param() {
     let graph = with_interface(
         "test.graph.child",
@@ -257,11 +252,7 @@ fn graph_with_required_binding_only_param_as_template_behavior_is_missing_param(
 
     assert_eq!(
         rows(&d),
-        [row(
-            "missing_param",
-            TEMPLATE,
-            pos_after(&tank, "params = ")
-        )]
+        [row("missing_param", TEMPLATE, behavior_params_at(&tank))]
     );
     assert!(d[0].message.contains("target"), "{}", d[0].message);
 }
@@ -271,7 +262,6 @@ fn graph_with_required_binding_only_param_as_template_behavior_is_missing_param(
 /// section); `[[sensors]]` is replaced as a whole (an empty list clears it); both are now visible
 /// in the resolved template.
 #[test]
-#[ignore = "WI-14"]
 fn behavior_and_sensors_merge_per_adr_0010_and_are_visible_in_resolved_template() {
     let other = lines(&[
         "schema_version = 1",
@@ -418,7 +408,6 @@ fn sensors_are_looked_up_and_validated_by_id() {
 /// action (graph leaves). In M2 the behavior and sensor arms were placeholders and condition and
 /// action were refused as unsupported.
 #[test]
-#[ignore = "WI-14"]
 fn trial_build_runs_real_dry_runs_for_behavior_sensor_condition_and_action() {
     let behavior = tank(
         "stub.behavior.ext",

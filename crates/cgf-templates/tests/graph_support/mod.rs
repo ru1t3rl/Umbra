@@ -269,6 +269,19 @@ pub fn registry() -> Registry {
     registry
 }
 
+/// Registers `id` as a plain behavior (no bindable params) with exactly `schema`: the "twin" of a
+/// graph whose interface produced that schema (WI-14 equivalence test).
+pub fn register_twin(registry: &mut Registry, id: &str, schema: &ParamSchema) {
+    let leaf = Leaf {
+        id: cid(id),
+        schema: schema.clone(),
+        unlucky: None,
+    };
+    registry
+        .register_behavior(Arc::new(leaf), info(Provenance::Plugin))
+        .unwrap_or_else(|e| panic!("{e}"));
+}
+
 /// The parameter that `build` rejects at 13.0 for the leaf `id`, so every kind has a dry run.
 fn unlucky_key(id: &str) -> &'static str {
     match id {

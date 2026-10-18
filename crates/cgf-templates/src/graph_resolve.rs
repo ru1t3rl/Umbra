@@ -21,6 +21,7 @@ use crate::loader::Loader;
 use crate::source::SourceFile;
 use crate::value::Origin;
 use cycles::Link;
+pub(crate) use template::Graphs;
 use view::View;
 
 mod bind;
@@ -28,6 +29,7 @@ mod call;
 mod cycles;
 mod leaf;
 mod own;
+mod template;
 mod view;
 
 /// The behavior graphs of a load, by ID.
@@ -62,6 +64,8 @@ impl GraphSet {
 pub(crate) struct LoadedGraphs {
     pub(crate) set: GraphSet,
     pub(crate) diagnostics: Vec<Diagnostic>,
+    /// The files as read, for the checks of template uses (WI-14).
+    pub(crate) reads: Vec<GraphRead>,
 }
 
 /// What an ID of a graph file stands for in the load.
@@ -263,6 +267,7 @@ impl Loader<'_> {
         LoadedGraphs {
             set: GraphSet { graphs },
             diagnostics,
+            reads,
         }
     }
 }

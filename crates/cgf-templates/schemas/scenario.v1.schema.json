@@ -36,6 +36,7 @@
         "position": { "$ref": "#/$defs/position" },
         "heading_deg": { "type": "number" },
         "speed_mps": { "type": "number", "minimum": 0 },
+        "force": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Optional force name, `[a-z][a-z0-9_]*` (ASM-079); entities with different forces are hostile, an entity without one is neutral" },
         "overrides": {
           "type": "object",
           "properties": {

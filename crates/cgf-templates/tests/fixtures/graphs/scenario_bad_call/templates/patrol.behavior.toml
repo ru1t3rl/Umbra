@@ -1,0 +1,22 @@
+# Fixture: a small valid behavior graph (selector over a condition and an action).
+# Provenance: hand-written for M3 step 4.
+schema_version = 1
+id = "test.graph.patrol"
+version = "1.0.0"
+root = "main"
+
+[interface]
+params = { engage_range_m = { type = "number", exclusiveMinimum = 0, default = 2500.0 } }
+
+[nodes.main]
+type = "selector"
+children = ["engage", "idle"]
+
+[nodes.engage]
+type = "condition"
+ref = "stub.cond.near"
+params = { range_m = { param = "engage_range_m" } }
+
+[nodes.idle]
+type = "action"
+ref = "stub.action.noop"

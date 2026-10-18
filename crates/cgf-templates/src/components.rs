@@ -78,7 +78,8 @@ impl Loader<'_> {
         out: &mut Vec<Diagnostic>,
     ) -> bool {
         let registered = self.schemas.contains_key(&(kind, id.clone()));
-        if !registered {
+        let silent = kind == ComponentKind::Behavior && self.scope.silent.contains(id);
+        if !registered && !silent {
             out.push(self.unknown_id(kind, id, at));
         }
         registered
@@ -111,8 +112,18 @@ impl Loader<'_> {
             let list: Vec<&str> = ids.iter().map(|i| i.as_str()).collect();
             format!("registered {}s: {}", kind.noun(), list.join(", "))
         };
-        Diagnostic::new(DiagnosticCode::UnknownId, message, Some(at.location()))
-            .with_note(note, None)
+        let mut found = Diagnostic::new(DiagnosticCode::UnknownId, message, Some(at.location()))
+            .with_note(note, None);
+        if kind == ComponentKind::Behavior {
+            for path in &self.scope.unreadable {
+                let note = format!(
+                    "may be defined in {}, which has syntax errors",
+                    path.display()
+                );
+                found = found.with_note(note, None);
+            }
+        }
+        found
     }
 
     fn trial_build(
@@ -129,7 +140,8 @@ impl Loader<'_> {
             ComponentKind::Terrain => registry
                 .terrain(id)
                 .map_or(Ok(()), |f| f.build(params).map(drop)),
-            // WI-13: graph leaves and registered behaviors are dry-run through their factories.
+            // Graph leaves, registered behaviors and sensors are dry-run through their factories.
+            // A graph of the load has no factory: its leaves are dry-run where they are written.
             ComponentKind::Behavior => registry
                 .behavior(id)
                 .map_or(Ok(()), |f| f.build(params).map(drop)),
@@ -139,8 +151,10 @@ impl Loader<'_> {
             ComponentKind::Action => registry
                 .action(id)
                 .map_or(Ok(()), |f| f.build(params).map(drop)),
-            // Placeholder from M2 (ASM-055): the dry run of sensors is M3 WI-14.
-            ComponentKind::Sensor => Ok(()),
+            ComponentKind::Sensor => registry
+                .sensor(id)
+                .map_or(Ok(()), |f| f.build(params).map(drop)),
+            // `ComponentKind` is `non_exhaustive`: a kind added later must get a dry run here.
             _ => Err(BuildError::new("component kind not supported")),
         }
     }

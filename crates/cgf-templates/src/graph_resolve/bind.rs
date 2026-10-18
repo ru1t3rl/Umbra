@@ -69,6 +69,49 @@ fn collect<'t>(value: &'t LValue, whole_of: Option<&'t str>, out: &mut Vec<Param
     }
 }
 
+/// A reserved one-key form found in a `params` table.
+pub(super) struct Form<'t> {
+    /// The top-level `params` key that holds it.
+    pub(super) top: &'t str,
+    /// The form.
+    pub(super) value: &'t LValue,
+    /// `{ key = .. }` (true) or `{ param = .. }` (false).
+    pub(super) is_key: bool,
+}
+
+/// Every `{ key = .. }` and `{ param = .. }` form below the root of `params`, in key order (the
+/// root is never a form).
+pub(super) fn forms(params: &LTable) -> Vec<Form<'_>> {
+    let mut out = Vec::new();
+    for (key, entry) in params.iter() {
+        collect_forms(entry.value(), key, &mut out);
+    }
+    out
+}
+
+fn collect_forms<'t>(value: &'t LValue, top: &'t str, out: &mut Vec<Form<'t>>) {
+    if as_table(value).is_some_and(|t| t.iter().count() == 1)
+        && let Some(form) = reserved_form(&value.to_param())
+    {
+        let is_key = matches!(form, ReservedForm::Key(_));
+        out.push(Form { top, value, is_key });
+        return;
+    }
+    match value.kind() {
+        LKind::Table(table) => {
+            for (_, entry) in table.iter() {
+                collect_forms(entry.value(), top, out);
+            }
+        }
+        LKind::Array(items) => {
+            for item in items {
+                collect_forms(item, top, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Where a substituted value came from.
 pub(super) struct Source {
     /// The supplied value.

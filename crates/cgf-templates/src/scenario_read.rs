@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use cgf_core::{
-    ComponentId, ComponentKind, Meters, MetersPerSecond, Radians, TemplateId, TickRate,
+    ComponentId, ComponentKind, Force, Meters, MetersPerSecond, Radians, TemplateId, TickRate,
 };
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
@@ -28,7 +28,7 @@ const SCENARIO_KEYS: [&str; 7] = [
     "duration_s",
     "template_paths",
 ];
-const ENTITY_KEYS: [&str; 8] = [
+const ENTITY_KEYS: [&str; 9] = [
     "template",
     "name",
     "group",
@@ -37,6 +37,7 @@ const ENTITY_KEYS: [&str; 8] = [
     "speed_mps",
     "overrides",
     "route",
+    "force",
 ];
 const ROUTE_KEYS: [&str; 3] = ["waypoints", "arrival_radius_m", "cruise_speed_mps"];
 const DEFAULT_TERRAIN: &str = "builtin.terrain.flat";
@@ -163,8 +164,7 @@ impl Loader<'_> {
             terrain: terrain?,
             templates: loaded.set.clone(),
             entities: entities?,
-            // M3 WI-12 fills the graphs of the load.
-            graphs: crate::graph_resolve::GraphSet::default(),
+            graphs: loaded.graphs.clone(),
         })
     }
 
@@ -252,6 +252,10 @@ impl Loader<'_> {
             Some(v) => non_negative(reader, "speed_mps", v).map(MetersPerSecond),
             None => Some(MetersPerSecond(0.0)),
         };
+        let force = match table.get("force") {
+            None => Some(None),
+            Some(v) => read_force(reader, v).map(Some),
+        };
         let overrides = match table.get("overrides") {
             None => Some(None),
             Some(v) => read_overrides(reader, v).map(Some),
@@ -273,7 +277,7 @@ impl Loader<'_> {
         };
         let (template, position) = (template?, position?);
         let (heading, speed) = (heading?, speed?);
-        let (route, motion) = (route?, motion?);
+        let (route, motion, force) = (route?, motion?, force?);
         Some(Placement {
             template: template.id.clone(),
             name,
@@ -283,10 +287,9 @@ impl Loader<'_> {
             speed,
             motion,
             route,
-            // M3 WI-14 fills the behavior, the sensors and the force.
-            behavior: None,
-            sensors: Vec::new(),
-            force: None,
+            behavior: template.behavior.clone(),
+            sensors: template.sensors.clone(),
+            force,
         })
     }
 
@@ -395,6 +398,20 @@ fn check_duplicate_name(
         }
         None => {
             names.insert(name.clone(), value.origin().clone());
+        }
+    }
+}
+
+/// The placement `force` (ASM-079): `[a-z][a-z0-9_]*`, at most `MAX_ID_LEN` bytes. A violation is
+/// `invalid_value` at the value; the message echoes at most a bounded prefix of the input.
+fn read_force(reader: &mut Reader<'_>, value: &LValue) -> Option<Force> {
+    let text = reader.string("force", value)?;
+    match Force::new(text) {
+        Ok(force) => Some(force),
+        Err(error) => {
+            let message = format!("`force` is not valid: {error}");
+            reader.error(DiagnosticCode::InvalidValue, message, value.origin());
+            None
         }
     }
 }
