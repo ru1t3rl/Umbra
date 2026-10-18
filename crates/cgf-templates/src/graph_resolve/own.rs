@@ -3,7 +3,7 @@
 
 use cgf_core::{ComponentKind, NodeKind};
 
-use super::call::{self, Written};
+use super::call::{self, Seen, Written};
 use super::view::View;
 use super::{Set, leaf};
 use crate::diagnostic::{Diagnostic, DiagnosticCode};
@@ -12,7 +12,7 @@ use crate::value::{LValue, Origin};
 
 /// Every error of the file `view`, also when the file has other errors: what is checked needs only
 /// the parts that did read (a node with an error is skipped).
-pub(super) fn check(set: &Set<'_>, view: &View<'_>, out: &mut Vec<Diagnostic>) {
+pub(super) fn check(set: &Set<'_>, view: &View<'_>, seen: &mut Seen, out: &mut Vec<Diagnostic>) {
     out.extend(shape::check(&view.parts.table));
     blackboard_clash(view, out);
     outputs_from(view, out);
@@ -26,7 +26,7 @@ pub(super) fn check(set: &Set<'_>, view: &View<'_>, out: &mut Vec<Diagnostic>) {
                 leaf::check(set, view, ComponentKind::Condition, l, table, out);
             }
             NodeKind::Action(l) => leaf::check(set, view, ComponentKind::Action, l, table, out),
-            NodeKind::Subgraph(c) => call::check(set, view, c, table, &mut written, out),
+            NodeKind::Subgraph(c) => call::check(set, view, c, table, &mut written, seen, out),
             _ => {}
         }
     }

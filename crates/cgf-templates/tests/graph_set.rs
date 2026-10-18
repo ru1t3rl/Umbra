@@ -493,9 +493,7 @@ fn reference_to_a_param_without_default_is_not_checked_alone() {
 
 // --- cascade, both ways (ASM-056) -----------------------------------------------------------------
 
-/// ASM-056: a duplicated ID is reported once; graphs that call it get no `unknown_id` or other
-/// error about it, and a graph in a syntax-error file whose ID cannot be recovered is named in a
-/// note of the `unknown_id` for it.
+/// ASM-056: a duplicated ID is reported once; graphs that call it get no error about it.
 #[test]
 fn callers_of_a_duplicate_get_no_cascade() {
     let one = minimal("test.graph.same");

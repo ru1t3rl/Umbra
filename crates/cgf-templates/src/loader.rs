@@ -33,7 +33,10 @@ pub enum LoaderError {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct LoaderOptions {
-    /// The most graphs on one `subgraph` chain, the referencing root graph included.
+    /// The most graphs on one `subgraph` chain, the referencing root graph included. 0 means 1
+    /// (a graph alone). `register_graphs` in `cgf-behavior` always applies
+    /// [`cgf_core::DEFAULT_MAX_SUBGRAPH_DEPTH`], so a limit above it accepts chains that
+    /// registration then refuses (ASM-073).
     pub max_subgraph_depth: u32,
 }
 

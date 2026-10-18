@@ -166,6 +166,13 @@ impl<'a> Set<'a> {
         }
     }
 
+    /// The most graphs on a `subgraph` chain (`max_subgraph_depth`, at least 1).
+    fn depth_limit(&self) -> usize {
+        usize::try_from(self.loader.options.max_subgraph_depth)
+            .unwrap_or(usize::MAX)
+            .max(1)
+    }
+
     /// `unknown_id` for a `subgraph` target, noting files that may define it (ASM-054 rule 3).
     fn unknown_behavior(&self, id: &ComponentId, at: &Origin) -> Diagnostic {
         let mut found = self.loader.unknown_id(ComponentKind::Behavior, id, at);
@@ -233,12 +240,12 @@ impl Loader<'_> {
         let mut diagnostics: Vec<Diagnostic> =
             reads.iter().flat_map(|r| r.diagnostics.clone()).collect();
         let set = Set::new(self, &reads, &mut diagnostics);
+        let mut seen = call::Seen::new();
         for view in reads.iter().filter_map(View::of) {
-            own::check(&set, &view, &mut diagnostics);
+            own::check(&set, &view, &mut seen, &mut diagnostics);
         }
         let (ids, links) = set.links();
-        let limit = usize::try_from(self.options.max_subgraph_depth).unwrap_or(usize::MAX);
-        diagnostics.extend(cycles::analyse(&ids, &links, limit.max(1)));
+        diagnostics.extend(cycles::analyse(&ids, &links, set.depth_limit()));
         let used: BTreeSet<&ComponentId> = set
             .known
             .iter()

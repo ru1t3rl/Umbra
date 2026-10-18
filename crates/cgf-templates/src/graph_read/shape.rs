@@ -21,6 +21,8 @@ const GUARD_TYPES: [&str; 4] = ["condition", "inverter", "sequence", "selector"]
 struct Edge<'t> {
     name: &'t str,
     at: &'t Origin,
+    /// An FSM guard (`when`).
+    guard: bool,
 }
 
 struct Node<'t> {
@@ -93,6 +95,7 @@ fn collect(table: &LTable) -> Nodes<'_> {
         edges.extend(guards.iter().map(|g| Edge {
             name: g.name,
             at: g.at,
+            guard: true,
         }));
         nodes.insert(
             name,
@@ -119,6 +122,7 @@ fn references<'t>(
         names.contains(name).then(|| Edge {
             name,
             at: value.origin(),
+            guard: false,
         })
     };
     match ty {
@@ -191,8 +195,13 @@ fn walk<'t>(root: &'t str, nodes: &Nodes<'t>, out: &mut Vec<Diagnostic>) -> BTre
                 out.push(at(DiagnosticCode::NodeCycle, message, edge.at));
             }
             Some(Mark::Done) => {
+                let hint = if edge.guard {
+                    "; copy the guard node for each transition"
+                } else {
+                    ""
+                };
                 let message = format!(
-                    "node `{}` has more than one parent (a graph is a tree)",
+                    "node `{}` has more than one parent (a graph is a tree){hint}",
                     shown(edge.name)
                 );
                 out.push(at(DiagnosticCode::NodeReused, message, edge.at));
