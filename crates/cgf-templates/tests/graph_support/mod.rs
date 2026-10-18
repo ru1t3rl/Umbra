@@ -308,6 +308,11 @@ pub fn register_chain(registry: &mut Registry, ids: &[&str]) {
     }
 }
 
+/// A stub behavior factory with the `stub.behavior.ext` schema.
+pub fn plain_behavior(id: &str) -> impl Factory<dyn Behavior> {
+    Leaf::new(id, EXT)
+}
+
 /// The parameter that `build` rejects at 13.0 for the leaf `id`, so every kind has a dry run.
 fn unlucky_key(id: &str) -> &'static str {
     match id {

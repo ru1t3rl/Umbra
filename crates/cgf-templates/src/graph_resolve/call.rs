@@ -34,7 +34,7 @@ struct Callee<'a> {
 
 /// The most graphs a supplied value is followed through (the loader's depth limit, capped so the
 /// recursion stays small whatever the option says).
-const MAX_CHAIN: usize = 256;
+pub(super) const MAX_CHAIN: usize = 256;
 
 /// One supplied value followed into one graph (ASM-106 d): the graph, the param, and where the
 /// value is written.

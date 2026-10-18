@@ -753,3 +753,49 @@ fn a_registered_leaf_counts_as_one_level() {
         ["subgraph_too_deep"]
     );
 }
+
+/// ASM-106 f: a chain that overshoots the limit is reported once, at the reference that crosses
+/// it, not again further down: 17 file graphs ending in a registered chain give one diagnostic.
+#[test]
+fn an_overshooting_chain_into_a_registered_graph_is_reported_once() {
+    let mut reg = registry();
+    register_chain(&mut reg, &["stub.reg.r1", "stub.reg.r2"]);
+    let texts = file_chain_into_registered(17);
+    let given: Vec<SourceFile> = texts.iter().map(|(n, t)| src(&path(n), t)).collect();
+
+    let d = errors(loader_for(&reg).graphs_from_sources(&given, cgf_core::Provenance::File));
+
+    assert_eq!(rows(&d).len(), 1, "{d:?}");
+    assert_eq!(d[0].code.as_str(), "subgraph_too_deep");
+}
+
+/// ASM-106 f: a huge loader limit and registered metadata that loops still terminate (the walk
+/// is capped like the other chain walks).
+#[test]
+fn a_huge_limit_and_looping_registered_metadata_terminate() {
+    let mut reg = registry();
+    reg.register_behavior(
+        std::sync::Arc::new(graph_support::plain_behavior("stub.reg.loop")),
+        cgf_core::ComponentInfo::new(
+            "loop",
+            cgf_core::Provenance::Plugin,
+            cgf_core::Version::new(1, 0, 0),
+        )
+        .with_subgraph(
+            cgf_core::ComponentId::new("stub.reg.loop").expect("id"),
+            None,
+        ),
+    )
+    .expect("register");
+    let top = calling("test.g1", &["stub.reg.loop"]);
+    let given = files(&[("g1", &top)]);
+    let mut options = LoaderOptions::default();
+    options.max_subgraph_depth = u32::MAX;
+
+    let result = cgf_templates::Loader::with_options(&reg, options)
+        .expect("loader")
+        .graphs_from_sources(&given, cgf_core::Provenance::File);
+
+    // The walk stops at the cap, and a limit above it accepts (ASM-073).
+    assert_eq!(ok(result).len(), 1);
+}

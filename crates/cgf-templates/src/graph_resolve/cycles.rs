@@ -205,7 +205,7 @@ fn too_deep(
     for v in (0..n).filter(|&v| !cyclic[v] && level[v] == limit) {
         for link in edges(v) {
             let message = format!(
-                "`{}` calls `{}`, which makes the chain deeper than the limit of {limit} graphs",
+                "`{}` calls `{}`, which makes the chain deeper than the limit of {limit} behaviors",
                 ids[v], ids[link.to]
             );
             out.push(Diagnostic::new(
@@ -216,7 +216,10 @@ fn too_deep(
         }
     }
     for v in (0..n).filter(|&v| !cyclic[v]) {
-        for tail in tails[v].iter().filter(|t| level[v] + t.chain.len() > limit) {
+        for tail in tails[v]
+            .iter()
+            .filter(|t| level[v] <= limit && level[v] + t.chain.len() > limit)
+        {
             out.push(registered_too_deep(&ids[v], tail, limit));
         }
     }
@@ -227,7 +230,7 @@ fn too_deep(
 fn registered_too_deep(caller: &ComponentId, tail: &Tail, limit: usize) -> Diagnostic {
     let names: Vec<String> = tail.chain.iter().map(|id| format!("`{id}`")).collect();
     let message = format!(
-        "`{caller}` calls `{}`, which makes the chain deeper than the limit of {limit} graphs",
+        "`{caller}` calls `{}`, which makes the chain deeper than the limit of {limit} behaviors",
         tail.chain[0]
     );
     let note = format!(

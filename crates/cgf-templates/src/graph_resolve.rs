@@ -233,7 +233,7 @@ impl<'a> Set<'a> {
 
     /// The references of a graph to registered behaviors, each with the longest chain below it.
     fn tails(&self, view: &View<'_>) -> Vec<Tail> {
-        let limit = self.depth_limit();
+        let limit = self.depth_limit().min(call::MAX_CHAIN);
         view.parts
             .nodes
             .iter()

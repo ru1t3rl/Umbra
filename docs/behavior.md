@@ -416,7 +416,10 @@ Every node table has `type` (required) and the settings of its type; any other k
 | `subgraph` | `ref` (a behavior ID), `version` (semver range, optional), `params` (table, optional), `outputs` (table `<port> = "<parent key>"`, optional) | |
 | `fsm` | `initial` (state name), `states` (table `<state> = "<node>"`), `exits` (table `<exit> = "success" \| "failure"`, optional), `[[nodes.<fsm>.transitions]]` (array, optional) | each transition: `from` (state), `to` (state or exit), and exactly one of `when = "<guard node>"` or `on = "success" \| "failure"` |
 
-In `params`, two one-key tables are reserved forms, never literals (ADR 0012, ADR 0014, ASM-076):
+In `params`, two one-key tables are reserved forms, never literals (ADR 0012, ADR 0014, ASM-076). The
+params table itself is not one: `params = { param = "x" }` at its root is a literal param named `param`
+(ASM-089 b).
+
 - `{ param = "<name>" }`: replaced at build time by the value of this graph's interface param `<name>`
   (in `condition`, `action` and `subgraph` params; it stands for a whole value, also inside an array or
   table value);
@@ -630,13 +633,14 @@ second); any number of inputs may read it.
 loader's limit with `LoaderOptions::max_subgraph_depth`, but registration always applies 16. Inside one
 graph, nodes nest at most **128 levels** (`node_too_deep`). Graphs that call each other in a loop are
 `subgraph_cycle` (once per strongly connected group, at the first `ref` of the shortest cycle through its
-smallest ID, with one note per remaining edge). Depth counts behaviors, the same way at load time (`cgf-cli validate`) and at registration: a call to a
-registered graph (for example `builtin.fsm.patrol_and_engage`, which itself calls
-`builtin.subgraph.engage_target`) adds that graph's whole longest chain, one level per behavior, and a
-registered behavior that calls no subgraph (a built-in leaf-like behavior, a plugin behavior) adds 1. So
-15 of your graphs ending in `builtin.fsm.patrol_and_engage` are 17 levels and `subgraph_too_deep` at the
-call that crosses the limit, with a note that names the registered chain; what `validate` accepts also
-instantiates (ASM-099 e).
+smallest ID, with one note per remaining edge). Depth counts behaviors, the same way at load time
+(`cgf-cli validate`) and at registration: a call to a registered graph (for example
+`builtin.fsm.patrol_and_engage`, which itself calls `builtin.subgraph.engage_target`) adds that graph's
+whole longest chain, one level per behavior, and a registered behavior that calls no subgraph (for
+example `builtin.subgraph.engage_target`, or a plugin behavior) adds 1. So 15 of your graphs ending in
+`builtin.fsm.patrol_and_engage` are 17 levels and `subgraph_too_deep` at the call that crosses the limit
+(reported once), with a note that names the registered chain; what `validate` accepts also instantiates
+(ASM-099 e).
 
 ## Load-time checks
 `cgf-cli validate` and every scenario load run the M2 pipeline over graph files too (A-001): all errors of
@@ -690,7 +694,7 @@ tick; without a sensor there are none.
 ### Actions
 | ID | Params | Emits | Status |
 |---|---|---|---|
-| `builtin.action.follow_route` | none | `FollowRoute` on every tick with a non-empty route, also the completing one | Running until the last waypoint is reached, then Success (and the entity holds there); Failure, with no intent, without a route. |
+| `builtin.action.follow_route` | none | `FollowRoute` on every tick with a non-empty route, also the completing one | Running until the last waypoint is reached, then Success (and the entity holds there); Failure, with no intent, without a route or with an empty one. |
 | `builtin.action.move_to` | `target_key` (entity key, read only), `speed_mps` (> 0), `arrival_radius_m` (> 0), all required | `SetSpeed(speed_mps)` then `MoveTo(contact position)` while Running; nothing on Success | Running while the target is farther than `arrival_radius_m`, Success within it; Failure when the key is unset or the target is not a current contact. |
 | `builtin.action.wait` | `duration_s` (> 0, required) | `Hold` while Running | Running for `n` ticks from its own first tick, Success on tick `n + 1` (no intent on that tick); starts over after it finished or was halted. |
 | `builtin.action.fire` | `target_key` (entity key, read only), `weapon` (a namespaced ID, e.g. `example.weapon.main_gun`), both required | `Fire { target, weapon }` | Success in the same tick; Failure, without firing, when the key is unset or the target is not a current contact. Recorded only, see [Intents](#intents-and-what-they-do-not-do-yet). |
@@ -792,9 +796,9 @@ Same format, sorting and rules as templates (`docs/templates.md`): `path:line:co
 plus `note:` lines, all files together, sorted, no duplicates. Examples:
 ```
 behaviors/a.behavior.toml:19:7: error[subgraph_cycle]: subgraph cycle: `example.a` -> `example.b` -> `example.a`
-  note: `example.b` references `example.a` (behaviors/b.behavior.toml:12:7)
-behaviors/p.behavior.toml:31:11: error[version_mismatch]: `example.subgraph.attack` 1.0.0 does not satisfy `^2.0`
-  note: defined in behaviors/attack.behavior.toml:4:11
+  note: `example.b` calls `example.a` here (behaviors/b.behavior.toml:12:7)
+behaviors/p.behavior.toml:31:11: error[version_mismatch]: `example.subgraph.attack` is version 1.0.0, which does not satisfy `^2.0`
+  note: `example.subgraph.attack` is defined here (behaviors/attack.behavior.toml:4:11)
 ```
 
 Every code the graph loader can emit (positions per ASM-092(b)):

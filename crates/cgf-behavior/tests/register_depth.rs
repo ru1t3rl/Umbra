@@ -137,3 +137,28 @@ fn a_shared_subtree_reached_at_exactly_the_limit_is_accepted() {
 
     assert!(register(&mut bench, graphs).is_ok());
 }
+
+/// ASM-099 e: metadata of a registered behavior that loops shows as `TooDeep` (the depth cap
+/// stops the walk); a reference inside registered metadata that is not registered is skipped.
+#[test]
+fn looping_or_dangling_registered_metadata_is_capped_and_skipped() {
+    let mut bench = Bench::new();
+    let described =
+        |target: &str| common::info(cgf_core::Provenance::Plugin).with_subgraph(cid(target), None);
+    bench.register_plugin_behavior_with("test.reg.loop", described("test.reg.loop"));
+    bench.register_plugin_behavior_with("test.reg.dangling", described("test.reg.nothing"));
+    let caller = |name: &str, target: &str| {
+        let mut b = B::new();
+        let node = b.subgraph("call", call(target, json!({})));
+        b.graph(name, node)
+    };
+
+    let looped = register(&mut bench, vec![caller("test.reg.c1", "test.reg.loop")]);
+    let dangling = register(&mut bench, vec![caller("test.reg.c2", "test.reg.dangling")]);
+
+    assert!(
+        matches!(looped, Err(GraphRegistrationError::TooDeep { .. })),
+        "{looped:?}"
+    );
+    assert!(dangling.is_ok(), "{dangling:?}");
+}

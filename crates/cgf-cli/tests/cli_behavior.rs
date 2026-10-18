@@ -132,7 +132,7 @@ fn behavior_doc_examples_validate() {
     paths.dedup();
     assert_eq!(paths.len(), before, "two blocks share a path");
 
-    let dir = std::env::temp_dir().join(format!("cgf-behavior-doc-{}", std::process::id()));
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("cgf-behavior-doc");
     let _ = std::fs::remove_dir_all(&dir);
     for (rel, content) in &blocks {
         let target = dir.join(rel);
@@ -142,6 +142,8 @@ fn behavior_doc_examples_validate() {
     }
 
     let out = cli(&["validate", dir.to_string_lossy().as_ref()]);
+    let scenario = dir.join("scenario.toml");
+    let run = cli(&["run", scenario.to_string_lossy().as_ref(), "--ticks", "60"]);
     let _ = std::fs::remove_dir_all(&dir);
 
     assert_eq!(
@@ -153,4 +155,11 @@ fn behavior_doc_examples_validate() {
     );
     let text = stdout(&out);
     assert_eq!(text.lines().last(), Some("ok: 8 files checked"), "{text}");
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "run stdout: {} stderr: {}",
+        stdout(&run),
+        stderr(&run)
+    );
 }
