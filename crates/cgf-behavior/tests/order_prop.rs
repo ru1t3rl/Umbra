@@ -26,6 +26,10 @@ enum Spec {
     Inverter(Box<Spec>),
     SucceedAlways(Box<Spec>),
     Repeat(Option<u32>, Box<Spec>),
+    /// Cooldown of 0.1 s (3 ticks at 30 Hz).
+    Cooldown(Box<Spec>),
+    /// Timeout of 0.1 s (3 ticks at 30 Hz).
+    Timeout(Box<Spec>),
 }
 
 fn spec() -> impl Strategy<Value = Spec> {
@@ -43,7 +47,10 @@ fn spec() -> impl Strategy<Value = Spec> {
                 .prop_map(|(all, c)| Spec::Par(all, c)),
             inner.clone().prop_map(|c| Spec::Inverter(Box::new(c))),
             inner.clone().prop_map(|c| Spec::SucceedAlways(Box::new(c))),
-            (prop::option::of(1u32..4), inner).prop_map(|(n, c)| Spec::Repeat(n, Box::new(c))),
+            (prop::option::of(1u32..4), inner.clone())
+                .prop_map(|(n, c)| Spec::Repeat(n, Box::new(c))),
+            inner.clone().prop_map(|c| Spec::Cooldown(Box::new(c))),
+            inner.prop_map(|c| Spec::Timeout(Box::new(c))),
         ]
     })
 }
@@ -85,13 +92,19 @@ fn build(b: &mut B, spec: &Spec, flags: &mut BTreeMap<String, bool>) -> NodeId {
             };
             b.par(&format!("p{n}"), policy, &ids)
         }
-        Spec::Inverter(child) | Spec::SucceedAlways(child) | Spec::Repeat(_, child) => {
+        Spec::Inverter(child)
+        | Spec::SucceedAlways(child)
+        | Spec::Repeat(_, child)
+        | Spec::Cooldown(child)
+        | Spec::Timeout(child) => {
             flags.insert(format!("n{n}"), false);
             let id = build(b, child, flags);
             match spec {
                 Spec::Inverter(_) => b.inverter(&format!("i{n}"), id),
                 Spec::SucceedAlways(_) => b.succeed_always(&format!("w{n}"), id),
                 Spec::Repeat(count, _) => b.repeat(&format!("r{n}"), id, *count),
+                Spec::Cooldown(_) => b.cooldown(&format!("k{n}"), id, 0.1),
+                Spec::Timeout(_) => b.timeout(&format!("t{n}"), id, 0.1),
                 _ => unreachable!("matched above"),
             }
         }

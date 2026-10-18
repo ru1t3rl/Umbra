@@ -221,3 +221,55 @@ fn cooldown_and_timeout_durations_that_do_not_fit_fail_instantiate() {
         );
     }
 }
+
+/// ASM-095(c): a cooldown starts after a child Failure too.
+#[test]
+fn cooldown_starts_after_a_child_failure() {
+    let bench = Bench::new();
+    let mut b = B::new();
+    let c = b.act("c", &["failure"]);
+    let root = b.cooldown("root", c, 0.5);
+    let steps = bench.run(b.graph("test.graph.cool_fail", root)).steps(31);
+
+    assert_eq!(child_ticks(&steps), [0, 15, 30]);
+    assert_eq!(statuses(&steps)[..2], [Status::Failure, Status::Failure]);
+}
+
+/// ASM-095(b): `repeat` with `count = 2` over a child that succeeds, fails, then succeeds twice.
+#[test]
+fn repeat_count_restarts_after_a_child_failure() {
+    let steps = repeat_run(Some(2), &["success", "failure", "success", "success"], 4);
+
+    assert_eq!(
+        statuses(&steps),
+        [
+            Status::Running,
+            Status::Failure,
+            Status::Running,
+            Status::Success
+        ]
+    );
+}
+
+/// ASM-095(c): a `timeout` halted by its parent and ticked again starts a fresh countdown.
+#[test]
+fn timeout_halted_by_its_parent_gets_a_fresh_start() {
+    let bench = Bench::new();
+    let mut b = B::new();
+    let guard = b.cond("guard");
+    let work = b.act("work", &["running"]);
+    let limit = b.timeout("limit", work, 0.5);
+    let root = b.seq("root", false, &[guard, limit]);
+    let mut run = bench.run(b.graph("test.graph.timeout_restart", root));
+    let mut steps = Vec::new();
+    for tick in 0..28 {
+        bench.controls.set_flag("guard", tick != 10);
+        steps.push(run.step());
+    }
+
+    // Halted at tick 10; the countdown restarts at tick 11 and expires at 11 + 15 = 26.
+    assert_eq!(steps[10].status, Status::Failure);
+    assert_eq!(statuses(&steps[11..26]), vec![Status::Running; 15]);
+    assert_eq!(steps[26].status, Status::Failure);
+    assert_eq!(steps[27].status, Status::Running);
+}

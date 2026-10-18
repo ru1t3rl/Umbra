@@ -104,3 +104,115 @@ fn after_halt_a_memory_sequence_restarts_at_its_first_child() {
 
     assert_eq!(step.trace, lines(&["tick:a", "tick:w"]));
 }
+
+// --- ADR 0013, amended 2026-10-18: a parent halt reaches Running nodes only --------------------
+
+/// `n = 5` ticks at 30 Hz.
+const FIVE_TICKS_S: f64 = 5.0 / 30.0;
+
+fn fire_ticks(steps: &[common::Step]) -> Vec<usize> {
+    steps
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.trace.iter().any(|l| l == "tick:fire"))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// `sequence [enemy_near, selector [cooldown(fire), aim]]`.
+fn pre_empted_cooldown(bench: &Bench) -> common::Runner {
+    let mut b = B::new();
+    let near = b.cond("enemy_near");
+    let fire = b.act("fire", &["success"]);
+    let cool = b.cooldown("cool", fire, FIVE_TICKS_S);
+    let aim = b.act("aim", &["running"]);
+    let pick = b.sel("pick", false, &[cool, aim]);
+    let root = b.seq("root", false, &[near, pick]);
+    bench.run(b.graph("test.graph.amend_1", root))
+}
+
+/// Required case 1: a cooling cooldown under a pre-empted reactive sequence keeps its timer.
+#[test]
+fn cooling_cooldown_keeps_its_timer_when_an_ancestor_is_pre_empted() {
+    let bench = Bench::new();
+    let mut run = pre_empted_cooldown(&bench);
+    let mut steps = Vec::new();
+    for near in [true, true, false, true, true, true] {
+        bench.controls.set_flag("enemy_near", near);
+        steps.push(run.step());
+    }
+
+    assert_eq!(fire_ticks(&steps), [0, 5], "no fire in 1..=4");
+    assert_eq!(count(&steps[2].trace, "halt:aim"), 1, "aim is halted");
+    assert_eq!(steps[1].status, Status::Running);
+}
+
+/// Required case 2: a cooldown whose child is Running resets when halted; no timer starts.
+#[test]
+fn cooldown_with_a_running_child_resets_when_halted() {
+    let bench = Bench::new();
+    let mut b = B::new();
+    let guard = b.cond("guard");
+    let work = b.act("work", &["running"]);
+    let cool = b.cooldown("cool", work, FIVE_TICKS_S);
+    let root = b.seq("root", false, &[guard, cool]);
+    let mut run = bench.run(b.graph("test.graph.amend_2", root));
+    bench.controls.set_flag("guard", true);
+    run.step();
+    bench.controls.set_flag("guard", false);
+    let halted = run.step();
+    bench.controls.set_flag("guard", true);
+    let again = run.step();
+
+    assert_eq!(count(&halted.trace, "halt:work"), 1);
+    assert!(again.trace.contains(&"tick:work".to_string()));
+}
+
+/// Required case 3: the instance halt clears every timer.
+#[test]
+fn instance_halt_clears_cooldown_timers() {
+    let bench = Bench::new();
+    let mut run = pre_empted_cooldown(&bench);
+    bench.controls.set_flag("enemy_near", true);
+    let first = run.step();
+    run.halt();
+    let second = run.step();
+
+    assert_eq!(fire_ticks(&[first, second]), [0, 1]);
+}
+
+/// Required case 4: finished children keep their state when the Running node above is halted:
+/// a cooldown that finished as a slot of a Running `parallel`, and inside a Running `repeat`.
+#[test]
+fn finished_children_keep_their_timers_when_the_node_above_is_halted() {
+    let bench = Bench::new();
+    let mut b = B::new();
+    let guard = b.cond("guard");
+    let fire = b.act("fire", &["success"]);
+    let cool = b.cooldown("cool", fire, FIVE_TICKS_S);
+    let aim = b.act("aim", &["running"]);
+    let par = b.par("par", cgf_core::ParallelPolicy::All, &[cool, aim]);
+    let root = b.seq("root", false, &[guard, par]);
+    let mut run = bench.run(b.graph("test.graph.amend_4a", root));
+    let mut steps = Vec::new();
+    for guard in [true, false, true, true, true, true] {
+        bench.controls.set_flag("guard", guard);
+        steps.push(run.step());
+    }
+    assert_eq!(fire_ticks(&steps), [0, 5], "parallel slot");
+
+    let bench = Bench::new();
+    let mut b = B::new();
+    let guard = b.cond("guard");
+    let fire = b.act("fire", &["success"]);
+    let cool = b.cooldown("cool", fire, FIVE_TICKS_S);
+    let rep = b.repeat("rep", cool, None);
+    let root = b.seq("root", false, &[guard, rep]);
+    let mut run = bench.run(b.graph("test.graph.amend_4b", root));
+    let mut steps = Vec::new();
+    for guard in [true, false, true, true, true, true] {
+        bench.controls.set_flag("guard", guard);
+        steps.push(run.step());
+    }
+    assert_eq!(fire_ticks(&steps), [0, 5], "repeat child");
+}

@@ -63,7 +63,6 @@ pub(crate) fn parallel(
         }
         let status = w.tick(child);
         if status == decisive {
-            set_slot(w, idx, pos, Slot::Idle);
             halt_running(w, idx, children);
             reset(w, idx);
             return status;

@@ -1,6 +1,7 @@
 # ADR 0013: Behavior tick semantics and evaluation order
 
-- **Status**: Accepted (decided by the human project owner on 2026-10-17; state hash stays v2, revisit hash v3 with replay in M7; M3 plan `docs/plans/M3.md`). Spec decision D-30.
+- **Status**: Accepted (decided by the human project owner on 2026-10-17; state hash stays v2, revisit hash v3 with replay in M7; M3 plan `docs/plans/M3.md`). Spec decision D-30. Amended 2026-10-17 (twice) and 2026-10-18 (halt
+  scope: parent halts reach Running nodes only), see the sections at the end.
 - **Requirement IDs**: REQ-B-1, REQ-B-8, REQ-B-16, REQ-K-2, REQ-K-4, REQ-K-5, D-26, ADR 0007
 - **Affected**: `cgf-behavior` (interpreter), `cgf-kernel` (Behavior phase), `docs/behavior.md`
 
@@ -79,3 +80,37 @@ Option 1.
 - Exact tick arithmetic for `cooldown`, `timeout`, `wait` and `timer_elapsed` is pinned in ASM-092(a):
   cooldown re-ticks its child at `t + n`; timeout halts at `s + n`; `wait` is Running for `n` ticks, then
   Success; `timer_elapsed` compares the absolute tick with `n`.
+
+## Amended 2026-10-18 after WI-8 review (decided by the human project owner)
+Resolves a conflict between the Decision's "Halt recursively resets node state, timers" and the
+2026-10-17 "halt applies to Running nodes only": as implemented in b352ccd, halting an ancestor cleared a
+cooling `cooldown`'s timer, so in `sequence [enemy_near, selector [cooldown(fire), aim]]` losing and
+regaining the contact while `aim` runs let `fire` skip its cooldown. This amendment replaces the
+Decision's **Halt** bullet; blackboards are still not cleared (ADR 0014).
+- **Running:** a node is Running when the last time it was ticked it returned Running and it has not
+  been halted since. A `cooldown` that is cooling (its child finished, its timer is running) returns
+  Failure, so it is not Running.
+- **Parent halt** (a reactive composite skipping or pre-empting a child, a `parallel`'s decisive halt,
+  a `timeout` expiry, an FSM guard transition, a subgraph node halting its child graph, and the halt
+  of whatever these reach): a no-op on any node that is not Running. A halted Running node resets its
+  **own** state (a memory composite's position, a `parallel`'s slots, a `repeat`'s count, a `timeout`'s
+  start tick, an FSM's current state back to `initial`), tells a Running action to halt, and passes the
+  halt on to its Running children only. A finished child (including a finished `parallel` slot) is not
+  halted and keeps its state; resetting a slot to idle does not touch the child's subtree.
+- **Instance halt** (`BehaviorInstance::halt`, "the next tick starts fresh"): unchanged. Every node
+  returns to its `instantiate` state, `cooldown` timers included; Running actions are told to halt,
+  others are not. A subgraph node's halt of its child graph is a parent halt, not an instance halt.
+- **Required cases** (whole-tick arithmetic of ASM-092(a); `n` = cooldown ticks; `fire` is an action
+  returning Success at once, `aim` an action returning Running):
+  1. *Cooling cooldown under a pre-empted reactive sequence keeps its timer.* In
+     `sequence [enemy_near, selector [cooldown(fire), aim]]` with `n = 5`: tick 0 `fire` succeeds
+     (timer to tick 5); tick 1 cooldown fails, `aim` Running; tick 2 `enemy_near` fails, the selector
+     and `aim` are halted, the cooldown is not; ticks 3 and 4 with `enemy_near` true: cooldown fails
+     without ticking `fire`, `aim` Running; tick 5: `fire` is ticked again. No `fire` tick in 1..4.
+  2. *Cooldown whose child is Running when halted resets.* The child is halted (its action `halt` runs
+     once) and no timer starts, because the timer starts only when the child returns Success or
+     Failure (ASM-095(c)); the next time the cooldown is ticked it ticks its child at once.
+  3. *Instance halt clears all.* After case 1's tick 0, `BehaviorInstance::halt`; the next tick ticks
+     `fire` (no cooldown pending).
+  4. *Finished children keep their state.* A cooldown that finished inside a Running `repeat` or as a
+     finished slot of a Running `parallel` keeps its timer when that node is halted.

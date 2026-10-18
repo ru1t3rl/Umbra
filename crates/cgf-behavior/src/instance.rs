@@ -71,8 +71,10 @@ pub(crate) enum NodeState {
     Parallel {
         slots: Box<[Slot]>,
     },
+    /// `running`: the last tick returned Running (the child need not be).
     Repeat {
         successes: u32,
+        running: bool,
     },
     /// `ticks` is the duration in whole ticks; `until` the absolute tick the child may run again.
     Cooldown {
@@ -106,7 +108,10 @@ impl NodeState {
             Kind::Parallel { children, .. } => Self::Parallel {
                 slots: vec![Slot::Idle; children.len()].into_boxed_slice(),
             },
-            Kind::Repeat { .. } => Self::Repeat { successes: 0 },
+            Kind::Repeat { .. } => Self::Repeat {
+                successes: 0,
+                running: false,
+            },
             Kind::Cooldown { duration, .. } => Self::Cooldown {
                 ticks: ticks(*duration)?,
                 until: None,
@@ -146,7 +151,7 @@ impl BehaviorInstance for GraphInstance {
     }
 
     fn halt(&mut self) {
-        halt_node(&self.program, &mut self.states, self.program.root);
+        reset_all(&self.program, &mut self.states, self.program.root);
     }
 
     fn output(&self, port: &str) -> Option<BbValue> {
@@ -159,38 +164,120 @@ impl BehaviorInstance for GraphInstance {
     }
 }
 
-/// Halts the subtree at `idx` and resets its state, timers and memory (ADR 0013). Only actions
-/// that are Running are told to halt; a node that never started or already finished is left
-/// alone. Needs no entity, time or output, so it is a free function.
+/// Whether the node returned Running the last time it was ticked and has not been halted since
+/// (ADR 0013, amended 2026-10-18). Derived from the state, so it allocates nothing: a cooling
+/// `cooldown` is not Running; a `cooldown` or decorator is Running iff its child is.
+pub(crate) fn is_running(program: &Program, states: &[NodeState], idx: usize) -> bool {
+    let (Some(node), Some(state)) = (program.nodes.get(idx), states.get(idx)) else {
+        return false;
+    };
+    match (&node.kind, state) {
+        (Kind::Sequence { .. } | Kind::Selector { .. }, NodeState::Composite { running }) => {
+            running.is_some()
+        }
+        (Kind::Parallel { .. }, NodeState::Parallel { slots }) => slots.contains(&Slot::Running),
+        (Kind::Action(_), NodeState::Action { running, .. })
+        | (Kind::Repeat { .. }, NodeState::Repeat { running, .. }) => *running,
+        (Kind::Timeout { .. }, NodeState::Timeout { started, .. }) => started.is_some(),
+        (Kind::Cooldown { child, .. } | Kind::Inverter(child) | Kind::SucceedAlways(child), _) => {
+            is_running(program, states, *child)
+        }
+        _ => false,
+    }
+}
+
+/// The instance halt: returns every node to its `instantiate` state, `cooldown` timers included;
+/// only Running actions are told to halt (ADR 0013, amended 2026-10-18).
+fn reset_all(program: &Program, states: &mut [NodeState], idx: usize) {
+    let Some(node) = program.nodes.get(idx) else {
+        return;
+    };
+    let child = match (&node.kind, &mut states[idx]) {
+        (Kind::Action(_), NodeState::Action { inst, running }) => {
+            if std::mem::take(running) {
+                inst.halt();
+            }
+            None
+        }
+        (Kind::Sequence { children, .. } | Kind::Selector { children, .. }, state) => {
+            *state = NodeState::Composite { running: None };
+            return children.iter().for_each(|&c| reset_all(program, states, c));
+        }
+        (Kind::Parallel { children, .. }, NodeState::Parallel { slots }) => {
+            slots.fill(Slot::Idle);
+            return children.iter().for_each(|&c| reset_all(program, states, c));
+        }
+        (Kind::Repeat { child, .. }, NodeState::Repeat { successes, running }) => {
+            (*successes, *running) = (0, false);
+            Some(*child)
+        }
+        (Kind::Cooldown { child, .. }, NodeState::Cooldown { until, .. }) => {
+            *until = None;
+            Some(*child)
+        }
+        (Kind::Timeout { child, .. }, NodeState::Timeout { started, .. }) => {
+            *started = None;
+            Some(*child)
+        }
+        (Kind::Inverter(child) | Kind::SucceedAlways(child), _) => Some(*child),
+        _ => None,
+    };
+    if let Some(child) = child {
+        reset_all(program, states, child);
+    }
+}
+
+/// A halt from a parent (pre-emption, `parallel` decision, `timeout` expiry): a no-op unless the
+/// node is Running. A Running node resets its own state, halts a Running action and passes the
+/// halt to its children, each of which ignores it unless it is Running too. A finished child keeps
+/// its state, so a cooling `cooldown` keeps its timer (ADR 0013, amended 2026-10-18; ASM-095).
+/// Needs no entity, time or output, so it is a free function.
 pub(crate) fn halt_node(program: &Program, states: &mut [NodeState], idx: usize) {
+    if !is_running(program, states, idx) {
+        return;
+    }
     let Some(node) = program.nodes.get(idx) else {
         return;
     };
     match (&node.kind, &mut states[idx]) {
         (Kind::Action(_), NodeState::Action { inst, running }) => {
-            if std::mem::take(running) {
-                inst.halt();
-            }
+            *running = false;
+            inst.halt();
         }
         (Kind::Sequence { children, .. } | Kind::Selector { children, .. }, state) => {
-            *state = NodeState::Composite { running: None };
-            children.iter().for_each(|&c| halt_node(program, states, c));
+            let running = match state {
+                NodeState::Composite { running } => running.take(),
+                _ => None,
+            };
+            if let Some(&child) = running.and_then(|p| children.get(p)) {
+                halt_node(program, states, child);
+            }
         }
-        (Kind::Parallel { children, .. }, NodeState::Parallel { slots }) => {
-            slots.fill(Slot::Idle);
-            children.iter().for_each(|&c| halt_node(program, states, c));
+        (Kind::Parallel { children, .. }, NodeState::Parallel { .. }) => {
+            for (pos, &child) in children.iter().enumerate() {
+                let was = match &mut states[idx] {
+                    NodeState::Parallel { slots } => {
+                        slots.get_mut(pos).map(|s| std::mem::replace(s, Slot::Idle))
+                    }
+                    _ => None,
+                };
+                if was == Some(Slot::Running) {
+                    halt_node(program, states, child);
+                }
+            }
+            if let NodeState::Parallel { slots } = &mut states[idx] {
+                slots.fill(Slot::Idle);
+            }
         }
-        (Kind::Inverter(c) | Kind::SucceedAlways(c), _) => halt_node(program, states, *c),
-        (Kind::Repeat { child, .. }, NodeState::Repeat { successes }) => {
-            *successes = 0;
-            halt_node(program, states, *child);
-        }
-        (Kind::Cooldown { child, .. }, NodeState::Cooldown { until, .. }) => {
-            *until = None;
+        (Kind::Repeat { child, .. }, NodeState::Repeat { successes, running }) => {
+            (*successes, *running) = (0, false);
             halt_node(program, states, *child);
         }
         (Kind::Timeout { child, .. }, NodeState::Timeout { started, .. }) => {
             *started = None;
+            halt_node(program, states, *child);
+        }
+        (Kind::Cooldown { child, .. } | Kind::Inverter(child) | Kind::SucceedAlways(child), _) => {
             halt_node(program, states, *child);
         }
         _ => {}

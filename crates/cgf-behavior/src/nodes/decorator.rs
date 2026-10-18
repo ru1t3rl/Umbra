@@ -30,10 +30,10 @@ pub(crate) fn repeat(
     count: Option<u32>,
 ) -> Status {
     let status = w.tick(child);
-    let NodeState::Repeat { successes } = &mut w.states[idx] else {
+    let NodeState::Repeat { successes, running } = &mut w.states[idx] else {
         return Status::Failure;
     };
-    match status {
+    let result = match status {
         Status::Running => Status::Running,
         Status::Failure => {
             *successes = 0;
@@ -48,7 +48,9 @@ pub(crate) fn repeat(
                 Status::Running
             }
         }
-    }
+    };
+    *running = result == Status::Running;
+    result
 }
 
 /// After the child finishes, fails without ticking it until the duration (whole ticks) has

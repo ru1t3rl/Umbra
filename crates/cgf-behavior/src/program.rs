@@ -8,8 +8,9 @@ use cgf_core::{Action, BbType, Condition, GraphDef, NodeId, NodeKind, ParallelPo
 
 use crate::factory::GraphRegistrationError;
 
-/// The deepest node nesting the interpreter accepts. The tick recurses once per level, so this
-/// bounds the stack use whatever a graph looks like (ASM-095).
+/// The deepest node nesting one graph may have. The tick recurses once per level, so this bounds
+/// the stack use of one graph; with subgraphs the bound multiplies by up to 16 graph levels
+/// (`max_subgraph_depth`, ASM-095).
 pub(crate) const MAX_NODE_DEPTH: usize = 128;
 
 /// How a `parallel` node decides (ADR 0013).
@@ -120,7 +121,20 @@ pub(crate) fn validate(def: &GraphDef) -> Result<(), GraphRegistrationError> {
         reason,
     };
     for node in &def.nodes {
-        if matches!(node.kind, NodeKind::Fsm(_) | NodeKind::Subgraph(_)) {
+        let supported = match &node.kind {
+            NodeKind::Condition(_)
+            | NodeKind::Action(_)
+            | NodeKind::Sequence(_)
+            | NodeKind::Selector(_)
+            | NodeKind::Inverter(_)
+            | NodeKind::SucceedAlways(_)
+            | NodeKind::Repeat(_)
+            | NodeKind::Cooldown(_)
+            | NodeKind::Timeout(_) => true,
+            NodeKind::Parallel(p) => policy(p.policy).is_some(),
+            _ => false,
+        };
+        if !supported {
             return Err(GraphRegistrationError::Unsupported {
                 graph: def.id.clone(),
                 node: node.name.clone(),

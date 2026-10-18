@@ -49,7 +49,8 @@ pub enum GraphRegistrationError {
         source: BuildError,
     },
     /// The node arena is not a tree of valid nodes (an index out of range, a node reached twice,
-    /// nesting deeper than the interpreter accepts). The loader reports these with locations.
+    /// nesting deeper than 128 levels in one graph). The loader reports the first two with
+    /// locations; it does not limit node depth yet, so this is where deep nesting is refused.
     #[error("graph `{graph}`: {reason}")]
     Malformed {
         /// The graph with the problem.
