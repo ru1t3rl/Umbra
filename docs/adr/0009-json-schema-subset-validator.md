@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (approved by the human project owner on 2026-10-17; M2 plan `docs/plans/M2.md`)
 - **Requirement IDs**: REQ-T-2, REQ-T-3, D-14, REQ-K-4, NFR-4, REQ-P-3
-- **Affected**: `cgf-templates` (`schema` module), component authors (built-in now, plugins in M4), `docs/templates.md`
+- **Affected**: `umbra-templates` (`schema` module), component authors (built-in now, plugins in M4), `docs/templates.md`
 
 ## Context
 Parameter schemas are JSON Schema (D-14, REQ-T-3). Validation must report **all** errors with file and

@@ -9,4 +9,4 @@ unsafe_code = "deny"
 
 [patch.crates-io]
 shim = { path = "shim" }
-cgf-kernel = { path = "crates/cgf-kernel" }
+umbra-kernel = { path = "crates/umbra-kernel" }

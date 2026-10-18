@@ -2,11 +2,11 @@
 
 - **Status**: Accepted (decided by the human project owner on 2026-10-17)
 - **Requirement IDs**: NFR-6, NFR-4, spec section 19 open question 1, REQ-SDK-2, REQ-SDK-3
-- **Affected**: every crate, `deny.toml`, root `LICENSE-*` files, generated `cgf_plugin_api.h` (M4), `gui/` package metadata (M8)
+- **Affected**: every crate, `deny.toml`, root `LICENSE-*` files, generated `umbra_plugin_api.h` (M4), `gui/` package metadata (M8)
 
 ## Context
 NFR-6 requires the project license to be decided before M1. Spec section 19 Q1 also asked whether the
-plugin API and SDK (`cgf-plugin-api`, `cgf-sdk`) should get a more permissive license than the engine,
+plugin API and SDK (`umbra-plugin-api`, `umbra-sdk`) should get a more permissive license than the engine,
 because plugins are linked against them and run in-process (REQ-P-11).
 
 ## Options
@@ -19,7 +19,7 @@ because plugins are linked against them and run in-process (REQ-P-11).
 3. **Proprietary/closed engine with a permissive SDK.** This was not chosen by the owner.
 
 ## Decision
-Option 1. The workspace uses `license = "MIT OR Apache-2.0"`. `cgf-plugin-api` and `cgf-sdk` use the same
+Option 1. The workspace uses `license = "MIT OR Apache-2.0"`. `umbra-plugin-api` and `umbra-sdk` use the same
 expression (there is no separate SDK license). The repository root has `LICENSE-MIT` and `LICENSE-APACHE`.
 
 ## Consequences

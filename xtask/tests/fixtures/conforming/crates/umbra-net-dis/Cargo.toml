@@ -1,0 +1,12 @@
+[package]
+name = "umbra-net-dis"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+umbra-sdk = { path = "../umbra-sdk" }
+fake_external = "0.1"
+
+[lints]
+workspace = true

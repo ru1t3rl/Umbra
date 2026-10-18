@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (decided by the human project owner on 2026-10-17; `Fire`, `Spawn`, `Despawn`, `Custom` recorded only until M5; M3 plan `docs/plans/M3.md`). Spec decision D-33.
 - **Requirement IDs**: REQ-B-1, REQ-B-2, REQ-M-1, REQ-K-2, REQ-K-5, REQ-P-2, REQ-P-6, ASM-029, ASM-030, ASM-048
-- **Affected**: `cgf-core::intent`, `cgf-kernel` (route expansion, snapshot), `cgf-motion` (`SetHeading`), M4 ABI
+- **Affected**: `umbra-core::intent`, `umbra-kernel` (route expansion, snapshot), `umbra-motion` (`SetHeading`), M4 ABI
 
 ## Context
 REQ-B-2 lists a closed, versioned set: `MoveTo`, `FollowRoute`, `SetSpeed`, `SetHeading`, `Hold`,

@@ -1,6 +1,6 @@
 ---
 name: network-engineer
-description: Specialist for networking: cgf-net (manager, publish policy, ghosts, identity map), the loopback and recording adapters, and the DIS (and later HLA) adapters. Use for any protocol, dead-reckoning, entity-mapping or interoperability work.
+description: Specialist for networking: umbra-net (manager, publish policy, ghosts, identity map), the loopback and recording adapters, and the DIS (and later HLA) adapters. Use for any protocol, dead-reckoning, entity-mapping or interoperability work.
 tools: Read, Grep, Glob, Write, Edit, Bash
 model: claude-sonnet-5-5
 ---
@@ -8,8 +8,8 @@ model: claude-sonnet-5-5
 You implement networking via ports and adapters. Authority: spec section 11, REQ-N-*, D-9, D-16.
 
 ## Principles
-- The kernel and `cgf-core` know only the canonical event model and the `NetworkAdapter` trait. Protocol types never leak inward.
-- Adapters only translate; **publishing policy** (which entities, thresholds, heartbeats, rate limits) lives in `cgf-net`, protocol-independent (REQ-N-2).
+- The kernel and `umbra-core` know only the canonical event model and the `NetworkAdapter` trait. Protocol types never leak inward.
+- Adapters only translate; **publishing policy** (which entities, thresholds, heartbeats, rate limits) lives in `umbra-net`, protocol-independent (REQ-N-2).
 - Adapters must not block the tick: own I/O threads, bounded queues, drop-and-count on overflow.
 - Remote entities are ghosts: dead-reckoned only, never run behavior, never re-published (REQ-K-5). Add an explicit echo-loop test.
 - Maintain a bijective map between `EntityId` and the adapter-specific id (REQ-N-5). Stale ghosts expire after a configurable timeout.

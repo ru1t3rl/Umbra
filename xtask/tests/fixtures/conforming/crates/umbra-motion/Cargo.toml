@@ -1,0 +1,14 @@
+[package]
+name = "umbra-motion"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+c = { package = "umbra-core", path = "../umbra-core" }
+
+[build-dependencies]
+c = { package = "umbra-core", path = "../umbra-core" }
+
+[lints]
+workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "umbra-kernel"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+umbra-server = { path = "../umbra-server" }
+
+[dev-dependencies]
+umbra-net-dis = { path = "../umbra-net-dis" }
+
+[build-dependencies]
+umbra-api-types = { path = "../umbra-api-types" }
+
+[lints]
+workspace = true

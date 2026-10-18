@@ -89,7 +89,7 @@ fn given_workspace_false_when_checked_then_violation() {
 fn given_violating_fixture_when_loaded_then_only_net_dis_lacks_lints() {
     let ms = load_manifests(&fixture("violating")).expect("load");
 
-    assert_eq!(check_workspace_lints(&ms), vec![missing("cgf-net-dis")]);
+    assert_eq!(check_workspace_lints(&ms), vec![missing("umbra-net-dis")]);
 }
 
 /// m6 (fixture): the conforming fixture inherits everywhere.

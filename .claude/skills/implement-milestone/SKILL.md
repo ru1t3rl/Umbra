@@ -1,6 +1,6 @@
 ---
 name: implement-milestone
-description: Plan and execute one CGF milestone (M0-M9) end to end. Use when asked to start, continue or finish a milestone, or "build the next thing". Coordinates architect, engineers, test-engineer, reviewer and build-engineer.
+description: Plan and execute one Umbra milestone (M0-M9) end to end. Use when asked to start, continue or finish a milestone, or "build the next thing". Coordinates architect, engineers, test-engineer, reviewer and build-engineer.
 ---
 
 # Implement a milestone

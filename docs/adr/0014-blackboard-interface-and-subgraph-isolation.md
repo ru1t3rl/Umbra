@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (decided by the human project owner on 2026-10-17, including dynamic input bindings; M3 plan `docs/plans/M3.md`). Spec decision D-31.
 - **Requirement IDs**: REQ-B-5, REQ-B-10, REQ-B-11, REQ-B-12, REQ-B-14, REQ-T-3, ADR 0009, ADR 0012
-- **Affected**: `cgf-core::behavior` (`Blackboard`), `cgf-core::graph` (`Interface`, `ParamTemplate`), `cgf-templates` (binding checks), `cgf-behavior`
+- **Affected**: `umbra-core::behavior` (`Blackboard`), `umbra-core::graph` (`Interface`, `ParamTemplate`), `umbra-templates` (binding checks), `umbra-behavior`
 
 ## Context
 REQ-B-10: an interface has typed parameters (JSON Schema), optional named outputs and result semantics;
@@ -68,7 +68,7 @@ Option 3.
   `with_param_type`/`with_param_types`), filled by `register_graphs` from `Interface::types`. Binding
   checks (`invalid_binding`, `missing_param`) and the Integer-to-Number input conversion read it for
   registered behaviors; plugin behaviors (M4) declare it.
-- Both reserved forms are recognised by one public classifier, `cgf_core::reserved_form`
+- Both reserved forms are recognised by one public classifier, `umbra_core::reserved_form`
   (`ReservedForm::{Param, Key}`), applied only to values inside `params`, never to the `params` table
   itself; `ParamTemplate::substitute` reports a `Key` form as `SubstituteError::Binding`.
 - `result` is free-text result semantics, not a port name (wording made explicit above).

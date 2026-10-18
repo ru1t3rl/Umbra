@@ -1,6 +1,6 @@
 ---
 name: review-change
-description: Structured review of a CGF change (diff or branch) against the spec, architecture rules and coding principles. Use after every implementation work item and before merge.
+description: Structured review of an Umbra change (diff or branch) against the spec, architecture rules and coding principles. Use after every implementation work item and before merge.
 ---
 
 # Review a change

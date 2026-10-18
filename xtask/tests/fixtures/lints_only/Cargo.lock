@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "cgf-core"
+name = "umbra-core"
 version = "0.1.0"

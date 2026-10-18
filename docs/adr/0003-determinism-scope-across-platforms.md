@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (approved by the human project owner on 2026-10-17)
 - **Requirement IDs**: A-2, REQ-K-4, REQ-K-7, A-3, NFR-3, section 15 (determinism tests)
-- **Affected**: `cgf-core` (math helpers), `cgf-kernel`, `cgf-motion`, test harness, CI
+- **Affected**: `umbra-core` (math helpers), `umbra-kernel`, `umbra-motion`, test harness, CI
 
 ## Context
 A-2 says that the same scenario, seed, plugin versions and input stream give identical results. It does not
@@ -19,14 +19,14 @@ replayed on Linux and give the same hashes?
 2. **Cross-platform bit-identical.** Use a pure-Rust `libm` crate for all transcendental functions in
    simulation code, forbid `mul_add` and FMA contraction, and add a CI job that compares Windows and Linux
    state hashes. Pros: portable replays. Cons: a small speed cost, a lint/wrapper discipline (route math
-   through a `cgf-core` math module), and plugins must follow it too (they cannot be forced to).
+   through a `umbra-core` math module), and plugins must follow it too (they cannot be forced to).
 3. **Tolerance-based comparison across platforms.** Pros: cheap. Cons: weakens the hash-based gate. Chaotic
    behavior (FSM thresholds) can still branch differently.
 
 ## Decision (proposed)
 Option 1 for v1. The determinism gate runs on every OS in the CI matrix but compares within one OS only.
 Cross-OS replay is documented as not guaranteed. To keep option 2 cheap later, from M1 on all
-transcendental math in simulation crates goes through one `cgf-core` math module. That is the
+transcendental math in simulation crates goes through one `umbra-core` math module. That is the
 single point where `libm` would be swapped in.
 
 ## Consequences

@@ -18,7 +18,7 @@ fn edge(from: &str, to: &str, kind: DepKind) -> DepEdge {
         to: to.to_string(),
         kind,
         target: None,
-        is_workspace: to.starts_with("cgf-"),
+        is_workspace: to.starts_with("umbra-"),
         is_path: false,
     }
 }
@@ -53,25 +53,25 @@ fn external(from: &str, to: &str, kind: DepKind) -> Violation {
 
 // ---------------------------------------------------------------- AT-2
 
-/// REQ-A-1: `cgf-core` depends on no workspace crate.
+/// REQ-A-1: `umbra-core` depends on no workspace crate.
 #[test]
 fn given_core_depends_on_kernel_when_checked_then_req_a1_violation() {
-    let g = graph(vec![edge("cgf-core", "cgf-kernel", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-core", "umbra-kernel", DepKind::Normal)]);
 
     let violations = check(&g, &RULES);
 
     assert!(violations.contains(&forbidden(
-        "cgf-core",
-        "cgf-kernel",
+        "umbra-core",
+        "umbra-kernel",
         DepKind::Normal,
         "REQ-A-1"
     )));
 }
 
-/// REQ-A-1: a clean `cgf-core` (external deps only) produces no violation.
+/// REQ-A-1: a clean `umbra-core` (external deps only) produces no violation.
 #[test]
 fn given_core_with_only_external_dep_when_checked_then_no_violation() {
-    let g = graph(vec![edge("cgf-core", "thiserror", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-core", "thiserror", DepKind::Normal)]);
 
     assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
 }
@@ -81,13 +81,13 @@ fn given_core_with_only_external_dep_when_checked_then_no_violation() {
 /// REQ-A-2: the kernel must not depend on the server.
 #[test]
 fn given_kernel_depends_on_server_when_checked_then_req_a2_violation() {
-    let g = graph(vec![edge("cgf-kernel", "cgf-server", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-kernel", "umbra-server", DepKind::Normal)]);
 
     let violations = check(&g, &RULES);
 
     assert!(violations.contains(&forbidden(
-        "cgf-kernel",
-        "cgf-server",
+        "umbra-kernel",
+        "umbra-server",
         DepKind::Normal,
         "REQ-A-2"
     )));
@@ -96,13 +96,13 @@ fn given_kernel_depends_on_server_when_checked_then_req_a2_violation() {
 /// REQ-A-2: the kernel must not depend on the DIS adapter.
 #[test]
 fn given_kernel_depends_on_net_dis_when_checked_then_req_a2_violation() {
-    let g = graph(vec![edge("cgf-kernel", "cgf-net-dis", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-kernel", "umbra-net-dis", DepKind::Normal)]);
 
     let violations = check(&g, &RULES);
 
     assert!(violations.contains(&forbidden(
-        "cgf-kernel",
-        "cgf-net-dis",
+        "umbra-kernel",
+        "umbra-net-dis",
         DepKind::Normal,
         "REQ-A-2"
     )));
@@ -111,60 +111,60 @@ fn given_kernel_depends_on_net_dis_when_checked_then_req_a2_violation() {
 /// REQ-A-2: an allowed edge (kernel -> core) is not reported.
 #[test]
 fn given_kernel_depends_on_core_when_checked_then_no_violation() {
-    let g = graph(vec![edge("cgf-kernel", "cgf-core", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-kernel", "umbra-core", DepKind::Normal)]);
 
     assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
 }
 
 // ---------------------------------------------------------------- AT-4
 
-/// REQ-A-3: the SDK depends only on `cgf-plugin-api`.
+/// REQ-A-3: the SDK depends only on `umbra-plugin-api`.
 #[test]
 fn given_sdk_depends_on_core_when_checked_then_req_a3_violation() {
-    let g = graph(vec![edge("cgf-sdk", "cgf-core", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-sdk", "umbra-core", DepKind::Normal)]);
 
     let violations = check(&g, &RULES);
 
     assert!(violations.contains(&forbidden(
-        "cgf-sdk",
-        "cgf-core",
+        "umbra-sdk",
+        "umbra-core",
         DepKind::Normal,
         "REQ-A-3"
     )));
 }
 
-/// REQ-A-3: the SDK may depend on `cgf-plugin-api`.
+/// REQ-A-3: the SDK may depend on `umbra-plugin-api`.
 #[test]
 fn given_sdk_depends_on_plugin_api_when_checked_then_no_violation() {
-    let g = graph(vec![edge("cgf-sdk", "cgf-plugin-api", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-sdk", "umbra-plugin-api", DepKind::Normal)]);
 
     assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
 }
 
-/// Section 4 "nothing": `cgf-plugin-api` has no external normal dependency (ASM-009).
+/// Section 4 "nothing": `umbra-plugin-api` has no external normal dependency (ASM-009).
 #[test]
 fn given_plugin_api_has_external_dep_when_checked_then_violation() {
-    let g = graph(vec![edge("cgf-plugin-api", "libc", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-plugin-api", "libc", DepKind::Normal)]);
 
     let violations = check(&g, &RULES);
 
-    assert!(violations.contains(&external("cgf-plugin-api", "libc", DepKind::Normal)));
+    assert!(violations.contains(&external("umbra-plugin-api", "libc", DepKind::Normal)));
 }
 
-/// ASM-009: build dependencies count too for `cgf-plugin-api`.
+/// ASM-009: build dependencies count too for `umbra-plugin-api`.
 #[test]
 fn given_plugin_api_has_external_build_dep_when_checked_then_violation() {
-    let g = graph(vec![edge("cgf-plugin-api", "cbindgen", DepKind::Build)]);
+    let g = graph(vec![edge("umbra-plugin-api", "cbindgen", DepKind::Build)]);
 
     let violations = check(&g, &RULES);
 
-    assert!(violations.contains(&external("cgf-plugin-api", "cbindgen", DepKind::Build)));
+    assert!(violations.contains(&external("umbra-plugin-api", "cbindgen", DepKind::Build)));
 }
 
 /// ASM-009 / plan: only normal and build externals are forbidden; dev externals are allowed.
 #[test]
 fn given_plugin_api_has_external_dev_dep_when_checked_then_no_violation() {
-    let g = graph(vec![edge("cgf-plugin-api", "proptest", DepKind::Dev)]);
+    let g = graph(vec![edge("umbra-plugin-api", "proptest", DepKind::Dev)]);
 
     assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
 }
@@ -174,11 +174,11 @@ fn given_plugin_api_has_external_dev_dep_when_checked_then_no_violation() {
 /// ASM-005: dev dependencies are checked.
 #[test]
 fn given_forbidden_dev_dep_when_checked_then_violation_with_dev_kind() {
-    let g = graph(vec![edge("cgf-core", "cgf-kernel", DepKind::Dev)]);
+    let g = graph(vec![edge("umbra-core", "umbra-kernel", DepKind::Dev)]);
 
     assert!(check(&g, &RULES).contains(&forbidden(
-        "cgf-core",
-        "cgf-kernel",
+        "umbra-core",
+        "umbra-kernel",
         DepKind::Dev,
         "REQ-A-1"
     )));
@@ -187,11 +187,11 @@ fn given_forbidden_dev_dep_when_checked_then_violation_with_dev_kind() {
 /// ASM-005: build dependencies are checked.
 #[test]
 fn given_forbidden_build_dep_when_checked_then_violation_with_build_kind() {
-    let g = graph(vec![edge("cgf-core", "cgf-kernel", DepKind::Build)]);
+    let g = graph(vec![edge("umbra-core", "umbra-kernel", DepKind::Build)]);
 
     assert!(check(&g, &RULES).contains(&forbidden(
-        "cgf-core",
-        "cgf-kernel",
+        "umbra-core",
+        "umbra-kernel",
         DepKind::Build,
         "REQ-A-1"
     )));
@@ -200,43 +200,43 @@ fn given_forbidden_build_dep_when_checked_then_violation_with_build_kind() {
 /// ASM-005: target-specific dependencies (`[target.'cfg(windows)'.dependencies]`) are checked.
 #[test]
 fn given_forbidden_target_specific_dep_when_checked_then_violation() {
-    let mut e = edge("cgf-sdk", "cgf-core", DepKind::Normal);
+    let mut e = edge("umbra-sdk", "umbra-core", DepKind::Normal);
     e.target = Some("cfg(windows)".to_string());
 
     let violations = check(&graph(vec![e]), &RULES);
 
     assert!(violations.contains(&forbidden(
-        "cgf-sdk",
-        "cgf-core",
+        "umbra-sdk",
+        "umbra-core",
         DepKind::Normal,
         "REQ-A-3"
     )));
 }
 
 /// ASM-005/006: a renamed dependency is matched on its real package name. The loader resolves
-/// the rename, so `DepEdge::to` is already `cgf-kernel`; `check` must judge on `to`.
+/// the rename, so `DepEdge::to` is already `umbra-kernel`; `check` must judge on `to`.
 #[test]
 fn given_renamed_dep_resolved_to_kernel_when_checked_then_violation_names_real_package() {
-    let g = graph(vec![edge("cgf-motion", "cgf-kernel", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-motion", "umbra-kernel", DepKind::Normal)]);
 
     let violations = check(&g, &RULES);
 
     assert!(
         violations
             .iter()
-            .any(|v| matches!(v, Violation::ForbiddenWorkspaceDep { from, to, .. } if from == "cgf-motion" && to == "cgf-kernel"))
+            .any(|v| matches!(v, Violation::ForbiddenWorkspaceDep { from, to, .. } if from == "umbra-motion" && to == "umbra-kernel"))
     );
 }
 
 /// ASM-005: a workspace crate that is missing from the rule table is a violation.
 #[test]
 fn given_unknown_workspace_crate_when_checked_then_unknown_crate_violation() {
-    let g = graph(vec![edge("cgf-mystery", "cgf-core", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-mystery", "umbra-core", DepKind::Normal)]);
 
     let violations = check(&g, &RULES);
 
     assert!(violations.contains(&Violation::UnknownCrate {
-        name: "cgf-mystery".to_string()
+        name: "umbra-mystery".to_string()
     }));
 }
 
@@ -244,14 +244,14 @@ fn given_unknown_workspace_crate_when_checked_then_unknown_crate_violation() {
 #[test]
 fn given_unknown_member_without_edges_when_checked_then_unknown_crate_violation() {
     let g = WorkspaceGraph {
-        members: BTreeSet::from(["cgf-mystery".to_string()]),
+        members: BTreeSet::from(["umbra-mystery".to_string()]),
         edges: Vec::new(),
     };
 
     assert_eq!(
         check(&g, &RULES),
         vec![Violation::UnknownCrate {
-            name: "cgf-mystery".to_string()
+            name: "umbra-mystery".to_string()
         }]
     );
 }
@@ -260,9 +260,9 @@ fn given_unknown_member_without_edges_when_checked_then_unknown_crate_violation(
 #[test]
 fn given_core_with_external_dev_build_and_normal_deps_when_checked_then_no_violation() {
     let g = graph(vec![
-        edge("cgf-core", "thiserror", DepKind::Normal),
-        edge("cgf-core", "proptest", DepKind::Dev),
-        edge("cgf-core", "cc", DepKind::Build),
+        edge("umbra-core", "thiserror", DepKind::Normal),
+        edge("umbra-core", "proptest", DepKind::Dev),
+        edge("umbra-core", "cc", DepKind::Build),
     ]);
 
     assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
@@ -294,33 +294,33 @@ fn closure(start: &str) -> BTreeSet<&'static str> {
 #[test]
 fn rules_table_matches_plan_table() {
     let expected: &[(&str, &[&str])] = &[
-        ("cgf-core", &[]),
-        ("cgf-kernel", &["cgf-core"]),
-        ("cgf-motion", &["cgf-core"]),
-        ("cgf-behavior", &["cgf-core"]),
-        ("cgf-templates", &["cgf-core"]),
-        ("cgf-net", &["cgf-core"]),
-        ("cgf-plugin-api", &[]),
-        ("cgf-plugin-host", &["cgf-core", "cgf-plugin-api"]),
-        ("cgf-sdk", &["cgf-plugin-api"]),
-        ("cgf-net-dis", &["cgf-sdk"]),
-        ("cgf-net-hla", &["cgf-sdk"]),
+        ("umbra-core", &[]),
+        ("umbra-kernel", &["umbra-core"]),
+        ("umbra-motion", &["umbra-core"]),
+        ("umbra-behavior", &["umbra-core"]),
+        ("umbra-templates", &["umbra-core"]),
+        ("umbra-net", &["umbra-core"]),
+        ("umbra-plugin-api", &[]),
+        ("umbra-plugin-host", &["umbra-core", "umbra-plugin-api"]),
+        ("umbra-sdk", &["umbra-plugin-api"]),
+        ("umbra-net-dis", &["umbra-sdk"]),
+        ("umbra-net-hla", &["umbra-sdk"]),
         (
-            "cgf-engine",
+            "umbra-engine",
             &[
-                "cgf-behavior",
-                "cgf-core",
-                "cgf-kernel",
-                "cgf-motion",
-                "cgf-net",
-                "cgf-plugin-api",
-                "cgf-plugin-host",
-                "cgf-templates",
+                "umbra-behavior",
+                "umbra-core",
+                "umbra-kernel",
+                "umbra-motion",
+                "umbra-net",
+                "umbra-plugin-api",
+                "umbra-plugin-host",
+                "umbra-templates",
             ],
         ),
-        ("cgf-api-types", &[]),
-        ("cgf-server", &["cgf-api-types", "cgf-engine"]),
-        ("cgf-cli", &["cgf-engine", "cgf-server"]),
+        ("umbra-api-types", &[]),
+        ("umbra-server", &["umbra-api-types", "umbra-engine"]),
+        ("umbra-cli", &["umbra-engine", "umbra-server"]),
         ("xtask", &[]),
     ];
     let actual: BTreeMap<&str, BTreeSet<&str>> = table()
@@ -335,7 +335,7 @@ fn rules_table_matches_plan_table() {
     assert_eq!(actual, expected);
 }
 
-/// REQ-A-2/3: only `cgf-plugin-api` forbids external dependencies; the requirement labels are set.
+/// REQ-A-2/3: only `umbra-plugin-api` forbids external dependencies; the requirement labels are set.
 #[test]
 fn rules_table_only_plugin_api_forbids_external_deps() {
     let forbidding: Vec<&str> = RULES
@@ -345,7 +345,7 @@ fn rules_table_only_plugin_api_forbids_external_deps() {
         .map(|c| c.name)
         .collect();
 
-    assert_eq!(forbidding, vec!["cgf-plugin-api"]);
+    assert_eq!(forbidding, vec!["umbra-plugin-api"]);
 }
 
 /// AT-7: no cycles in the allowed graph.
@@ -372,23 +372,23 @@ fn rules_table_is_acyclic_and_closed() {
 /// REQ-A-2: the kernel's closure excludes the server, network adapters and API types.
 #[test]
 fn kernel_closure_excludes_server_net_and_api_types() {
-    let c = closure("cgf-kernel");
+    let c = closure("umbra-kernel");
 
-    assert!(!c.contains("cgf-server"));
-    assert!(!c.contains("cgf-api-types"));
-    assert!(!c.iter().any(|n| n.starts_with("cgf-net")));
+    assert!(!c.contains("umbra-server"));
+    assert!(!c.contains("umbra-api-types"));
+    assert!(!c.iter().any(|n| n.starts_with("umbra-net")));
 }
 
-/// REQ-A-3: the SDK's closure is exactly `{cgf-plugin-api}`.
+/// REQ-A-3: the SDK's closure is exactly `{umbra-plugin-api}`.
 #[test]
 fn sdk_closure_is_plugin_api_only() {
-    assert_eq!(closure("cgf-sdk"), BTreeSet::from(["cgf-plugin-api"]));
+    assert_eq!(closure("umbra-sdk"), BTreeSet::from(["umbra-plugin-api"]));
 }
 
 /// REQ-A-1: the core's closure is empty.
 #[test]
 fn core_closure_is_empty() {
-    assert!(closure("cgf-core").is_empty());
+    assert!(closure("umbra-core").is_empty());
 }
 
 /// Determinism of the tool: output is sorted and identical across runs, whatever the edge order.
@@ -396,12 +396,12 @@ fn core_closure_is_empty() {
 fn check_output_is_sorted_and_stable() {
     let edges = || {
         vec![
-            edge("cgf-sdk", "cgf-core", DepKind::Normal),
-            edge("cgf-plugin-api", "libc", DepKind::Build),
-            edge("cgf-kernel", "cgf-server", DepKind::Dev),
-            edge("cgf-core", "cgf-kernel", DepKind::Normal),
-            edge("cgf-mystery", "cgf-core", DepKind::Normal),
-            edge("cgf-kernel", "cgf-net-dis", DepKind::Normal),
+            edge("umbra-sdk", "umbra-core", DepKind::Normal),
+            edge("umbra-plugin-api", "libc", DepKind::Build),
+            edge("umbra-kernel", "umbra-server", DepKind::Dev),
+            edge("umbra-core", "umbra-kernel", DepKind::Normal),
+            edge("umbra-mystery", "umbra-core", DepKind::Normal),
+            edge("umbra-kernel", "umbra-net-dis", DepKind::Normal),
         ]
     };
     let mut reversed = edges();
@@ -433,15 +433,15 @@ fn path_edge(from: &str, to: &str, kind: DepKind) -> DepEdge {
 }
 
 /// M1 (ASM-006): a path dependency outside the workspace could launder forbidden edges
-/// (`cgf-sdk -> shim -> cgf-kernel`), so it is a violation unless allow-listed.
+/// (`umbra-sdk -> shim -> umbra-kernel`), so it is a violation unless allow-listed.
 #[test]
 fn given_non_member_path_dep_when_checked_then_violation() {
-    let g = graph(vec![path_edge("cgf-sdk", "shim", DepKind::Normal)]);
+    let g = graph(vec![path_edge("umbra-sdk", "shim", DepKind::Normal)]);
 
     assert_eq!(
         check(&g, &RULES),
         vec![Violation::NonMemberPathDep {
-            from: "cgf-sdk".to_string(),
+            from: "umbra-sdk".to_string(),
             to: "shim".to_string(),
             kind: DepKind::Normal
         }]
@@ -452,8 +452,8 @@ fn given_non_member_path_dep_when_checked_then_violation() {
 #[test]
 fn given_non_member_path_dev_and_build_deps_when_checked_then_violations() {
     let g = graph(vec![
-        path_edge("cgf-core", "shim", DepKind::Dev),
-        path_edge("cgf-core", "shim", DepKind::Build),
+        path_edge("umbra-core", "shim", DepKind::Dev),
+        path_edge("umbra-core", "shim", DepKind::Build),
     ]);
 
     assert_eq!(check(&g, &RULES).len(), 2);
@@ -464,7 +464,7 @@ fn given_non_member_path_dev_and_build_deps_when_checked_then_violations() {
 #[test]
 fn given_fake_external_path_dep_when_checked_then_violation() {
     let g = graph(vec![path_edge(
-        "cgf-core",
+        "umbra-core",
         "fake_external",
         DepKind::Normal,
     )]);
@@ -472,7 +472,7 @@ fn given_fake_external_path_dep_when_checked_then_violation() {
     assert_eq!(
         check(&g, &RULES),
         vec![Violation::NonMemberPathDep {
-            from: "cgf-core".to_string(),
+            from: "umbra-core".to_string(),
             to: "fake_external".to_string(),
             kind: DepKind::Normal
         }]
@@ -482,15 +482,15 @@ fn given_fake_external_path_dep_when_checked_then_violation() {
 /// M1: registry dependencies (not path) stay fine.
 #[test]
 fn given_registry_dep_when_checked_then_no_violation() {
-    let g = graph(vec![edge("cgf-core", "serde_json", DepKind::Normal)]);
+    let g = graph(vec![edge("umbra-core", "serde_json", DepKind::Normal)]);
 
     assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
 }
 
 static CUSTOM: RuleSet = RuleSet {
     crates: &[CrateRule {
-        name: "cgf-core",
-        allowed_workspace_deps: &["cgf-odd"],
+        name: "umbra-core",
+        allowed_workspace_deps: &["umbra-odd"],
         allow_external_deps: false,
         requirement: "REQ-A-1",
     }],
@@ -499,26 +499,26 @@ static CUSTOM: RuleSet = RuleSet {
 /// m3: rendering uses the injected rule set, not the global table.
 #[test]
 fn given_custom_rules_when_rendered_then_allowed_list_comes_from_them() {
-    let v = forbidden("cgf-core", "cgf-kernel", DepKind::Normal, "REQ-A-1");
+    let v = forbidden("umbra-core", "umbra-kernel", DepKind::Normal, "REQ-A-1");
 
     let text = v.render(&CUSTOM);
 
     assert_eq!(
         text,
-        "REQ-A-1: cgf-core -> cgf-kernel (normal) not allowed; cgf-core may depend on: cgf-odd"
+        "REQ-A-1: umbra-core -> umbra-kernel (normal) not allowed; umbra-core may depend on: umbra-odd"
     );
 }
 
 /// n1: the external-dependency message names the rule and ASM-009.
 #[test]
 fn given_external_violation_when_rendered_then_message_is_precise() {
-    let v = external("cgf-core", "libc", DepKind::Build);
+    let v = external("umbra-core", "libc", DepKind::Build);
 
     let text = v.render(&CUSTOM);
 
     assert_eq!(
         text,
-        "REQ-A-1: cgf-core -> libc (build) not allowed; cgf-core may have no normal/build external dependencies (ASM-009)"
+        "REQ-A-1: umbra-core -> libc (build) not allowed; umbra-core may have no normal/build external dependencies (ASM-009)"
     );
 }
 
@@ -566,13 +566,13 @@ fn indirect(from: &str, via: &[&str], to: &str, requirement: &'static str) -> Vi
     }
 }
 
-/// Finding 1 (REQ-A-3): `cgf-sdk -> shim -> cgf-kernel` through a non-member is reported.
+/// Finding 1 (REQ-A-3): `umbra-sdk -> shim -> umbra-kernel` through a non-member is reported.
 #[test]
 fn given_member_reached_through_non_member_when_resolved_checked_then_indirect_violation() {
     let g = resolved(
         &[
-            ("sdk", "cgf-sdk", true),
-            ("k", "cgf-kernel", true),
+            ("sdk", "umbra-sdk", true),
+            ("k", "umbra-kernel", true),
             ("s", "shim", false),
         ],
         &[("sdk", "s", DepKind::Normal), ("s", "k", DepKind::Normal)],
@@ -580,7 +580,7 @@ fn given_member_reached_through_non_member_when_resolved_checked_then_indirect_v
 
     assert_eq!(
         check_resolved(&g, &RULES),
-        vec![indirect("cgf-sdk", &["shim"], "cgf-kernel", "REQ-A-3")]
+        vec![indirect("umbra-sdk", &["shim"], "umbra-kernel", "REQ-A-3")]
     );
 }
 
@@ -589,8 +589,8 @@ fn given_member_reached_through_non_member_when_resolved_checked_then_indirect_v
 fn given_multi_hop_launder_when_resolved_checked_then_full_path_is_reported() {
     let g = resolved(
         &[
-            ("core", "cgf-core", true),
-            ("k", "cgf-kernel", true),
+            ("core", "umbra-core", true),
+            ("k", "umbra-kernel", true),
             ("a", "a", false),
             ("b", "b", false),
         ],
@@ -603,18 +603,23 @@ fn given_multi_hop_launder_when_resolved_checked_then_full_path_is_reported() {
 
     assert_eq!(
         check_resolved(&g, &RULES),
-        vec![indirect("cgf-core", &["a", "b"], "cgf-kernel", "REQ-A-1")]
+        vec![indirect(
+            "umbra-core",
+            &["a", "b"],
+            "umbra-kernel",
+            "REQ-A-1"
+        )]
     );
 }
 
 /// A member reached through a non-member is fine when it is in the allowed closure
-/// (`cgf-cli` may reach `cgf-kernel` through `cgf-engine`).
+/// (`umbra-cli` may reach `umbra-kernel` through `umbra-engine`).
 #[test]
 fn given_member_in_allowed_closure_when_resolved_checked_then_no_violation() {
     let g = resolved(
         &[
-            ("cli", "cgf-cli", true),
-            ("k", "cgf-kernel", true),
+            ("cli", "umbra-cli", true),
+            ("k", "umbra-kernel", true),
             ("s", "shim", false),
         ],
         &[("cli", "s", DepKind::Normal), ("s", "k", DepKind::Normal)],
@@ -623,15 +628,15 @@ fn given_member_in_allowed_closure_when_resolved_checked_then_no_violation() {
     assert_eq!(check_resolved(&g, &RULES), Vec::<Violation>::new());
 }
 
-/// Members are not expanded: `cgf-plugin-api -> cgf-kernel` is reported for `cgf-plugin-api`
-/// (direct edge), not again as an indirect edge of `cgf-sdk`.
+/// Members are not expanded: `umbra-plugin-api -> umbra-kernel` is reported for `umbra-plugin-api`
+/// (direct edge), not again as an indirect edge of `umbra-sdk`.
 #[test]
 fn given_forbidden_edge_behind_a_member_when_resolved_checked_then_reported_once_at_its_source() {
     let g = resolved(
         &[
-            ("sdk", "cgf-sdk", true),
-            ("api", "cgf-plugin-api", true),
-            ("k", "cgf-kernel", true),
+            ("sdk", "umbra-sdk", true),
+            ("api", "umbra-plugin-api", true),
+            ("k", "umbra-kernel", true),
         ],
         &[
             ("sdk", "api", DepKind::Normal),
@@ -642,8 +647,8 @@ fn given_forbidden_edge_behind_a_member_when_resolved_checked_then_reported_once
     assert_eq!(
         check_resolved(&g, &RULES),
         vec![forbidden(
-            "cgf-plugin-api",
-            "cgf-kernel",
+            "umbra-plugin-api",
+            "umbra-kernel",
             DepKind::Normal,
             "section 4"
         )]
@@ -655,15 +660,20 @@ fn given_forbidden_edge_behind_a_member_when_resolved_checked_then_reported_once
 #[test]
 fn given_direct_member_edge_by_id_when_resolved_checked_then_forbidden_for_each_kind() {
     let g = resolved(
-        &[("dis", "cgf-net-dis", true), ("k", "cgf-kernel", true)],
+        &[("dis", "umbra-net-dis", true), ("k", "umbra-kernel", true)],
         &[("dis", "k", DepKind::Normal), ("dis", "k", DepKind::Dev)],
     );
 
     assert_eq!(
         check_resolved(&g, &RULES),
         vec![
-            forbidden("cgf-net-dis", "cgf-kernel", DepKind::Normal, "section 4"),
-            forbidden("cgf-net-dis", "cgf-kernel", DepKind::Dev, "section 4"),
+            forbidden(
+                "umbra-net-dis",
+                "umbra-kernel",
+                DepKind::Normal,
+                "section 4"
+            ),
+            forbidden("umbra-net-dis", "umbra-kernel", DepKind::Dev, "section 4"),
         ]
     );
 }
@@ -673,10 +683,10 @@ fn given_direct_member_edge_by_id_when_resolved_checked_then_forbidden_for_each_
 fn given_non_member_with_reserved_name_when_resolved_checked_then_impostor() {
     let g = resolved(
         &[
-            ("sdk", "cgf-sdk", true),
-            ("api", "cgf-plugin-api", true),
-            ("fake-api", "cgf-plugin-api", false),
-            ("fake-kernel", "cgf-kernel", false),
+            ("sdk", "umbra-sdk", true),
+            ("api", "umbra-plugin-api", true),
+            ("fake-api", "umbra-plugin-api", false),
+            ("fake-kernel", "umbra-kernel", false),
         ],
         &[
             ("sdk", "fake-api", DepKind::Normal),
@@ -704,7 +714,7 @@ fn given_non_member_with_reserved_name_when_resolved_checked_then_impostor() {
 #[test]
 fn given_dev_cycle_back_to_self_when_resolved_checked_then_no_violation() {
     let g = resolved(
-        &[("core", "cgf-core", true), ("h", "helper", false)],
+        &[("core", "umbra-core", true), ("h", "helper", false)],
         &[("core", "h", DepKind::Dev), ("h", "core", DepKind::Normal)],
     );
 
@@ -716,8 +726,8 @@ fn given_dev_cycle_back_to_self_when_resolved_checked_then_no_violation() {
 fn given_unknown_member_when_resolved_checked_then_no_resolved_violation() {
     let g = resolved(
         &[
-            ("m", "cgf-mystery", true),
-            ("k", "cgf-kernel", true),
+            ("m", "umbra-mystery", true),
+            ("k", "umbra-kernel", true),
             ("s", "shim", false),
         ],
         &[("m", "s", DepKind::Normal), ("s", "k", DepKind::Normal)],
@@ -729,11 +739,11 @@ fn given_unknown_member_when_resolved_checked_then_no_resolved_violation() {
 /// The indirect message names the full path and the allowed closure.
 #[test]
 fn given_indirect_violation_when_rendered_then_message_names_path_and_closure() {
-    let v = indirect("cgf-sdk", &["shim"], "cgf-kernel", "REQ-A-3");
+    let v = indirect("umbra-sdk", &["shim"], "umbra-kernel", "REQ-A-3");
 
     assert_eq!(
         v.render(&RULES),
-        "REQ-A-3: cgf-sdk -> shim -> cgf-kernel (resolved) not allowed; cgf-sdk may reach: cgf-plugin-api"
+        "REQ-A-3: umbra-sdk -> shim -> umbra-kernel (resolved) not allowed; umbra-sdk may reach: umbra-plugin-api"
     );
 }
 
@@ -754,7 +764,7 @@ fn rules_closure_matches_table_closure() {
 #[test]
 fn given_non_member_path_package_when_resolved_checked_then_violation() {
     let mut g = resolved(
-        &[("core", "cgf-core", true), ("s", "shim", false)],
+        &[("core", "umbra-core", true), ("s", "shim", false)],
         &[("core", "s", DepKind::Normal)],
     );
     if let Some(p) = g.packages.get_mut("s") {
@@ -775,7 +785,7 @@ fn given_non_member_path_package_when_resolved_checked_then_violation() {
 #[test]
 fn given_non_member_with_source_when_resolved_checked_then_no_violation() {
     let g = resolved(
-        &[("core", "cgf-core", true), ("t", "thiserror", false)],
+        &[("core", "umbra-core", true), ("t", "thiserror", false)],
         &[("core", "t", DepKind::Normal)],
     );
 
@@ -783,17 +793,17 @@ fn given_non_member_with_source_when_resolved_checked_then_no_violation() {
 }
 
 /// m1 / ASM-006: a declared non-path dependency named like a workspace or rule-table crate (for
-/// example `cgf-kernel = { git = ... }`) is reported by the declared pass.
+/// example `umbra-kernel = { git = ... }`) is reported by the declared pass.
 #[test]
 fn given_non_path_dep_with_reserved_name_when_checked_then_impostor_dep() {
-    let mut e = edge("cgf-sdk", "cgf-kernel", DepKind::Normal);
+    let mut e = edge("umbra-sdk", "umbra-kernel", DepKind::Normal);
     e.is_workspace = false;
 
     assert_eq!(
         check(&graph(vec![e]), &RULES),
         vec![Violation::ImpostorDep {
-            from: "cgf-sdk".to_string(),
-            to: "cgf-kernel".to_string(),
+            from: "umbra-sdk".to_string(),
+            to: "umbra-kernel".to_string(),
             kind: DepKind::Normal
         }]
     );

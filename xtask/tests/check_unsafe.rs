@@ -39,7 +39,7 @@ fn missing(package: &str) -> Violation {
 #[test]
 fn given_core_with_forbid_when_checked_then_no_violation() {
     let r = root(
-        "cgf-core",
+        "umbra-core",
         "//! docs\n\n#![forbid(unsafe_code)]\n\npub mod a;\n",
     );
 
@@ -49,18 +49,18 @@ fn given_core_with_forbid_when_checked_then_no_violation() {
 /// ASM-024: a non-FFI crate without the attribute is reported.
 #[test]
 fn given_core_without_forbid_when_checked_then_violation() {
-    let r = root("cgf-core", "//! docs\npub fn f() {}\n");
+    let r = root("umbra-core", "//! docs\npub fn f() {}\n");
 
-    assert_eq!(check_forbid_unsafe(&[r]), vec![missing("cgf-core")]);
+    assert_eq!(check_forbid_unsafe(&[r]), vec![missing("umbra-core")]);
 }
 
 /// ASM-024: the three FFI crates are exempt.
 #[test]
 fn given_ffi_crates_without_forbid_when_checked_then_no_violation() {
     let roots = [
-        root("cgf-plugin-api", ""),
-        root("cgf-plugin-host", ""),
-        root("cgf-sdk", ""),
+        root("umbra-plugin-api", ""),
+        root("umbra-plugin-host", ""),
+        root("umbra-sdk", ""),
     ];
 
     assert_eq!(check_forbid_unsafe(&roots), Vec::<Violation>::new());
@@ -69,31 +69,31 @@ fn given_ffi_crates_without_forbid_when_checked_then_no_violation() {
 /// ASM-024: `deny` is not `forbid`.
 #[test]
 fn given_deny_instead_of_forbid_when_checked_then_violation() {
-    let r = root("cgf-kernel", "#![deny(unsafe_code)]\n");
+    let r = root("umbra-kernel", "#![deny(unsafe_code)]\n");
 
-    assert_eq!(check_forbid_unsafe(&[r]), vec![missing("cgf-kernel")]);
+    assert_eq!(check_forbid_unsafe(&[r]), vec![missing("umbra-kernel")]);
 }
 
 /// ASM-024: a commented-out attribute does not count.
 #[test]
 fn given_commented_out_forbid_when_checked_then_violation() {
-    let r = root("cgf-kernel", "// #![forbid(unsafe_code)]\n");
+    let r = root("umbra-kernel", "// #![forbid(unsafe_code)]\n");
 
-    assert_eq!(check_forbid_unsafe(&[r]), vec![missing("cgf-kernel")]);
+    assert_eq!(check_forbid_unsafe(&[r]), vec![missing("umbra-kernel")]);
 }
 
 /// ASM-024: an outer attribute (`#[forbid(...)]` on an item) does not count.
 #[test]
 fn given_outer_attribute_only_when_checked_then_violation() {
-    let r = root("cgf-kernel", "#[forbid(unsafe_code)]\nmod m {}\n");
+    let r = root("umbra-kernel", "#[forbid(unsafe_code)]\nmod m {}\n");
 
-    assert_eq!(check_forbid_unsafe(&[r]), vec![missing("cgf-kernel")]);
+    assert_eq!(check_forbid_unsafe(&[r]), vec![missing("umbra-kernel")]);
 }
 
 /// ASM-024: the attribute may sit next to other lints in one list.
 #[test]
 fn given_forbid_in_a_lint_list_when_checked_then_no_violation() {
-    let r = root("cgf-kernel", "#![forbid(missing_docs, unsafe_code)]\n");
+    let r = root("umbra-kernel", "#![forbid(missing_docs, unsafe_code)]\n");
 
     assert_eq!(check_forbid_unsafe(&[r]), Vec::<Violation>::new());
 }
@@ -120,9 +120,9 @@ fn given_bin_root_without_forbid_when_checked_then_that_root_is_reported() {
 /// ASM-024: the output is sorted whatever the input order.
 #[test]
 fn given_several_missing_when_checked_then_sorted() {
-    let a = check_forbid_unsafe(&[root("cgf-net", ""), root("cgf-core", "")]);
+    let a = check_forbid_unsafe(&[root("umbra-net", ""), root("umbra-core", "")]);
 
-    assert_eq!(a, vec![missing("cgf-core"), missing("cgf-net")]);
+    assert_eq!(a, vec![missing("umbra-core"), missing("umbra-net")]);
 }
 
 /// ASM-024 (fixture): the violating fixture has exactly one seeded crate without the attribute;
@@ -131,11 +131,11 @@ fn given_several_missing_when_checked_then_sorted() {
 fn given_violating_fixture_when_loaded_then_only_api_types_is_missing_forbid() {
     let roots = load_crate_roots(&fixture("violating")).expect("load");
 
-    assert!(roots.iter().any(|r| r.package == "cgf-plugin-api"));
+    assert!(roots.iter().any(|r| r.package == "umbra-plugin-api"));
     assert_eq!(
         check_forbid_unsafe(&roots),
         vec![Violation::MissingForbidUnsafe {
-            package: "cgf-api-types".to_string(),
+            package: "umbra-api-types".to_string(),
             file: "src/lib.rs".to_string()
         }]
     );
@@ -153,13 +153,13 @@ fn given_conforming_fixture_when_loaded_then_no_forbid_violation() {
     assert_eq!(
         ids,
         [
-            ("cgf-core", "src/lib.rs"),
-            ("cgf-kernel", "src/lib.rs"),
-            ("cgf-motion", "src/lib.rs"),
-            ("cgf-net-dis", "src/lib.rs"),
-            ("cgf-plugin-api", "src/lib.rs"),
-            ("cgf-plugin-host", "src/lib.rs"),
-            ("cgf-sdk", "src/lib.rs"),
+            ("umbra-core", "src/lib.rs"),
+            ("umbra-kernel", "src/lib.rs"),
+            ("umbra-motion", "src/lib.rs"),
+            ("umbra-net-dis", "src/lib.rs"),
+            ("umbra-plugin-api", "src/lib.rs"),
+            ("umbra-plugin-host", "src/lib.rs"),
+            ("umbra-sdk", "src/lib.rs"),
         ]
     );
     assert_eq!(check_forbid_unsafe(&roots), Vec::<Violation>::new());
@@ -176,21 +176,21 @@ fn given_missing_manifest_when_loading_roots_then_error() {
 /// Exactly one violation for the root: the attribute is missing, or the file does not parse
 /// (rustc rejects such a file too, so either way the root is not accepted).
 fn assert_missing(source: &str) {
-    let r = root("cgf-kernel", source);
+    let r = root("umbra-kernel", source);
     let v = check_forbid_unsafe(&[r]);
     assert!(
         matches!(
             v.as_slice(),
             [Violation::MissingForbidUnsafe { package, file }
                 | Violation::UnparsableSource { package, file, .. }]
-                if package == "cgf-kernel" && file == "src/lib.rs"
+                if package == "umbra-kernel" && file == "src/lib.rs"
         ),
         "source accepted wrongly ({v:?}):\n{source}"
     );
 }
 
 fn assert_accepted(source: &str) {
-    let r = root("cgf-kernel", source);
+    let r = root("umbra-kernel", source);
     assert_eq!(
         check_forbid_unsafe(&[r]),
         Vec::<Violation>::new(),
@@ -321,7 +321,7 @@ fn given_forbid_inside_nested_block_comment_when_checked_then_violation() {
 /// Finding 4: a source that does not parse cannot be verified, so it is a violation.
 #[test]
 fn given_unparsable_source_when_checked_then_violation() {
-    let r = root("cgf-kernel", "#![forbid(unsafe_code)]\nfn f( {\n");
+    let r = root("umbra-kernel", "#![forbid(unsafe_code)]\nfn f( {\n");
 
     let v = check_forbid_unsafe(&[r]);
 
@@ -329,7 +329,7 @@ fn given_unparsable_source_when_checked_then_violation() {
         matches!(
             v.as_slice(),
             [Violation::UnparsableSource { package, file, .. }]
-                if package == "cgf-kernel" && file == "src/lib.rs"
+                if package == "umbra-kernel" && file == "src/lib.rs"
         ),
         "{v:?}"
     );

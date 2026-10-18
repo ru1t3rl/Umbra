@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (approved by the human project owner on 2026-10-17)
 - **Requirement IDs**: REQ-C-2, REQ-T-1, REQ-P-3, REQ-M-2, REQ-X-5
-- **Affected**: `cgf-core` (ID newtypes), later `cgf-templates`, `cgf-plugin-host`, `cgf-api-types`
+- **Affected**: `umbra-core` (ID newtypes), later `umbra-templates`, `umbra-plugin-host`, `umbra-api-types`
 
 ## Context
 REQ-C-2 defines `TemplateId`, `BehaviorId`, `MotionModelId` and `PluginId` as "string newtypes with dotted
@@ -27,7 +27,7 @@ GUI show them. Changing the grammar after M2 would break user data. Examples in 
 Option 1. The `builtin` first segment is reserved for engine-provided capabilities. The plugin host
 (M4) rejects plugins that register `builtin.*` IDs. Full built-in IDs always include the prefix, so
 REQ-M-2's `ground.kinematic` means `builtin.ground.kinematic`. The grammar is implemented once in a
-single private validation function in `cgf-core` that all four newtypes share (DRY).
+single private validation function in `umbra-core` that all four newtypes share (DRY).
 
 ## Consequences
 - Validation errors are precise (empty input, empty segment, bad character with index, too long, too few

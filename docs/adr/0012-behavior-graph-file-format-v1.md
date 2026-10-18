@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (decided by the human project owner on 2026-10-17; M3 plan `docs/plans/M3.md`). Spec decision D-29.
 - **Requirement IDs**: REQ-B-6, REQ-B-7, REQ-B-9, REQ-B-10, REQ-B-12, REQ-B-14, REQ-B-16, REQ-T-2, REQ-T-5, D-14, D-26, ADR 0010
-- **Affected**: `cgf-templates` (graph reader, discovery), `cgf-core::graph`, user files, `docs/behavior.md`, `crates/cgf-templates/schemas/behavior.v1.schema.json`
+- **Affected**: `umbra-templates` (graph reader, discovery), `umbra-core::graph`, user files, `docs/behavior.md`, `crates/umbra-templates/schemas/behavior.v1.schema.json`
 
 ## Context
 REQ-B-6 fixes the top-level keys (`id`, `schema_version`, `version`, optional `[interface]`, `root`,

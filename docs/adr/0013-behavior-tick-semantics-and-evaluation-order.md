@@ -3,7 +3,7 @@
 - **Status**: Accepted (decided by the human project owner on 2026-10-17; state hash stays v2, revisit hash v3 with replay in M7; M3 plan `docs/plans/M3.md`). Spec decision D-30. Amended 2026-10-17 (twice) and 2026-10-18 (halt
   scope: parent halts reach Running nodes only), see the sections at the end.
 - **Requirement IDs**: REQ-B-1, REQ-B-8, REQ-B-16, REQ-K-2, REQ-K-4, REQ-K-5, D-26, ADR 0007
-- **Affected**: `cgf-behavior` (interpreter), `cgf-kernel` (Behavior phase), `docs/behavior.md`
+- **Affected**: `umbra-behavior` (interpreter), `umbra-kernel` (Behavior phase), `docs/behavior.md`
 
 ## Context
 REQ-B-8: every node returns Success, Failure or Running; the order is fixed and documented; nodes only
@@ -102,7 +102,7 @@ Decision's **Halt** bullet; blackboards are still not cleared (ADR 0014).
   others are not. A subgraph node's halt of its child is a parent halt, not an instance halt.
 - **Subgraph halt mechanism** (human decision, 2026-10-18): a subgraph's child is a `dyn Behavior`
   (graph, built-in, or a plugin from M4), and `BehaviorInstance::halt` is the instance halt, so
-  `cgf-core` gains one additive default method on `BehaviorInstance` (allowed under the A-001 freeze):
+  `umbra-core` gains one additive default method on `BehaviorInstance` (allowed under the A-001 freeze):
   `fn halt_running(&mut self) { self.halt() }`, documented as "a parent halt (ADR 0013): halt what is
   Running and keep the state of finished nodes; the default is the full reset of `halt`".
   `GraphInstance` overrides it with the Running-only parent halt from its root; its `halt` stays the

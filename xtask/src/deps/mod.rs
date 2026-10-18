@@ -101,7 +101,7 @@ pub enum Violation {
         file: String,
     },
     /// The resolved graph reaches a member outside the allowed closure through a non-member
-    /// package (ASM-005), for example `cgf-sdk -> shim -> cgf-kernel`.
+    /// package (ASM-005), for example `umbra-sdk -> shim -> umbra-kernel`.
     IndirectWorkspaceDep {
         /// Depending member.
         from: String,
@@ -123,7 +123,7 @@ pub enum Violation {
         id: String,
     },
     /// A declared dependency uses the name of a workspace or rule-table crate but is not a path
-    /// dependency on that member, for example a git or registry `cgf-kernel` (ASM-006).
+    /// dependency on that member, for example a git or registry `umbra-kernel` (ASM-006).
     ImpostorDep {
         /// Depending crate.
         from: String,

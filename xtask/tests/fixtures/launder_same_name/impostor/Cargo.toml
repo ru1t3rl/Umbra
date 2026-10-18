@@ -1,8 +1,8 @@
 [package]
-name = "cgf-plugin-api"
+name = "umbra-plugin-api"
 version = "9.0.0"
 edition = "2024"
 publish = false
 
 [dependencies]
-cgf-kernel = { path = "../crates/cgf-kernel" }
+umbra-kernel = { path = "../crates/umbra-kernel" }

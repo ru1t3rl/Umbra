@@ -5,4 +5,4 @@ edition = "2024"
 publish = false
 
 [dependencies]
-cgf-kernel = { path = "../crates/cgf-kernel" }
+umbra-kernel = { path = "../crates/umbra-kernel" }

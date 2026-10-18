@@ -3,19 +3,19 @@
 version = 4
 
 [[package]]
-name = "cgf-kernel"
-version = "0.1.0"
-
-[[package]]
-name = "cgf-sdk"
-version = "0.1.0"
-dependencies = [
- "shim",
-]
-
-[[package]]
 name = "shim"
 version = "0.1.0"
 dependencies = [
- "cgf-kernel",
+ "umbra-kernel",
+]
+
+[[package]]
+name = "umbra-kernel"
+version = "0.1.0"
+
+[[package]]
+name = "umbra-sdk"
+version = "0.1.0"
+dependencies = [
+ "shim",
 ]

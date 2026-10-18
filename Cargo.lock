@@ -128,83 +128,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f079e83a288787bcd14a6aea84cee5c87a67c5a3e660c30f557a3d24761b3527"
 
 [[package]]
-name = "cgf-behavior"
-version = "0.1.0"
-dependencies = [
- "cgf-core",
- "proptest",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "cgf-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cgf-engine",
- "clap",
- "serde_json",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "cgf-core"
-version = "0.1.0"
-dependencies = [
- "proptest",
- "semver",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "cgf-engine"
-version = "0.1.0"
-dependencies = [
- "cgf-behavior",
- "cgf-core",
- "cgf-kernel",
- "cgf-motion",
- "cgf-templates",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "cgf-kernel"
-version = "0.1.0"
-dependencies = [
- "cgf-core",
- "criterion",
- "hecs",
- "proptest",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "cgf-motion"
-version = "0.1.0"
-dependencies = [
- "cgf-core",
- "proptest",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "cgf-templates"
-version = "0.1.0"
-dependencies = [
- "cgf-core",
- "proptest",
- "serde_json",
- "thiserror",
- "toml",
-]
-
-[[package]]
 name = "chacha20"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -894,6 +817,83 @@ dependencies = [
  "sharded-slab",
  "thread_local",
  "tracing-core",
+]
+
+[[package]]
+name = "umbra-behavior"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+ "thiserror",
+ "umbra-core",
+]
+
+[[package]]
+name = "umbra-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde_json",
+ "tracing-subscriber",
+ "umbra-engine",
+]
+
+[[package]]
+name = "umbra-core"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "semver",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "umbra-engine"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "thiserror",
+ "umbra-behavior",
+ "umbra-core",
+ "umbra-kernel",
+ "umbra-motion",
+ "umbra-templates",
+]
+
+[[package]]
+name = "umbra-kernel"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "hecs",
+ "proptest",
+ "thiserror",
+ "tracing",
+ "umbra-core",
+]
+
+[[package]]
+name = "umbra-motion"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+ "thiserror",
+ "umbra-core",
+]
+
+[[package]]
+name = "umbra-templates"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+ "thiserror",
+ "toml",
+ "umbra-core",
 ]
 
 [[package]]

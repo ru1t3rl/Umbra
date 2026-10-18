@@ -16,13 +16,13 @@ Run from `gui/`. Owner: `frontend-engineer`; plan approved by `frontend-architec
    `package.json`:
    ```json
    {
-     "name": "@cgf/<name>",
+     "name": "@umbra/<name>",
      "version": "0.0.0",
      "private": true,
      "type": "module",
      "exports": "./src/index.ts",
-     "cgf": { "type": "feature", "tier": "domain" },
-     "dependencies": { "@cgf/ui-kit": "workspace:*" },
+     "umbra": { "type": "feature", "tier": "domain" },
+     "dependencies": { "@umbra/ui-kit": "workspace:*" },
      "peerDependencies": { "react": "^18 || ^19" }
    }
    ```

@@ -1,0 +1,11 @@
+[package]
+name = "umbra-sdk"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+umbra-kernel = { git = "https://example.invalid/umbra-kernel" }
+
+[lints]
+workspace = true

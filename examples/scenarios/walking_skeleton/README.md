@@ -2,7 +2,7 @@
 
 The M1 walking skeleton as a scenario (ASM-061): three ground vehicles near 52 N 4 E on flat
 terrain, each following a square route of four 500 m legs. It reproduces the hard-coded M1 demo
-layout (the `cgf-cli demo` command and `cgf_engine::demo` no longer exist) with fixed cruise speeds
+layout (the `umbra demo` command and `umbra_engine::demo` no longer exist) with fixed cruise speeds
 instead of the demo's random jitter.
 
 | File | Role |
@@ -15,9 +15,9 @@ instead of the demo's random jitter.
 The tank also overrides `max_speed_mps` in the scenario, to show per-entity overrides.
 
 ```
-cargo run -p cgf-cli -- validate examples/scenarios/walking_skeleton/scenario.toml
-cargo run -p cgf-cli -- run examples/scenarios/walking_skeleton/scenario.toml --ticks 300 --print-every 30
+cargo run -p umbra-cli -- validate examples/scenarios/walking_skeleton/scenario.toml
+cargo run -p umbra-cli -- run examples/scenarios/walking_skeleton/scenario.toml --ticks 300 --print-every 30
 ```
 
-This scenario is the subject of the determinism gate (`cargo test -p cgf-engine --test determinism`):
+This scenario is the subject of the determinism gate (`cargo test -p umbra-engine --test determinism`):
 the state hash after every tick must be identical across runs, clock modes and processes.

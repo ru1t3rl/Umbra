@@ -1,8 +1,8 @@
 # Template and scenario file reference (format v1)
 
 Source of truth for the format: ADR 0010 (decisions), ASM-053..ASM-069 (details), and the readers in
-`crates/cgf-templates`. The JSON Schemas `crates/cgf-templates/schemas/{template,scenario}.v1.schema.json`
-(printed by `cgf-cli schema template|scenario`) describe the structure for editors; they are hand-written,
+`crates/umbra-templates`. The JSON Schemas `crates/umbra-templates/schemas/{template,scenario}.v1.schema.json`
+(printed by `umbra schema template|scenario`) describe the structure for editors; they are hand-written,
 use only the ADR 0009 subset, and the reader is authoritative where they differ (REQ-T-3, NFR-5, D-14).
 
 Behavior graph files (`*.behavior.toml`, M3) have their own reference: `docs/behavior.md`.
@@ -183,7 +183,7 @@ the errors of the closest branch are reported), `$defs` at the root with local `
 schema invalid; a registered component with such a schema is a component bug and the loader refuses to start.
 
 ## Built-in components
-`cgf-cli schema component <ID>` prints the registered parameter schema of any component and is the
+`umbra schema component <ID>` prints the registered parameter schema of any component and is the
 authoritative source; this section is a summary. Unknown parameters are errors for both.
 
 ### `builtin.ground.kinematic` (motion model)

@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (approved by the human project owner on 2026-10-17)
 - **Requirement IDs**: D-3, D-4, REQ-K-1, REQ-K-2, REQ-K-4, A-1, NFR-1, NFR-4, D-18
-- **Affected**: `cgf-kernel` (only crate that may name ECS types), `deny.toml`, `Cargo.lock`
+- **Affected**: `umbra-kernel` (only crate that may name ECS types), `deny.toml`, `Cargo.lock`
 
 ## Context
 D-3 fixes "ECS (`bevy_ecs` standalone, or `hecs`)" but leaves the pick open. M1 builds the kernel, so the
@@ -29,10 +29,10 @@ ECS's own generational handles must never leave the kernel either way.
      a second scheduler concept next to the REQ-K-2 pipeline (two ways to order systems, against DRY).
 
 ## Decision
-Option 1, `hecs`, used only inside `cgf-kernel` (KISS, D-4, ISP). Rules that keep it deterministic and
+Option 1, `hecs`, used only inside `umbra-kernel` (KISS, D-4, ISP). Rules that keep it deterministic and
 replaceable:
-- `hecs` types never appear in a public signature of `cgf-kernel`. Entities are addressed by
-  `cgf_core::EntityId`, mapped through a `BTreeMap<EntityId, hecs::Entity>` (REQ-C-2, REQ-K-4).
+- `hecs` types never appear in a public signature of `umbra-kernel`. Entities are addressed by
+  `umbra_core::EntityId`, mapped through a `BTreeMap<EntityId, hecs::Entity>` (REQ-C-2, REQ-K-4).
 - Systems either treat entities independently or iterate in `EntityId` order. State hashes and snapshots
   always walk entities in `EntityId` order, never in ECS storage order (ASM-037).
 - The ECS's internal hash maps are only used for lookups, never iterated by us; the determinism test

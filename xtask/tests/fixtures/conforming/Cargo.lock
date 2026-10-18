@@ -3,57 +3,57 @@
 version = 4
 
 [[package]]
-name = "cgf-core"
-version = "0.1.0"
-dependencies = [
- "fake_external",
-]
-
-[[package]]
-name = "cgf-kernel"
-version = "0.1.0"
-dependencies = [
- "cgf-core",
-]
-
-[[package]]
-name = "cgf-motion"
-version = "0.1.0"
-dependencies = [
- "cgf-core",
-]
-
-[[package]]
-name = "cgf-net-dis"
-version = "0.1.0"
-dependencies = [
- "cgf-sdk",
- "fake_external",
-]
-
-[[package]]
-name = "cgf-plugin-api"
-version = "0.1.0"
-dependencies = [
- "fake_external",
-]
-
-[[package]]
-name = "cgf-plugin-host"
-version = "0.1.0"
-dependencies = [
- "cgf-core",
- "cgf-plugin-api",
-]
-
-[[package]]
-name = "cgf-sdk"
-version = "0.1.0"
-dependencies = [
- "cgf-plugin-api",
-]
-
-[[package]]
 name = "fake_external"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "umbra-core"
+version = "0.1.0"
+dependencies = [
+ "fake_external",
+]
+
+[[package]]
+name = "umbra-kernel"
+version = "0.1.0"
+dependencies = [
+ "umbra-core",
+]
+
+[[package]]
+name = "umbra-motion"
+version = "0.1.0"
+dependencies = [
+ "umbra-core",
+]
+
+[[package]]
+name = "umbra-net-dis"
+version = "0.1.0"
+dependencies = [
+ "fake_external",
+ "umbra-sdk",
+]
+
+[[package]]
+name = "umbra-plugin-api"
+version = "0.1.0"
+dependencies = [
+ "fake_external",
+]
+
+[[package]]
+name = "umbra-plugin-host"
+version = "0.1.0"
+dependencies = [
+ "umbra-core",
+ "umbra-plugin-api",
+]
+
+[[package]]
+name = "umbra-sdk"
+version = "0.1.0"
+dependencies = [
+ "umbra-plugin-api",
+]

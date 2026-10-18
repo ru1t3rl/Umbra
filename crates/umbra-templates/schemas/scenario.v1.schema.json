@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Umbra scenario file, format v1",
+  "description": "A scenario is recognised by its top-level `scenario` table. The reader checks what this schema cannot: ID grammar, `time_scale` only with `clock = scaled`, registered components and their parameters. Hand-written next to the reader; the reader is authoritative.",
+  "$defs": {
+    "id": { "type": "string", "minLength": 3, "maxLength": 128, "description": "A namespaced ID such as `builtin.terrain.flat`" },
+    "position": {
+      "description": "Either `{ lat_deg, lon_deg, alt_m? }` (WGS-84, alt above the ellipsoid, default 0) or `{ ecef_m = [x, y, z] }`; exactly one form",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "lat_deg": { "type": "number", "minimum": -90, "maximum": 90 },
+            "lon_deg": { "type": "number", "minimum": -180, "maximum": 180 },
+            "alt_m": { "type": "number" }
+          },
+          "required": ["lat_deg", "lon_deg"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ecef_m": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 }
+          },
+          "required": ["ecef_m"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "entity": {
+      "type": "object",
+      "properties": {
+        "template": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "group": { "type": "string" },
+        "position": { "$ref": "#/$defs/position" },
+        "heading_deg": { "type": "number" },
+        "speed_mps": { "type": "number", "minimum": 0 },
+        "force": { "type": "string", "minLength": 1, "maxLength": 128, "description": "Optional force name, `[a-z][a-z0-9_]*` (ASM-079); entities with different forces are hostile, an entity without one is neutral" },
+        "overrides": {
+          "type": "object",
+          "properties": {
+            "motion": {
+              "type": "object",
+              "properties": {
+                "model": { "$ref": "#/$defs/id" },
+                "params": { "type": "object" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "route": {
+          "type": "object",
+          "properties": {
+            "waypoints": { "type": "array", "items": { "$ref": "#/$defs/position" }, "minItems": 1 },
+            "arrival_radius_m": { "type": "number", "exclusiveMinimum": 0 },
+            "cruise_speed_mps": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "required": ["waypoints", "arrival_radius_m", "cruise_speed_mps"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["template", "position"],
+      "additionalProperties": false
+    }
+  },
+  "type": "object",
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1, "maximum": 1, "description": "Format version; only 1 is supported" },
+    "scenario": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "seed": { "type": "integer", "minimum": 0 },
+        "tick_rate_hz": { "type": "integer", "minimum": 1, "description": "Whole hertz" },
+        "clock": { "enum": ["afap", "realtime", "stepped", "scaled"] },
+        "time_scale": { "type": "number", "minimum": 0.001, "maximum": 1000000 },
+        "duration_s": { "type": "number", "exclusiveMinimum": 0 },
+        "template_paths": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["name", "seed", "tick_rate_hz", "duration_s"],
+      "additionalProperties": false
+    },
+    "terrain": {
+      "type": "object",
+      "properties": {
+        "provider": { "$ref": "#/$defs/id" },
+        "params": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "entities": { "type": "array", "items": { "$ref": "#/$defs/entity" } }
+  },
+  "required": ["schema_version", "scenario"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "schema_version": 1,
+      "scenario": { "name": "walking_skeleton", "seed": 42, "tick_rate_hz": 30, "duration_s": 60.0 },
+      "entities": [ { "template": "tank.mbt_generic", "position": { "lat_deg": 52.0, "lon_deg": 4.0 } } ]
+    }
+  ]
+}

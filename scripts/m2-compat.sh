@@ -11,7 +11,7 @@
 # 2b. In an M2-era `src` file, no line from the first `#[cfg(test)]` onward (the whole file for
 #     `tests.rs`) is removed, changed or added to (an inserted `#[ignore]` or early `return;`
 #     would disable a test): no line may be removed or inserted there; the one allowlisted change is the approved edit of
-#     `all_lists_every_kind_once` in crates/cgf-core/src/registry.rs (ADR 0011).
+#     `all_lists_every_kind_once` in crates/umbra-core/src/registry.rs (ADR 0011).
 # 3.  The M2 test-name baseline, regenerated from the tag in a scratch worktree under target/ (the
 #     default target directory, never /tmp), is a subset of the test names now, keyed by
 #     package, test binary and name; the baseline build must succeed and list >= 900 tests. A
@@ -71,7 +71,7 @@ check_2b() {
         esac
         [ -n "${start:-}" ] || continue
         # Allowlisted range: the approved test edit (ADR 0011) at the tag's line numbers.
-        if [ "$f" = crates/cgf-core/src/registry.rs ]; then
+        if [ "$f" = crates/umbra-core/src/registry.rs ]; then
             range=$(git show "$_tag:$f" | awk '
                 /fn all_lists_every_kind_once/ { s = NR }
                 s && !e && /^    }$/ && NR > s { e = NR }
@@ -150,35 +150,35 @@ if [ "$self_test" -eq 1 ]; then
     }
     expect PASS "clean tree, checks 1 and 2" check_1_2 "$tag"
     expect PASS "clean tree, check 2b" check_2b "$tag"
-    echo "// mutation" >> crates/cgf-core/tests/ids.rs
+    echo "// mutation" >> crates/umbra-core/tests/ids.rs
     expect FAIL "modified M2 test file" check_1_2 "$tag"
-    git checkout -q -- crates/cgf-core/tests/ids.rs
-    rm -f crates/cgf-engine/tests/determinism.rs
+    git checkout -q -- crates/umbra-core/tests/ids.rs
+    rm -f crates/umbra-engine/tests/determinism.rs
     expect FAIL "deleted M2 test file" check_1_2 "$tag"
-    git checkout -q -- crates/cgf-engine/tests/determinism.rs
+    git checkout -q -- crates/umbra-engine/tests/determinism.rs
     echo "# mutation" >> examples/scenarios/walking_skeleton/README.md
     expect FAIL "modified walking-skeleton file" check_1_2 "$tag"
     git checkout -q -- examples/scenarios/walking_skeleton/README.md
-    f=$(git ls-files 'crates/cgf-templates/tests/fixtures/*' | head -n 1)
+    f=$(git ls-files 'crates/umbra-templates/tests/fixtures/*' | head -n 1)
     echo "# mutation" >> "$f"
     expect FAIL "modified M2 fixture file" check_1_2 "$tag"
     git checkout -q -- "$f"
     # 2b: change the closing line of the inline test module of an M2-era src file.
-    sed -i '$ s/}$/} \/\/ mutation/' crates/cgf-templates/src/diagnostic.rs
+    sed -i '$ s/}$/} \/\/ mutation/' crates/umbra-templates/src/diagnostic.rs
     expect FAIL "changed line in an inline test region" check_2b "$tag"
     git checkout -q -- .
     git checkout -q -- .
     # 2b rejects additions too: an inserted #[ignore] or an early return disables an M2 inline test.
-    sed -i '0,/^    #\[test\]$/s//    #[test]\n    #[ignore]/' crates/cgf-templates/src/diagnostic.rs
+    sed -i '0,/^    #\[test\]$/s//    #[test]\n    #[ignore]/' crates/umbra-templates/src/diagnostic.rs
     expect FAIL "#[ignore] inserted mid-module in an M2 inline test" check_2b "$tag"
     git checkout -q -- .
-    sed -i '0,/fn display_is_path_line_col_error_code_message_then_notes() {/s//&\n        return;/' crates/cgf-templates/src/diagnostic.rs
+    sed -i '0,/fn display_is_path_line_col_error_code_message_then_notes() {/s//&\n        return;/' crates/umbra-templates/src/diagnostic.rs
     expect FAIL "return; inserted into an M2 inline test body" check_2b "$tag"
     git checkout -q -- .
-    echo "// addition at the end of the test module" >> crates/cgf-templates/src/diagnostic.rs
+    echo "// addition at the end of the test module" >> crates/umbra-templates/src/diagnostic.rs
     expect FAIL "line appended to an M2 inline test region" check_2b "$tag"
     git checkout -q -- .
-    sed -i '0,/^#\[test\]$/s//#[test]\n#[ignore]/' crates/cgf-core/tests/ids.rs
+    sed -i '0,/^#\[test\]$/s//#[test]\n#[ignore]/' crates/umbra-core/tests/ids.rs
     expect FAIL "M2 integration test newly marked #[ignore]" check_1_2 "$tag"
     git checkout -q -- .
     # Check 3 failure paths.

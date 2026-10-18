@@ -51,7 +51,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo test --workspace --locked
       # Determinism gate (REQ-K-4): skipped in M0 (ASM-019). From M1 add:
-      #   cargo test -p cgf-engine --test determinism --test behavior_determinism --locked (M3, ASM-087)
+      #   cargo test -p umbra-engine --test determinism --test behavior_determinism --locked (M3, ASM-087)
 
   doc:
     strategy:

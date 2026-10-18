@@ -1,4 +1,4 @@
-# CGF Engine: Software Specification v0.2
+# Umbra: Software Specification v0.2
 
 *Computer Generated Forces engine: headless Rust simulation core, plugin SDK, optional control API and GUI.*
 
@@ -50,12 +50,12 @@ A Computer Generated Force (CGF) simulates many autonomous entities (vehicles, a
 | D-4 | **Single-threaded deterministic tick first**; parallelism only via scheduler later | KISS; determinism (A-2); easier debugging | Threads everywhere from day one |
 | D-5 | **Fixed timestep** with a `Clock` abstraction (real-time, scaled, as-fast-as-possible, stepped) | Reproducibility, testability; systems never read wall clock | Variable dt |
 | D-6 | **C ABI plugin contract** with versioned function tables, loaded as dynamic libraries | Rust has no stable ABI; C ABI allows Rust, C, C++, C# (NativeAOT) plugin authors | `abi_stable` (Rust-only), WASM (overhead; possible future plugin kind) |
-| D-7 | **`cgf-sdk` safe Rust wrapper** over the C ABI | Ergonomic plugin authoring; dogfooded by built-in plugins | Raw C only |
+| D-7 | **`umbra-sdk` safe Rust wrapper** over the C ABI | Ergonomic plugin authoring; dogfooded by built-in plugins | Raw C only |
 | D-8 | **One extension mechanism** for all plugin kinds (single registry, single loader) | DRY, OCP; adding a kind never needs a new loading system | Separate loader per kind |
 | D-9 | **Ports and adapters for networking**; canonical internal event model; DIS/HLA are adapters built on the public plugin interface | Core stays protocol-agnostic; dogfooding proves SDK sufficiency; anti-corruption layer | Protocol types inside the kernel |
-| D-10 | **Control API is an optional crate** (`cgf-server`) talking to the engine via an in-process command/event channel | Engine remains standalone (REQ-G-1); CLI and server are peers | Server as the engine's entry point |
+| D-10 | **Control API is an optional crate** (`umbra-server`) talking to the engine via an in-process command/event channel | Engine remains standalone (REQ-G-1); CLI and server are peers | Server as the engine's entry point |
 | D-11 | **REST (OpenAPI generated from Rust via `utoipa`) + WebSocket stream** | Generated clients for any language; no extra gateway language; one source of truth in Rust types | gRPC (extra complexity for browsers), C# gateway (third runtime, extra hop, no current need) |
-| D-12 | **Separate wire types crate** (`cgf-api-types`) from domain types | Refactor internals without breaking clients | Exposing domain structs directly |
+| D-12 | **Separate wire types crate** (`umbra-api-types`) from domain types | Refactor internals without breaking clients | Exposing domain structs directly |
 | D-13 | **React + TypeScript GUI, Tauri for Windows** | One web codebase, small native shell, same toolchain family as engine, can spawn engine sidecar | Electron (heavy), separate native app |
 | D-14 | **Templates as TOML** with JSON Schema | Human-friendly, comments allowed, schema gives validation and editor support | JSON (no comments), custom DSL |
 | D-15 | **f64 positions; ECEF/WGS-84 canonical frame**, local ENU/NED for motion math | Matches DIS; avoids precision loss globally | f32, flat-earth only |
@@ -66,28 +66,28 @@ A Computer Generated Force (CGF) simulates many autonomous entities (vehicles, a
 | D-20 | **ECS is `hecs`, kernel-internal only** (ADR 0005); entities addressed by `EntityId`, iteration in `EntityId` order | No scheduler of its own (our phase pipeline orders work), small dependency tree, deterministic use is easy to enforce | `bevy_ecs` (multi-threaded executor by default, frequent breaking releases), own ECS |
 | D-21 | **`SimRng` is hand-rolled Xoshiro256\*\* with SplitMix64 key expansion; streams keyed by (domain, id)** (ADR 0006) | A dependency bump can never change what a seed produces; per-entity streams keep results independent of iteration and spawn order | `rand`/`rand_chacha`, one global stream |
 | D-22 | **State hash is FNV-1a 64 over a versioned little-endian canonical encoding, walked in `EntityId` order; -0.0 and NaN canonicalised; v2 includes route content (ADR 0007 amendment)** (ADR 0007) | Stable by construction, no dependency, cheap; hashes are for equality checks, not security | xxHash/BLAKE3 crates, hashing `Debug` output |
-| D-23 | **Component registry and generic `Factory<T>` live in `cgf-core`; component parameters are `serde_json::Value` with hand-written JSON Schemas; no serde derives on domain types** (ADR 0008) | `cgf-templates` may only see `cgf-core` (section 4); one registry for built-ins and plugins (REQ-T-1, D-8); schemas are the component's contract (REQ-T-3) | Registry in `cgf-engine`, `schemars`, serde derives on core types |
+| D-23 | **Component registry and generic `Factory<T>` live in `umbra-core`; component parameters are `serde_json::Value` with hand-written JSON Schemas; no serde derives on domain types** (ADR 0008) | `umbra-templates` may only see `umbra-core` (section 4); one registry for built-ins and plugins (REQ-T-1, D-8); schemas are the component's contract (REQ-T-3) | Registry in `umbra-engine`, `schemars`, serde derives on core types |
 | D-24 | **Hand-rolled validator for a documented JSON Schema keyword subset; schemas using other keywords are rejected** (ADR 0009) | Small, deterministic, no heavy dependency; fail-closed | `jsonschema` crate |
 | D-25 | **Template and scenario file format v1** (ADR 0010): keys, merge rules, initial routes in placements, `schema_version` policy (adding keys does not bump it), diagnostics `path:line:col: error[code]: message` | REQ-T-1..6, D-14 | Ad-hoc per-milestone formats |
 | D-26 | **Behavior graphs: behavior tree as the primary format, with `fsm` and `subgraph` as node types** (A-001) | In a tree a subtree is just a node, so reuse of pre-built pieces (own, built-in, plugin, third-party) needs only a simple result interface; FSM nodes cover mode-based logic; both emit the same intents, so the engine core is unchanged; visual authoring stays simple | FSM-only (reuse needs exit-point design, nested transitions get tangled), tree-only (modal logic awkward), free-form scripting (determinism and test surface) |
 | D-27 | **Visual behavior editor is part of the GUI**, driven by an engine **catalog** and **validation** API (A-001) | No second client to build and package; plugins extend the editor automatically; one validation pipeline | Separate editor application; hard-coded node palette in the GUI |
-| D-28 | **Behavior traits, the graph definition and catalog types live in `cgf-core`; registry kinds `Condition` and `Action` added; file graphs are registered into a per-scenario copy of the registry; `builtin_registry()` keeps its M2 set, `standard_registry()` adds M3 built-ins** (ADR 0011) | `cgf-templates` and `cgf-behavior` may only see `cgf-core`; one registry for graphs and leaves (D-8); exact kind messages; M7 condition/action plugin kinds map 1:1. One M2 unit test (`all_lists_every_kind_once`) gains two arms, approved | Role tags under `Behavior`; separate leaf registry in `cgf-behavior` |
+| D-28 | **Behavior traits, the graph definition and catalog types live in `umbra-core`; registry kinds `Condition` and `Action` added; file graphs are registered into a per-scenario copy of the registry; `builtin_registry()` keeps its M2 set, `standard_registry()` adds M3 built-ins** (ADR 0011) | `umbra-templates` and `umbra-behavior` may only see `umbra-core`; one registry for graphs and leaves (D-8); exact kind messages; M7 condition/action plugin kinds map 1:1. One M2 unit test (`all_lists_every_kind_once`) gains two arms, approved | Role tags under `Behavior`; separate leaf registry in `umbra-behavior` |
 | D-29 | **Behavior graph file format v1 (`*.behavior.toml`)**: strict tree, node settings as node keys, FSM with `states`/`exits`/`transitions`, `{ param = .. }` references, `{ key = .. }` input bindings, `[editor]` dropped; found by suffix under `template_paths` (ADR 0012) | REQ-B-6..12; reuses the M2 pipeline without a scenario key | New `behavior_paths` key; graphs inline in templates |
 | D-30 | **Tick semantics: evaluate from the root every tick; `sequence`/`selector` reactive unless `memory = true`; halt of skipped Running nodes; fixed FSM step rules; state hash stays v2 (revisit v3 with replay in M7)** (ADR 0013). *Amended 2026-10-18:* a halt from a parent (pre-emption, parallel, timeout, FSM, subgraph) is a no-op on nodes that are not Running and resets only the halted Running nodes' own state, so a cooling `cooldown` keeps its timer; `BehaviorInstance::halt` still resets every node, cooldown timers included; a subgraph node's parent halt calls the new additive default method `BehaviorInstance::halt_running` (default: `halt`; graph instances override it with the Running-only halt; the M4 plugin ABI mirrors it or documents the fallback) | REQ-B-8 fixed, documented order; the A-001 example works as written; bounded work per tick | Memory composites by default; event-driven trees |
 | D-31 | **Declared, typed blackboard per graph instance; interface params static or bound at subgraph call sites to a parent key (copied in before each tick, read-only in the child); outputs copied out after each tick** (ADR 0014) | REQ-B-10/11/12: every binding checked at load; isolation by construction; dynamic values such as targets flow explicitly | Untyped blackboard with free bindings; static params only |
-| D-32 | **Perception: core `Sensor` and `Contact`; kernel Perception phase on pre-tick state; `builtin.visual` (range, fov, line of sight with eye height) in `cgf-engine`; optional placement `force`, different forces are hostile** (ADR 0015) | M3 perception deliverable; deterministic; additive scenario key; O(n^2) accepted until M9 | New `cgf-perception` crate; forces in templates |
+| D-32 | **Perception: core `Sensor` and `Contact`; kernel Perception phase on pre-tick state; `builtin.visual` (range, fov, line of sight with eye height) in `umbra-engine`; optional placement `force`, different forces are hostile** (ADR 0015) | M3 perception deliverable; deterministic; additive scenario key; O(n^2) accepted until M9 | New `umbra-perception` crate; forces in templates |
 | D-33 | **Intent set v1 (`INTENT_SET_VERSION = 1`)**: all REQ-B-2 variants defined; `FollowRoute` expanded by the kernel route code, `SetHeading` applied; `Fire`, `Spawn`, `Despawn`, `Custom` recorded only until M5 (ADR 0016) | M4 ABI mirrors a complete, closed set; reuses the M1 route code | Adding variants only when consumed |
-| D-34 | **Semantic versions via the `semver` crate in `cgf-core`** (ADR 0017) | Cargo's range semantics, no dependencies, reused for plugin versions in M4 | Hand-rolled semver subset |
+| D-34 | **Semantic versions via the `semver` crate in `umbra-core`** (ADR 0017) | Cargo's range semantics, no dependencies, reused for plugin versions in M4 | Hand-rolled semver subset |
 
 ## 3. System overview
 
 ```
-   Optional clients                         Engine process (cgf-cli)
+   Optional clients                         Engine process (umbra)
 +--------------------+            +----------------------------------------+
-| GUI (React + TS)   |  REST/WS   | cgf-server (optional feature)          |
+| GUI (React + TS)   |  REST/WS   | umbra-server (optional feature)        |
 | Web / Tauri (Win)  |<---------->|   uses EngineHandle (channels)         |
 +--------------------+            |----------------------------------------|
-| Scripts / CI       |            | cgf-engine (facade, embeddable lib)    |
+| Scripts / CI       |            | umbra-engine (facade, embeddable lib)  |
 +--------------------+            |  kernel: clock, scheduler, ECS, bus    |
                                   |  behavior | motion | perception        |
    Template files (TOML)--------->|  templates + registry                  |
@@ -98,35 +98,35 @@ A Computer Generated Force (CGF) simulates many autonomous entities (vehicles, a
                                         plugin DLLs     DIS / HLA / custom
 ```
 
-- **REQ-S-1** `cgf-cli run scenario.toml` MUST run a scenario to completion with no server, no GUI, and no network adapters unless the scenario enables them.
-- **REQ-S-2** The engine MUST also be usable as a Rust library (`cgf-engine`) for embedding and integration tests.
+- **REQ-S-1** `umbra run scenario.toml` MUST run a scenario to completion with no server, no GUI, and no network adapters unless the scenario enables them.
+- **REQ-S-2** The engine MUST also be usable as a Rust library (`umbra-engine`) for embedding and integration tests.
 
 ## 4. Workspace layout and dependency rules
 
 | Crate | Responsibility | May depend on |
 |---|---|---|
-| `cgf-core` | Domain types: IDs, time, units, coordinates, canonical events, core traits (`Behavior`, `MotionModel`, `NetworkAdapter`, `TerrainProvider`, `Sensor`). No I/O. | std, small utility crates |
-| `cgf-kernel` | ECS world, clock, scheduler, tick pipeline, event bus, RNG service | core |
-| `cgf-motion` | Built-in kinematic models (ground, air, sea) | core |
-| `cgf-behavior` | Behavior runtime: FSM and behavior tree interpreters, built-in actions | core |
-| `cgf-templates` | Parse, validate, resolve inheritance, registry of templates and scenarios | core |
-| `cgf-plugin-api` | **C ABI contract only**: `#[repr(C)]` structs, function pointer tables, version constants. Generates `cgf_plugin_api.h` via `cbindgen`. | nothing |
-| `cgf-plugin-host` | Load libraries, check manifest/ABI, lifecycle, bridge plugin vtables into core traits | core, plugin-api |
-| `cgf-sdk` | Safe Rust wrapper and `export_plugin!` macro for plugin authors | plugin-api (not core) |
-| `cgf-net` | Network manager, canonical message model, adapter registry, publish policy and dead reckoning | core |
-| `cgf-net-dis` | DIS adapter (built as a plugin using the SDK) | sdk |
-| `cgf-net-hla` | HLA adapter (later, same rules) | sdk |
-| `cgf-engine` | Facade: wires everything, exposes `Engine`, `EngineHandle`, `EngineConfig` | all engine crates |
-| `cgf-api-types` | Wire DTOs for REST and stream; derives schema and TS types | serde |
-| `cgf-server` | axum REST + WebSocket, OpenAPI generation | engine facade, api-types |
-| `cgf-cli` | Binary, composition root, argument parsing | engine, optionally server |
+| `umbra-core` | Domain types: IDs, time, units, coordinates, canonical events, core traits (`Behavior`, `MotionModel`, `NetworkAdapter`, `TerrainProvider`, `Sensor`). No I/O. | std, small utility crates |
+| `umbra-kernel` | ECS world, clock, scheduler, tick pipeline, event bus, RNG service | core |
+| `umbra-motion` | Built-in kinematic models (ground, air, sea) | core |
+| `umbra-behavior` | Behavior runtime: FSM and behavior tree interpreters, built-in actions | core |
+| `umbra-templates` | Parse, validate, resolve inheritance, registry of templates and scenarios | core |
+| `umbra-plugin-api` | **C ABI contract only**: `#[repr(C)]` structs, function pointer tables, version constants. Generates `umbra_plugin_api.h` via `cbindgen`. | nothing |
+| `umbra-plugin-host` | Load libraries, check manifest/ABI, lifecycle, bridge plugin vtables into core traits | core, plugin-api |
+| `umbra-sdk` | Safe Rust wrapper and `export_plugin!` macro for plugin authors | plugin-api (not core) |
+| `umbra-net` | Network manager, canonical message model, adapter registry, publish policy and dead reckoning | core |
+| `umbra-net-dis` | DIS adapter (built as a plugin using the SDK) | sdk |
+| `umbra-net-hla` | HLA adapter (later, same rules) | sdk |
+| `umbra-engine` | Facade: wires everything, exposes `Engine`, `EngineHandle`, `EngineConfig` | all engine crates |
+| `umbra-api-types` | Wire DTOs for REST and stream; derives schema and TS types | serde |
+| `umbra-server` | axum REST + WebSocket, OpenAPI generation | engine facade, api-types |
+| `umbra-cli` | Binary, composition root, argument parsing | engine, optionally server |
 | `examples/plugins/*` | Reference plugins (behavior, motion, network) | sdk |
 | `gui/` | React + TypeScript app, Tauri shell | generated client only |
 
 **Rules (CI-enforced with a dependency-graph test):**
-- **REQ-A-1** Dependencies point inward. `cgf-core` depends on no other workspace crate.
-- **REQ-A-2** `cgf-kernel` MUST NOT depend on `cgf-server`, `cgf-net-*`, or any protocol crate.
-- **REQ-A-3** `cgf-sdk` MUST depend only on `cgf-plugin-api`, so plugin authors never link engine internals.
+- **REQ-A-1** Dependencies point inward. `umbra-core` depends on no other workspace crate.
+- **REQ-A-2** `umbra-kernel` MUST NOT depend on `umbra-server`, `umbra-net-*`, or any protocol crate.
+- **REQ-A-3** `umbra-sdk` MUST depend only on `umbra-plugin-api`, so plugin authors never link engine internals.
 - **REQ-A-4** The GUI MUST only use the generated API client and stream schema, never engine source.
 
 ## 5. Core domain
@@ -187,7 +187,7 @@ entity_type = "1.1.225.1.1.1.0"
 - **REQ-T-3** Parameter schemas are provided by the component behind each ID (built-in or plugin) as JSON Schema, used for validation and by the GUI for editors.
 - **REQ-T-4** `network.<adapter>` sections are opaque to the engine and handed to the named adapter.
 - **REQ-T-5** Template files carry `schema_version`; the loader MUST reject newer versions it does not understand and SHOULD migrate older ones.
-- **REQ-T-6** `cgf-cli validate <path>` validates templates and scenarios without running them.
+- **REQ-T-6** `umbra validate <path>` validates templates and scenarios without running them.
 - **REQ-T-7 (MAY)** Hot reload of templates for new spawns (existing entities unaffected).
 
 ### 7.3 Scenario files
@@ -231,7 +231,7 @@ A scenario lists: seed, clock mode, tick rate, plugins to load, enabled network 
 The highest-risk area. Keep it small, versioned, and heavily tested.
 
 ### 10.1 Contract
-- **REQ-P-1** Plugins are dynamic libraries (`.dll` / `.so`) exporting exactly one symbol: `const CgfPluginDescriptor* cgf_plugin_entry(const CgfHostApi* host);`
+- **REQ-P-1** Plugins are dynamic libraries (`.dll` / `.so`) exporting exactly one symbol: `const UmbraPluginDescriptor* umbra_plugin_entry(const UmbraHostApi* host);`
 - **REQ-P-2** All plugin API structs are `#[repr(C)]`, begin with `abi_version` and `struct_size` fields, and are **append-only** within a major ABI version. Hosts and plugins check sizes before reading newer fields.
 - **REQ-P-3 Descriptor** contains: plugin id, name, semantic version, required ABI major/minor, and a list of **capabilities** (kind + id + param JSON Schema + vtable pointer).
 - **REQ-P-4 Capability kinds (v1):** `behavior`, `motion_model`, `network_adapter`, `sensor`, `component`; `condition` and `action` (custom behavior-graph leaves) are added in M7. New kinds extend the enum and vtable set, never add new loading paths (D-8).
@@ -244,15 +244,15 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 - **REQ-P-11 In-process risk:** v1 plugins run in-process and can crash the engine. This is accepted and documented. The vtable design MUST NOT assume a shared address space beyond pointers passed in calls, so an out-of-process or WASM host can be added later.
 
 ### 10.2 SDK
-- **REQ-SDK-1** `cgf-sdk` offers idiomatic Rust traits (`Behavior`, `MotionModel`, `NetworkAdapter`, `Sensor`) and an `export_plugin!` macro generating the entry point, vtables, panic guards and descriptor.
-- **REQ-SDK-2** `cgf_plugin_api.h` generated by `cbindgen` is published so C/C++ authors can write plugins. A C# NativeAOT sample SHOULD exist (M9).
+- **REQ-SDK-1** `umbra-sdk` offers idiomatic Rust traits (`Behavior`, `MotionModel`, `NetworkAdapter`, `Sensor`) and an `export_plugin!` macro generating the entry point, vtables, panic guards and descriptor.
+- **REQ-SDK-2** `umbra_plugin_api.h` generated by `cbindgen` is published so C/C++ authors can write plugins. A C# NativeAOT sample SHOULD exist (M9).
 - **REQ-SDK-3** The DIS adapter and example plugins MUST be built with the SDK exactly as third parties would. No private back doors.
-- **REQ-SDK-4** Ship `cgf-cli new-plugin <kind>` scaffolding and documented examples under `examples/plugins/`.
+- **REQ-SDK-4** Ship `umbra new-plugin <kind>` scaffolding and documented examples under `examples/plugins/`.
 
 ## 11. Networking
 
-- **REQ-N-1** Canonical model lives in `cgf-core`; `NetworkAdapter` trait (and C ABI equivalent): `configure`, `start`, `publish(&[OutboundEvent])`, `poll(&mut Vec<InboundEvent>)`, `stop`. Adapters MUST NOT block the tick; I/O runs on adapter-owned threads with bounded queues.
-- **REQ-N-2** The network manager (`cgf-net`) owns **publishing policy** independent of protocol: which owned entities to publish, thresholds/heartbeats (position/orientation deltas, max interval), rate limiting. Adapters only translate.
+- **REQ-N-1** Canonical model lives in `umbra-core`; `NetworkAdapter` trait (and C ABI equivalent): `configure`, `start`, `publish(&[OutboundEvent])`, `poll(&mut Vec<InboundEvent>)`, `stop`. Adapters MUST NOT block the tick; I/O runs on adapter-owned threads with bounded queues.
+- **REQ-N-2** The network manager (`umbra-net`) owns **publishing policy** independent of protocol: which owned entities to publish, thresholds/heartbeats (position/orientation deltas, max interval), rate limiting. Adapters only translate.
 - **REQ-N-3** Multiple adapters may be active at once.
 - **REQ-N-4 Inbound:** adapters emit canonical events. The kernel creates/updates `Remote` entities, maps remote entity types to templates via configurable mapping (default: template-declared `network.<adapter>` data), and removes stale ghosts after a timeout.
 - **REQ-N-5 Identity:** the network layer maintains a bijective map `EntityId <-> adapter-specific id` (e.g. DIS site/application/entity). Adapter config supplies site/application IDs.
@@ -270,19 +270,19 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 ### 12.2 Server (optional crate, feature `server`)
 - **REQ-X-4** REST under `/api/v1/` generated with `utoipa`. The OpenAPI spec is served at `/api/v1/openapi.json` **and** committed at `api/openapi.json`; CI fails if the committed file differs from generated output.
 - **REQ-X-5 Minimum endpoints:** engine status; load/unload scenario; start/pause/resume/step/stop; set clock; list templates (with param schemas); list plugins and capabilities; list/enable/disable network adapters; spawn/remove/get entity; list entities (paged, filtered).
-- **REQ-X-6 Stream:** WebSocket `/api/v1/stream`. Clients subscribe with filters (bounding box, entity ids, event kinds) and a max rate. Frames are **batched snapshots/deltas**. v1 encodes JSON; encoding is negotiated (`json` | `msgpack`) so the format can change without breaking clients. Stream message types live in `cgf-api-types`, are exported as JSON Schema/TypeScript types, and documented with AsyncAPI.
+- **REQ-X-6 Stream:** WebSocket `/api/v1/stream`. Clients subscribe with filters (bounding box, entity ids, event kinds) and a max rate. Frames are **batched snapshots/deltas**. v1 encodes JSON; encoding is negotiated (`json` | `msgpack`) so the format can change without breaking clients. Stream message types live in `umbra-api-types`, are exported as JSON Schema/TypeScript types, and documented with AsyncAPI.
 - **REQ-X-7** The server holds only an `EngineHandle`; it MUST NOT touch ECS data directly. A slow WebSocket client never slows the tick (REQ-K-6).
 - **REQ-X-8** Multiple concurrent clients are allowed; no command restrictions or authentication in v1. Server binds to localhost by default; exposing it is an explicit config choice. Document this limitation.
 - **REQ-X-9** Errors use a consistent problem-details JSON shape with stable error codes.
 - **REQ-X-10 Catalog:** `GET /api/v1/catalog/behavior` returns node types, conditions, actions and graphs/subgraphs with schemas, versions and provenance (REQ-B-17).
-- **REQ-X-11 Validation:** `POST /api/v1/behaviors/validate` validates a graph document with the same pipeline as `cgf-cli validate`, returning all errors with locations. It changes no state.
+- **REQ-X-11 Validation:** `POST /api/v1/behaviors/validate` validates a graph document with the same pipeline as `umbra validate`, returning all errors with locations. It changes no state.
 - **REQ-X-12 (SHOULD) Graph files:** list/get/put/delete of user behavior graph files in configured content directories; reject path traversal, write atomically, refuse to modify `builtin` or `plugin` sources; changes apply to new spawns only (REQ-T-7).
 
 ## 13. GUI (separate deliverable, after M5)
 
 - React + TypeScript, built with Vite; small store (e.g. Zustand); map library decided at M8 behind a `MapView` component interface.
 - API client generated from `api/openapi.json` (`openapi-typescript` + `openapi-fetch`); stream types generated from the shared schema. No hand-written duplicates.
-- **Windows app:** Tauri shell loading the same build; may spawn `cgf-cli` as a sidecar or connect to a remote engine URL.
+- **Windows app:** Tauri shell loading the same build; may spawn `umbra` as a sidecar or connect to a remote engine URL.
 - v1 features: connect to engine, load scenario, run controls, map with live entities, entity inspector, template browser, plugin/adapter status, log view. Template/scenario editing UI comes later, driven by JSON Schemas.
 - **Behavior editor (A-001, milestone M8b):** visual node-and-arrow graph editing for behavior graphs, built from the engine catalog (REQ-X-10) and validated by the engine (REQ-X-11). Includes a subgraph library panel, "convert selection to subgraph", expand/collapse and open-in-tab for subgraphs, and read-only display of `builtin` and `plugin` graphs. Layout metadata is stored in the graph's `[editor]` table.
 - The GUI is never required for any engine feature (REQ-G-1).
@@ -291,7 +291,7 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 ## 14. Non-functional requirements
 
 - **NFR-1 Performance (A-1):** 10,000 owned kinematic entities with declarative behaviors at 30 Hz on a modern 8-core desktop using one simulation thread, median tick under 25 ms. Provide a `bench` scenario and `criterion` benchmarks per phase; regressions over 15% fail the benchmark CI job.
-- **NFR-2 Reliability:** No `unwrap`/`expect` on external input. Typed errors (`thiserror`) in libraries, `anyhow` only in binaries. `unsafe` confined to `cgf-plugin-host`, `cgf-sdk`, `cgf-plugin-api`, each block with a `// SAFETY:` comment and tests; `#![forbid(unsafe_code)]` elsewhere.
+- **NFR-2 Reliability:** No `unwrap`/`expect` on external input. Typed errors (`thiserror`) in libraries, `anyhow` only in binaries. `unsafe` confined to `umbra-plugin-host`, `umbra-sdk`, `umbra-plugin-api`, each block with a `// SAFETY:` comment and tests; `#![forbid(unsafe_code)]` elsewhere.
 - **NFR-3 Portability:** Windows and Linux CI builds, including plugin loading tests on both.
 - **NFR-4 Security:** Plugins are trusted native code (document clearly). Server is localhost-only by default. `cargo audit` and `cargo deny` (licenses, advisories) in CI.
 - **NFR-5 Documentation:** rustdoc on all public items; `docs/` with architecture overview, plugin authoring guide, template reference (generated from schemas), network adapter guide.
@@ -315,7 +315,7 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 - **OCP:** new behaviors, motion models, protocols and sensors are added by registering, never by editing kernel code.
 - **LSP:** all implementations honor the documented trait contract; contract tests live next to each trait and run against every implementation (built-in and example plugins).
 - **ISP:** small traits (`Behavior`, `MotionModel`, `Sensor`, `NetworkAdapter`, `TerrainProvider`), not one large interface.
-- **DIP:** the kernel depends on traits in `cgf-core`; concrete implementations are injected in `cgf-engine`/`cgf-cli`.
+- **DIP:** the kernel depends on traits in `umbra-core`; concrete implementations are injected in `umbra-engine`/`umbra-cli`.
 - **DRY:** one registry, one plugin loader, one validation pipeline, one canonical event model.
 - **KISS:** no speculative generality; add an abstraction when a second implementation exists or the spec requires it. Single-threaded tick until profiling says otherwise.
 - **Style:** `rustfmt` defaults, selective `clippy::pedantic`, short functions, documented public APIs, no global mutable state, time and randomness injected.
@@ -325,23 +325,23 @@ The highest-risk area. Keep it small, versioned, and heavily tested.
 
 | # | Milestone | Deliverable | Acceptance criteria |
 |---|---|---|---|
-| M0 | Foundations | Workspace, CI, lint/deny config, license, dependency-rule check, `cgf-core` skeleton (IDs, time, units) | CI green on Windows + Linux; dependency-rule check fails when a rule is violated (tested) |
+| M0 | Foundations | Workspace, CI, lint/deny config, license, dependency-rule check, `umbra-core` skeleton (IDs, time, units) | CI green on Windows + Linux; dependency-rule check fails when a rule is violated (tested) |
 | M1 | Walking skeleton | Kernel, clock modes, ECS, `SimRng`, coordinates, `ground.kinematic`, hard-coded entity, CLI prints state, state hash | Determinism test passes; coordinate tests pass; entity follows a waypoint list |
 | M2 | Templates and scenarios | TOML loader, inheritance, registry, validation errors, `validate` command, JSON Schemas | REQ-T-1..6 tested including cycle and unknown-ID errors; example scenario with 3 templates runs |
 | M3 | Declarative behavior | Behavior-tree interpreter with `fsm` and `subgraph` nodes, graph format and loader (REQ-B-6..17), subgraph resolution, versioning and cycle detection, built-in conditions/actions, catalog data model, intents pipeline, perception (visual sensor) | Patrol-and-engage scenario (tree with an embedded FSM and a reusable subgraph) runs deterministically; swapping a behavior needs only a template change; REQ-B-6..17 tested incl. cycle, version-mismatch and scoped-blackboard isolation; all M2 template/scenario fixtures still pass unchanged |
-| M4 | Plugin ABI v0 and SDK | `cgf-plugin-api`, host, SDK, `export_plugin!`, behavior plugin kind, example plugin, generated C header | Example plugin loaded and driving entities; all plugin failure tests pass; a C example compiles against the header |
-| M5 | Engine facade and control | `EngineHandle`, snapshots, `cgf-server` REST + WebSocket, committed OpenAPI, stream schema, behavior catalog and validation endpoints (REQ-X-10, X-11) | OpenAPI drift check passes; a script or generated client runs a scenario end to end; slow-client test passes; catalog and validate endpoints covered by contract tests |
-| M6 | Networking and DIS | `cgf-net`, loopback adapter, DIS adapter (as plugin), publish thresholds, ghosts and dead reckoning | Two engine instances exchange entities over DIS on localhost; no echo loops; golden-packet tests pass |
+| M4 | Plugin ABI v0 and SDK | `umbra-plugin-api`, host, SDK, `export_plugin!`, behavior plugin kind, example plugin, generated C header | Example plugin loaded and driving entities; all plugin failure tests pass; a C example compiles against the header |
+| M5 | Engine facade and control | `EngineHandle`, snapshots, `umbra-server` REST + WebSocket, committed OpenAPI, stream schema, behavior catalog and validation endpoints (REQ-X-10, X-11) | OpenAPI drift check passes; a script or generated client runs a scenario end to end; slow-client test passes; catalog and validate endpoints covered by contract tests |
+| M6 | Networking and DIS | `umbra-net`, loopback adapter, DIS adapter (as plugin), publish thresholds, ghosts and dead reckoning | Two engine instances exchange entities over DIS on localhost; no echo loops; golden-packet tests pass |
 | M7 | More plugin kinds and replay | Motion model, sensor, network, condition and action plugin kinds; air/sea models; recording/replay | A third-party-style example plugin of each kind in `examples/`; replay reproduces state hashes |
 | M8 | GUI and Windows app | React app, generated client, Tauri packaging, `MapView` | Web and Windows builds both show live entities from a running engine; GUI uses no engine source |
-| M8b | Behavior editor | `@cgf/behavior-editor`, `@cgf/shell-behaviors`, subgraph library, convert-selection-to-subgraph, validation display | A user builds a tree with a nested subgraph in the GUI, saves it, and the engine runs it; invalid graphs show engine validation errors; `builtin` and `plugin` graphs are read-only |
+| M8b | Behavior editor | `@umbra/behavior-editor`, `@umbra/shell-behaviors`, subgraph library, convert-selection-to-subgraph, validation display | A user builds a tree with a nested subgraph in the GUI, saves it, and the engine runs it; invalid graphs show engine validation errors; `builtin` and `plugin` graphs are read-only |
 | M9 | HLA and hardening | HLA adapter with chosen RTI, C# plugin sample, benchmark tuning, docs | HLA interop test against a reference federate; NFR-1 target met |
 
 ## 18. Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Plugin ABI churn breaks users | Tiny `cgf-plugin-api`, append-only structs, versioned descriptors, example plugins (M4) before adding more kinds |
+| Plugin ABI churn breaks users | Tiny `umbra-plugin-api`, append-only structs, versioned descriptors, example plugins (M4) before adding more kinds |
 | Plugin crash takes down the engine | Panic guards, fault policy, documented risk; vtable design allows out-of-process hosting later |
 | FFI overhead for behaviors | Batched calls (REQ-B-4); declarative behaviors for the common case |
 | Determinism broken by plugins or hash ordering | Determinism test gates PRs; host-provided RNG and time only; ordered structures |

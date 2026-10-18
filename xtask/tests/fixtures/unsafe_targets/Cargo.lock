@@ -3,9 +3,9 @@
 version = 4
 
 [[package]]
-name = "cgf-core"
+name = "umbra-core"
 version = "0.1.0"
 
 [[package]]
-name = "cgf-sdk"
+name = "umbra-sdk"
 version = "0.1.0"

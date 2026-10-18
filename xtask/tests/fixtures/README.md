@@ -21,59 +21,59 @@ allow-list for path packages in the production rule table.
 ## violating (expected violations, see xtask/tests/check_deps.rs)
 | Edge | Kind | Rule |
 |---|---|---|
-| cgf-core -> cgf-kernel | normal | REQ-A-1 |
-| cgf-kernel -> cgf-server | normal | REQ-A-2 |
-| cgf-kernel -> cgf-net-dis | dev | REQ-A-2 |
-| cgf-kernel -> cgf-api-types | build | REQ-A-2 |
-| cgf-sdk -> cgf-core | normal, `cfg(windows)` target table | REQ-A-3 |
-| cgf-plugin-api -> fake_external | normal and build (registry dependency) | section 4 / ASM-009 |
-| cgf-motion -> cgf-kernel | normal, renamed `k = { package = "cgf-kernel" }` | section 4 |
-| cgf-mystery | not in rule table | unknown crate |
-| cgf-cli -> shim | normal, path dependency outside the workspace (`shim` depends on `cgf-kernel`, which is in `cgf-cli`'s allowed closure, so there is no indirect violation) | `NonMemberPathDep` and `NonMemberPathPackage` (ASM-006) |
-| cgf-net-dis | no `[lints] workspace = true` | ASM-024 |
+| umbra-core -> umbra-kernel | normal | REQ-A-1 |
+| umbra-kernel -> umbra-server | normal | REQ-A-2 |
+| umbra-kernel -> umbra-net-dis | dev | REQ-A-2 |
+| umbra-kernel -> umbra-api-types | build | REQ-A-2 |
+| umbra-sdk -> umbra-core | normal, `cfg(windows)` target table | REQ-A-3 |
+| umbra-plugin-api -> fake_external | normal and build (registry dependency) | section 4 / ASM-009 |
+| umbra-motion -> umbra-kernel | normal, renamed `k = { package = "umbra-kernel" }` | section 4 |
+| umbra-mystery | not in rule table | unknown crate |
+| umbra-cli -> shim | normal, path dependency outside the workspace (`shim` depends on `umbra-kernel`, which is in `umbra-cli`'s allowed closure, so there is no indirect violation) | `NonMemberPathDep` and `NonMemberPathPackage` (ASM-006) |
+| umbra-net-dis | no `[lints] workspace = true` | ASM-024 |
 
 The resolved pass reports the same direct member edges; `check_workspace` removes the duplicates.
 
 ## conforming
 Only allowed edges, including a dev edge, a build edge, a target-specific edge and renamed edges
-(`c = { package = "cgf-core" }` as normal and build dependency; cargo rejects one crate under two names)
-that are all allowed, plus an external dev-dependency on `cgf-plugin-api` (only normal and build
+(`c = { package = "umbra-core" }` as normal and build dependency; cargo rejects one crate under two names)
+that are all allowed, plus an external dev-dependency on `umbra-plugin-api` (only normal and build
 externals are forbidden there).
 
 ## laundering (resolved pass, ASM-005, ASM-006)
 | Fixture | Bypass | Expected |
 |---|---|---|
-| `launder_patch` | root `[patch.crates-io]`: `cgf-sdk -> shim = "0.1"` is patched to `./shim`, which depends on `cgf-kernel`; `cgf-net-dis -> cgf-kernel = "0.1"` is patched to the member itself | `REQ-A-3: cgf-sdk -> shim -> cgf-kernel (resolved)`, `section 4: cgf-net-dis -> cgf-kernel (normal)` |
-| `launder_config_patch` | the same `shim` patch in `.cargo/config.toml` of the fixture (applied because cargo runs in the fixture directory) | `REQ-A-3: cgf-sdk -> shim -> cgf-kernel (resolved)` |
-| `launder_same_name` | `cgf-sdk -> cgf-plugin-api = { path = "../../impostor" }`, a non-member named `cgf-plugin-api` 9.0.0 that depends on `cgf-kernel` | `NonMemberPathDep`, `ImpostorPackage`, `cgf-sdk -> cgf-plugin-api -> cgf-kernel (resolved)` |
-| `launder_fake_external` | `cgf-sdk -> fake_external = { path = ... }` that depends on `cgf-kernel` (the former allow-list name) | `NonMemberPathDep`, `cgf-sdk -> fake_external -> cgf-kernel (resolved)` |
-| `launder_unsafe_patch` | root `[patch.crates-io]`: `cgf-core -> shim = "1"` is patched to `./shim`, a non-member with `unsafe` code and no `forbid` | `NonMemberPathPackage` for `shim` only |
+| `launder_patch` | root `[patch.crates-io]`: `umbra-sdk -> shim = "0.1"` is patched to `./shim`, which depends on `umbra-kernel`; `umbra-net-dis -> umbra-kernel = "0.1"` is patched to the member itself | `REQ-A-3: umbra-sdk -> shim -> umbra-kernel (resolved)`, `section 4: umbra-net-dis -> umbra-kernel (normal)` |
+| `launder_config_patch` | the same `shim` patch in `.cargo/config.toml` of the fixture (applied because cargo runs in the fixture directory) | `REQ-A-3: umbra-sdk -> shim -> umbra-kernel (resolved)` |
+| `launder_same_name` | `umbra-sdk -> umbra-plugin-api = { path = "../../impostor" }`, a non-member named `umbra-plugin-api` 9.0.0 that depends on `umbra-kernel` | `NonMemberPathDep`, `ImpostorPackage`, `umbra-sdk -> umbra-plugin-api -> umbra-kernel (resolved)` |
+| `launder_fake_external` | `umbra-sdk -> fake_external = { path = ... }` that depends on `umbra-kernel` (the former allow-list name) | `NonMemberPathDep`, `umbra-sdk -> fake_external -> umbra-kernel (resolved)` |
+| `launder_unsafe_patch` | root `[patch.crates-io]`: `umbra-core -> shim = "1"` is patched to `./shim`, a non-member with `unsafe` code and no `forbid` | `NonMemberPathPackage` for `shim` only |
 
 Every `launder_*` fixture also reports its non-member path package (`shim`, `impostor`,
 `fake_external`) as `NonMemberPathPackage`, and `launder_patch` reports the registry-named
-`cgf-kernel = "0.1"` of `cgf-net-dis` as `ImpostorDep`.
+`umbra-kernel = "0.1"` of `umbra-net-dis` as `ImpostorDep`.
 
 ## resolve_fails (no `Cargo.lock` on purpose)
-`cgf-sdk -> cgf-kernel = { git = "https://example.invalid/..." }` cannot be resolved offline. The
-binary prints the declared-pass violations (`REQ-A-1: cgf-core -> cgf-kernel`, `ImpostorDep` for the
-git `cgf-kernel`), then the resolved-graph error, and exits 2.
+`umbra-sdk -> umbra-kernel = { git = "https://example.invalid/..." }` cannot be resolved offline. The
+binary prints the declared-pass violations (`REQ-A-1: umbra-core -> umbra-kernel`, `ImpostorDep` for the
+git `umbra-kernel`), then the resolved-graph error, and exits 2.
 
 Git-source laundering is covered by the same resolved check (it is source-agnostic) but has no
 fixture, because a git dependency cannot be resolved offline without an absolute `file://` URL.
 
 ## unsafe-forbid and lints checks (ASM-024)
-Every target root except those of `cgf-plugin-api`, `cgf-plugin-host` and `cgf-sdk` carries
-`#![forbid(unsafe_code)]`, with one seeded exception in `violating`: `crates/cgf-api-types` has an
+Every target root except those of `umbra-plugin-api`, `umbra-plugin-host` and `umbra-sdk` carries
+`#![forbid(unsafe_code)]`, with one seeded exception in `violating`: `crates/umbra-api-types` has an
 empty `lib.rs` (expected `MissingForbidUnsafe`). The FFI crates present in each fixture
-(`cgf-plugin-api` and `cgf-sdk` in both, `cgf-plugin-host` only in `conforming`) stay empty to prove
-they are exempt. Every member has `[lints] workspace = true`, except `violating/crates/cgf-net-dis`.
+(`umbra-plugin-api` and `umbra-sdk` in both, `umbra-plugin-host` only in `conforming`) stay empty to prove
+they are exempt. Every member has `[lints] workspace = true`, except `violating/crates/umbra-net-dis`.
 Non-member packages (`shim`, `impostor`, `fake_external`) are not scanned; as path packages they are
 violations themselves.
 
 ## single-violation fixtures
-- `unsafe_only`: one crate, `cgf-core`, whose only problem is a missing `#![forbid(unsafe_code)]`.
-- `lints_only`: one crate, `cgf-core`, whose only problem is a missing `[lints] workspace = true`.
-- `unsafe_targets`: `cgf-core` has the attribute in `src/lib.rs` but not in `build.rs`,
+- `unsafe_only`: one crate, `umbra-core`, whose only problem is a missing `#![forbid(unsafe_code)]`.
+- `lints_only`: one crate, `umbra-core`, whose only problem is a missing `[lints] workspace = true`.
+- `unsafe_targets`: `umbra-core` has the attribute in `src/lib.rs` but not in `build.rs`,
   `src/bin/tool.rs`, `tests/it.rs`, `examples/ex.rs`, `benches/bench.rs` (one violation each);
-  `cgf-sdk/tests/it.rs` lacks it too and is exempt.
+  `umbra-sdk/tests/it.rs` lacks it too and is exempt.
 They prove the binary exits 1 for each of these checks on its own.

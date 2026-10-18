@@ -91,14 +91,19 @@ fn given_violating_fixture_when_loaded_then_all_edge_kinds_and_renames_are_resol
             .iter()
             .any(|e| e.from == from && e.to == to && e.kind == kind && e.target.is_some() == target)
     };
-    assert!(g.members.contains("cgf-mystery"));
+    assert!(g.members.contains("umbra-mystery"));
     assert!(!g.members.contains("fake_external"));
-    assert!(has("cgf-core", "cgf-kernel", DepKind::Normal, false));
-    assert!(has("cgf-kernel", "cgf-net-dis", DepKind::Dev, false));
-    assert!(has("cgf-kernel", "cgf-api-types", DepKind::Build, false));
-    assert!(has("cgf-sdk", "cgf-core", DepKind::Normal, true));
+    assert!(has("umbra-core", "umbra-kernel", DepKind::Normal, false));
+    assert!(has("umbra-kernel", "umbra-net-dis", DepKind::Dev, false));
+    assert!(has(
+        "umbra-kernel",
+        "umbra-api-types",
+        DepKind::Build,
+        false
+    ));
+    assert!(has("umbra-sdk", "umbra-core", DepKind::Normal, true));
     assert!(
-        has("cgf-motion", "cgf-kernel", DepKind::Normal, false),
+        has("umbra-motion", "umbra-kernel", DepKind::Normal, false),
         "rename must resolve to real name"
     );
 }
@@ -116,7 +121,7 @@ fn given_registry_dep_when_loaded_then_edge_is_neither_workspace_nor_path() {
     assert!(
         g.edges
             .iter()
-            .filter(|e| e.to == "cgf-kernel")
+            .filter(|e| e.to == "umbra-kernel")
             .all(|e| e.is_workspace)
     );
 }
@@ -135,29 +140,34 @@ fn given_violating_fixture_when_loaded_and_checked_then_each_seeded_violation_is
         requirement,
     };
     let x = |kind| Violation::ExternalDepNotAllowed {
-        from: "cgf-plugin-api".into(),
+        from: "umbra-plugin-api".into(),
         to: "fake_external".into(),
         kind,
     };
     let mut expected = vec![
-        f("cgf-core", "cgf-kernel", DepKind::Normal, "REQ-A-1"),
-        f("cgf-kernel", "cgf-server", DepKind::Normal, "REQ-A-2"),
-        f("cgf-kernel", "cgf-net-dis", DepKind::Dev, "REQ-A-2"),
-        f("cgf-kernel", "cgf-api-types", DepKind::Build, "REQ-A-2"),
-        f("cgf-sdk", "cgf-core", DepKind::Normal, "REQ-A-3"),
+        f("umbra-core", "umbra-kernel", DepKind::Normal, "REQ-A-1"),
+        f("umbra-kernel", "umbra-server", DepKind::Normal, "REQ-A-2"),
+        f("umbra-kernel", "umbra-net-dis", DepKind::Dev, "REQ-A-2"),
+        f("umbra-kernel", "umbra-api-types", DepKind::Build, "REQ-A-2"),
+        f("umbra-sdk", "umbra-core", DepKind::Normal, "REQ-A-3"),
         x(DepKind::Normal),
         x(DepKind::Build),
         Violation::UnknownCrate {
-            name: "cgf-mystery".into(),
+            name: "umbra-mystery".into(),
         },
         Violation::NonMemberPathDep {
-            from: "cgf-cli".into(),
+            from: "umbra-cli".into(),
             to: "shim".into(),
             kind: DepKind::Normal,
         },
     ];
-    // cgf-motion -> cgf-kernel (renamed): requirement label is "section 4" per the plan table.
-    expected.push(f("cgf-motion", "cgf-kernel", DepKind::Normal, "section 4"));
+    // umbra-motion -> umbra-kernel (renamed): requirement label is "section 4" per the plan table.
+    expected.push(f(
+        "umbra-motion",
+        "umbra-kernel",
+        DepKind::Normal,
+        "section 4",
+    ));
     expected.sort();
     assert_eq!(v, expected);
 }
@@ -188,18 +198,18 @@ fn given_violating_fixture_when_check_deps_runs_then_exit_code_1_and_lists_each_
 
     assert_eq!(out.status.code(), Some(1), "output:\n{text}");
     for needle in [
-        "REQ-A-1: cgf-core -> cgf-kernel (normal)",
-        "REQ-A-2: cgf-kernel -> cgf-server (normal)",
-        "REQ-A-2: cgf-kernel -> cgf-net-dis (dev)",
-        "REQ-A-2: cgf-kernel -> cgf-api-types (build)",
-        "REQ-A-3: cgf-sdk -> cgf-core (normal)",
-        "cgf-plugin-api -> fake_external (normal)",
-        "cgf-plugin-api -> fake_external (build)",
-        "cgf-motion -> cgf-kernel (normal)",
-        "cgf-mystery",
-        "cgf-cli -> shim (normal)",
-        "NFR-2: cgf-api-types (src/lib.rs) lacks #![forbid(unsafe_code)]",
-        "cgf-net-dis",
+        "REQ-A-1: umbra-core -> umbra-kernel (normal)",
+        "REQ-A-2: umbra-kernel -> umbra-server (normal)",
+        "REQ-A-2: umbra-kernel -> umbra-net-dis (dev)",
+        "REQ-A-2: umbra-kernel -> umbra-api-types (build)",
+        "REQ-A-3: umbra-sdk -> umbra-core (normal)",
+        "umbra-plugin-api -> fake_external (normal)",
+        "umbra-plugin-api -> fake_external (build)",
+        "umbra-motion -> umbra-kernel (normal)",
+        "umbra-mystery",
+        "umbra-cli -> shim (normal)",
+        "NFR-2: umbra-api-types (src/lib.rs) lacks #![forbid(unsafe_code)]",
+        "umbra-net-dis",
     ] {
         assert!(
             text.contains(needle),
@@ -246,7 +256,7 @@ fn given_missing_manifest_when_check_deps_runs_then_exit_code_2() {
 
 // ---------------------------------------------------------------- review M1 / M2 / m2 / n3 / n4
 
-/// M1: the shim fixture edge is reported (`cgf-cli -> shim` would launder `cgf-kernel`).
+/// M1: the shim fixture edge is reported (`umbra-cli -> shim` would launder `umbra-kernel`).
 #[test]
 fn given_shim_path_dep_when_loaded_then_edge_is_path_and_not_workspace() {
     let g = load_graph(&fixture("violating"));
@@ -264,7 +274,7 @@ fn given_only_missing_forbid_when_check_deps_runs_then_exit_code_1() {
 
     assert_eq!(out.status.code(), Some(1), "output:\n{text}");
     assert!(
-        text.contains("NFR-2: cgf-core (src/lib.rs) lacks #![forbid(unsafe_code)]"),
+        text.contains("NFR-2: umbra-core (src/lib.rs) lacks #![forbid(unsafe_code)]"),
         "{text}"
     );
     assert!(!text.contains("REQ-A"), "{text}");
@@ -277,7 +287,7 @@ fn given_only_missing_lints_when_check_deps_runs_then_exit_code_1() {
     let text = combined(&out);
 
     assert_eq!(out.status.code(), Some(1), "output:\n{text}");
-    assert!(text.contains("cgf-core"), "{text}");
+    assert!(text.contains("umbra-core"), "{text}");
     assert!(text.contains("[lints] workspace = true"), "{text}");
 }
 
@@ -357,16 +367,16 @@ fn assert_rejected_with(fixture_name: &str, needles: &[&str]) {
 }
 
 /// Finding 1 (REQ-A-3): `[patch.crates-io] shim = { path = "shim" }` in the root manifest turns a
-/// registry dependency into a path package that depends on `cgf-kernel`. Only the resolved graph
-/// shows it. The same table patches a registry `cgf-kernel = "0.1"` to the member itself, which the
+/// registry dependency into a path package that depends on `umbra-kernel`. Only the resolved graph
+/// shows it. The same table patches a registry `umbra-kernel = "0.1"` to the member itself, which the
 /// `--no-deps` pass sees as an external dependency.
 #[test]
 fn given_root_patch_launder_when_check_deps_runs_then_resolved_edges_are_reported() {
     assert_rejected_with(
         "launder_patch",
         &[
-            "REQ-A-3: cgf-sdk -> shim -> cgf-kernel (resolved) not allowed",
-            "section 4: cgf-net-dis -> cgf-kernel (normal) not allowed",
+            "REQ-A-3: umbra-sdk -> shim -> umbra-kernel (resolved) not allowed",
+            "section 4: umbra-net-dis -> umbra-kernel (normal) not allowed",
         ],
     );
 }
@@ -376,20 +386,20 @@ fn given_root_patch_launder_when_check_deps_runs_then_resolved_edges_are_reporte
 fn given_config_patch_launder_when_check_deps_runs_then_resolved_edge_is_reported() {
     assert_rejected_with(
         "launder_config_patch",
-        &["REQ-A-3: cgf-sdk -> shim -> cgf-kernel (resolved) not allowed"],
+        &["REQ-A-3: umbra-sdk -> shim -> umbra-kernel (resolved) not allowed"],
     );
 }
 
-/// Finding 2 (REQ-A-3): a non-member path package named like a member (`cgf-plugin-api`) must not
+/// Finding 2 (REQ-A-3): a non-member path package named like a member (`umbra-plugin-api`) must not
 /// count as that member.
 #[test]
 fn given_same_name_impostor_when_check_deps_runs_then_it_is_reported() {
     assert_rejected_with(
         "launder_same_name",
         &[
-            "ASM-006: cgf-sdk -> cgf-plugin-api (normal) is a path dependency outside the workspace",
-            "ASM-006: package cgf-plugin-api 9.0.0",
-            "REQ-A-3: cgf-sdk -> cgf-plugin-api -> cgf-kernel (resolved) not allowed",
+            "ASM-006: umbra-sdk -> umbra-plugin-api (normal) is a path dependency outside the workspace",
+            "ASM-006: package umbra-plugin-api 9.0.0",
+            "REQ-A-3: umbra-sdk -> umbra-plugin-api -> umbra-kernel (resolved) not allowed",
         ],
     );
 }
@@ -400,8 +410,8 @@ fn given_fake_external_path_launder_when_check_deps_runs_then_it_is_reported() {
     assert_rejected_with(
         "launder_fake_external",
         &[
-            "ASM-006: cgf-sdk -> fake_external (normal) is a path dependency outside the workspace",
-            "REQ-A-3: cgf-sdk -> fake_external -> cgf-kernel (resolved) not allowed",
+            "ASM-006: umbra-sdk -> fake_external (normal) is a path dependency outside the workspace",
+            "REQ-A-3: umbra-sdk -> fake_external -> umbra-kernel (resolved) not allowed",
         ],
     );
 }
@@ -421,14 +431,14 @@ fn given_targets_without_forbid_when_check_deps_runs_then_each_is_reported() {
         "src/bin/tool.rs",
         "tests/it.rs",
     ] {
-        let needle = format!("NFR-2: cgf-core ({file}) lacks #![forbid(unsafe_code)]");
+        let needle = format!("NFR-2: umbra-core ({file}) lacks #![forbid(unsafe_code)]");
         assert!(
             text.contains(&needle),
             "missing `{needle}` in output:\n{text}"
         );
     }
     assert!(
-        !text.contains("cgf-sdk"),
+        !text.contains("umbra-sdk"),
         "FFI crate must be exempt:\n{text}"
     );
     assert!(
@@ -493,15 +503,15 @@ fn indirect(from: &str, via: &str, to: &str) -> Violation {
 fn given_root_patch_launder_when_checked_then_exact_violations() {
     let mut expected = vec![
         Violation::ForbiddenWorkspaceDep {
-            from: "cgf-net-dis".into(),
-            to: "cgf-kernel".into(),
+            from: "umbra-net-dis".into(),
+            to: "umbra-kernel".into(),
             kind: DepKind::Normal,
             requirement: "section 4",
         },
-        indirect("cgf-sdk", "shim", "cgf-kernel"),
+        indirect("umbra-sdk", "shim", "umbra-kernel"),
         Violation::ImpostorDep {
-            from: "cgf-net-dis".into(),
-            to: "cgf-kernel".into(),
+            from: "umbra-net-dis".into(),
+            to: "umbra-kernel".into(),
             kind: DepKind::Normal,
         },
         path_pkg("shim", "0.1.0"),
@@ -516,7 +526,7 @@ fn given_root_patch_launder_when_checked_then_exact_violations() {
 #[test]
 fn given_config_patch_launder_when_checked_then_exact_violations() {
     let mut expected = vec![
-        indirect("cgf-sdk", "shim", "cgf-kernel"),
+        indirect("umbra-sdk", "shim", "umbra-kernel"),
         path_pkg("shim", "0.1.0"),
     ];
     expected.sort();
@@ -536,18 +546,18 @@ fn given_same_name_impostor_when_checked_then_exact_violations() {
         matches!(
             impostors.as_slice(),
             [Violation::ImpostorPackage { name, version, .. }]
-                if name == "cgf-plugin-api" && version == "9.0.0"
+                if name == "umbra-plugin-api" && version == "9.0.0"
         ),
         "{impostors:?}"
     );
     let mut expected = vec![
         Violation::NonMemberPathDep {
-            from: "cgf-sdk".into(),
-            to: "cgf-plugin-api".into(),
+            from: "umbra-sdk".into(),
+            to: "umbra-plugin-api".into(),
             kind: DepKind::Normal,
         },
-        indirect("cgf-sdk", "cgf-plugin-api", "cgf-kernel"),
-        path_pkg("cgf-plugin-api", "9.0.0"),
+        indirect("umbra-sdk", "umbra-plugin-api", "umbra-kernel"),
+        path_pkg("umbra-plugin-api", "9.0.0"),
     ];
     expected.sort();
     assert_eq!(rest, expected);
@@ -561,7 +571,7 @@ fn given_same_name_impostor_when_loaded_then_edge_is_path_but_not_workspace() {
     let e = g
         .edges
         .iter()
-        .find(|e| e.from == "cgf-sdk" && e.to == "cgf-plugin-api")
+        .find(|e| e.from == "umbra-sdk" && e.to == "umbra-plugin-api")
         .expect("edge");
 
     assert!(e.is_path && !e.is_workspace, "{e:?}");
@@ -572,11 +582,11 @@ fn given_same_name_impostor_when_loaded_then_edge_is_path_but_not_workspace() {
 fn given_fake_external_path_launder_when_checked_then_exact_violations() {
     let mut expected = vec![
         Violation::NonMemberPathDep {
-            from: "cgf-sdk".into(),
+            from: "umbra-sdk".into(),
             to: "fake_external".into(),
             kind: DepKind::Normal,
         },
-        indirect("cgf-sdk", "fake_external", "cgf-kernel"),
+        indirect("umbra-sdk", "fake_external", "umbra-kernel"),
         path_pkg("fake_external", "0.1.0"),
     ];
     expected.sort();
@@ -596,8 +606,8 @@ fn given_conforming_and_real_workspace_when_checked_then_no_violations() {
 /// (fail closed, never a silent pass).
 #[test]
 fn given_workspace_without_lockfile_when_check_deps_runs_then_exit_code_2() {
-    let dir = std::env::temp_dir().join(format!("cgf-xtask-nolock-{}", std::process::id()));
-    let src = dir.join("crates/cgf-core/src");
+    let dir = std::env::temp_dir().join(format!("umbra-xtask-nolock-{}", std::process::id()));
+    let src = dir.join("crates/umbra-core/src");
     std::fs::create_dir_all(&src).expect("mkdir");
     std::fs::write(
         dir.join("Cargo.toml"),
@@ -605,8 +615,8 @@ fn given_workspace_without_lockfile_when_check_deps_runs_then_exit_code_2() {
     )
     .expect("write");
     std::fs::write(
-        dir.join("crates/cgf-core/Cargo.toml"),
-        "[package]\nname = \"cgf-core\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lints]\nworkspace = true\n",
+        dir.join("crates/umbra-core/Cargo.toml"),
+        "[package]\nname = \"umbra-core\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[lints]\nworkspace = true\n",
     )
     .expect("write");
     std::fs::write(src.join("lib.rs"), "#![forbid(unsafe_code)]\n").expect("write");
@@ -643,8 +653,8 @@ fn given_unresolvable_workspace_when_check_deps_runs_then_declared_violations_an
 
     assert_eq!(out.status.code(), Some(2), "output:\n{}", combined(&out));
     for needle in [
-        "REQ-A-1: cgf-core -> cgf-kernel (normal) not allowed",
-        "ASM-006: cgf-sdk -> cgf-kernel (normal) uses the name of a workspace crate",
+        "REQ-A-1: umbra-core -> umbra-kernel (normal) not allowed",
+        "ASM-006: umbra-sdk -> umbra-kernel (normal) uses the name of a workspace crate",
     ] {
         assert!(
             stdout.contains(needle),
@@ -665,7 +675,7 @@ fn given_patch_to_unchecked_path_package_when_checked_then_exact_violation() {
 
 /// M1: the fixtures' external crate comes from a vendored directory source, so it has a
 /// crates.io source and is not a path package; in the violating fixture the only path package is
-/// the seeded `shim` (`cgf-cli -> shim`).
+/// the seeded `shim` (`umbra-cli -> shim`).
 #[test]
 fn given_vendored_registry_dep_when_checked_then_only_seeded_path_package_is_reported() {
     let ws = Workspace::load(Some(&fixture("violating"))).expect("load");

@@ -1,6 +1,6 @@
-# CGF agent pack
+# Umbra agent pack
 
-Claude Code configuration for building the CGF engine from the specification.
+Claude Code configuration for building the Umbra engine from the specification.
 
 ## Install
 1. Copy `.claude/`, `CLAUDE.md` and `docs/` into the root of your (empty) repository.
@@ -17,9 +17,9 @@ Claude Code configuration for building the CGF engine from the specification.
 The GUI lives in `gui/` (Bun workspaces): `features/` and `feature-shells/` are libraries, `src/` is the thin app. Rules in `gui/CLAUDE.md` and `docs/frontend-architecture.md`. Start with: `Use frontend-architect to plan the GUI scaffold, then add-feature for ui-kit.`
 
 ## Running scenarios
-- `cargo run -p cgf-cli -- run examples/scenarios/walking_skeleton/scenario.toml [--ticks N] [--seed S] [--clock afap|realtime|stepped|scaled=F] [--print-every N] [--hash-every N] [--json] [--log-level LEVEL]` runs a scenario file headless and prints entity state and a final `state_hash=<hex>` line.
-- `cargo run -p cgf-cli -- validate <path>... [--json]` checks scenario and template files (or directories) without running them; exit 0 valid, 1 invalid, 2 usage.
-- `cargo run -p cgf-cli -- schema template|scenario|component <ID>` prints a JSON Schema.
+- `cargo run -p umbra-cli -- run examples/scenarios/walking_skeleton/scenario.toml [--ticks N] [--seed S] [--clock afap|realtime|stepped|scaled=F] [--print-every N] [--hash-every N] [--json] [--log-level LEVEL]` runs a scenario file headless and prints entity state and a final `state_hash=<hex>` line.
+- `cargo run -p umbra-cli -- validate <path>... [--json]` checks scenario and template files (or directories) without running them; exit 0 valid, 1 invalid, 2 usage.
+- `cargo run -p umbra-cli -- schema template|scenario|component <ID>` prints a JSON Schema.
 
 ## Tips
 - Run one milestone per session and review the plan before implementation starts.

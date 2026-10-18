@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (decided by the human project owner on 2026-10-17; O(n^2) perception accepted, spatial index and profiling in M9; M3 plan `docs/plans/M3.md`). Spec decision D-32.
 - **Requirement IDs**: REQ-K-2 (Perception phase), REQ-K-4, REQ-K-5, REQ-C-6 (`line_of_sight`), REQ-T-1, REQ-B-15, REQ-B-16, ADR 0010, ASM-032
-- **Affected**: `cgf-core` (`perception`, `terrain`), `cgf-kernel`, `cgf-engine::builtins`, `cgf-templates` (scenario `force`), `scenario.v1.schema.json`
+- **Affected**: `umbra-core` (`perception`, `terrain`), `umbra-kernel`, `umbra-engine::builtins`, `umbra-templates` (scenario `force`), `scenario.v1.schema.json`
 
 ## Context
 M3 must deliver "perception (visual sensor)" and an engage behavior, which needs "enemy". Templates already
@@ -12,9 +12,9 @@ no perception crate.
 
 ## Options
 1. **Core `Sensor` trait and `Contact` type; kernel Perception phase; `builtin.visual` in
-   `cgf-engine::builtins` (precedent: `builtin.terrain.flat`); optional placement key `force`; hostile means
+   `umbra-engine::builtins` (precedent: `builtin.terrain.flat`); optional placement key `force`; hostile means
    "both have a force and they differ".**
-2. **Same, with a new crate `cgf-perception`.** Pros: SRP. Cons: rule-table and spec section 4 change for
+2. **Same, with a new crate `umbra-perception`.** Pros: SRP. Cons: rule-table and spec section 4 change for
    one small sensor.
 3. **Forces in templates instead of placements.** Cons: one template per side for the same vehicle.
 
@@ -39,7 +39,7 @@ Option 1.
 - Easier: the spec 7.1 template validates once `builtin.visual` is registered; sensors from plugins (M7)
   use the same trait.
 - Harder: perception is O(n^2) per tick; NFR-1 (10k entities) will need a spatial index (M9 profiling).
-- Revisit when a second sensor or the sensor plugin kind (M7) arrives (move to `cgf-perception`), or when
+- Revisit when a second sensor or the sensor plugin kind (M7) arrives (move to `umbra-perception`), or when
   force relations (allies, neutrals that are hostile) are needed.
 
 ## Amended 2026-10-17 after WI-3 review

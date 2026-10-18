@@ -1,0 +1,11 @@
+[package]
+name = "umbra-sdk"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+umbra-plugin-api = { path = "../umbra-plugin-api" }
+
+[lints]
+workspace = true

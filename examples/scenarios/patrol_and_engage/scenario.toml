@@ -24,7 +24,7 @@ name = "patrol_and_engage"
 seed = 7
 tick_rate_hz = 30
 clock = "afap"
-duration_s = 140.0                # 4200 ticks; `cgf-cli run --ticks N` overrides it
+duration_s = 140.0                # 4200 ticks; `umbra run --ticks N` overrides it
 template_paths = ["templates", "behaviors"]
 
 [terrain]

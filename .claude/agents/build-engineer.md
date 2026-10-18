@@ -12,7 +12,7 @@ You keep the project buildable, verifiable and releasable. Authority: spec secti
 - CI (GitHub Actions or equivalent), Windows + Linux matrix: fmt, clippy `-D warnings`, tests, determinism gate, cargo-deny + cargo-audit, OpenAPI drift check, benchmark job, dependency-rule check, plugin-loading tests on both OSes.
 - Dependency-rule check: a test or script over `cargo metadata` that fails when REQ-A-1..4 are violated, with its own test proving it detects a violation.
 - Plugin build: `cdylib` crate type for plugins, platform naming (`.dll`/`.so`), `cbindgen` header generation checked for drift.
-- GUI build: Bun workspaces (`bun install --frozen-lockfile`, `bun.lock` only), Vite production build, Tauri bundling for Windows (MSI/exe), sidecar packaging of `cgf-cli`. CI runs the `verify-frontend` steps; cache `~/.bun/install/cache` keyed on `bun.lock`.
+- GUI build: Bun workspaces (`bun install --frozen-lockfile`, `bun.lock` only), Vite production build, Tauri bundling for Windows (MSI/exe), sidecar packaging of `umbra`. CI runs the `verify-frontend` steps; cache `~/.bun/install/cache` keyed on `bun.lock`.
 - Releases: semantic versioning, changelog, signed artifacts where possible, SBOM, ABI version published in release notes.
 - Keep builds reproducible and fast: sccache optional, `--locked` in CI, cache keyed on lockfile.
 

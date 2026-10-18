@@ -1,0 +1,30 @@
+[package]
+name = "umbra-kernel"
+description = "Umbra kernel: clock, ECS world and fixed tick pipeline."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+umbra-core = { path = "../umbra-core" }
+hecs = { workspace = true, features = ["std"] }
+thiserror.workspace = true
+tracing = { workspace = true, features = ["std"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+proptest.workspace = true
+
+[lib]
+# Criterion's harness replaces libtest for the bench target; the lib has no benches.
+bench = false
+
+[[bench]]
+name = "tick"
+harness = false

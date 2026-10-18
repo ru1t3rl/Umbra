@@ -8,8 +8,8 @@ description: Structured review of a GUI change against the frontend architecture
 1. `git diff main...HEAD -- gui/`; list affected packages. Confirm commit messages cite REQ-X-* / F-* IDs.
 2. **Structure**
    - Right place: feature (library with logic) vs shell (thin composition) vs `src` (bootstrapping only)?
-   - Layering: src -> shells -> domain features -> foundation features. Domain features never import each other. No shell->shell, feature->shell, deep imports (`@cgf/x/src/...`) or cycles. `bun run check:deps` passes.
-   - Public API minimal, documented in the package README, exported only via `src/index.ts`. `package.json` has correct name, `exports`, `cgf.tier`, `workspace:*` deps.
+   - Layering: src -> shells -> domain features -> foundation features. Domain features never import each other. No shell->shell, feature->shell, deep imports (`@umbra/x/src/...`) or cycles. `bun run check:deps` passes.
+   - Public API minimal, documented in the package README, exported only via `src/index.ts`. `package.json` has correct name, `exports`, `umbra.tier`, `workspace:*` deps.
 3. **Shells**: no fetch, no generated-client use, no business logic.
 4. **TypeScript/React**: strict, no `any`/`@ts-ignore`; generated files untouched; logic in `model/`/hooks; small components; stable keys; effects clean up; no state derived in effects that could be computed.
 5. **Performance**: no per-entity React renders; imperative map layer; batched per frame; virtualized lists; narrow store selectors; lazy-loaded shells.

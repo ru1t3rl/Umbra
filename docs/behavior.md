@@ -1,7 +1,7 @@
 <!--
 Doc-test convention (WI-17): every fenced block whose info string is exactly `toml file=<relative path>`
-is a complete file. The doc test (crates/cgf-cli/tests/cli_behavior.rs) writes all of them, at their
-relative paths, into one fresh directory and runs `cgf-cli validate <dir>`, which must print
+is a complete file. The doc test (crates/umbra-cli/tests/cli_behavior.rs) writes all of them, at their
+relative paths, into one fresh directory and runs `umbra validate <dir>`, which must print
 `ok: 8 files checked`. They form one example set (a scenario, two templates, five graphs), so IDs must
 stay unique across all `file=` blocks, and adding or removing one changes the expected count. Blocks
 that are deliberately partial or invalid use plain `toml` and are not extracted.
@@ -10,9 +10,9 @@ that are deliberately partial or invalid use plain `toml` and are not extracted.
 # Behavior graph reference (format v1)
 
 Source of truth: spec section 6 and amendment A-001 (D-26, D-27), ADRs 0011-0017 (D-28..D-34) and
-ASM-070..ASM-110 in `docs/assumptions.md`. The readers in `crates/cgf-templates` and the interpreter in
-`crates/cgf-behavior` are authoritative where this page and the JSON Schema
-`crates/cgf-templates/schemas/behavior.v1.schema.json` (printed by `cgf-cli schema behavior`) differ.
+ASM-070..ASM-110 in `docs/assumptions.md`. The readers in `crates/umbra-templates` and the interpreter in
+`crates/umbra-behavior` are authoritative where this page and the JSON Schema
+`crates/umbra-templates/schemas/behavior.v1.schema.json` (printed by `umbra schema behavior`) differ.
 Templates and scenarios are described in `docs/templates.md`.
 
 A **behavior graph** is a behavior tree whose nodes may also be finite state machines (`fsm`) and calls
@@ -30,12 +30,12 @@ Contents: [files and discovery](#files-and-discovery), [complete example](#compl
 ## Files and discovery
 - One graph per file. A file is a graph exactly when its name ends in `.behavior.toml`
   (case-sensitive), wherever templates are searched: under a scenario's `template_paths`, in a directory
-  given to `cgf-cli validate`, or given to `validate` directly (ADR 0012, ASM-074). A single graph file
+  given to `umbra validate`, or given to `validate` directly (ADR 0012, ASM-074). A single graph file
   is validated together with its direct siblings, so a call to a sibling resolves.
 - A graph's `id` is a component ID (ADR 0002) and is a valid template `[behavior] ref` and `subgraph`
   target. IDs are global: a graph may not reuse the ID of any registered component (`duplicate_id`),
   including the built-in graphs.
-- Built-in graphs are the same kind of file, embedded in `cgf-engine` and registered with provenance
+- Built-in graphs are the same kind of file, embedded in `umbra-engine` and registered with provenance
   `builtin`; graph files of a scenario have provenance `file`; plugin behaviors (M4) `plugin`. A
   `subgraph` node cannot tell them apart (REQ-B-9).
 
@@ -45,7 +45,7 @@ Contents: [files and discovery](#files-and-discovery), [complete example](#compl
 > ("is a behavior graph"). Every other file name is classified exactly as in M2.
 
 ## Complete example
-This set validates with `cgf-cli validate <dir>` and runs with `cgf-cli run <dir>/scenario.toml`. A blue
+This set validates with `umbra validate <dir>` and runs with `umbra run <dir>/scenario.toml`. A blue
 tank patrols its route; when a hostile comes within 1200 m it approaches it and fires every 4 s with a
 60 percent chance; a red truck drives its route. It uses every node type.
 
@@ -634,7 +634,7 @@ loader's limit with `LoaderOptions::max_subgraph_depth`, but registration always
 graph, nodes nest at most **128 levels** (`node_too_deep`). Graphs that call each other in a loop are
 `subgraph_cycle` (once per strongly connected group, at the first `ref` of the shortest cycle through its
 smallest ID, with one note per remaining edge). Depth counts behaviors, the same way at load time
-(`cgf-cli validate`) and at registration: a call to a registered graph (for example
+(`umbra validate`) and at registration: a call to a registered graph (for example
 `builtin.fsm.patrol_and_engage`, which itself calls `builtin.subgraph.engage_target`) adds that graph's
 whole longest chain, one level per behavior, and a registered behavior that calls no subgraph (for
 example `builtin.subgraph.engage_target`, or a plugin behavior) adds 1. So 15 of your graphs ending in
@@ -643,7 +643,7 @@ example `builtin.subgraph.engage_target`, or a plugin behavior) adds 1. So 15 of
 (ASM-099 e).
 
 ## Load-time checks
-`cgf-cli validate` and every scenario load run the M2 pipeline over graph files too (A-001): all errors of
+`umbra validate` and every scenario load run the M2 pipeline over graph files too (A-001): all errors of
 all files in one sorted list, located at file, line and column, no follow-on errors from a graph that is
 broken (syntax or reader errors, a duplicate ID): calls to it get no further checks. In order:
 1. Per file: syntax, `schema_version`, keys and types, names, node settings, FSM structure, the interface
@@ -677,8 +677,8 @@ enforces it, at spawn time, without a file location (ASM-076, ASM-106(d)). None 
 a rule across params, so this concerns registered behaviors and plugin components.
 
 ## Built-in catalog
-`cgf-cli schema component <ID>` prints the parameter schema of any of these (the authoritative source);
-`cgf-cli schema behavior` prints the graph file schema. Built-in leaves and node types carry provenance
+`umbra schema component <ID>` prints the parameter schema of any of these (the authoritative source);
+`umbra schema behavior` prints the graph file schema. Built-in leaves and node types carry provenance
 `builtin` (read-only) and the package version (0.1.0 at M3); the built-in graphs have version `1.0.0`.
 Unknown params are errors for all of them. "Contacts" are the entities this entity's sensors see this
 tick; without a sensor there are none.
@@ -714,7 +714,7 @@ model in v1 (spec 1.3).
 See [Perception](#perception) for the rules and the `eye_height_m = 0` note.
 
 ### Built-in graphs
-Both are embedded in `cgf-engine` (`crates/cgf-engine/behaviors/`) and registered as behaviors with
+Both are embedded in `umbra-engine` (`crates/umbra-engine/behaviors/`) and registered as behaviors with
 provenance `builtin`, version `1.0.0`; they use only built-in leaves.
 
 **`builtin.fsm.patrol_and_engage`** (the spec 7.1 template's behavior): follow the initial route; engage
@@ -751,7 +751,7 @@ the target is lost, as `builtin.fsm.patrol_and_engage` does through `enemy_in_ra
 
 ### Node types in the catalog
 The twelve node types above are catalog entries too (provenance `builtin`, with their settings schema).
-The catalog (`cgf_core::Catalog`) lists node types, conditions, actions and behaviors with ID,
+The catalog (`umbra_core::Catalog`) lists node types, conditions, actions and behaviors with ID,
 description, provenance, read-only flag, version, parameter schema, binding-only param types, outputs and
 result text (REQ-B-17); it is exposed over REST in M5.
 
@@ -787,7 +787,7 @@ steered to by `builtin.ground.kinematic` (no built-in action emits it yet).
 2026-10-17): they appear in `EntitySnapshot::intents` for that tick and nowhere else. `Fire` does not
 damage, destroy or even notify its target, produces no event and changes no state; `Spawn` creates no
 entity; `Despawn` removes nothing; `Custom` reaches no consumer. They are not part of the state hash.
-`cgf-cli run` does not print intents; embedders read them from the snapshot. An entity whose behavior
+`umbra run` does not print intents; embedders read them from the snapshot. An entity whose behavior
 emits no intent in a tick gets none (it slows to a stop); an Owned entity without a behavior follows its
 route exactly as in M2.
 
@@ -859,10 +859,10 @@ gate 4 runs `examples/scenarios/patrol_and_engage`):
 ## Embedding: stack size
 The interpreter ticks the tree by recursion, about two frames per node level and more per subgraph level.
 The worst case the limits allow (16 graphs x 128 levels) needs about 1.25-1.5 MiB of stack in a debug
-build and 384-512 KiB in a release build (ASM-098, measured by `crates/cgf-behavior/tests/stack_budget.rs`
+build and 384-512 KiB in a release build (ASM-098, measured by `crates/umbra-behavior/tests/stack_budget.rs`
 on Linux). So:
 - the thread that calls `Kernel::tick`, `Engine::step` or `Engine::run` needs at least **2 MiB**; spawn it
   with an explicit stack of **4 MiB or more** (`std::thread::Builder::stack_size`);
 - do not rely on a process main thread: it has 8 MiB on Linux but only 1 MiB on Windows;
-- `cgf-cli` runs its command on a thread with 8 MiB; the M5 server's tick thread must get 4 MiB or more
+- `umbra-cli` runs its command on a thread with 8 MiB; the M5 server's tick thread must get 4 MiB or more
   (`docs/milestones.md`, M5).

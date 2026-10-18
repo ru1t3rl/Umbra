@@ -3,23 +3,23 @@
 version = 4
 
 [[package]]
-name = "cgf-kernel"
+name = "umbra-kernel"
 version = "0.1.0"
 
 [[package]]
-name = "cgf-plugin-api"
+name = "umbra-plugin-api"
 version = "0.1.0"
 
 [[package]]
-name = "cgf-plugin-api"
+name = "umbra-plugin-api"
 version = "9.0.0"
 dependencies = [
- "cgf-kernel",
+ "umbra-kernel",
 ]
 
 [[package]]
-name = "cgf-sdk"
+name = "umbra-sdk"
 version = "0.1.0"
 dependencies = [
- "cgf-plugin-api 9.0.0",
+ "umbra-plugin-api 9.0.0",
 ]

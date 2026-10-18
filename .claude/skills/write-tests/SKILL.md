@@ -1,6 +1,6 @@
 ---
 name: write-tests
-description: Design and write tests for CGF requirements or milestone acceptance criteria: unit, property, determinism, plugin failure, network, API contract, end-to-end and benchmarks. Use before implementing a feature or when coverage of a REQ-ID is questioned.
+description: Design and write tests for Umbra requirements or milestone acceptance criteria: unit, property, determinism, plugin failure, network, API contract, end-to-end and benchmarks. Use before implementing a feature or when coverage of a REQ-ID is questioned.
 ---
 
 # Write tests

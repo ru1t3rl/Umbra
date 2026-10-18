@@ -10,7 +10,7 @@ rust-version = "1.99.1"
 license = "MIT OR Apache-2.0"
 publish = false
 # Placeholder until a remote exists (ASM-003).
-repository = "https://example.invalid/cgf-engine"
+repository = "https://example.invalid/umbra"
 
 [workspace.dependencies]
 anyhow = "1"
@@ -39,6 +39,6 @@ print_stderr = "warn"
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
 # Short pedantic allow-list (ASM-012).
-module_name_repetitions = "allow"   # cgf-* crate/type names repeat module names by design
+module_name_repetitions = "allow"   # umbra-* crate/type names repeat module names by design
 must_use_candidate = "allow"        # too noisy for small value types
 missing_errors_doc = "allow"        # errors are documented by their thiserror enums

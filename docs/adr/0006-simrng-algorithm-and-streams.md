@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (approved by the human project owner on 2026-10-17)
 - **Requirement IDs**: REQ-K-4, A-2, REQ-K-7, REQ-P-5, ADR 0003
-- **Affected**: `cgf-core` (`rng` module), `cgf-kernel` (owns the instance and per-entity streams), later the plugin host API (M4) and replay (M7)
+- **Affected**: `umbra-core` (`rng` module), `umbra-kernel` (owns the instance and per-entity streams), later the plugin host API (M4) and replay (M7)
 
 ## Context
 REQ-K-4 requires one seeded RNG service, `SimRng`, as the only randomness source, with a per-entity
@@ -19,7 +19,7 @@ and make streams cheap to create and store (one per entity, part of the hashed s
      has changed seeding and distribution outputs across major versions, so a dependency bump can
      silently change every run. Extra dependencies; `rand` also exposes `thread_rng`/OS entropy, which
      we would have to ban.
-2. **Hand-rolled, pinned algorithms in `cgf-core` (about 80 lines).** Xoshiro256** for each stream,
+2. **Hand-rolled, pinned algorithms in `umbra-core` (about 80 lines).** Xoshiro256** for each stream,
    SplitMix64 to expand a 64-bit key into the 256-bit stream state (the method the algorithms' authors
    recommend), both checked against their published reference outputs.
    - Pros: output is fixed forever by our own code and tests; no dependency; integer-only, so

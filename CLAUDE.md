@@ -1,13 +1,13 @@
-# CGF Engine: project instructions for all agents
+# Umbra: project instructions for all agents
 
-Source of truth: `docs/SPEC.md` (export of the "CGF Engine: Software Specification"). Requirement IDs (REQ-*, NFR-*, D-*, A-*) are referenced in code comments, commits and PRs.
+Source of truth: `docs/SPEC.md` (export of the "Umbra: Software Specification"). Requirement IDs (REQ-*, NFR-*, D-*, A-*) are referenced in code comments, commits and PRs.
 
 ## Ground rules
 1. Build strictly in milestone order (spec section 17). Never start Mn+1 before Mn's acceptance criteria pass.
 2. MUST/SHOULD/MAY in the spec carry their RFC meaning. Do not silently reverse a decision (D-*). If you think one is wrong, stop and write an ADR proposal in `docs/adr/` and ask the human.
 3. Ambiguity: pick the simplest option consistent with KISS/SOLID/DRY, record it in `docs/assumptions.md`, continue.
-4. Dependencies point inward (REQ-A-1..4). `cgf-core` depends on no workspace crate. `cgf-sdk` depends only on `cgf-plugin-api`.
-5. `unsafe` only in `cgf-plugin-api`, `cgf-plugin-host`, `cgf-sdk`; every block has `// SAFETY:` and a test. Everywhere else `#![forbid(unsafe_code)]`.
+4. Dependencies point inward (REQ-A-1..4). `umbra-core` depends on no workspace crate. `umbra-sdk` depends only on `umbra-plugin-api`.
+5. `unsafe` only in `umbra-plugin-api`, `umbra-plugin-host`, `umbra-sdk`; every block has `// SAFETY:` and a test. Everywhere else `#![forbid(unsafe_code)]`.
 6. No `unwrap`/`expect` on external input. `thiserror` in libraries, `anyhow` only in binaries.
 7. Determinism (REQ-K-4): no wall clock, no `HashMap` iteration order, no ad-hoc randomness inside simulation logic. Use `Clock` and `SimRng`.
 8. Definition of done for any change: every gate in the ordered local gate list in `docs/build.md` passes (it is canonical; there is no CI, see ADR 0004 / D-19); docs and tests updated; commit references requirement IDs.
@@ -17,9 +17,9 @@ Source of truth: `docs/SPEC.md` (export of the "CGF Engine: Software Specificati
 |---|---|
 | `architect` | Design, ADRs, crate boundaries, trait design, spec questions |
 | `rust-engineer` | Implementing kernel, templates, behavior, motion, engine facade |
-| `plugin-abi-engineer` | `cgf-plugin-api`, host, SDK, FFI safety |
-| `network-engineer` | `cgf-net`, DIS/HLA adapters |
-| `api-engineer` | `cgf-server`, `cgf-api-types`, OpenAPI, stream schema |
+| `plugin-abi-engineer` | `umbra-plugin-api`, host, SDK, FFI safety |
+| `network-engineer` | `umbra-net`, DIS/HLA adapters |
+| `api-engineer` | `umbra-server`, `umbra-api-types`, OpenAPI, stream schema |
 | `frontend-architect` | GUI package plan: features, shells, tiers, public APIs, ADRs |
 | `frontend-engineer` | GUI implementation under `gui/` with Bun (features, shells, app, Tauri) |
 | `frontend-test-engineer` | GUI tests: bun test, Playwright, stream and architecture tests |

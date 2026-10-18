@@ -1,0 +1,12 @@
+[package]
+name = "umbra-plugin-host"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+umbra-core = { path = "../umbra-core" }
+umbra-plugin-api = { path = "../umbra-plugin-api" }
+
+[lints]
+workspace = true

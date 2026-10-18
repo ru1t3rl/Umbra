@@ -16,13 +16,13 @@ Run from `gui/`. Owner: `frontend-engineer`; plan approved by `frontend-architec
    `package.json`:
    ```json
    {
-     "name": "@cgf/shell-<name>",
+     "name": "@umbra/shell-<name>",
      "version": "0.0.0",
      "private": true,
      "type": "module",
      "exports": "./src/index.ts",
-     "cgf": { "type": "shell" },
-     "dependencies": { "@cgf/ui-kit": "workspace:*" }
+     "umbra": { "type": "shell" },
+     "dependencies": { "@umbra/ui-kit": "workspace:*" }
    }
    ```
    Add each composed feature as `workspace:*` plus a tsconfig reference.

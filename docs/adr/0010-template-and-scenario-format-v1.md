@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (approved by the human project owner on 2026-10-17; M2 plan `docs/plans/M2.md`)
 - **Requirement IDs**: REQ-T-1..7, REQ-S-1, REQ-C-3, REQ-C-4, D-14, D-15, ASM-044, ASM-016, ASM-029
-- **Affected**: `cgf-templates`, `cgf-engine`, `cgf-cli`, `examples/scenarios/`, `docs/templates.md`, every user file
+- **Affected**: `umbra-templates`, `umbra-engine`, `umbra-cli`, `examples/scenarios/`, `docs/templates.md`, every user file
 
 ## Context
 Section 7 gives one template example and a prose list for scenarios. The file format becomes a user

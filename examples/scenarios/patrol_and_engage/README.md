@@ -4,8 +4,8 @@ The M3 acceptance scenario (spec section 17, M3): a behavior tree with an embedd
 reusable subgraph, loaded from files, run through the kernel with the `builtin.visual` sensor.
 
 ```
-cargo run -p cgf-cli -- validate examples/scenarios/patrol_and_engage
-cargo run -p cgf-cli -- run examples/scenarios/patrol_and_engage/scenario.toml
+cargo run -p umbra-cli -- validate examples/scenarios/patrol_and_engage
+cargo run -p umbra-cli -- run examples/scenarios/patrol_and_engage/scenario.toml
 ```
 
 | Entity | Template | Behavior | Notes |
@@ -14,7 +14,7 @@ cargo run -p cgf-cli -- run examples/scenarios/patrol_and_engage/scenario.toml
 | red-1 | `example.truck.red` | `example.behavior.follow_route` (file) | drives west at 20 m/s along y = +200 m |
 | blue-2 | `example.tank.builtin` | `builtin.fsm.patrol_and_engage` (built-in) | the spec 7.1 template shape, `aggression = 0.7` |
 
-The engage state rolls a `chance` of 0.5 before each shot, so the seed decides on which ticks `Fire` is emitted (`cgf-cli run --seed N`).
+The engage state rolls a `chance` of 0.5 before each shot, so the seed decides on which ticks `Fire` is emitted (`umbra run --seed N`).
 
 `Fire` is recorded in the snapshot only until M5 (ADR 0016); nothing is destroyed.
 

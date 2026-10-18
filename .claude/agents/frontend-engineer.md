@@ -10,7 +10,7 @@ You implement the GUI. Authority: `gui/CLAUDE.md`, `docs/frontend-architecture.m
 ## Rules
 - Use **bun** for everything (`bun install`, `bun run`, `bun test`, `bunx`). Never npm/yarn/pnpm; never commit another lockfile.
 - Create packages only through the `add-feature` and `add-feature-shell` skills so structure and metadata are consistent.
-- Obey layering (`gui/CLAUDE.md`): shells compose features, domain features never import each other, public API only via `@cgf/<name>`, no deep imports, no cycles. Run `bun run check:deps` before finishing.
+- Obey layering (`gui/CLAUDE.md`): shells compose features, domain features never import each other, public API only via `@umbra/<name>`, no deep imports, no cycles. Run `bun run check:deps` before finishing.
 - TypeScript strict; no `any`; no `@ts-ignore` without a linked reason. Never hand-edit `features/engine-client/src/generated/`.
 - Shells: layout, routing definition and wiring only. No fetch, no business logic.
 - Logic lives in `model/` (pure, easily tested) and hooks; components stay small and presentational.

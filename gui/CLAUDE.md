@@ -6,7 +6,7 @@ Applies to everything under `gui/`. Full architecture: `docs/frontend-architectu
 | ID | Decision | Why |
 |---|---|---|
 | F-1 | **Bun** as package manager, workspace manager, script runner and test runner; commit `bun.lock`, always `bun install --frozen-lockfile` in CI | Fast, one tool, native workspaces |
-| F-2 | **Bun workspaces**: `features/*` and `feature-shells/*` are separate packages (`@cgf/<name>`, `@cgf/shell-<name>`) | Real library boundaries, enforced public APIs |
+| F-2 | **Bun workspaces**: `features/*` and `feature-shells/*` are separate packages (`@umbra/<name>`, `@umbra/shell-<name>`) | Real library boundaries, enforced public APIs |
 | F-3 | **TypeScript strict** (`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) | Catch errors early; generated types stay trustworthy |
 | F-4 | **React + Vite** for build, **Tauri 2** for the Windows app (`src-tauri/`) | Same web build for web and desktop |
 | F-5 | **Zustand** for client/stream state, **TanStack Query** for REST data | Small, no boilerplate; separate server-cache from live state |
@@ -33,10 +33,10 @@ gui/
 1. `src` may import shells and features. Nothing imports `src`.
 2. **Shells** import features only (and other shells never). Shells hold layout, routing definition and wiring; **no business logic, no fetch calls, no direct generated-client use**.
 3. **Features** never import shells or `src`.
-4. Features come in two tiers (set `"cgf": {"tier": "foundation" | "domain"}` in each `package.json`):
+4. Features come in two tiers (set `"umbra": {"tier": "foundation" | "domain"}` in each `package.json`):
    - `foundation` (e.g. `ui-kit`, `engine-client`, `engine-stream`): may import only other foundation features.
    - `domain` (e.g. `entity-inspector`, `scenario-control`): may import foundation features, **never other domain features**. Cross-feature composition happens in shells via props/callbacks.
-5. Import another package only through its package name (`@cgf/x`) which resolves to `src/index.ts`. Deep imports (`@cgf/x/src/...`) are forbidden.
+5. Import another package only through its package name (`@umbra/x`) which resolves to `src/index.ts`. Deep imports (`@umbra/x/src/...`) are forbidden.
 6. No cyclic dependencies. No `any`, no `@ts-ignore` without a linked reason.
 7. Generated code lives in `features/engine-client/src/generated/`, is never hand-edited, and is produced by `bun run gen:api` from `../api/openapi.json` and the stream schema.
 

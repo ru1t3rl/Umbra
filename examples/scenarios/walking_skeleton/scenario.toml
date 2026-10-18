@@ -11,7 +11,7 @@ name = "walking_skeleton"
 seed = 42
 tick_rate_hz = 30
 clock = "afap"                    # afap | realtime | stepped | scaled (then time_scale = 4.0)
-duration_s = 240.0                # run length; `cgf-cli run --ticks N` overrides it
+duration_s = 240.0                # run length; `umbra run --ticks N` overrides it
 template_paths = ["templates"]    # relative to this file; searched recursively for *.toml
 
 [terrain]                         # optional; this is the default

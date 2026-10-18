@@ -1,0 +1,23 @@
+[package]
+name = "umbra-engine"
+description = "Umbra embeddable synchronous facade."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+umbra-behavior = { path = "../umbra-behavior" }
+umbra-core = { path = "../umbra-core" }
+umbra-kernel = { path = "../umbra-kernel" }
+umbra-motion = { path = "../umbra-motion" }
+umbra-templates = { path = "../umbra-templates" }
+thiserror.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

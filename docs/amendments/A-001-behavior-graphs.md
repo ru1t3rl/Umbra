@@ -77,7 +77,7 @@ Skills: `add-subgraph`, `add-behavior-node`.
 ### Frontend inventory additions (append to docs/frontend-architecture.md table)
 | Package | Type | Tier | Purpose |
 |---|---|---|---|
-| `@cgf/behavior-editor` | feature | domain | Node-and-arrow graph canvas (xyflow/React Flow behind an interface), property forms from catalog JSON Schemas, validation display, subgraph library panel, convert-selection-to-subgraph, `[editor]` layout persistence |
-| `@cgf/shell-behaviors` | shell | | Behavior list, editor, validation and (later) live preview page |
+| `@umbra/behavior-editor` | feature | domain | Node-and-arrow graph canvas (xyflow/React Flow behind an interface), property forms from catalog JSON Schemas, validation display, subgraph library panel, convert-selection-to-subgraph, `[editor]` layout persistence |
+| `@umbra/shell-behaviors` | shell | | Behavior list, editor, validation and (later) live preview page |
 
 The editor reads the catalog through `engine-client` hooks and never hard-codes node, condition or action types. It must not import other domain features; the shell wires it to other features. Delivered in milestone M8b.

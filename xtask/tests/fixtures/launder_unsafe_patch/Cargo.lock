@@ -3,12 +3,12 @@
 version = 4
 
 [[package]]
-name = "cgf-core"
+name = "shim"
+version = "1.0.0"
+
+[[package]]
+name = "umbra-core"
 version = "0.1.0"
 dependencies = [
  "shim",
 ]
-
-[[package]]
-name = "shim"
-version = "1.0.0"

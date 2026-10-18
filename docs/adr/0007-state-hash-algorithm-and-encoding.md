@@ -2,7 +2,7 @@
 
 - **Status**: Accepted (approved by the human project owner on 2026-10-17)
 - **Requirement IDs**: REQ-K-4, A-2, section 15 (determinism tests), REQ-K-7 (M7 "replay reproduces state hashes"), ADR 0003
-- **Affected**: `cgf-core` (`hash` module), `cgf-kernel` (what is hashed), `cgf-engine` determinism test, `cgf-cli` output
+- **Affected**: `umbra-core` (`hash` module), `umbra-kernel` (what is hashed), `umbra-engine` determinism test, `umbra-cli` output
 
 ## Context
 The determinism gate (section 15, gate 4) compares per-tick state hashes between runs and clock modes;
@@ -26,7 +26,7 @@ detects accidental divergence; it is not a security boundary.
 
 ## Decision
 Option 1 (KISS; stability by construction).
-- `cgf-core::hash::StateHasher` wraps FNV-1a 64 (offset basis `0xcbf29ce484222325`, prime
+- `umbra-core::hash::StateHasher` wraps FNV-1a 64 (offset basis `0xcbf29ce484222325`, prime
   `0x100000001b3`) and exposes only canonical writers: `write_u8/u32/u64`, `write_f64`, `write_bytes`
   (length-prefixed with a `u64`), `write_str`. Integers are little-endian, fixed width.
 - `write_f64` canonicalises: `-0.0` becomes `+0.0`; every NaN becomes `0x7FF8_0000_0000_0000`; then
@@ -63,7 +63,7 @@ state. The route part is then:
   speed (m/s) as `f64`.
 
 The entity RNG state (four `u64`) still follows. Header (tick, tick rate, entity count) and every other field
-keep their v1 position. The hand-built reference encoding in `crates/cgf-kernel/tests/state_hash.rs`
+keep their v1 position. The hand-built reference encoding in `crates/umbra-kernel/tests/state_hash.rs`
 (`state_hash_equals_the_reference_encoding`) pins this order, and the platform-independent goldens in
-`crates/cgf-core/tests/hash.rs` were regenerated with an independent encoder for version 2.
+`crates/umbra-core/tests/hash.rs` were regenerated with an independent encoder for version 2.
 
