@@ -14,7 +14,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use cgf_core::{
-    BbType, BehaviorId, GraphDef, NameError, NodeId, Provenance, Version, validate_name,
+    BbType, BehaviorId, ComponentId, GraphDef, Interface, NameError, NodeDef, NodeId, Provenance,
+    Version, validate_name,
 };
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode, sort_and_dedup};
@@ -27,6 +28,7 @@ mod fsm;
 mod interface;
 mod nodes;
 mod params;
+pub(crate) mod shape;
 
 /// The file name suffix that makes a `.toml` file a behavior graph (ASM-074, case-sensitive).
 const GRAPH_SUFFIX: &[u8] = b".behavior.toml";
@@ -52,6 +54,29 @@ pub(crate) struct GraphRead {
     pub(crate) graph: Option<GraphDef>,
     /// Every error of the file, sorted.
     pub(crate) diagnostics: Vec<Diagnostic>,
+    /// The top-level `id` when it could be recovered, even if the file has errors, so graphs that
+    /// call it are not reported as having an unknown target (ASM-054 rule 3, ASM-056).
+    pub(crate) known_id: Option<(ComponentId, Origin)>,
+    /// Whether the file has syntax errors (its tree is unreliable).
+    pub(crate) syntax_errors: bool,
+    /// The file.
+    pub(crate) path: std::path::PathBuf,
+    /// What could be read, also from a file with errors (`None` after a syntax error or a newer
+    /// `schema_version`).
+    pub(crate) parts: Option<Parts>,
+}
+
+/// The readable parts of a graph file, for the checks of the graph set (WI-13) that must not wait
+/// for the whole file to be clean (ASM-056, ASM-106).
+pub(crate) struct Parts {
+    /// The located file.
+    pub(crate) table: LTable,
+    /// `[interface]`, when it read without errors.
+    pub(crate) interface: Option<Interface>,
+    /// `[blackboard]`, when it read without errors.
+    pub(crate) blackboard: Option<BTreeMap<String, BbType>>,
+    /// Every node in file order; `None` for a node with an error. `NodeId` indexes this.
+    pub(crate) nodes: Vec<(String, Option<NodeDef>)>,
 }
 
 /// Whether `path` names a behavior graph (ASM-074): the file name ends in `.behavior.toml`.
@@ -64,13 +89,22 @@ pub(crate) fn is_graph_path(path: &Path) -> bool {
 pub(crate) fn read_graph(file: &SourceFile, source: Provenance) -> GraphRead {
     let (table, mut diagnostics) = parse(file);
     let syntax_errors = diagnostics.iter().any(|d| d.code == DiagnosticCode::Syntax);
+    let known_id = table.as_ref().and_then(recover_id);
     let mut graph = None;
-    if !syntax_errors && let Some(table) = &table {
+    let mut parts = None;
+    if !syntax_errors && let Some(table) = table {
         let mut reader = Reader::new(file);
-        match check_version(&mut reader, table) {
+        match check_version(&mut reader, &table) {
             FileVersion::Newer => diagnostics = Vec::new(),
             FileVersion::Ok | FileVersion::Bad => {
-                graph = read_body(&mut reader, table, file, source);
+                let body = read_body(&mut reader, &table, file, source);
+                graph = body.graph;
+                parts = Some(Parts {
+                    table,
+                    interface: body.interface,
+                    blackboard: body.blackboard,
+                    nodes: body.nodes,
+                });
             }
         }
         diagnostics.extend(reader.into_diagnostics());
@@ -83,7 +117,35 @@ pub(crate) fn read_graph(file: &SourceFile, source: Provenance) -> GraphRead {
         graph.is_some() || !diagnostics.is_empty(),
         "a graph that is not read must have a diagnostic"
     );
-    GraphRead { graph, diagnostics }
+    GraphRead {
+        graph,
+        diagnostics,
+        known_id,
+        syntax_errors,
+        path: file.path().to_path_buf(),
+        parts,
+    }
+}
+
+/// The top-level `id` of a possibly broken file: a string with a real span that passes the ID
+/// grammar.
+fn recover_id(table: &LTable) -> Option<(ComponentId, Origin)> {
+    let value = table.get("id")?;
+    let span = value.origin().span();
+    match value.kind() {
+        LKind::String(text) if span.start < span.end => ComponentId::new(text)
+            .ok()
+            .map(|id| (id, value.origin().clone())),
+        _ => None,
+    }
+}
+
+/// What `read_body` produced: the graph when everything read, and the pieces that did.
+struct Body {
+    graph: Option<GraphDef>,
+    interface: Option<Interface>,
+    blackboard: Option<BTreeMap<String, BbType>>,
+    nodes: Vec<(String, Option<NodeDef>)>,
 }
 
 fn read_body(
@@ -91,7 +153,7 @@ fn read_body(
     table: &LTable,
     file: &SourceFile,
     source: Provenance,
-) -> Option<GraphDef> {
+) -> Body {
     reader.unknown_keys(table, &GRAPH_KEYS);
     let id = read_id(reader, table);
     let version = read_version(reader, table);
@@ -109,12 +171,54 @@ fn read_body(
     }
     let node_table = nodes::read(reader, table);
     let root = read_root(reader, table, node_table.as_ref().map(|n| &n.index));
-    let mut graph = GraphDef::new(id?, version?, source, interface?, root?, node_table?.defs)
-        .with_origin(file.path().to_path_buf());
-    if let Some(text) = description {
+    let defs = node_table.as_ref().and_then(nodes::NodeTable::defs);
+    let graph = assemble(
+        file,
+        source,
+        Header {
+            id,
+            version,
+            description,
+            root,
+            interface: interface.clone(),
+            blackboard: blackboard.clone(),
+            defs,
+        },
+    );
+    Body {
+        graph,
+        interface,
+        blackboard,
+        nodes: node_table.map(|n| n.slots).unwrap_or_default(),
+    }
+}
+
+/// The pieces of a graph file, each `None` when it did not read.
+struct Header {
+    id: Option<BehaviorId>,
+    version: Option<Version>,
+    description: Option<String>,
+    root: Option<NodeId>,
+    interface: Option<Interface>,
+    blackboard: Option<BTreeMap<String, BbType>>,
+    defs: Option<Vec<NodeDef>>,
+}
+
+/// The graph, when every piece read.
+fn assemble(file: &SourceFile, source: Provenance, head: Header) -> Option<GraphDef> {
+    let mut graph = GraphDef::new(
+        head.id?,
+        head.version?,
+        source,
+        head.interface?,
+        head.root?,
+        head.defs?,
+    )
+    .with_origin(file.path().to_path_buf());
+    if let Some(text) = head.description {
         graph = graph.with_description(text);
     }
-    for (key, ty) in blackboard? {
+    for (key, ty) in head.blackboard? {
         graph = graph.with_blackboard_key(key, ty);
     }
     Some(graph)

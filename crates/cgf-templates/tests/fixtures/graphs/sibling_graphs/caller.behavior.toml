@@ -1,0 +1,9 @@
+schema_version = 1
+id = "test.graph.caller"
+version = "1.0.0"
+root = "r"
+
+[nodes.r]
+type = "subgraph"
+ref = "test.graph.callee"
+version = "^2.0"

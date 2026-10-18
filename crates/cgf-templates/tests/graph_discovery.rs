@@ -123,3 +123,50 @@ fn graph_with_a_scenario_table_is_still_a_graph() {
             .all(|d| d.code.as_str() != "not_a_scenario")
     );
 }
+
+const SIBLINGS: &str = "graphs/sibling_graphs";
+
+fn sibling(name: &str) -> std::path::PathBuf {
+    fixture_path(&format!("{SIBLINGS}/{name}.behavior.toml"))
+}
+
+/// ASM-074, WI-12 review m3: a single graph file is validated together with its direct siblings, so
+/// a `duplicate_id` between two graph files is reported whichever one is given (located in the
+/// later file, with a note at the first).
+#[test]
+fn validate_path_on_a_graph_file_reports_a_duplicate_id_with_a_sibling() {
+    let registry = registry();
+    let loader = loader_for(&registry);
+
+    let from_a = loader.validate_path(&sibling("a"));
+    let from_b = loader.validate_path(&sibling("b"));
+
+    for report in [&from_a, &from_b] {
+        assert_eq!(
+            rows(&report.diagnostics),
+            [row("duplicate_id", sibling("b"), (2, 6))]
+        );
+    }
+    assert_eq!(from_a.files_checked, [sibling("a")]);
+    assert_eq!(from_b.files_checked, [sibling("b")]);
+}
+
+/// ASM-074: a graph that calls a sibling is checked against it (no `unknown_id`, and a version
+/// mismatch is found); a report holds the diagnostics located in the given file or with a note
+/// pointing into it.
+#[test]
+fn validate_path_on_a_graph_file_resolves_calls_to_siblings() {
+    let registry = registry();
+    let loader = loader_for(&registry);
+
+    let calling = loader.validate_path(&sibling("caller"));
+    let called = loader.validate_path(&sibling("callee"));
+
+    assert_eq!(
+        rows(&calling.diagnostics),
+        [row("version_mismatch", sibling("caller"), (9, 11))]
+    );
+    assert_eq!(calling.diagnostics[0].notes.len(), 1);
+    // The note points into the callee, so its report includes the diagnostic too (ASM-067).
+    assert_eq!(called.diagnostics, calling.diagnostics);
+}

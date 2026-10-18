@@ -60,10 +60,11 @@ pub use catalog::{
 pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
 pub use geo::{Euler, Quaternion, Vec3};
 pub use graph::{
-    Composite, Decorator, ExitDef, FsmDef, GraphDef, Interface, LeafRef, NODE_TYPES, NodeDef,
-    NodeId, NodeKind, NodeKindTag, NodeTypeInfo, OutputPort, ParallelDef, ParallelPolicy,
-    ParamTemplate, RepeatDef, ReservedForm, StateDef, SubgraphRef, SubstituteError, TimedDef,
-    TransitionDef, TransitionTarget, Trigger, Version, VersionReq, reserved_form,
+    Composite, DEFAULT_MAX_SUBGRAPH_DEPTH, Decorator, ExitDef, FsmDef, GraphDef, Interface,
+    LeafRef, MAX_NODE_DEPTH, NODE_TYPES, NodeDef, NodeId, NodeKind, NodeKindTag, NodeTypeInfo,
+    OutputPort, ParallelDef, ParallelPolicy, ParamTemplate, RepeatDef, ReservedForm, StateDef,
+    SubgraphRef, SubstituteError, TimedDef, TransitionDef, TransitionTarget, Trigger, Version,
+    VersionReq, reserved_form,
 };
 pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher};
 pub use id::{

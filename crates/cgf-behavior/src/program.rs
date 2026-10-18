@@ -11,10 +11,11 @@ use cgf_core::{
 
 use crate::factory::GraphRegistrationError;
 
-/// The deepest node nesting one graph may have. The tick recurses once per level, so this bounds
-/// the stack use of one graph; with subgraphs the bound multiplies by up to 16 graph levels
+/// The deepest node nesting one graph may have: `cgf_core::MAX_NODE_DEPTH`, shared with the
+/// loader's `node_too_deep` check. The tick recurses once per level, so this bounds the stack use
+/// of one graph; with subgraphs the bound multiplies by up to 16 graph levels
 /// (`max_subgraph_depth`, ASM-095); ASM-098 records the measured stack use.
-pub(crate) const MAX_NODE_DEPTH: usize = 128;
+pub(crate) use cgf_core::MAX_NODE_DEPTH;
 
 /// How a `parallel` node decides (ADR 0013).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -40,7 +40,7 @@ pub struct LoaderOptions {
 impl Default for LoaderOptions {
     fn default() -> Self {
         Self {
-            max_subgraph_depth: 16,
+            max_subgraph_depth: cgf_core::DEFAULT_MAX_SUBGRAPH_DEPTH,
         }
     }
 }
@@ -58,6 +58,7 @@ pub struct ValidationReport {
 pub struct Loader<'r> {
     pub(crate) registry: &'r Registry,
     pub(crate) schemas: BTreeMap<(ComponentKind, ComponentId), CompiledSchema>,
+    pub(crate) options: LoaderOptions,
 }
 
 impl<'r> Loader<'r> {
@@ -67,6 +68,17 @@ impl<'r> Loader<'r> {
     /// A registered schema outside the ADR 0009 subset is a component bug: the error names the
     /// component and the offending keyword.
     pub fn new(registry: &'r Registry) -> Result<Self, LoaderError> {
+        Self::with_options(registry, LoaderOptions::default())
+    }
+
+    /// Like [`Loader::new`] with explicit options.
+    ///
+    /// # Errors
+    /// As [`Loader::new`].
+    pub fn with_options(
+        registry: &'r Registry,
+        options: LoaderOptions,
+    ) -> Result<Self, LoaderError> {
         let mut schemas = BTreeMap::new();
         for &kind in ComponentKind::ALL {
             for id in registry.ids(kind) {
@@ -82,19 +94,11 @@ impl<'r> Loader<'r> {
                 schemas.insert((kind, id.clone()), compiled);
             }
         }
-        Ok(Self { registry, schemas })
-    }
-
-    /// Like [`Loader::new`] with explicit options.
-    ///
-    /// # Errors
-    /// As [`Loader::new`].
-    #[expect(clippy::todo, reason = "M3 WI-13 stub")]
-    pub fn with_options(
-        _registry: &'r Registry,
-        _options: LoaderOptions,
-    ) -> Result<Self, LoaderError> {
-        todo!("M3 WI-13")
+        Ok(Self {
+            registry,
+            schemas,
+            options,
+        })
     }
 
     /// Reads and validates behavior graph files (`*.behavior.toml` contents) into a [`GraphSet`];

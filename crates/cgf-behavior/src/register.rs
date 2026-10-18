@@ -25,7 +25,7 @@ pub fn register_builtins(registry: &mut Registry) -> Result<(), RegistryError> {
 
 /// The longest `subgraph` chain `register_graphs` accepts, counted in behaviors including the
 /// first (ASM-073: the loader's default `max_subgraph_depth`).
-const MAX_SUBGRAPH_DEPTH: usize = 16;
+const MAX_SUBGRAPH_DEPTH: usize = cgf_core::DEFAULT_MAX_SUBGRAPH_DEPTH as usize;
 
 /// Adds graphs as behaviors, subgraphs first (dependency order, ties by ID), with
 /// `ComponentInfo` from each graph (provenance, version, `param_types` from `Interface::types`,

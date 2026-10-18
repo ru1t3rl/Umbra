@@ -1,0 +1,8 @@
+schema_version = 1
+id = "test.graph.same"
+version = "1.0.0"
+root = "r"
+
+[nodes.r]
+type = "action"
+ref = "stub.action.noop"

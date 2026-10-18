@@ -3,9 +3,10 @@
 //! Requirements: REQ-B-6, REQ-B-7, REQ-B-14, REQ-B-16, REQ-T-2, REQ-T-5, ADR 0012, ASM-057,
 //! ASM-074, ASM-075.
 //!
-//! Step 4 of M3: written before WI-12. `Loader::graphs_from_sources` is a `todo!()` stub, so tests
-//! that load a graph are ignored with that work item; the discovery tests go through
-//! `templates_from_sources` and fail on the missing classification instead of a stub (also WI-12).
+//! Step 4 of M3: written before WI-12. WI-13 changed three tests because the graph set is now
+//! resolved against the registry: `every_node_type_is_readable` calls `stub.behavior.plain` (the
+//! `ext` stub needs a binding for its required `target`), and the two discovery tests that load
+//! `stub.action.noop` use the stub registry of `graph_support` instead of the bare M2 registry.
 //!
 //! Every assertion checks code, path, line and column, except for an absent key, whose location
 //! the plan leaves open (as in M2): there the code, the file and the message are pinned. Positions
@@ -273,7 +274,7 @@ const ALL_TYPES: &[&str] = &[
     "ref = \"stub.action.noop\"",
     "[nodes.sg]",
     "type = \"subgraph\"",
-    "ref = \"stub.behavior.ext\"",
+    "ref = \"stub.behavior.plain\"",
     "version = \"^1\"",
     "params = { speed = 2.0 }",
     "[nodes.f]",
@@ -774,12 +775,15 @@ fn behavior_toml_suffix_is_a_graph_other_toml_is_a_template() {
     let template = alpha_template("tank.base", None, "1.0");
     let graph = minimal("test.graph.suffix");
 
-    let as_graph = templates(&[
+    let registry = graph_support::registry();
+    let loader = graph_support::loader_for(&registry);
+    let as_graph = loader.templates_from_sources(&[
         src("t.toml", &template),
         src("behaviors/g.behavior.toml", &graph),
     ]);
-    let as_template = errors(templates(&[src("behaviors/g.toml", &graph)]));
-    let wrong_case = errors(templates(&[src("behaviors/g.Behavior.toml", &graph)]));
+    let as_template = errors(loader.templates_from_sources(&[src("behaviors/g.toml", &graph)]));
+    let wrong_case =
+        errors(loader.templates_from_sources(&[src("behaviors/g.Behavior.toml", &graph)]));
 
     assert_eq!(ok(as_graph).len(), 1, "only the template is a template");
     assert!(as_template.iter().any(|d| d.code.as_str() == "unknown_key"));
@@ -799,10 +803,13 @@ fn errors_in_graph_and_template_files_reported_in_one_sorted_list() {
     ]);
     let graph = minimal("test.graph.sorted").replacen("version = \"1.0.0\"", "version = 1", 1);
 
-    let found = errors(templates(&[
-        src("b/g.behavior.toml", &graph),
-        src("a/t.toml", &template),
-    ]));
+    let registry = graph_support::registry();
+    let found = errors(
+        graph_support::loader_for(&registry).templates_from_sources(&[
+            src("b/g.behavior.toml", &graph),
+            src("a/t.toml", &template),
+        ]),
+    );
 
     assert_eq!(
         rows(&found),

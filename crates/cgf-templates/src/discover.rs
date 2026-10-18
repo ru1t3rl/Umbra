@@ -7,8 +7,6 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use cgf_core::Provenance;
-
 use crate::diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, sort_and_dedup};
 use crate::graph_read::is_graph_path;
 use crate::loader::{Loader, ValidationReport};
@@ -259,10 +257,9 @@ impl Loader<'_> {
             }
         };
         if is_graph_path(path) {
-            // ASM-074: a graph file is checked on its own (WI-12); WI-13 adds its siblings.
+            // ASM-074: a graph file is checked with its direct siblings, like a template.
             files.push(path.to_path_buf());
-            let loaded = self.load_graphs(&[&file], Provenance::File);
-            diagnostics.extend(loaded.diagnostics);
+            diagnostics.extend(self.validate_template_file(&file));
         } else if is_scenario(&file) {
             let load = self.scenario_pipeline(&file);
             files.extend(load.files);
@@ -273,9 +270,10 @@ impl Loader<'_> {
         }
     }
 
-    /// A single template file is checked in the context of its directory (its parents are
-    /// usually next to it); only diagnostics located in the file, or whose notes point into it
-    /// (a duplicate or a cycle that involves it), are reported (ASM-067).
+    /// A single template or graph file is checked in the context of its directory (its parents
+    /// and the graphs it calls are usually next to it); only diagnostics located in the file, or
+    /// whose notes point into it (a duplicate or a cycle that involves it), are reported
+    /// (ASM-067, ASM-074).
     fn validate_template_file(&self, file: &SourceFile) -> Vec<Diagnostic> {
         let mut ignored = Vec::new();
         let mut unread = Vec::new();

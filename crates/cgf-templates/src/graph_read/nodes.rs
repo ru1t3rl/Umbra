@@ -18,10 +18,18 @@ use crate::value::{LEntry, LTable, LValue};
 
 /// The nodes of a graph and their names.
 pub(super) struct NodeTable {
-    /// In file order; `NodeId` indexes this vector.
-    pub(super) defs: Vec<NodeDef>,
+    /// In file order; `NodeId` indexes this vector. A node whose table has an error is `None`, so
+    /// the checks that need only the good nodes can still run on a file with errors (ASM-056).
+    pub(super) slots: Vec<(String, Option<NodeDef>)>,
     /// Node name to id.
     pub(super) index: BTreeMap<String, NodeId>,
+}
+
+impl NodeTable {
+    /// The node definitions when every node was read.
+    pub(super) fn defs(&self) -> Option<Vec<NodeDef>> {
+        self.slots.iter().map(|(_, def)| def.clone()).collect()
+    }
 }
 
 /// The reading state shared by the node readers.
@@ -47,18 +55,17 @@ pub(super) fn read(reader: &mut Reader<'_>, graph: &LTable) -> Option<NodeTable>
         let id = NodeId(u32::try_from(i).unwrap_or(u32::MAX));
         index.insert((*name).to_string(), id);
     }
-    let mut defs = Vec::new();
+    let mut slots = Vec::new();
     let mut cx = Cx {
         reader,
         index: &index,
         node: String::new(),
     };
     for (name, entry) in &entries {
-        if let Some(def) = cx.node(name, entry.value()) {
-            defs.push(def);
-        }
+        let def = cx.node(name, entry.value());
+        slots.push(((*name).to_string(), def));
     }
-    Some(NodeTable { defs, index })
+    Some(NodeTable { slots, index })
 }
 
 /// The entries of `table` in the order they are written (tables iterate by key).

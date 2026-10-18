@@ -18,6 +18,16 @@ use crate::id::{BehaviorId, ComponentId};
 use crate::params::{ParamSchema, ParamValue};
 use crate::units::Seconds;
 
+/// The deepest node nesting one graph may have, the root being level 1. The interpreter recurses
+/// once per level, so this bounds its stack use; the loader reports a deeper graph as
+/// `node_too_deep` (one constant, so loader and interpreter cannot disagree; ASM-095 d, ASM-106).
+pub const MAX_NODE_DEPTH: usize = 128;
+
+/// The default limit on a `subgraph` chain, counted in graphs including the first (ASM-073): the
+/// default of the loader's `max_subgraph_depth` and the limit `register_graphs` applies
+/// (ASM-106).
+pub const DEFAULT_MAX_SUBGRAPH_DEPTH: u32 = 16;
+
 /// Index of a node in [`GraphDef::nodes`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct NodeId(pub u32);

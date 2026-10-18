@@ -3,8 +3,8 @@
 //! matter.
 //! Requirements: REQ-B-12, REQ-T-2, REQ-K-4, ADR 0012, ASM-056, ASM-073.
 //!
-//! Step 4 of M3: written before WI-13; ignored with that work item. The acceptance check runs it at
-//! 1000 cases.
+//! Step 4 of M3: written before WI-13 and enabled with it. The acceptance check runs it at 1000
+//! cases.
 
 #![forbid(unsafe_code)]
 
@@ -155,12 +155,29 @@ fn cyclic_components(edges: &[BTreeSet<usize>]) -> usize {
 }
 
 /// Number of graphs on the longest chain of an acyclic forest (a graph with no calls counts 1).
+///
+/// WI-13 test fix: the first version assumed every edge points to a higher index, which holds only
+/// for the forests generated as "acyclic" by construction; a forest generated freely can also have
+/// no cycle (`2 -> 1 -> 0`), and its longest chain was undercounted. This memoised walk is correct
+/// for any acyclic forest.
 fn longest_chain(edges: &[BTreeSet<usize>]) -> usize {
-    let mut best = vec![1usize; edges.len()];
-    for i in (0..edges.len()).rev() {
-        best[i] = 1 + edges[i].iter().map(|&j| best[j]).max().unwrap_or(0);
+    fn chain(edges: &[BTreeSet<usize>], v: usize, memo: &mut Vec<Option<usize>>) -> usize {
+        if let Some(found) = memo[v] {
+            return found;
+        }
+        let best = 1 + edges[v]
+            .iter()
+            .map(|&w| chain(edges, w, memo))
+            .max()
+            .unwrap_or(0);
+        memo[v] = Some(best);
+        best
     }
-    best.into_iter().max().unwrap_or(0)
+    let mut memo = vec![None; edges.len()];
+    (0..edges.len())
+        .map(|v| chain(edges, v, &mut memo))
+        .max()
+        .unwrap_or(0)
 }
 
 proptest! {
@@ -171,7 +188,6 @@ proptest! {
     /// longest chain is longer than the limit; no other code appears (no cascade from a cycle);
     /// and the same files in another order give identical diagnostics.
     #[test]
-    #[ignore = "WI-13"]
     fn subgraph_cycles_and_depth(forest in forest()) {
         let diagnostics = load(&forest, &BTreeSet::new());
 
@@ -197,7 +213,6 @@ proptest! {
     /// ASM-056: graphs in files with a syntax error are "broken"; the graphs that call them get no
     /// `unknown_id` or other cascade, whatever the shape of the forest.
     #[test]
-    #[ignore = "WI-13"]
     fn broken_graphs_cause_no_cascade(forest in forest(), pick in prop::collection::btree_set(0usize..30, 0..6)) {
         let broken: BTreeSet<usize> = pick.into_iter().filter(|&i| i < forest.edges.len()).collect();
 

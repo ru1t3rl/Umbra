@@ -87,6 +87,8 @@ pub enum DiagnosticCode {
     InvalidBinding,
     /// A guard that is not a condition tree.
     InvalidGuard,
+    /// Nodes nested deeper than `cgf_core::MAX_NODE_DEPTH` levels (ASM-106).
+    NodeTooDeep,
 }
 
 impl DiagnosticCode {
@@ -125,6 +127,7 @@ impl DiagnosticCode {
             Self::UnreachableState => "unreachable_state",
             Self::InvalidBinding => "invalid_binding",
             Self::InvalidGuard => "invalid_guard",
+            Self::NodeTooDeep => "node_too_deep",
         }
     }
 }

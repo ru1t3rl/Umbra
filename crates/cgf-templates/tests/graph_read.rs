@@ -40,6 +40,15 @@ fn fsm_graph(fsm_lines: &[&str]) -> String {
     lines(&all)
 }
 
+/// Rows of loading one graph file without the shape errors of the set checks (WI-13): the small
+/// fsm fixtures here leave nodes and states unused, and these tests are about the reader.
+fn reader_rows(text: &str) -> Vec<common::Row> {
+    graph_rows(text)
+        .into_iter()
+        .filter(|r| !matches!(r.0.as_str(), "unreachable_node" | "unreachable_state"))
+        .collect()
+}
+
 fn code_at(found: &[cgf_templates::Diagnostic], code: &str) -> usize {
     found.iter().filter(|d| d.code.as_str() == code).count()
 }
@@ -55,7 +64,7 @@ fn state_and_exit_names_follow_the_segment_grammar() {
         "exits = { Worse = \"success\" }",
     ]);
 
-    let rows = graph_rows(&text);
+    let rows = reader_rows(&text);
 
     assert_eq!(
         rows,
@@ -198,6 +207,11 @@ fn fsm_reads_states_exits_and_transitions() {
         "from = \"b\"",
         "to = \"done\"",
         "on = \"success\"",
+        // WI-13: `a` must be reachable; this transition is appended after the two asserted below.
+        "[[nodes.m.transitions]]",
+        "from = \"b\"",
+        "to = \"a\"",
+        "on = \"failure\"",
     ]);
 
     let def = one_graph(&text);
@@ -218,11 +232,11 @@ fn fsm_initial_must_name_a_state() {
     let missing = fsm_graph(&["states = { a = \"x\" }"]);
     let unknown = fsm_graph(&["initial = \"zz\"", "states = { a = \"x\" }"]);
 
-    let found = graph_errors(&missing);
+    let found = reader_rows(&missing);
     assert_eq!(found.len(), 1);
-    assert_eq!(found[0].code.as_str(), "no_initial_state");
+    assert_eq!(found[0].0, "no_initial_state");
     assert_eq!(
-        graph_rows(&unknown),
+        reader_rows(&unknown),
         [row("no_initial_state", PATH, pos_of(&unknown, "\"zz\""))]
     );
 }
@@ -237,7 +251,7 @@ fn exit_named_like_a_state_is_duplicate_name() {
     ]);
 
     assert_eq!(
-        graph_rows(&text),
+        reader_rows(&text),
         [row(
             "duplicate_name",
             PATH,
@@ -358,6 +372,9 @@ fn key_form_outside_a_subgraph_parameter_is_invalid_binding() {
 }
 
 /// ASM-076: only a one-key table of a string is a reserved form; `{ key = 5 }` is a literal.
+///
+/// WI-13: the graph is checked against its target now, so the literal shows as an unknown param
+/// `cfg` (not an input binding: `target` stays unbound and is missing) instead of a loaded graph.
 #[test]
 fn key_with_a_non_string_value_is_a_literal() {
     let text = graph_support::caller(
@@ -368,15 +385,12 @@ fn key_with_a_non_string_value_is_a_literal() {
         &[],
     );
 
-    let def = one_graph(&text);
-
-    let NodeKind::Subgraph(call) = &def.nodes[0].kind else {
-        panic!("subgraph")
-    };
-    assert!(call.inputs.is_empty());
     assert_eq!(
-        call.params.as_json()["cfg"],
-        serde_json::json!({ "key": 5 })
+        graph_rows(&text),
+        [
+            row("missing_param", PATH, pos_after(&text, "params = ")),
+            row("unknown_param", PATH, pos_of(&text, "cfg")),
+        ]
     );
 }
 

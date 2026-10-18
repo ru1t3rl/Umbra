@@ -4,8 +4,9 @@
 //! Requirements: REQ-B-9, REQ-B-10, REQ-B-11, REQ-B-12, REQ-B-14, REQ-B-15, REQ-T-2, REQ-T-3,
 //! ADR 0012, ADR 0014, ASM-056, ASM-072, ASM-073, ASM-075, ASM-076, ASM-085, ASM-088, ASM-089.
 //!
-//! Step 4 of M3: written before WI-13. `Loader::graphs_from_sources` is a `todo!()` stub until WI-12
-//! (and the resolution is WI-13), so every test here is ignored with WI-13.
+//! Step 4 of M3: written before WI-13 and enabled with it. Two tests changed in WI-13 (ADR 0014 has
+//! no object params, ASM-102): `key_form_in_leaf_params_is_invalid_binding` and
+//! `param_and_key_forms_are_distinct`.
 //!
 //! Registry and helpers: `graph_support` (stub conditions, actions and one stub behavior,
 //! `stub.behavior.ext`, with a declared binding-only param `target`). Positions follow the M2
@@ -75,7 +76,6 @@ fn fsm_graph(fsm_lines: &[&str], extra_nodes: &[&str]) -> String {
 
 /// REQ-B-12: an FSM with no `initial` is `no_initial_state` (absent key: code, file and message).
 #[test]
-#[ignore = "WI-13"]
 fn fsm_without_initial_is_no_initial_state() {
     let text = fsm_graph(&["states = { a = \"x\", b = \"y\" }"], &[]);
 
@@ -88,7 +88,6 @@ fn fsm_without_initial_is_no_initial_state() {
 
 /// REQ-B-12: an `initial` that names no state is `no_initial_state` at the value.
 #[test]
-#[ignore = "WI-13"]
 fn unknown_initial_is_no_initial_state() {
     let text = fsm_graph(
         &["initial = \"nowhere\"", "states = { a = \"x\", b = \"y\" }"],
@@ -108,7 +107,6 @@ fn unknown_initial_is_no_initial_state() {
 /// REQ-B-12: a state that cannot be reached from `initial` is `unreachable_state`, at the state's
 /// key in `states`.
 #[test]
-#[ignore = "WI-13"]
 fn unreachable_state_reported_at_state_key() {
     let text = fsm_graph(
         &["initial = \"a\"", "states = { a = \"x\", lonely = \"y\" }"],
@@ -130,7 +128,6 @@ fn unreachable_state_reported_at_state_key() {
 
 /// ASM-072: exit names and state names share one namespace per FSM.
 #[test]
-#[ignore = "WI-13"]
 fn exit_and_state_same_name_is_duplicate_name() {
     let text = fsm_graph(
         &[
@@ -160,7 +157,6 @@ fn exit_and_state_same_name_is_duplicate_name() {
 /// ADR 0012: a guard subtree may contain only `condition`, `inverter`, `sequence` and `selector`;
 /// an action is `invalid_guard`, at the guard reference.
 #[test]
-#[ignore = "WI-13"]
 fn guard_with_action_is_invalid_guard() {
     let text = fsm_graph(
         &[
@@ -188,7 +184,6 @@ fn guard_with_action_is_invalid_guard() {
 
 /// REQ-B-9: a `subgraph` ref to a graph of the same load resolves.
 #[test]
-#[ignore = "WI-13"]
 fn subgraph_ref_to_file_graph_resolves() {
     let c = child("test.graph.child");
     let p = caller(
@@ -208,7 +203,6 @@ fn subgraph_ref_to_file_graph_resolves() {
 
 /// REQ-B-9: a `subgraph` ref to a registered behavior (a plugin stub) resolves the same way.
 #[test]
-#[ignore = "WI-13"]
 fn subgraph_ref_to_registered_behavior_resolves() {
     let p = caller(
         "test.graph.parent",
@@ -224,7 +218,6 @@ fn subgraph_ref_to_registered_behavior_resolves() {
 /// REQ-T-1: an unknown subgraph target is `unknown_id` at the ref, with a note that lists the
 /// registered behaviors.
 #[test]
-#[ignore = "WI-13"]
 fn unknown_subgraph_is_unknown_id_listing_behaviors() {
     let p = caller("test.graph.parent", "test.graph.nowhere", None, "", &[]);
 
@@ -254,7 +247,6 @@ fn unknown_subgraph_is_unknown_id_listing_behaviors() {
 
 /// ASM-063: an ID of another kind is named as such: "`x` is an action, not a behavior".
 #[test]
-#[ignore = "WI-13"]
 fn subgraph_ref_to_action_is_kind_mismatch() {
     let p = caller("test.graph.parent", "stub.action.noop", None, "", &[]);
 
@@ -278,7 +270,6 @@ fn subgraph_ref_to_action_is_kind_mismatch() {
 /// behavior: an `entity` key binds `target`; a `number` key is `invalid_binding`; an unbound
 /// required `target` is `missing_param`.
 #[test]
-#[ignore = "WI-13"]
 fn binding_checked_against_registered_behavior_param_types() {
     let with = |key_type: &str, params: &str| {
         caller(
@@ -318,7 +309,6 @@ fn binding_checked_against_registered_behavior_param_types() {
 /// is a literal param named `param` (unknown to the leaf: `unknown_param` at the key), not a
 /// reference.
 #[test]
-#[ignore = "WI-13"]
 fn leaf_params_table_with_single_param_key_is_a_literal() {
     let text = lines(&[
         "schema_version = 1",
@@ -343,7 +333,6 @@ fn leaf_params_table_with_single_param_key_is_a_literal() {
 
 /// ASM-085: Cargo range semantics; the registered behavior has version 1.0.0.
 #[test]
-#[ignore = "WI-13"]
 fn version_range_satisfied() {
     for range in ["^1", "^1.0", ">=1.0, <2", "=1.0.0", "~1.0", "*"] {
         let p = caller(
@@ -361,7 +350,6 @@ fn version_range_satisfied() {
 /// REQ-B-12: a version outside the range is `version_mismatch` at the `version` value, with a note
 /// that gives the target's version and where it is defined.
 #[test]
-#[ignore = "WI-13"]
 fn version_mismatch_reported_with_target_version_note() {
     let c = child("test.graph.attack");
     let p = caller(
@@ -401,7 +389,6 @@ fn version_mismatch_reported_with_target_version_note() {
 
 /// ASM-085: a missing `version` on the call accepts any version.
 #[test]
-#[ignore = "WI-13"]
 fn missing_version_accepts_any() {
     let c = child("test.graph.attack").replace("version = \"1.0.0\"", "version = \"7.3.1\"");
     let p = caller(
@@ -420,7 +407,6 @@ fn missing_version_accepts_any() {
 
 /// Cargo semantics: a pre-release is not matched by a plain range, only by one that names it.
 #[test]
-#[ignore = "WI-13"]
 fn prerelease_needs_explicit_range() {
     let c = child("test.graph.attack").replace("version = \"1.0.0\"", "version = \"2.0.0-beta.1\"");
     let plain = caller(
@@ -454,7 +440,6 @@ fn prerelease_needs_explicit_range() {
 
 /// REQ-B-14: a version range that is not semver is `invalid_version` at the value.
 #[test]
-#[ignore = "WI-13"]
 fn invalid_version_range_is_invalid_version() {
     let p = caller(
         "test.graph.parent",
@@ -485,7 +470,6 @@ fn call_child(params: &str) -> (String, String) {
 
 /// REQ-B-10: a required param missing at the call site is `missing_param` at the `params` table.
 #[test]
-#[ignore = "WI-13"]
 fn call_site_missing_param() {
     let (c, p) = call_child("{ }");
 
@@ -507,7 +491,6 @@ fn call_site_missing_param() {
 
 /// REQ-B-10: a param the interface does not declare is `unknown_param` at its key.
 #[test]
-#[ignore = "WI-13"]
 fn call_site_unknown_param() {
     let (c, p) = call_child("{ count = 1, extra = 2 }");
 
@@ -519,7 +502,6 @@ fn call_site_unknown_param() {
 
 /// REQ-B-10: a value of the wrong type is `param_wrong_type` at the value.
 #[test]
-#[ignore = "WI-13"]
 fn call_site_wrong_type() {
     let (c, p) = call_child("{ count = \"many\" }");
 
@@ -535,7 +517,6 @@ fn call_site_wrong_type() {
 
 /// REQ-B-10: a value outside the interface's range is `param_out_of_range` at the value.
 #[test]
-#[ignore = "WI-13"]
 fn call_site_out_of_range() {
     let (c, p) = call_child("{ count = 0 }");
 
@@ -551,7 +532,6 @@ fn call_site_out_of_range() {
 
 /// REQ-B-10: an omitted optional param is filled from its default (no error).
 #[test]
-#[ignore = "WI-13"]
 fn defaults_fill_missing_optional_params() {
     let (c, p) = call_child("{ count = 1 }");
 
@@ -564,7 +544,6 @@ fn defaults_fill_missing_optional_params() {
 /// ASM-076: a `{ param = .. }` reference to a param the enclosing graph does not declare is
 /// `invalid_binding` at the reference.
 #[test]
-#[ignore = "WI-13"]
 fn param_ref_to_undeclared_param_is_invalid_binding() {
     let c = child("test.graph.child");
     let p = caller(
@@ -594,7 +573,6 @@ fn param_ref_to_undeclared_param_is_invalid_binding() {
 /// ASM-076: the referenced param's type must be compatible with the target property (an `integer`
 /// satisfies `number`, a `string` does not satisfy `integer`).
 #[test]
-#[ignore = "WI-13"]
 fn param_ref_type_mismatch_is_invalid_binding() {
     let c = child("test.graph.child");
     let p = caller(
@@ -621,7 +599,6 @@ fn param_ref_type_mismatch_is_invalid_binding() {
 /// ASM-076: a value substituted into a leaf that its schema rejects is reported at the call site
 /// value that supplied it, with a note at the `{ param }` reference inside the called graph.
 #[test]
-#[ignore = "WI-13"]
 fn substituted_value_out_of_leaf_range_reported_at_call_site_with_note_at_ref() {
     let mid = lines(&[
         "schema_version = 1",
@@ -667,7 +644,6 @@ fn substituted_value_out_of_leaf_range_reported_at_call_site_with_note_at_ref() 
 /// ADR 0014: output bindings are checked: an unknown port (at the port name), a parent key of the
 /// wrong type or one that is not declared (at the key value) are `invalid_binding`.
 #[test]
-#[ignore = "WI-13"]
 fn output_port_unknown_or_type_mismatch_is_invalid_binding() {
     let c = lines(&[
         "schema_version = 1",
@@ -734,7 +710,6 @@ fn output_port_unknown_or_type_mismatch_is_invalid_binding() {
 /// ASM-088: a parent key can be the target of at most one output binding across a graph's subgraph
 /// nodes; the second binding is `invalid_binding`, at its value.
 #[test]
-#[ignore = "WI-13"]
 fn parent_key_bound_twice_is_invalid_binding() {
     let c = lines(&[
         "schema_version = 1",
@@ -783,7 +758,6 @@ fn parent_key_bound_twice_is_invalid_binding() {
 /// declared key (or an interface param) of the right type: otherwise `invalid_binding` at the
 /// string.
 #[test]
-#[ignore = "WI-13"]
 fn blackboard_param_naming_undeclared_key_is_invalid_binding() {
     let leaf = |kind: &str, id: &str, params: &str, head: &[&str]| {
         let mut all = vec![
@@ -871,7 +845,6 @@ fn calls(id: &str, target: &str) -> String {
 
 /// REQ-B-12: a graph that calls itself is a `subgraph_cycle`, at its own ref.
 #[test]
-#[ignore = "WI-13"]
 fn self_reference_is_subgraph_cycle() {
     let g = calls("test.graph.me", "test.graph.me");
 
@@ -890,7 +863,6 @@ fn self_reference_is_subgraph_cycle() {
 /// REQ-B-12: a two-graph cycle is reported once, at the ref of the smallest ID in it, with a note
 /// per further edge (the plan's example: message "subgraph cycle: `a` -> `b` -> `a`").
 #[test]
-#[ignore = "WI-13"]
 fn two_graph_cycle_reported_once_with_note_per_edge() {
     let a = calls("test.graph.a", "test.graph.b");
     let b = calls("test.graph.b", "test.graph.a");
@@ -923,7 +895,6 @@ fn two_graph_cycle_reported_once_with_note_per_edge() {
 /// REQ-B-12: a three-graph cycle (`c -> a -> b -> c`) is reported once, at the smallest ID `a`,
 /// whatever the file order.
 #[test]
-#[ignore = "WI-13"]
 fn three_graph_cycle_reported_at_smallest_id() {
     let a = calls("test.graph.a", "test.graph.b");
     let b = calls("test.graph.b", "test.graph.c");
@@ -955,7 +926,6 @@ fn three_graph_cycle_reported_at_smallest_id() {
 /// `a -> b -> a` and `a -> c -> a` share the component {a, b, c}: one diagnostic, at the first
 /// ref of the smallest ID, printing the shortest cycle through it (ties broken by target ID).
 #[test]
-#[ignore = "WI-13"]
 fn two_cycles_in_one_component_are_reported_once() {
     let a = lines(&[
         "schema_version = 1",
@@ -995,7 +965,6 @@ fn two_cycles_in_one_component_are_reported_once() {
 /// `subgraph_cycle`, at that ref (a guard cannot hold a subgraph: ADR 0012 allows only
 /// conditions, inverters, sequences and selectors there).
 #[test]
-#[ignore = "WI-13"]
 fn self_call_under_fsm_state_or_inverter_is_subgraph_cycle() {
     let under_fsm = lines(&[
         "schema_version = 1",
@@ -1037,7 +1006,6 @@ fn self_call_under_fsm_state_or_inverter_is_subgraph_cycle() {
 
 /// ASM-056: a graph that only calls a graph on a cycle gets no error of its own.
 #[test]
-#[ignore = "WI-13"]
 fn graph_depending_on_cycle_has_no_cascade() {
     let a = calls("test.graph.a", "test.graph.b");
     let b = calls("test.graph.b", "test.graph.a");
@@ -1079,7 +1047,6 @@ fn chain_files(chain: &[(String, String)]) -> Vec<(&str, &str)> {
 /// ASM-073: a chain of 16 graphs (the root included) is accepted, 17 is `subgraph_too_deep`,
 /// reported at the ref of the node that crosses the limit (the 16th graph's call).
 #[test]
-#[ignore = "WI-13"]
 fn depth_16_accepted_17_rejected() {
     let ok16 = chain(16);
     let bad17 = chain(17);
@@ -1098,7 +1065,6 @@ fn depth_16_accepted_17_rejected() {
 
 /// ASM-073: the limit is `LoaderOptions::max_subgraph_depth`.
 #[test]
-#[ignore = "WI-13"]
 fn depth_limit_is_configurable() {
     let three = chain(3);
     let four = chain(4);
@@ -1125,7 +1091,6 @@ fn depth_limit_is_configurable() {
 
 /// REQ-T-1: an unknown leaf ref is `unknown_id` at the ref; a leaf of another kind says so.
 #[test]
-#[ignore = "WI-13"]
 fn unknown_leaf_ref_is_unknown_id() {
     let missing = lines(&[
         "schema_version = 1",
@@ -1173,7 +1138,6 @@ fn unknown_leaf_ref_is_unknown_id() {
 /// ASM-075: an unknown child, a node with two parents, a node cycle and an orphan node are four
 /// distinct errors, all reported, each at its reference (the orphan at its table name).
 #[test]
-#[ignore = "WI-13"]
 fn unknown_node_child_reused_orphan_and_node_cycle_reported() {
     let text = lines(&[
         "schema_version = 1",
@@ -1260,7 +1224,6 @@ fn five_errors() -> [(String, String); 3] {
 /// REQ-T-2, REQ-B-12: five independent errors in three files are all reported, in the stable order
 /// (path, then position).
 #[test]
-#[ignore = "WI-13"]
 fn five_independent_errors_in_three_graph_files_all_reported_in_stable_order() {
     let [(_, a), (_, b), (_, c)] = five_errors();
 
@@ -1283,7 +1246,6 @@ fn five_independent_errors_in_three_graph_files_all_reported_in_stable_order() {
 /// REQ-K-4: the order of the files does not change the diagnostics: all six orders of the three
 /// files give equal lists (notes included).
 #[test]
-#[ignore = "WI-13"]
 fn shuffled_graph_files_give_identical_diagnostics() {
     let all = five_errors();
     let orders = [
@@ -1314,7 +1276,6 @@ fn shuffled_graph_files_give_identical_diagnostics() {
 /// ASM-056 / ADR 0012: two files with one graph ID: `duplicate_id` at the second `id` value, with a
 /// note at the first definition.
 #[test]
-#[ignore = "WI-13"]
 fn duplicate_graph_id_across_files_is_duplicate_id_with_note() {
     let one = minimal("test.graph.same");
 
@@ -1341,7 +1302,6 @@ fn duplicate_graph_id_across_files_is_duplicate_id_with_note() {
 /// ASM-063: a graph ID is global: one that equals a registered component (here an action) is a
 /// `duplicate_id`, with a note saying what is registered.
 #[test]
-#[ignore = "WI-13"]
 fn graph_id_equal_to_a_registered_component_is_duplicate_id() {
     let g = minimal("stub.action.noop");
 
@@ -1365,7 +1325,6 @@ fn graph_id_equal_to_a_registered_component_is_duplicate_id() {
 /// ASM-056: a graph whose file has a syntax error is "broken"; graphs that call it get no
 /// cascade errors (no `unknown_id`).
 #[test]
-#[ignore = "WI-13"]
 fn graph_in_a_file_with_a_syntax_error_gives_dependents_no_cascade() {
     let broken = format!("{}this is not toml\n", minimal("test.graph.broken"));
     let user = calls("test.graph.user", "test.graph.broken");
@@ -1381,7 +1340,6 @@ fn graph_in_a_file_with_a_syntax_error_gives_dependents_no_cascade() {
 /// ASM-056 (the other direction): a dependent of a broken graph still reports its own, independent
 /// errors.
 #[test]
-#[ignore = "WI-13"]
 fn dependents_of_a_broken_graph_still_report_their_own_errors() {
     let broken = format!("{}this is not toml\n", minimal("test.graph.broken"));
     let user = lines(&[
@@ -1426,7 +1384,6 @@ fn near(params: &str) -> String {
 /// REQ-T-3, REQ-T-2: leaf params are validated against the leaf's schema, each error located in the
 /// graph file (missing at the table, unknown at the key, wrong type and range at the value).
 #[test]
-#[ignore = "WI-13"]
 fn bad_leaf_params_located_in_graph_file() {
     let missing = near("{ }");
     let unknown = near("{ range_m = 5.0, bogus = 1 }");
@@ -1462,7 +1419,6 @@ fn bad_leaf_params_located_in_graph_file() {
 /// REQ-B-15: there is no expression language: a string where a number is expected is a type
 /// error, not something evaluated.
 #[test]
-#[ignore = "WI-13"]
 fn expression_string_is_param_wrong_type() {
     let text = near("{ range_m = \"2 * 100\" }");
 
@@ -1496,7 +1452,6 @@ fn bound(binding: &str, blackboard: &[&str]) -> (String, String) {
 /// ADR 0014: a `{ key }` binding to a key the calling graph does not declare is `invalid_binding`
 /// at the binding.
 #[test]
-#[ignore = "WI-13"]
 fn binding_to_undeclared_parent_key_is_invalid_binding() {
     let (c, p) = bound("{ key = \"ghost\" }", &["[blackboard]", "t = \"entity\""]);
 
@@ -1513,7 +1468,6 @@ fn binding_to_undeclared_parent_key_is_invalid_binding() {
 /// ADR 0014: the key's type must equal the param's type: a `number` key for an `entity` param is
 /// `invalid_binding`.
 #[test]
-#[ignore = "WI-13"]
 fn binding_type_mismatch_is_invalid_binding() {
     let (c, p) = bound("{ key = \"t\" }", &["[blackboard]", "t = \"number\""]);
 
@@ -1529,7 +1483,6 @@ fn binding_type_mismatch_is_invalid_binding() {
 
 /// ADR 0014: an `integer` key may feed a `number` param (and the same type binds, of course).
 #[test]
-#[ignore = "WI-13"]
 fn integer_key_may_feed_number_param() {
     let c = with_interface(
         "test.graph.child",
@@ -1552,7 +1505,6 @@ fn integer_key_may_feed_number_param() {
 /// ADR 0014: a param that the called graph uses in a `{ param }` reference is needed at build time
 /// and cannot be bound: `invalid_binding` at the binding, with a note at the reference.
 #[test]
-#[ignore = "WI-13"]
 fn binding_a_param_used_as_param_reference_is_invalid_binding_with_note() {
     let c = lines(&[
         "schema_version = 1",
@@ -1598,7 +1550,6 @@ fn binding_a_param_used_as_param_reference_is_invalid_binding_with_note() {
 /// ADR 0014: `{ key }` is only allowed as a top-level value of `subgraph` params: in a leaf's
 /// params, or nested inside a subgraph param value, it is `invalid_binding` at the form.
 #[test]
-#[ignore = "WI-13"]
 fn key_form_in_leaf_params_is_invalid_binding() {
     let leaf = lines(&[
         "schema_version = 1",
@@ -1614,7 +1565,7 @@ fn key_form_in_leaf_params_is_invalid_binding() {
     ]);
     let c = with_interface(
         "test.graph.child",
-        "params = { cfg = { type = \"object\" } }",
+        "params = { cfg = { type = \"string\" } }",
     );
     let nested = caller(
         "test.graph.parent",
@@ -1645,7 +1596,6 @@ fn key_form_in_leaf_params_is_invalid_binding() {
 /// ADR 0014: a binding-only param (`entity`, `position`) with no binding at the call site is
 /// `missing_param`.
 #[test]
-#[ignore = "WI-13"]
 fn binding_only_param_without_binding_is_missing_param() {
     let c = with_interface("test.graph.child", TARGET_CHILD);
     let p = caller("test.graph.parent", "test.graph.child", None, "{ }", &[]);
@@ -1665,29 +1615,41 @@ fn binding_only_param_without_binding_is_missing_param() {
 
 /// ASM-076: `{ param = "x" }` and `{ key = "x" }` are different forms: in one `subgraph` node they
 /// give one build-time reference and one run-time binding; a table with two keys (`{ key = "x",
-/// other = 1 }`) is a literal.
+/// other = 1 }`) is a literal (here a string param rejects it: `param_wrong_type` at the table).
+/// ADR 0014 has no object params (ASM-102), so `cfg` is a string and the literal case is the
+/// error; the `ok` case is the same call without `cfg`.
 #[test]
-#[ignore = "WI-13"]
 fn param_and_key_forms_are_distinct() {
     let c = with_interface(
         "test.graph.child",
-        "params = { speed = { type = \"number\", default = 1.0 }, cfg = { type = \"object\", default = {} }, target = { type = \"entity\" } }",
+        "params = { speed = { type = \"number\", default = 1.0 }, cfg = { type = \"string\", default = \"a\" }, target = { type = \"entity\" } }",
     );
-    let p = caller(
+    let head = [
+        "[interface]",
+        "params = { fast = { type = \"number\", default = 9.0 } }",
+        "[blackboard]",
+        "t = \"entity\"",
+    ];
+    let both = "{ speed = { param = \"fast\" }, target = { key = \"t\" } }";
+    let literal = caller(
         "test.graph.parent",
         "test.graph.child",
         None,
         "{ speed = { param = \"fast\" }, target = { key = \"t\" }, cfg = { key = \"x\", other = 1 } }",
-        &[
-            "[interface]",
-            "params = { fast = { type = \"number\", default = 9.0 } }",
-            "[blackboard]",
-            "t = \"entity\"",
-        ],
+        &head,
     );
+    let p = caller("test.graph.parent", "test.graph.child", None, both, &head);
 
+    assert_eq!(
+        rows_of(&[("child", &c), ("parent", &literal)]),
+        [row(
+            "param_wrong_type",
+            path("parent"),
+            pos_of(&literal, "{ key = \"x\", other = 1 }")
+        )],
+        "a two-key table is a literal, and a string param rejects it"
+    );
     let set = ok(graphs(&files(&[("child", &c), ("parent", &p)])));
-
     let parent = set
         .iter()
         .find(|g| g.id.as_str() == "test.graph.parent")
@@ -1702,17 +1664,11 @@ fn param_and_key_forms_are_distinct() {
         1,
         "one `{{ param }}` reference"
     );
-    assert_eq!(
-        call.params.as_json()["cfg"],
-        serde_json::json!({ "key": "x", "other": 1 }),
-        "a two-key table is a literal"
-    );
 }
 
 /// ASM-071: a `[blackboard]` key that repeats an interface param name is `duplicate_name`, at the
 /// blackboard key (every param is already a read-only key).
 #[test]
-#[ignore = "WI-13"]
 fn blackboard_key_repeating_a_param_name_is_duplicate_name() {
     let text = lines(&[
         "schema_version = 1",

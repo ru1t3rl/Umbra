@@ -94,7 +94,13 @@ impl Loader<'_> {
     ) -> Diagnostic {
         let message = match self.registry.kind_of(id) {
             Some(other) if other != kind => {
-                format!("`{id}` is a {}, not a {}", other.noun(), kind.noun())
+                format!(
+                    "`{id}` is {} {}, not {} {}",
+                    article(other.noun()),
+                    other.noun(),
+                    article(kind.noun()),
+                    kind.noun()
+                )
             }
             _ => format!("{} `{id}` is not registered", kind.noun()),
         };
@@ -123,12 +129,29 @@ impl Loader<'_> {
             ComponentKind::Terrain => registry
                 .terrain(id)
                 .map_or(Ok(()), |f| f.build(params).map(drop)),
-            // Placeholder from M2 (ASM-055): the registry now holds factories of these kinds, but
-            // this arm still runs no dry run for them. The real dry run for all four
-            // behavior-family kinds is M3 WI-14. Condition and Action fall into the catch-all.
-            ComponentKind::Behavior | ComponentKind::Sensor => Ok(()),
+            // WI-13: graph leaves and registered behaviors are dry-run through their factories.
+            ComponentKind::Behavior => registry
+                .behavior(id)
+                .map_or(Ok(()), |f| f.build(params).map(drop)),
+            ComponentKind::Condition => registry
+                .condition(id)
+                .map_or(Ok(()), |f| f.build(params).map(drop)),
+            ComponentKind::Action => registry
+                .action(id)
+                .map_or(Ok(()), |f| f.build(params).map(drop)),
+            // Placeholder from M2 (ASM-055): the dry run of sensors is M3 WI-14.
+            ComponentKind::Sensor => Ok(()),
             _ => Err(BuildError::new("component kind not supported")),
         }
+    }
+}
+
+/// "a" or "an" before `noun`.
+pub(crate) fn article(noun: &str) -> &'static str {
+    if noun.starts_with(['a', 'e', 'i', 'o', 'u']) {
+        "an"
+    } else {
+        "a"
     }
 }
 
