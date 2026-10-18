@@ -1,0 +1,16 @@
+[package]
+name = "umbra-sdk"
+description = "Umbra plugin SDK: safe Rust traits and export_plugin! over the C ABI of umbra-plugin-api (REQ-SDK-1, D-7)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# REQ-A-3: the only workspace dependency is umbra-plugin-api.
+[dependencies]
+umbra-plugin-api = { path = "../umbra-plugin-api" }
+
+[lints]
+workspace = true

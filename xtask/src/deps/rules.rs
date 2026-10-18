@@ -11,7 +11,7 @@ pub struct CrateRule {
     pub allowed_workspace_deps: &'static [&'static str],
     /// External deps allowed (false only for `umbra-plugin-api`, normal and build).
     pub allow_external_deps: bool,
-    /// "REQ-A-1", "REQ-A-2", "REQ-A-3" or "section 4".
+    /// "REQ-A-1", "REQ-A-2", "REQ-A-3", "REQ-SDK-3" or "section 4".
     pub requirement: &'static str,
 }
 
@@ -108,6 +108,10 @@ pub const RULES: RuleSet = RuleSet {
         ),
         rule("umbra-cli", &["umbra-engine", "umbra-server"], "section 4"),
         rule("xtask", &[], "section 4"),
+        // Plugin crates (M4, ADR 0023 item 4): built with the SDK only (REQ-SDK-3). They are not
+        // FFI crates, so they keep `#![forbid(unsafe_code)]` (ASM-024, ASM-116).
+        rule("example-wander", &["umbra-sdk"], "REQ-SDK-3"),
+        rule("umbra-test-plugin", &["umbra-sdk"], "REQ-SDK-3"),
     ],
 };
 

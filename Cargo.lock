@@ -886,6 +886,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "umbra-plugin-api"
+version = "0.1.0"
+
+[[package]]
+name = "umbra-plugin-host"
+version = "0.1.0"
+dependencies = [
+ "umbra-core",
+ "umbra-plugin-api",
+]
+
+[[package]]
+name = "umbra-sdk"
+version = "0.1.0"
+dependencies = [
+ "umbra-plugin-api",
+]
+
+[[package]]
 name = "umbra-templates"
 version = "0.1.0"
 dependencies = [

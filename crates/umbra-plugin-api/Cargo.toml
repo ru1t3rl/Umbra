@@ -1,0 +1,14 @@
+[package]
+name = "umbra-plugin-api"
+description = "Umbra plugin C ABI v0: #[repr(C)] types, function-pointer tables and version constants only. Depends on nothing (ASM-009)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# No dependencies of any kind except dev-dependencies (section 4, ASM-009, REQ-A-3).
+
+[lints]
+workspace = true

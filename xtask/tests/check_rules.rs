@@ -322,6 +322,9 @@ fn rules_table_matches_plan_table() {
         ("umbra-server", &["umbra-api-types", "umbra-engine"]),
         ("umbra-cli", &["umbra-engine", "umbra-server"]),
         ("xtask", &[]),
+        // M4 WI-1 (REQ-SDK-3, ADR 0023 item 4): plugin crates depend on the SDK only.
+        ("example-wander", &["umbra-sdk"]),
+        ("umbra-test-plugin", &["umbra-sdk"]),
     ];
     let actual: BTreeMap<&str, BTreeSet<&str>> = table()
         .into_iter()

@@ -1,0 +1,16 @@
+[package]
+name = "umbra-plugin-host"
+description = "Umbra plugin host: discovers, loads and validates native plugins and bridges their capabilities to the umbra-core traits (D-6, D-8)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+umbra-core = { path = "../umbra-core" }
+umbra-plugin-api = { path = "../umbra-plugin-api" }
+
+[lints]
+workspace = true
