@@ -1,8 +1,8 @@
 //! AT-11: every result path of the built-in conditions and actions (ASM-077).
 //! Requirements: REQ-B-15, REQ-B-16, REQ-T-3, ASM-077, ASM-078, ASM-079, ASM-091.
 //!
-//! Written in step 4, before WI-11; un-ignored by WI-11. Choices the plan leaves open (recorded in the plan's running
-//! log): `enemy_in_range` and `target_in_range` compare `Contact::range` with `range_m`;
+//! Written in step 4, before WI-11; un-ignored by WI-11. Choices the plan leaves open (recorded
+//! in the plan's running log): `enemy_in_range` and `target_in_range` compare `Contact::range` with `range_m`;
 //! `move_to` emits `SetSpeed(speed_mps)` and `MoveTo { contact position }` while Running and is
 //! Success when the contact is within `arrival_radius_m`; `wait` is Running for `n` ticks counted
 //! from its first tick (`n` = `ticks_for(duration_s)`) and Success on the next one; `timer_elapsed`
@@ -807,8 +807,7 @@ fn follow_route_emits_the_intent_on_the_completion_tick() {
     assert_eq!(done, (Status::Success, vec![Intent::FollowRoute]));
 }
 
-/// `move_to` holds no state: a
-/// target lost then found again is simply approached again.
+/// `move_to` holds no state: a target lost then found again is simply approached again.
 #[test]
 fn move_to_is_stateless_between_ticks() {
     let params = json!({ "target_key": "target", "speed_mps": 8.0, "arrival_radius_m": 0.5 });

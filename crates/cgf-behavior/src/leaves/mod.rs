@@ -186,6 +186,8 @@ pub(crate) fn weapon(params: &ParamValue, key: &str) -> Result<cgf_core::WeaponI
 
 /// The current contact for the entity in blackboard key `key`: `None` if the key is unset, holds
 /// no entity, or the entity is not in this tick's contacts.
+///
+/// Precondition (the `EntityView` contract): `entity.contacts` is sorted by entity ID.
 pub(crate) fn contact_in<'a>(
     entity: &EntityView<'a>,
     bb: &Blackboard,
@@ -194,6 +196,7 @@ pub(crate) fn contact_in<'a>(
     let Some(BbValue::Entity(id)) = bb.get(key) else {
         return None;
     };
+    debug_assert!(entity.contacts.is_sorted_by_key(|c| c.entity));
     let at = entity
         .contacts
         .binary_search_by_key(id, |c| c.entity)

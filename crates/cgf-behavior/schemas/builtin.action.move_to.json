@@ -1,11 +1,11 @@
 {
   "title": "builtin.action.move_to parameters",
-  "description": "Moves toward the entity stored in the blackboard key target_key at speed_mps. Running while the target is farther than arrival_radius_m, Success once it is within that distance. Fails when the key is unset or the entity is not a current contact. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+  "description": "Moves toward the entity stored in the blackboard key `target_key` at `speed_mps`. Running while the target is farther than `arrival_radius_m`, Success once it is within that distance. Fails when the key is unset or the entity is not a current contact. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
   "type": "object",
   "properties": {
     "target_key": {
       "type": "string",
-      "description": "Blackboard key of type entity that holds the target The leaf only reads this key.."
+      "description": "Blackboard key of type entity that holds the target. The leaf only reads this key."
     },
     "speed_mps": {
       "type": "number",

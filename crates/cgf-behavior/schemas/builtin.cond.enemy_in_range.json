@@ -1,6 +1,6 @@
 {
   "title": "builtin.cond.enemy_in_range parameters",
-  "description": "Succeeds when a hostile contact is within range_m meters. Hostile means both entities have a force and the forces differ; an entity without a force is neutral and never hostile. With store_as, the nearest hostile contact (ties: lowest entity id) is written to that blackboard key. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+  "description": "Succeeds when a hostile contact is within `range_m` meters. Hostile means both entities have a force and the forces differ; an entity without a force is neutral and never hostile. With `store_as`, the nearest hostile contact (ties: lowest entity id) is written to that blackboard key. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
   "type": "object",
   "properties": {
     "range_m": {

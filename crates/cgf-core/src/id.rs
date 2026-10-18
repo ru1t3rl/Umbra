@@ -167,8 +167,8 @@ pub enum NameError {
 }
 
 /// Checks a name against the one segment grammar `[a-z][a-z0-9_]*` (at most [`MAX_ID_LEN`]
-/// bytes), used for blackboard keys, node, state and exit names and force names (ADR 0015,
-/// ASM-079).
+/// bytes), shared by force names (ADR 0015, ASM-079) and blackboard keys; from WI-12 the graph
+/// loader also uses it for node, state and exit names.
 ///
 /// # Errors
 /// The [`NameError`] describing the first violation.

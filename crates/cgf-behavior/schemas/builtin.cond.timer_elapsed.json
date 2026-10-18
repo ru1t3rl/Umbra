@@ -1,6 +1,6 @@
 {
   "title": "builtin.cond.timer_elapsed parameters",
-  "description": "Succeeds once the simulation time since the start of the run is at least duration_s seconds, rounded up to whole ticks. It measures the run, not the time since the node last ran; for a relative delay use builtin.action.wait.",
+  "description": "Succeeds once the simulation time since the start of the run is at least `duration_s` seconds, rounded up to whole ticks. It measures the run, not the time since the node last ran; for a relative delay use builtin.action.wait.",
   "type": "object",
   "properties": {
     "duration_s": {

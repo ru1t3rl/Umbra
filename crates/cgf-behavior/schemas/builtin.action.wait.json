@@ -1,6 +1,6 @@
 {
   "title": "builtin.action.wait parameters",
-  "description": "Holds position for duration_s seconds, rounded up to whole ticks and counted from the node's first tick. Running until then, then Success. Starts over after it has finished or has been halted.",
+  "description": "Holds position for `duration_s` seconds, rounded up to whole ticks and counted from the node's first tick. Running until then, then Success. Starts over after it has finished or has been halted.",
   "type": "object",
   "properties": {
     "duration_s": {

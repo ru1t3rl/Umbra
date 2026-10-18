@@ -1,6 +1,6 @@
 {
   "title": "builtin.cond.chance parameters",
-  "description": "Succeeds with the given probability. Every evaluation draws exactly one number from the entity's own random stream, so results depend on the scenario seed and repeat exactly with the same seed. Probability 0 never succeeds and 1 always does.",
+  "description": "Succeeds with the given `probability`. Every evaluation draws exactly one number from the entity's own random stream, so results depend on the scenario seed and repeat exactly with the same seed. Probability 0 never succeeds and 1 always does.",
   "type": "object",
   "properties": {
     "probability": {
