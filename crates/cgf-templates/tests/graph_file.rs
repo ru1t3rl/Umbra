@@ -829,27 +829,84 @@ fn rendered_graph_diagnostic_uses_the_m2_format() {
 
 // --- no panics ---------------------------------------------------------------------------------
 
-/// A valid graph with its text cut and a fragment inserted, or plain noise.
+/// A valid graph with its text cut and a fragment inserted, plain noise, or one value of the
+/// valid graph replaced by a random scalar, table, array or datetime.
 fn graph_text() -> impl Strategy<Value = String> {
+    const VALUES: [&str; 12] = [
+        "1",
+        "-3.5",
+        "true",
+        "\"x\"",
+        "\"\"",
+        "[]",
+        "[1, 2]",
+        "[\"main\"]",
+        "{}",
+        "{ a = 1 }",
+        "{ key = \"k\" }",
+        "1979-05-27T07:32:00Z",
+    ];
     let base = valid();
     let len = base.len();
+    let keyed: Vec<usize> = base
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| !l.starts_with('[') && l.contains(" = "))
+        .map(|(i, _)| i)
+        .collect();
+    let swap_base = base.clone();
     prop_oneof![
         "[ -~\n]{0,400}",
         (0..len, 0..40usize, "[ -~\n]{0,12}").prop_map(move |(at, cut, insert)| {
             let end = (at + cut).min(base.len());
             format!("{}{}{}", &base[..at], insert, &base[end..])
         }),
+        (0..keyed.len(), 0..VALUES.len()).prop_map(move |(k, v)| {
+            let target = keyed[k];
+            swap_base
+                .lines()
+                .enumerate()
+                .map(|(i, line)| match line.split_once(" = ") {
+                    Some((key, _)) if i == target => format!("{key} = {}", VALUES[v]),
+                    _ => line.to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        }),
     ]
+}
+
+/// Every diagnostic is located in `PATH` inside the text.
+fn assert_located(
+    text: &str,
+    diagnostics: &[cgf_templates::Diagnostic],
+) -> Result<(), TestCaseError> {
+    let lines = u32::try_from(text.lines().count()).unwrap_or(u32::MAX);
+    for d in diagnostics {
+        let Some(at) = &d.location else {
+            return Err(TestCaseError::fail(format!("unlocated: {d}")));
+        };
+        prop_assert_eq!(at.path.as_path(), std::path::Path::new(PATH));
+        prop_assert!(at.line >= 1 && at.line <= lines + 1, "line of {}", d);
+        prop_assert!(at.column >= 1, "column of {}", d);
+    }
+    Ok(())
 }
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
-    /// NFR-2: no input makes the graph reader or the graph set resolution panic; the result is a
-    /// graph set or diagnostics.
+    /// NFR-2: no input makes the graph reader or the graph set resolution panic. The result is
+    /// exactly one graph, or located diagnostics in the file. The same text under a
+    /// `.behavior.toml` name through `templates_from_sources` gives the same kind of result.
     #[test]
     fn graph_parse_never_panics(text in graph_text()) {
-        let result = graphs(&[SourceFile::new(PATH, text)]);
-        prop_assert!(result.is_ok() || result.is_err());
+        match graphs(&[SourceFile::new(PATH, text.clone())]) {
+            Ok(set) => prop_assert_eq!(set.len(), 1),
+            Err(found) => assert_located(&text, &found.into_vec())?,
+        }
+        if let Err(found) = templates(&[SourceFile::new(PATH, text.clone())]) {
+            assert_located(&text, &found.into_vec())?;
+        }
     }
 }

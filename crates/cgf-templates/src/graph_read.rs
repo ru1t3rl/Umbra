@@ -13,7 +13,9 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use cgf_core::{BbType, BehaviorId, GraphDef, NodeId, Provenance, Version, validate_name};
+use cgf_core::{
+    BbType, BehaviorId, GraphDef, NameError, NodeId, Provenance, Version, validate_name,
+};
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode, sort_and_dedup};
 use crate::reader::Reader;
@@ -77,6 +79,10 @@ pub(crate) fn read_graph(file: &SourceFile, source: Provenance) -> GraphRead {
     if !diagnostics.is_empty() {
         graph = None;
     }
+    debug_assert!(
+        graph.is_some() || !diagnostics.is_empty(),
+        "a graph that is not read must have a diagnostic"
+    );
     GraphRead { graph, diagnostics }
 }
 
@@ -184,23 +190,15 @@ fn read_blackboard(reader: &mut Reader<'_>, value: &LValue) -> Option<BTreeMap<S
 /// A blackboard type name (`bool`, `number`, `integer`, `string`, `entity`, `position`).
 pub(super) fn bb_type(reader: &mut Reader<'_>, value: &LValue) -> Option<BbType> {
     let text = reader.string("type", value)?;
-    let ty = match text {
-        "bool" => BbType::Bool,
-        "number" => BbType::Number,
-        "integer" => BbType::Integer,
-        "string" => BbType::String,
-        "entity" => BbType::Entity,
-        "position" => BbType::Position,
-        other => {
-            let message = format!(
-                "unknown type `{}` (use bool, number, integer, string, entity or position)",
-                shown(other)
-            );
-            reader.error(DiagnosticCode::InvalidValue, message, value.origin());
-            return None;
-        }
-    };
-    Some(ty)
+    let ty = BbType::from_name(text);
+    if ty.is_none() {
+        let message = format!(
+            "unknown type `{}` (use bool, number, integer, string, entity or position)",
+            shown(text)
+        );
+        reader.error(DiagnosticCode::InvalidValue, message, value.origin());
+    }
+    ty
 }
 
 /// Checks `name` against the one segment grammar (`cgf_core::validate_name`) and reports
@@ -209,7 +207,12 @@ pub(super) fn check_name(reader: &mut Reader<'_>, name: &str, what: &str, at: &O
     match validate_name(name) {
         Ok(()) => true,
         Err(error) => {
-            let message = format!("{what} `{}` is not valid: {error}", shown(name));
+            // `TooLong` already echoes a bounded prefix; the others do not name the offender.
+            let message = if matches!(error, NameError::TooLong { .. }) {
+                format!("{what} is not valid: {error}")
+            } else {
+                format!("{what} `{}` is not valid: {error}", shown(name))
+            };
             reader.error(DiagnosticCode::InvalidValue, message, at);
             false
         }

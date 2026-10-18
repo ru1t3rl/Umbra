@@ -190,11 +190,19 @@ impl Loader<'_> {
     pub(crate) fn scenario_pipeline(&self, file: &SourceFile) -> ScenarioLoad {
         let path = file.path();
         let mut diagnostics = Vec::new();
-        if !is_scenario(file) && !has_syntax_errors(file) {
-            let message = format!(
-                "{} is not a scenario (it has no `[scenario]` table)",
-                path.display()
-            );
+        let is_graph = is_graph_path(path);
+        if is_graph || (!is_scenario(file) && !has_syntax_errors(file)) {
+            let message = if is_graph {
+                format!(
+                    "{} is a behavior graph, not a scenario (ASM-074)",
+                    path.display()
+                )
+            } else {
+                format!(
+                    "{} is not a scenario (it has no `[scenario]` table)",
+                    path.display()
+                )
+            };
             diagnostics.push(Diagnostic::new(DiagnosticCode::NotAScenario, message, None));
             return ScenarioLoad {
                 scenario: None,

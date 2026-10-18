@@ -310,6 +310,22 @@ pub enum BbType {
     Position,
 }
 
+impl BbType {
+    /// The type named `name` (the text [`Display`](fmt::Display) prints: `bool`, `number`,
+    /// `integer`, `string`, `entity`, `position`), or `None`.
+    pub fn from_name(name: &str) -> Option<Self> {
+        Some(match name {
+            "bool" => Self::Bool,
+            "number" => Self::Number,
+            "integer" => Self::Integer,
+            "string" => Self::String,
+            "entity" => Self::Entity,
+            "position" => Self::Position,
+            _ => return None,
+        })
+    }
+}
+
 impl fmt::Display for BbType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {

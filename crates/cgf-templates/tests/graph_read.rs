@@ -12,7 +12,7 @@ mod common;
 mod graph_support;
 
 use cgf_core::{BbType, NodeKind, TransitionTarget, Trigger};
-use common::{lines, pos_after, pos_of, row, src};
+use common::{lines, pos_after, pos_of, pos_of_nth, row, src};
 use graph_support::{PATH, graph_errors, graph_rows, graphs, minimal, one_graph, with_interface};
 
 /// A graph whose root `m` is the fsm described by `fsm_lines`, with leaf nodes `x`, `y`, `g`.
@@ -266,15 +266,20 @@ fn transition_errors_are_located() {
         "to = \"b\"",
     ]);
 
-    let rows = graph_rows(&text);
-
-    for expected in [
-        row("invalid_value", PATH, pos_of(&text, "\"running\"")),
-        row("invalid_value", PATH, pos_of(&text, "\"q\"")),
-        row("invalid_value", PATH, pos_of(&text, "\"nope\"")),
-    ] {
-        assert!(rows.contains(&expected), "{expected:?} in {rows:?}");
-    }
+    assert_eq!(
+        graph_rows(&text),
+        [
+            row("invalid_value", PATH, pos_of_nth(&text, "\"running\"", 0)),
+            row("invalid_value", PATH, pos_of(&text, "\"q\"")),
+            row("invalid_value", PATH, pos_of(&text, "\"nope\"")),
+            row("invalid_value", PATH, pos_of_nth(&text, "\"running\"", 1)),
+            row(
+                "invalid_value",
+                PATH,
+                pos_of_nth(&text, "[[nodes.m.transitions]]", 2)
+            ),
+        ]
+    );
     let found = graph_errors(&text);
     assert!(
         found
@@ -552,4 +557,62 @@ fn errors_of_several_graph_files_are_reported_together() {
     assert_eq!(paths, sorted);
     assert!(paths.iter().any(|p| p == "a.behavior.toml"));
     assert!(paths.iter().any(|p| p == "b.behavior.toml"));
+}
+
+// --- review follow-up (WI-12 m4) ---------------------------------------------------------------
+
+/// An unknown key in an output-port table is `unknown_key` at the key.
+#[test]
+fn unknown_key_in_an_output_port_is_located() {
+    let text = lines(&[
+        "schema_version = 1",
+        "id = \"test.graph.out\"",
+        "version = \"1.0.0\"",
+        "root = \"r\"",
+        "[interface]",
+        "outputs = { found = { type = \"entity\", from = \"t\", colour = 1 } }",
+        "[blackboard]",
+        "t = \"entity\"",
+        "[nodes.r]",
+        "type = \"action\"",
+        "ref = \"stub.action.noop\"",
+    ]);
+
+    assert_eq!(
+        graph_rows(&text),
+        [row("unknown_key", PATH, pos_of(&text, "colour"))]
+    );
+}
+
+/// An unknown key in a binding-only (`entity`) fragment is `unknown_key` at the key.
+#[test]
+fn unknown_key_in_a_binding_only_fragment_is_located() {
+    let text = with_interface(
+        "test.graph.iface",
+        "params = { target = { type = \"entity\", minimum = 1 } }",
+    );
+
+    assert_eq!(
+        graph_rows(&text),
+        [row("unknown_key", PATH, pos_of(&text, "minimum"))]
+    );
+}
+
+/// A `subgraph` node without `ref` is `missing_key` (the place of an absent key is open).
+#[test]
+fn subgraph_without_ref_is_missing_key() {
+    let text = lines(&[
+        "schema_version = 1",
+        "id = \"test.graph.noref\"",
+        "version = \"1.0.0\"",
+        "root = \"r\"",
+        "[nodes.r]",
+        "type = \"subgraph\"",
+    ]);
+
+    let found = graph_errors(&text);
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].code.as_str(), "missing_key");
+    assert!(found[0].message.contains("`ref`"), "{}", found[0].message);
 }

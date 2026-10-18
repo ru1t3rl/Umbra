@@ -122,22 +122,18 @@ fn param(reader: &mut Reader<'_>, out: &mut Params, name: &str, value: &LValue) 
 fn param_type(reader: &mut Reader<'_>, label: &str, value: &LValue) -> Option<BbType> {
     let text = reader.string("type", value)?;
     let ty = match text {
-        "boolean" => BbType::Bool,
-        "number" => BbType::Number,
-        "integer" => BbType::Integer,
-        "string" => BbType::String,
-        "entity" => BbType::Entity,
-        "position" => BbType::Position,
-        other => {
-            let message = format!(
-                "{label}: unsupported type `{}` (use boolean, number, integer, string, entity or position)",
-                shown(other)
-            );
-            reader.error(DiagnosticCode::InvalidValue, message, value.origin());
-            return None;
-        }
+        "boolean" => Some(BbType::Bool),
+        "bool" => None,
+        other => BbType::from_name(other),
     };
-    Some(ty)
+    if ty.is_none() {
+        let message = format!(
+            "{label}: unsupported type `{}` (use boolean, number, integer, string, entity or position)",
+            shown(text)
+        );
+        reader.error(DiagnosticCode::InvalidValue, message, value.origin());
+    }
+    ty
 }
 
 /// `entity` and `position` params: only `type` and `description`; no `default`.

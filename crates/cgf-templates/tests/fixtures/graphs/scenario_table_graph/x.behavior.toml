@@ -1,0 +1,6 @@
+# Fixture: a *.behavior.toml file that has a [scenario] table; the suffix makes it a graph (ASM-074).
+# Provenance: hand-written for M3 WI-12 review follow-up (graph_discovery.rs).
+schema_version = 1
+
+[scenario]
+name = "not-a-scenario"

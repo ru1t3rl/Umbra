@@ -81,3 +81,45 @@ fn validating_graphs_twice_gives_identical_reports() {
 
     assert_eq!(loader.validate_path(&dir), loader.validate_path(&dir));
 }
+
+/// ASM-074: a `*.behavior.toml` file with a `[scenario]` table is a graph: `load_scenario` and
+/// `validate_path` agree that it is not a scenario, and in a directory it is read as a graph
+/// (so its `[scenario]` table is an unknown key of the graph).
+#[test]
+fn graph_with_a_scenario_table_is_still_a_graph() {
+    let dir = fixture_path("graphs/scenario_table_graph");
+    let file = dir.join("x.behavior.toml");
+    let registry = registry();
+    let loader = loader_for(&registry);
+
+    let as_scenario = common::errors(loader.load_scenario(&file));
+    let single = loader.validate_path(&file);
+    let directory = loader.validate_path(&dir);
+
+    assert_eq!(as_scenario.len(), 1);
+    assert_eq!(as_scenario[0].code.as_str(), "not_a_scenario");
+    assert!(
+        as_scenario[0].message.contains("behavior graph"),
+        "{}",
+        as_scenario[0].message
+    );
+    // validate_path reads the file as a graph: the `[scenario]` table is an unknown key.
+    assert!(
+        single
+            .diagnostics
+            .iter()
+            .any(|d| d.code.as_str() == "unknown_key")
+    );
+    assert!(
+        directory
+            .diagnostics
+            .iter()
+            .any(|d| d.code.as_str() == "unknown_key")
+    );
+    assert!(
+        directory
+            .diagnostics
+            .iter()
+            .all(|d| d.code.as_str() != "not_a_scenario")
+    );
+}

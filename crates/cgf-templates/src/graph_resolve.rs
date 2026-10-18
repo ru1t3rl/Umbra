@@ -50,7 +50,8 @@ pub(crate) struct LoadedGraphs {
 impl Loader<'_> {
     /// Reads graph files in path order, so the result does not depend on the order they are given
     /// in (REQ-K-4). Per-file checks only (WI-12): when two files define one ID, the first path
-    /// wins here and WI-13 reports the duplicate (ASM-101).
+    /// wins here and WI-13 reports the duplicate (ASM-101). Files with the same path keep their input
+    /// order (the sort is stable), as in M2 `load_templates`.
     #[expect(
         clippy::unused_self,
         reason = "WI-13 checks the graphs against the registry"
