@@ -1,0 +1,12 @@
+# Lint-fact fixture (M4 WI-2, R-M5, ASM-116), see ../README.md. Mirrors the real workspace lints.
+[workspace]
+members = ["entry_macro", "plugin"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "deny"

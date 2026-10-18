@@ -77,3 +77,15 @@ violations themselves.
   `src/bin/tool.rs`, `tests/it.rs`, `examples/ex.rs`, `benches/bench.rs` (one violation each);
   `umbra-sdk/tests/it.rs` lacks it too and is exempt.
 They prove the binary exits 1 for each of these checks on its own.
+
+## lint facts (M4 WI-2, R-M5, ASM-116; `xtask/tests/lint_facts.rs`)
+Not `check-deps` fixtures: `lint_facts.rs` builds them with `cargo build --offline --locked` and
+`RUSTFLAGS="-D warnings"`, each in its own target directory under `CARGO_TARGET_TMPDIR`. Both are
+two-crate workspaces (path dependency only, committed `Cargo.lock`, workspace `unsafe_code = "deny"` as
+in the real repo): `entry_macro` stands in for `umbra-sdk`, `plugin` (a `cdylib` with
+`#![forbid(unsafe_code)]`) for a plugin crate that invokes `entry_macro::export_entry!()`.
+- `forbid_external_no_mangle`: the macro emits only `#[unsafe(no_mangle)] pub extern "C" fn` with a safe
+  body (the `export_plugin!` shape). Expected: builds cleanly.
+- `forbid_external_expect`: the macro also emits `#[expect(unsafe_code, reason = ..)]`. Expected: error
+  E0453 (an inner `allow`/`expect` cannot override `forbid`), which is why `export_plugin!` emits no lint
+  attribute.
