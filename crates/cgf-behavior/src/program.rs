@@ -182,8 +182,7 @@ pub(crate) fn validate(def: &GraphDef) -> Result<(), GraphRegistrationError> {
             | NodeKind::Cooldown(_)
             | NodeKind::Timeout(_) => true,
             NodeKind::Fsm(f) => {
-                fsm_shape(def, f)
-                    .map_err(|reason| bad(format!("fsm `{}`: {reason}", node.name)))?;
+                fsm_shape(f).map_err(|reason| bad(format!("fsm `{}`: {reason}", node.name)))?;
                 true
             }
             NodeKind::Parallel(p) => policy(p.policy).is_some(),
@@ -221,14 +220,24 @@ pub(crate) fn validate(def: &GraphDef) -> Result<(), GraphRegistrationError> {
                 .map(|c| (index(c), depth + 1)),
         );
     }
+    // The arena is a tree now, so the guard walks below terminate.
+    for (node, _) in def.nodes.iter().zip(&seen).filter(|(_, s)| **s) {
+        if let NodeKind::Fsm(f) = &node.kind {
+            for t in &f.transitions {
+                if let Trigger::When(guard) = t.trigger {
+                    guard_shape(def, guard)
+                        .map_err(|reason| bad(format!("fsm `{}`: {reason}", node.name)))?;
+                }
+            }
+        }
+    }
     Ok(())
 }
 
 /// Checks an FSM: `initial`, `from` and targets in range, exits and `on` triggers only Success or
-/// Failure (so an FSM is Running exactly when it has not exited), guard subtrees made of
-/// `condition`, `inverter`, `sequence` and `selector` only (ADR 0012), so a guard never returns
-/// Running and never needs a halt.
-fn fsm_shape(def: &GraphDef, f: &FsmDef) -> Result<(), String> {
+/// Failure (so an FSM is Running exactly when it has not exited). Guard subtrees are checked by
+/// [`guard_shape`] once the tree walk has proved the arena is a tree.
+fn fsm_shape(f: &FsmDef) -> Result<(), String> {
     if f.initial >= f.states.len() {
         return Err("the initial state does not exist".to_string());
     }
@@ -247,8 +256,7 @@ fn fsm_shape(def: &GraphDef, f: &FsmDef) -> Result<(), String> {
             Trigger::On(Status::Running) => {
                 return Err("an `on running` transition is not allowed".to_string());
             }
-            Trigger::When(guard) => guard_shape(def, guard)?,
-            Trigger::On(_) => {}
+            Trigger::When(_) | Trigger::On(_) => {}
             _ => {
                 return Err("a transition has a trigger this interpreter does not know".to_string());
             }
@@ -257,8 +265,9 @@ fn fsm_shape(def: &GraphDef, f: &FsmDef) -> Result<(), String> {
     Ok(())
 }
 
-/// Walks a guard subtree (iteratively; indices out of range are reported by the caller's tree
-/// walk) and refuses any node that could return Running.
+/// Walks a guard subtree and refuses any node that could return Running (ADR 0012: only
+/// `condition`, `inverter`, `sequence` and `selector`, so a guard never needs a halt). Only call
+/// it on a node of a proved tree: it keeps no visited set.
 fn guard_shape(def: &GraphDef, guard: NodeId) -> Result<(), String> {
     let mut stack = vec![index(guard)];
     while let Some(at) = stack.pop() {

@@ -355,6 +355,38 @@ mod tests {
             TransitionTarget::State(0),
             Trigger::On(Status::Running)
         ))));
+        for (from, to) in [
+            (5, TransitionTarget::State(0)),
+            (0, TransitionTarget::State(5)),
+            (0, TransitionTarget::Exit(0)),
+        ] {
+            let t = TransitionDef::new(from, to, Trigger::On(Status::Success));
+            assert!(malformed(one_state(0).with_transition(t)), "{from} {to:?}");
+        }
+    }
+
+    #[test]
+    fn a_cyclic_or_shared_guard_is_malformed_and_terminates() {
+        let guarded = |nodes: Vec<NodeDef>| {
+            let def = one_state(0).with_transition(TransitionDef::new(
+                0,
+                TransitionTarget::State(0),
+                Trigger::When(NodeId(2)),
+            ));
+            let mut all = vec![NodeDef::new("f", NodeKind::Fsm(def)), seq(&[])];
+            all.extend(nodes);
+            reason(graph(0, all))
+        };
+        // g = sequence [g]
+        assert!(matches!(
+            guarded(vec![seq(&[2])]),
+            Some(GraphRegistrationError::Malformed { .. })
+        ));
+        // g = sequence [c, c]
+        assert!(matches!(
+            guarded(vec![seq(&[3, 3]), seq(&[])]),
+            Some(GraphRegistrationError::Malformed { .. })
+        ));
     }
 
     #[test]
