@@ -1,7 +1,7 @@
 //! AT-3 (halt rules): which nodes are halted, when and how often.
 //! Requirements: REQ-B-8, ADR 0013, ASM-070.
 //!
-//! Step 4 of M3: written before WI-8; every test is ignored with that work item. The stub action
+//! Step 4 of M3: written before WI-8; un-ignored in WI-8. The stub action
 //! counts its `halt()` calls in the log (`halt:<name>`), so a spurious halt of a node that is not
 //! Running is visible.
 
@@ -19,7 +19,6 @@ fn count(trace: &[String], line: &str) -> usize {
 /// ADR 0013: a child that was Running last tick and is skipped because an earlier child now
 /// decides the result is halted exactly once.
 #[test]
-#[ignore = "WI-8"]
 fn skipped_running_child_is_halted_once() {
     let bench = Bench::new();
     let mut b = B::new();
@@ -43,7 +42,6 @@ fn skipped_running_child_is_halted_once() {
 
 /// ADR 0013: nodes that finish on their own are not halted.
 #[test]
-#[ignore = "WI-8"]
 fn finished_children_are_never_halted() {
     let bench = Bench::new();
     let mut b = B::new();
@@ -65,7 +63,6 @@ fn finished_children_are_never_halted() {
 /// ADR 0013: halting the instance halts the Running nodes below it once, and halting again does
 /// nothing.
 #[test]
-#[ignore = "WI-8"]
 fn halting_the_instance_halts_running_nodes_once() {
     let bench = Bench::new();
     let mut b = B::new();
@@ -84,7 +81,6 @@ fn halting_the_instance_halts_running_nodes_once() {
 
 /// ADR 0013: halting before the first tick does nothing.
 #[test]
-#[ignore = "WI-8"]
 fn halting_a_fresh_instance_does_nothing() {
     let bench = Bench::new();
     let mut run = bench.run(common::script_graph("test.graph.fresh", "a", &["running"]));
@@ -94,7 +90,6 @@ fn halting_a_fresh_instance_does_nothing() {
 
 /// ADR 0013: after a halt a `memory` sequence starts again at its first child.
 #[test]
-#[ignore = "WI-8"]
 fn after_halt_a_memory_sequence_restarts_at_its_first_child() {
     let bench = Bench::new();
     let mut b = B::new();

@@ -2,7 +2,7 @@
 //! runs of the same tree give identical statuses, traces and intents (REQ-K-4).
 //! Requirements: REQ-B-8, REQ-B-16, ADR 0013, ASM-070.
 //!
-//! Step 4 of M3: written before WI-8; the properties are ignored with that work item.
+//! Step 4 of M3: written before WI-8; un-ignored in WI-8.
 
 #![forbid(unsafe_code)]
 
@@ -115,7 +115,6 @@ proptest! {
     /// REQ-B-8: a leaf is evaluated at most once per tick; REQ-K-4: the same tree gives the same
     /// statuses, traces and intents on a second run.
     #[test]
-    #[ignore = "WI-8"]
     fn no_node_ticks_twice_and_trace_is_reproducible(spec in spec()) {
         let first = run(&spec, 24);
         for (tick, step) in first.iter().enumerate() {
