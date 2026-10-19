@@ -57,7 +57,6 @@ macro_rules! host_with {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn register_maps_metadata_to_component_info() {
     let mut registry = Registry::new();
     let host = host_with!(raw::parts(true));
@@ -93,7 +92,6 @@ fn register_maps_metadata_to_component_info() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn register_keeps_the_param_schema() {
     let mut registry = Registry::new();
     host_with!(raw::parts(true))
@@ -107,7 +105,6 @@ fn register_keeps_the_param_schema() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn a_capability_version_overrides_the_plugin_version() {
     let mut p = parts();
     p.caps[0].version = leak_str("2.1.0");
@@ -120,7 +117,6 @@ fn a_capability_version_overrides_the_plugin_version() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn registering_an_id_that_is_already_registered_is_a_registry_error() {
     let mut registry = Registry::new();
     let (f, info) = taken("test.behavior.forge");
@@ -138,7 +134,6 @@ fn registering_an_id_that_is_already_registered_is_a_registry_error() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn register_is_all_or_nothing() {
     let mut first = parts();
     first.desc.id = leak_str("test.plugin.first");

@@ -26,7 +26,6 @@ fn load_garbage(manifest: Option<&str>) -> (PluginError, std::path::PathBuf) {
 macro_rules! manifest_error {
     ($name:ident, $toml:expr, $needle:expr) => {
         #[test]
-        #[ignore = "WI-8"]
         fn $name() {
             let (err, dir) = load_garbage(Some($toml));
 
@@ -40,7 +39,6 @@ macro_rules! manifest_error {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn given_a_valid_manifest_and_a_garbage_library_then_open_error() {
     let (err, _) = load_garbage(Some(VALID));
 
@@ -48,7 +46,6 @@ fn given_a_valid_manifest_and_a_garbage_library_then_open_error() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn given_no_manifest_and_a_garbage_library_then_open_error() {
     let (err, _) = load_garbage(None);
 
@@ -56,7 +53,6 @@ fn given_no_manifest_and_a_garbage_library_then_open_error() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn given_a_manifest_with_another_abi_major_then_rejected_without_opening() {
     let (err, _) = load_garbage(Some(&VALID.replace("0.0", "1.0")));
 
@@ -65,7 +61,6 @@ fn given_a_manifest_with_another_abi_major_then_rejected_without_opening() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn given_a_manifest_with_a_newer_abi_minor_then_rejected_without_opening() {
     let (err, _) = load_garbage(Some(&VALID.replace("\"0.0\"", "\"0.1\"")));
 

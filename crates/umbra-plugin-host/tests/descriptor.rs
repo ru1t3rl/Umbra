@@ -54,7 +54,6 @@ macro_rules! rejected {
     };
     (@body $name:ident, $edit:expr, [$($variant:tt)+], $needle:expr) => {
         #[test]
-        #[ignore = "WI-8"]
         fn $name() {
             let mut p = parts();
             let edit: fn(&mut Parts) = $edit;
@@ -75,7 +74,6 @@ const CAP: u32 = size_of::<UmbraCapability>() as u32;
 const VT: u32 = size_of::<UmbraBehaviorVTable>() as u32;
 
 #[test]
-#[ignore = "WI-8"]
 fn given_a_valid_descriptor_when_loaded_then_info_is_copied() {
     let info = load!(parts()).expect("valid");
 
@@ -387,7 +385,6 @@ rejected!(
 );
 
 #[test]
-#[ignore = "WI-8"]
 fn given_consistent_metadata_and_entries_when_loaded_then_it_is_accepted() {
     let mut p = parts();
     p.vtable.set_input = Some(dummy_set_input);
@@ -402,7 +399,6 @@ fn given_consistent_metadata_and_entries_when_loaded_then_it_is_accepted() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn given_a_duplicate_capability_in_one_plugin_when_loaded_then_rejected() {
     let mut p = parts();
     p.add_capability("test.behavior.forge");
@@ -421,7 +417,6 @@ fn given_a_duplicate_capability_in_one_plugin_when_loaded_then_rejected() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn given_a_null_descriptor_when_loaded_then_null_descriptor_names_the_origin() {
     let entry = forged_null!();
     let mut host = PluginHost::new(HostOptions::default());
@@ -433,7 +428,6 @@ fn given_a_null_descriptor_when_loaded_then_null_descriptor_names_the_origin() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn given_an_entry_returning_another_pointer_second_time_then_unstable_entry() {
     let f = forged!(parts(), alt = parts());
     let mut host = PluginHost::new(HostOptions::default());
@@ -449,7 +443,6 @@ fn given_an_entry_returning_another_pointer_second_time_then_unstable_entry() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn given_init_returns_an_error_when_loaded_then_init_error_and_no_shutdown() {
     let f = forged!(parts());
     f.init_code
@@ -469,7 +462,6 @@ fn given_init_returns_an_error_when_loaded_then_init_error_and_no_shutdown() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn given_a_loaded_plugin_when_the_host_drops_then_entry_twice_init_once_shutdown_once() {
     let f = forged!(parts());
     {

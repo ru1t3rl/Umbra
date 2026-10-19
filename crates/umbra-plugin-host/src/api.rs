@@ -1,35 +1,19 @@
-//! Public host API: M4 step 4 stub (signatures exactly as in the M4 plan; bodies `todo!()`).
-//! WI-8 (loader, registration) and WI-9 (bridge, faults) replace the bodies.
+//! The public host API (M4 plan, Design "`umbra-plugin-host`"): options, discovered packages, loaded
+//! plugin information, and [`PluginHost`], one per scenario load. Loading and registration are M4 WI-8;
+//! the fault-state methods arrive with the behavior bridge (WI-9).
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use umbra_core::{
-    ComponentId, ComponentKind, PluginFaultPolicy, PluginId, Registry, RegistryError, Version,
-};
+use umbra_core::{ComponentId, ComponentKind, PluginFaultPolicy, PluginId, Registry, Version};
 use umbra_plugin_api::UmbraPluginEntry;
 
-/// Log severity of a plugin message (`UMBRA_LOG_*`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum LogLevel {
-    /// Error.
-    Error,
-    /// Warning.
-    Warn,
-    /// Info.
-    Info,
-    /// Debug.
-    Debug,
-    /// Trace.
-    Trace,
-}
-
-/// Where plugin log messages go; the default forwards to `tracing`.
-pub trait PluginLog: Send + Sync {
-    /// Called with the plugin the message is attributed to.
-    fn log(&self, plugin: &PluginId, level: LogLevel, message: &str);
-}
+use crate::descriptor::Descriptor;
+use crate::error::PluginError;
+use crate::lifecycle::{self, LoadRequest, LoadedImage};
+use crate::log::{PluginLog, TracingLog};
+use crate::manifest::Manifest;
+use crate::{discover, register};
 
 /// How factories registered by a host build.
 #[non_exhaustive]
@@ -55,9 +39,13 @@ pub struct HostOptions {
 }
 
 impl Default for HostOptions {
-    #[expect(clippy::todo, reason = "M4 WI-8 stub")]
+    /// Logs to `tracing` (target `umbra_plugin`), closes libraries on release, run mode.
     fn default() -> Self {
-        todo!("M4 WI-8")
+        Self {
+            log: Arc::new(TracingLog),
+            keep_loaded: false,
+            mode: HostMode::Run,
+        }
     }
 }
 
@@ -119,202 +107,229 @@ pub struct PluginFault {
     pub message: String,
 }
 
-/// Plugin load and registration errors.
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
-pub enum PluginError {
-    /// Missing directory, zero or several libraries, non-UTF-8 name.
-    #[error("plugin discovery: {path}: {message}")]
-    Discovery {
-        /// Path.
-        path: PathBuf,
-        /// Message.
-        message: String,
-    },
-    /// `plugin.toml` syntax, keys or values.
-    #[error("plugin manifest {path}: {message}")]
-    Manifest {
-        /// Path.
-        path: PathBuf,
-        /// Message.
-        message: String,
-    },
-    /// Not a loadable library.
-    #[error("cannot open plugin library {path}: {message}")]
-    Open {
-        /// Path.
-        path: PathBuf,
-        /// Message.
-        message: String,
-    },
-    /// No `umbra_plugin_entry`, or a null symbol.
-    #[error("{path}: no umbra_plugin_entry symbol")]
-    MissingEntry {
-        /// Path.
-        path: PathBuf,
-    },
-    /// The entry returned null (includes a panicking SDK entry).
-    #[error("{origin}: umbra_plugin_entry returned a null descriptor")]
-    NullDescriptor {
-        /// Origin.
-        origin: String,
-    },
-    /// The second entry call returned another pointer.
-    #[error("{origin}: umbra_plugin_entry returned different descriptors")]
-    UnstableEntry {
-        /// Origin.
-        origin: String,
-    },
-    /// ABI major differs or minor is newer (REQ-P-9).
-    #[error("{origin}: {field}: plugin ABI {}.{} is not loadable by host ABI {}.{}", .plugin.0, .plugin.1, .host.0, .host.1)]
-    AbiMismatch {
-        /// Origin.
-        origin: String,
-        /// The struct that carries the version (`descriptor.abi_version`, `capabilities[0].abi_version`,
-        /// `vtable.abi_version`, `plugin.toml abi`); a discriminator added to the plan's design (ASM-125).
-        field: String,
-        /// Plugin `(major, minor)`.
-        plugin: (u32, u32),
-        /// Host `(major, minor)`.
-        host: (u32, u32),
-    },
-    /// Size, null, alignment, bounds, caps, UTF-8, grammar, semver or metadata problem.
-    #[error("{origin}: descriptor field {field}: {message}")]
-    Descriptor {
-        /// Origin.
-        origin: String,
-        /// The offending field.
-        field: String,
-        /// Message.
-        message: String,
-    },
-    /// A capability kind this host cannot load.
-    #[error("{origin}: capability {capability}: unsupported kind {kind}")]
-    Unsupported {
-        /// Origin.
-        origin: String,
-        /// Capability id.
-        capability: String,
-        /// Kind number.
-        kind: u32,
-    },
-    /// Descriptor and `plugin.toml` disagree.
-    #[error("{origin}: {field} differs: manifest {manifest}, descriptor {descriptor}")]
-    ManifestMismatch {
-        /// Origin.
-        origin: String,
-        /// The field.
-        field: &'static str,
-        /// Manifest value.
-        manifest: String,
-        /// Descriptor value.
-        descriptor: String,
-    },
-    /// The same image twice in one host, or one plugin id from two images.
-    #[error("duplicate plugin {id}: {first} and {second}")]
-    Duplicate {
-        /// Plugin id.
-        id: String,
-        /// First location.
-        first: String,
-        /// Second location.
-        second: String,
-    },
-    /// A `builtin.*` capability id.
-    #[error("{origin}: capability id {id} uses the reserved builtin namespace")]
-    ReservedId {
-        /// Origin.
-        origin: String,
-        /// The id.
-        id: String,
-    },
-    /// `init` returned an error or panicked.
-    #[error("plugin {plugin}: init failed: {message}")]
-    Init {
-        /// Plugin.
-        plugin: PluginId,
-        /// Message.
-        message: String,
-    },
-    /// Registration failed.
-    #[error(transparent)]
-    Registry(#[from] RegistryError),
-}
-
 /// One per scenario load, attached to at most one engine; owns that engine's fault state.
+///
+/// Holds its plugins' images (shared with other hosts through the process-wide image table, ADR 0021)
+/// in load order; dropping the host releases them in reverse load order. An image's lifecycle ends when
+/// its last holder (a host, a registered factory, a behavior or instance handle) releases it.
 pub struct PluginHost {
-    _private: (),
+    options: HostOptions,
+    plugins: Vec<PluginInfo>,
+    images: Vec<HostImage>,
 }
 
-#[expect(clippy::todo, reason = "M4 WI-8/WI-9 stub")]
+/// One image held by a host.
+struct HostImage {
+    image: Arc<LoadedImage>,
+    origin: String,
+    /// The canonical library path (`None` for `load_static`).
+    path: Option<PathBuf>,
+}
+
 impl PluginHost {
     /// A host with no plugins.
     #[must_use]
-    pub fn new(_options: HostOptions) -> Self {
-        todo!("M4 WI-8")
+    pub fn new(options: HostOptions) -> Self {
+        Self {
+            options,
+            plugins: Vec::new(),
+            images: Vec::new(),
+        }
     }
 
     /// ADR 0022 layout; packages in path order, then by UTF-8 subdirectory name bytes.
     ///
     /// # Errors
     /// `Discovery`.
-    pub fn discover(_paths: &[PathBuf]) -> Result<Vec<PluginPackage>, PluginError> {
-        todo!("M4 WI-8")
+    pub fn discover(paths: &[PathBuf]) -> Result<Vec<PluginPackage>, PluginError> {
+        discover::discover(paths)
     }
 
-    /// Loads one package.
+    /// Loads one package: `plugin.toml` check (before opening), image table lookup by canonical path,
+    /// open with explicit flags, lookup by entry address (before the entry call), entry, copy and
+    /// validation, manifest match, `init`.
     ///
     /// # Errors
     /// Any load error.
-    pub fn load(&mut self, _package: &PluginPackage) -> Result<&PluginInfo, PluginError> {
-        todo!("M4 WI-8")
+    pub fn load(&mut self, package: &PluginPackage) -> Result<&PluginInfo, PluginError> {
+        let origin = package
+            .library
+            .file_name()
+            .map_or_else(|| package.library.clone(), |name| package.dir.join(name))
+            .display()
+            .to_string();
+        let manifest = package
+            .manifest
+            .as_deref()
+            .map(Manifest::read)
+            .transpose()?;
+        if let Some(manifest) = &manifest {
+            manifest.check_abi(&origin)?;
+        }
+        let path = std::fs::canonicalize(&package.library).map_err(|e| PluginError::Open {
+            path: package.library.clone(),
+            message: format!("cannot resolve the library path: {e}"),
+        })?;
+        if let Some(first) = self
+            .images
+            .iter()
+            .find(|held| held.path.as_deref() == Some(path.as_path()))
+        {
+            return Err(PluginError::Duplicate {
+                id: first.image.descriptor().id.to_string(),
+                first: first.origin.clone(),
+                second: origin,
+            });
+        }
+        let precheck = |descriptor: &Descriptor| {
+            if let Some(manifest) = &manifest {
+                manifest.check(&origin, descriptor)?;
+            }
+            self.unique_id(descriptor, &origin)
+        };
+        let request = LoadRequest {
+            origin: &origin,
+            log: &self.options.log,
+            keep_loaded: self.options.keep_loaded,
+            precheck: &precheck,
+        };
+        let image = lifecycle::load_library(&path, &request)?;
+        self.adopt(image, origin, Some(path))
     }
 
-    /// Loads an entry function linked into the process (embedders, tests).
+    /// Loads an entry function linked into the process (embedders, tests): the same path as
+    /// [`PluginHost::load`] without a library or manifest; the image key is the entry address.
     ///
     /// # Errors
     /// Any load error.
     pub fn load_static(
         &mut self,
-        _origin: &str,
-        _entry: UmbraPluginEntry,
+        origin: &str,
+        entry: UmbraPluginEntry,
     ) -> Result<&PluginInfo, PluginError> {
-        todo!("M4 WI-8")
+        let precheck = |descriptor: &Descriptor| self.unique_id(descriptor, origin);
+        let request = LoadRequest {
+            origin,
+            log: &self.options.log,
+            keep_loaded: self.options.keep_loaded,
+            precheck: &precheck,
+        };
+        let image = lifecycle::load_static(entry, &request)?;
+        self.adopt(image, origin.to_owned(), None)
     }
 
-    /// Registers every capability of every loaded plugin; all-or-nothing.
+    /// Registers every capability of every loaded plugin (load order, then descriptor order) with
+    /// `Provenance::Plugin`; all-or-nothing (ASM-091 d).
     ///
     /// # Errors
     /// `Registry`.
-    pub fn register(&self, _registry: &mut Registry) -> Result<(), PluginError> {
-        todo!("M4 WI-8")
+    pub fn register(&self, registry: &mut Registry) -> Result<(), PluginError> {
+        register::register(self.images.iter().map(|held| &held.image), registry)
     }
 
     /// The loaded plugins in load order.
     #[must_use]
     pub fn plugins(&self) -> &[PluginInfo] {
-        todo!("M4 WI-8")
+        &self.plugins
     }
 
     /// Sets the policy applied to faults.
+    #[expect(clippy::todo, reason = "M4 WI-9 stub")]
     pub fn set_fault_policy(&self, _policy: PluginFaultPolicy) {
         todo!("M4 WI-9")
     }
 
     /// Faults in occurrence order, this host only.
     #[must_use]
+    #[expect(clippy::todo, reason = "M4 WI-9 stub")]
     pub fn faults(&self) -> Vec<PluginFault> {
         todo!("M4 WI-9")
     }
 
     /// The first fault under `Abort`, once.
     #[must_use]
+    #[expect(clippy::todo, reason = "M4 WI-9 stub")]
     pub fn take_abort(&self) -> Option<PluginFault> {
         todo!("M4 WI-9")
+    }
+
+    /// ADR 0021: one plugin id per host; another image with a loaded id is a `Duplicate`.
+    fn unique_id(&self, descriptor: &Descriptor, origin: &str) -> Result<(), PluginError> {
+        match self
+            .images
+            .iter()
+            .find(|held| held.image.descriptor().id == descriptor.id)
+        {
+            Some(first) => Err(PluginError::Duplicate {
+                id: descriptor.id.to_string(),
+                first: first.origin.clone(),
+                second: origin.to_owned(),
+            }),
+            None => Ok(()),
+        }
+    }
+
+    /// Takes a loaded or reused image into this host. The same image twice is a `Duplicate` (found
+    /// before any entry call: a live image is reused without calling it).
+    fn adopt(
+        &mut self,
+        image: Arc<LoadedImage>,
+        origin: String,
+        path: Option<PathBuf>,
+    ) -> Result<&PluginInfo, PluginError> {
+        if let Some(first) = self
+            .images
+            .iter()
+            .find(|held| Arc::ptr_eq(&held.image, &image))
+        {
+            return Err(PluginError::Duplicate {
+                id: image.descriptor().id.to_string(),
+                first: first.origin.clone(),
+                second: origin,
+            });
+        }
+        let info = plugin_info(image.descriptor(), &origin);
+        self.images.push(HostImage {
+            image,
+            origin,
+            path,
+        });
+        let index = self.plugins.len();
+        self.plugins.push(info);
+        Ok(&self.plugins[index])
     }
 }
 
 impl Drop for PluginHost {
-    /// WI-8: releases this host's images; the last release runs `shutdown` and closes the library.
-    fn drop(&mut self) {}
+    /// Releases this host's images in reverse load order; the last release of an image runs `shutdown`
+    /// (attributed to this host's log) and closes the library.
+    fn drop(&mut self) {
+        for held in &self.images {
+            held.image.released_by(&self.options.log);
+        }
+        while let Some(held) = self.images.pop() {
+            drop(held);
+        }
+    }
+}
+
+/// The public view of a copied descriptor.
+fn plugin_info(descriptor: &Descriptor, origin: &str) -> PluginInfo {
+    PluginInfo {
+        id: descriptor.id.clone(),
+        name: descriptor.name.clone(),
+        version: descriptor.version.clone(),
+        abi: descriptor.abi,
+        origin: origin.to_owned(),
+        capabilities: descriptor
+            .capabilities
+            .iter()
+            .map(|c| CapabilityInfo {
+                kind: c.kind,
+                id: c.id.clone(),
+                version: c.version.clone(),
+                faulted: false,
+            })
+            .collect(),
+    }
 }

@@ -13,7 +13,9 @@
 //! code, the output sink called twice (`faults.rs`), and a stale token and another item's RNG token
 //! (`tokens.rs`).
 //!
-//! Step 4 of M4. Everything is ignored with WI-10: the fixture crate and the build helper do not exist.
+//! Step 4 of M4. Everything that needs the fixture crate is ignored with WI-10; the rows that need only
+//! a garbage file or a C library (open error, missing and null entry, same file twice, `keep_loaded`)
+//! run from WI-8.
 //! The fixture contract the tests assume beyond the plan's capability list (plan gaps, reported; see
 //! also `umbra-engine/tests/plugin_support/mod.rs`, the one build helper): cargo features
 //! `entry_panics`, `init_fails`, `init_panics`, `shutdown_panics` (the plan's `no_entry` and
@@ -81,7 +83,6 @@ fn logging_host() -> (PluginHost, Arc<Recorder>) {
 // ------------------------------------------------------------------------------------ load rows
 
 #[test]
-#[ignore = "WI-10"]
 fn given_a_file_that_is_not_a_library_then_open_error() {
     let root = tmp_dir("not-a-library");
     garbage_package(&root, "junk", None);
@@ -95,7 +96,6 @@ fn given_a_file_that_is_not_a_library_then_open_error() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn given_a_library_without_umbra_plugin_entry_then_missing_entry() {
     let err = load_error_in(c_package_dir("no-entry", C_NO_ENTRY));
 
@@ -110,7 +110,6 @@ fn given_a_library_without_umbra_plugin_entry_then_missing_entry() {
 /// The entry symbol resolves to a null address (an ELF absolute symbol of value 0).
 #[cfg(target_os = "linux")]
 #[test]
-#[ignore = "WI-10"]
 fn given_a_null_entry_symbol_then_missing_entry() {
     let err = load_error_in(c_package_dir("null-entry", C_NULL_ENTRY));
 
@@ -318,7 +317,6 @@ fn given_the_same_file_reached_through_a_symlink_then_duplicate_in_one_host() {
 /// one lifecycle.
 #[cfg(unix)]
 #[test]
-#[ignore = "WI-10"]
 fn the_same_file_reached_twice_is_found_before_a_second_entry_call() {
     let dir = c_package_dir("counter-link", C_COUNTER);
     let alias_root = tmp_dir("counter-alias");
@@ -403,7 +401,6 @@ fn reload_with_keep_loaded() {
 /// thread-local destructors may pin itself. Linux only: it reads `/proc/self/maps`.
 #[cfg(target_os = "linux")]
 #[test]
-#[ignore = "WI-10"]
 fn keep_loaded_skips_the_close() {
     let mapped = |marker: &str| {
         std::fs::read_to_string("/proc/self/maps")

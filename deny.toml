@@ -1,7 +1,7 @@
 # cargo-deny configuration (NFR-4, NFR-6, ADR 0001, ASM-020).
 # Copyleft is denied by omission: anything not on the allow-list fails (not on the allow-list = denied).
 # Minimal list: only licenses the current tree uses (ASM-020). Candidates to add when a dependency needs
-# them: Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, ISC, Zlib.
+# them: Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, Zlib.
 # Add a license only in the PR that adds a dependency needing it, with a note.
 
 [graph]
@@ -17,6 +17,9 @@ allow = [
     "Unicode-3.0",
     # foldhash 0.2.0 (via hecs -> hashbrown / hecs directly), ADR 0005, ASM-020. OSI approved, permissive.
     "Zlib",
+    # libloading 0.9.0 (umbra-plugin-host: opens plugin libraries with explicit load flags), ADR 0023 item 1,
+    # ASM-133. OSI approved, permissive (MIT-equivalent).
+    "ISC",
 ]
 confidence-threshold = 0.9
 # Check dev-dependency licenses too (default is false; a GPL dev-dependency otherwise passes).

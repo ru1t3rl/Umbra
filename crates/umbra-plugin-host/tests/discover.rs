@@ -24,7 +24,6 @@ fn names(pkgs: &[umbra_plugin_host::PluginPackage]) -> Vec<String> {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn packages_in_path_then_utf8_name_order() {
     let root = tmp_dir("order");
     let first = root.join("first");
@@ -51,7 +50,6 @@ fn packages_in_path_then_utf8_name_order() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "WI-8"]
 fn non_utf8_package_name_is_discovery_error() {
     use std::os::unix::ffi::OsStrExt;
     let root = tmp_dir("non-utf8");
@@ -67,7 +65,6 @@ fn non_utf8_package_name_is_discovery_error() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "WI-8"]
 fn symlinked_package_uses_canonical_library_path() {
     let root = tmp_dir("symlink");
     let real = tmp_dir("symlink-real");
@@ -85,7 +82,6 @@ fn symlinked_package_uses_canonical_library_path() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn zero_libraries_in_a_package_is_an_error() {
     let root = tmp_dir("zero");
     std::fs::create_dir_all(root.join("empty")).expect("dir");
@@ -101,7 +97,6 @@ fn zero_libraries_in_a_package_is_an_error() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn two_libraries_in_a_package_is_an_error() {
     let root = tmp_dir("two");
     let dir = garbage_package(&root, "double", None);
@@ -117,7 +112,6 @@ fn two_libraries_in_a_package_is_an_error() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn missing_plugin_dir_is_an_error() {
     let root = tmp_dir("missing");
 
@@ -128,7 +122,6 @@ fn missing_plugin_dir_is_an_error() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn manifest_optional() {
     let root = tmp_dir("optional");
     garbage_package(&root, "with", Some("schema_version = 1\n"));
@@ -142,7 +135,6 @@ fn manifest_optional() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn library_is_matched_by_extension_only_and_loose_files_are_ignored() {
     let root = tmp_dir("extension");
     let dir = root.join("odd");

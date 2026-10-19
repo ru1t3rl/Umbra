@@ -26,7 +26,6 @@ fn api(f: &support::forge::Forged) -> UmbraHostApi {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn same_entry_twice_in_one_host_is_duplicate_found_before_a_second_entry_call() {
     let f = forged!(parts());
     let mut h = host();
@@ -50,7 +49,6 @@ fn same_entry_twice_in_one_host_is_duplicate_found_before_a_second_entry_call() 
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn same_plugin_id_from_two_images_is_duplicate() {
     let a = forged!(parts());
     let b = forged!(parts());
@@ -66,7 +64,6 @@ fn same_plugin_id_from_two_images_is_duplicate() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn two_hosts_share_one_image_with_one_entry_pair_one_init_one_shutdown() {
     let f = forged!(parts());
     let mut first = host();
@@ -87,7 +84,6 @@ fn two_hosts_share_one_image_with_one_entry_pair_one_init_one_shutdown() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn two_hosts_load_the_same_entry_concurrently() {
     let f = forged!(parts());
     let entry = f.entry;
@@ -125,7 +121,6 @@ fn two_hosts_load_the_same_entry_concurrently() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn reload_after_release() {
     let f = forged!(parts());
     {
@@ -161,7 +156,6 @@ fn reload_after_release() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn reload_with_keep_loaded() {
     let f = forged!(parts());
     let mut options = HostOptions::default();
@@ -184,7 +178,6 @@ fn reload_with_keep_loaded() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn keep_loaded_is_sticky_per_image() {
     let f = forged!(parts());
     let mut sticky = HostOptions::default();
@@ -207,7 +200,6 @@ fn keep_loaded_is_sticky_per_image() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 #[expect(
     clippy::disallowed_methods,
     reason = "a bounded real-time window is the only way to observe that a load did NOT proceed"
@@ -220,11 +212,15 @@ fn load_waits_while_image_is_closing() {
     let closer = thread::spawn(move || drop(h));
     f.gate.wait_in_shutdown();
     let entry = f.entry;
+    // The second host is returned so that it is still alive (no second `shutdown`) when the order is
+    // checked.
     let second_load = thread::spawn(move || {
         let mut h = host();
-        h.load_static("closing-2", entry)
+        let r = h
+            .load_static("closing-2", entry)
             .map(|_| ())
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string());
+        (r, h)
     });
 
     // Give the second load a bounded window to (wrongly) proceed while the image is closing: it must
@@ -240,7 +236,7 @@ fn load_waits_while_image_is_closing() {
 
     f.gate.open();
     closer.join().expect("closer");
-    let outcome = second_load.join().expect("second load");
+    let (outcome, _second_host) = second_load.join().expect("second load");
 
     assert_eq!(outcome, Ok(()));
     let order = f.order.lock().expect("order").clone();
@@ -253,7 +249,6 @@ fn load_waits_while_image_is_closing() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn log_during_init_and_shutdown_is_routed_and_attributed() {
     let f = forged!(parts());
     let recorder = Recorder::arc();
@@ -282,7 +277,6 @@ fn log_during_init_and_shutdown_is_routed_and_attributed() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn log_outside_a_call_and_from_another_thread_is_err_state() {
     let f = forged!(parts());
     let mut h = host();
@@ -306,7 +300,6 @@ fn log_outside_a_call_and_from_another_thread_is_err_state() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn log_after_shutdown_is_err_state() {
     let f = forged!(parts());
     {

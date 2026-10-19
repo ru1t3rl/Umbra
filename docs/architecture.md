@@ -11,7 +11,7 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 | `umbra-behavior` | `crates/umbra-behavior` | Behavior graph interpreter (M3): compiles a `umbra_core::GraphDef` into a shared program and runs per-entity instances (composites, decorators, FSM, subgraphs, halt, input and output copies); the eight built-in conditions and actions (`register_builtins`); `register_graphs` adds graphs to a `Registry` as behaviors. Knows no file format: it never sees TOML (ADR 0011) | `umbra-core` only (section 4); external: `thiserror`, `serde_json`. Tests may not use `umbra-templates` or `umbra-motion` (dev edges are checked, ASM-005) |
 | `umbra-templates` | `crates/umbra-templates` | Template and scenario reading, inheritance, schema validation, located diagnostics (M2); M3: `*.behavior.toml` graph reader and graph-set validation (`graph_read`, `graph_resolve`), template `[behavior]`/`[[sensors]]` resolution against graphs of the same load (`overlay`), placement `force`, `behavior.v1.schema.json` | `umbra-core` only (section 4) |
 | `umbra-plugin-api` | `crates/umbra-plugin-api` | Plugin C ABI v0 (M4, ADR 0019-0021): `#[repr(C)]` types, function-pointer tables and version constants only; `no_std`, no logic; the C header `include/umbra_plugin_api.h` is generated from it (REQ-SDK-2); 64-bit targets only (ASM-120) | none, external ones included (section 4, ASM-009) |
-| `umbra-plugin-host` | `crates/umbra-plugin-host` | Plugin discovery, loading, descriptor validation, lifecycle and the bridge from plugin capabilities to the core traits in the one registry (M4, D-8, ADR 0021, ADR 0022); `unsafe` allowed (FFI crate, NFR-2) | `umbra-core`, `umbra-plugin-api` |
+| `umbra-plugin-host` | `crates/umbra-plugin-host` | Plugin discovery, loading, descriptor validation, lifecycle and the bridge from plugin capabilities to the core traits in the one registry (M4, D-8, ADR 0021, ADR 0022); WI-8: `discover` (ADR 0022 layout and order), `plugin.toml` checked before opening, libraries opened with explicit flags (`libloading`, ADR 0023 item 1), the process-wide image table with lifecycle states, descriptor copy and validation, `init`/`shutdown`, the thread-local call-record stack, host API `log`, all-or-nothing `register` (see "Plugin host" below); `unsafe` allowed (FFI crate, NFR-2) | `umbra-core`, `umbra-plugin-api`; external: `libloading` (ISC), `toml`, `serde_json`, `thiserror`, `tracing` |
 | `umbra-sdk` | `crates/umbra-sdk` | Safe Rust traits, conversions, panic guards and `export_plugin!` for plugin authors (M4, REQ-SDK-1, D-7); re-exports the ABI as `umbra_sdk::abi`; its only global state is the copied host API of the current plugin lifecycle, the static descriptor and an empty contacts scratch buffer (ASM-127); `unsafe` allowed (FFI crate, NFR-2) | `umbra-plugin-api` only (REQ-A-3) |
 | `umbra-engine` | `crates/umbra-engine` | Embeddable synchronous facade, placement by ECEF or lat/lon/alt, the M1 hard-coded demo is replaced by `examples/scenarios/walking_skeleton/` (M2); built-in registry, `builtin.terrain.flat`, scenario load/validate/instantiate, `ControlFlow` run callbacks (M2); M3: `builtin.visual` sensor, the two built-in graphs (`behaviors/*.behavior.toml`), `standard_registry` (`builtin_registry` keeps its M2 contents, ASM-084), `scenario_registry` (a registry clone with the scenario's file graphs), `Engine::spawn_with` | `umbra-core`, `umbra-kernel`, `umbra-motion`, `umbra-templates`, `umbra-behavior` |
 | `umbra-cli` | `crates/umbra-cli` | Binary; `run`, `validate`, `schema` commands (M2; `demo` removed); M3: all commands use `standard_registry()`, `schema behavior`, the command runs on a thread with an 8 MiB stack (ASM-098, ASM-109) | `umbra-engine` |
@@ -22,6 +22,31 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 `Behavior` factories in the one registry (D-8); the kernel sees only the `umbra-core` traits.
 
 Planned crates (section 4) are added in their own milestones; no placeholders (ASM-010).
+
+## Plugin host (`umbra-plugin-host`, M4)
+Loading follows ADR 0021's lifecycle: `plugin.toml` (ABI checked before the library is opened), image
+table lookup by canonical library path, open (`RTLD_NOW | RTLD_LOCAL`; Windows
+`LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS`, absolute path), lookup by the
+address of `umbra_plugin_entry` **before** calling it, the entry called exactly twice (same pointer
+required), the descriptor copied and validated completely (sizes, majors, bounds, caps, UTF-8, grammar,
+semver, kinds, metadata against the schema), per-host checks (manifest match, plugin id unique), `init`.
+
+- **Image table** (`image.rs`): the one piece of persistent process-global mutable state in the engine
+  (ASM-122). One `LoadedImage` per image lifecycle, shared by `Arc` across hosts, registered factories
+  and handles; slot states `Loading`, `Live`, `Closing`, and a load that meets `Loading` or `Closing`
+  waits on the table's condvar, then reuses a live image (no entry call) or starts a new lifecycle. The
+  last release runs `shutdown` (only after a successful `init`) and closes the library unless
+  `keep_loaded` (sticky per image) asked to keep it mapped.
+- **Call records** (`tokens.rs`): a thread-local stack of in-progress plugin calls, pushed for every call
+  into a plugin (`init`, `shutdown`, the bridge's calls) and popped after it, so it is empty whenever no
+  plugin call runs on that thread. Host callbacks resolve tokens against the calling thread's top record
+  only: from another thread, before `init`, after `shutdown` or with an old lifecycle's `host_ctx` they
+  return `UMBRA_ERR_STATE`. Re-entry into an image from the same thread is detected through the stack.
+- **Lock order** (ADR 0019, RR-M2): (1) image table, never held while plugin code runs or an
+  `Arc<LoadedImage>` may drop; (2) the per-image call lock, blocking (contention waits, never faults; no
+  `try_lock`); (3) per-host fault state, a leaf; (4) `PluginLog`, a leaf.
+- Errors name the origin (the library path as discovered) and the field (`descriptor.<f>`,
+  `capabilities[<i>].<f>`, `vtable.<f>`, `plugin.toml abi`).
 
 ## Tick pipeline (`umbra-kernel`, REQ-K-2)
 Every tick runs the six phases of `Phase::ALL` in this order. Perception, Behavior and Motion act on
