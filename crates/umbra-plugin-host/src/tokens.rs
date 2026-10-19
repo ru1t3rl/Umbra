@@ -1,26 +1,28 @@
-//! Opaque tokens and the thread-local call-record stack (ADR 0019 "Tokens instead of host pointers",
-//! RR-M2, ASM-122, ASM-139).
+//! Opaque tokens and the thread-local call-record stack (ADR 0019 "Tokens instead of host
+//! pointers", RR-M2, ASM-122, ASM-139).
 //!
-//! **Tokens.** Every host context a plugin can hold is a `u64`: generation in the high half, index in
-//! the low half, 0 invalid. Tokens are checked, never dereferenced.
-//! - `host_ctx`: the image lifecycle generation (from the image table) and index [`HOST_CTX_INDEX`].
-//! - Sink tokens (error, intent and value sinks): the image's **call** generation, and an index that
-//!   packs the low 16 bits of the image lifecycle generation (the image "tag") with the sink kind, so a
-//!   sink token names its image as well as its call.
-//! - RNG tokens: the call generation and `item + 1`; the image is named by the `host_ctx` argument of the
-//!   RNG callback.
+//! **Tokens.** Every host context a plugin can hold is a `u64`: generation in the high half, index
+//! in the low half, 0 invalid. Tokens are checked, never dereferenced.
+//! - `host_ctx`: the image lifecycle generation (from the image table) and index
+//!   [`HOST_CTX_INDEX`].
+//! - Sink tokens (error, intent and value sinks): the image's **call** generation, and an index
+//!   that packs the low 16 bits of the image lifecycle generation (the image "tag") with the sink
+//!   kind, so a sink token names its image as well as its call.
+//! - RNG tokens: the call generation and `item + 1`; the image is named by the `host_ctx` argument
+//!   of the RNG callback.
 //!
-//! Generations wrap; a wrapped generation can at worst misattribute a call to another call of the same
-//! thread, never cause undefined behavior.
+//! Generations wrap; a wrapped generation can at worst misattribute a call to another call of the
+//! same thread, never cause undefined behavior.
 //!
-//! **Call records.** Every call into a plugin pushes one [`CallRecord`] on a stack that is local to the
-//! calling thread, and pops it when the call returns, so the stack is **call-scoped**: it is empty
-//! whenever no plugin call is running on that thread, and it is not persistent global state (ASM-122).
-//! A host callback resolves its token against the **top** record of the calling thread only: no record
-//! is `UMBRA_ERR_STATE` without any other lookup (callbacks from another thread, before `init`, after
-//! `shutdown`); a top record whose tokens do not match records a **breach** on that record (the call
-//! then faults the capability). A call into an image that already has a record anywhere on the current
-//! thread's stack is re-entry ([`is_active`]), found before the image's call lock is taken (RR-B1).
+//! **Call records.** Every call into a plugin pushes one [`CallRecord`] on a stack that is local to
+//! the calling thread, and pops it when the call returns, so the stack is **call-scoped**: it is
+//! empty whenever no plugin call is running on that thread, and it is not persistent global state
+//! (ASM-122). A host callback resolves its token against the **top** record of the calling thread
+//! only: no record is `UMBRA_ERR_STATE` without any other lookup (callbacks from another thread,
+//! before `init`, after `shutdown`); a top record whose tokens do not match records a **breach** on
+//! that record (the call then faults the capability). A call into an image that already has a
+//! record anywhere on the current thread's stack is re-entry ([`is_active`]), found before the
+//! image's call lock is taken (RR-B1).
 
 use std::cell::RefCell;
 use std::marker::PhantomData;
@@ -80,12 +82,12 @@ pub(crate) fn rng_token(generation: u32, item: usize) -> UmbraToken {
     make(generation, u32::try_from(item + 1).unwrap_or(0))
 }
 
-/// The per-call state of a `tick_batch` call, moved into the record for the duration of the call and
-/// back into the image's scratch afterwards (no allocation after warm-up).
+/// The per-call state of a `tick_batch` call, moved into the record for the duration of the call
+/// and back into the image's scratch afterwards (no allocation after warm-up).
 #[derive(Default)]
 pub(crate) struct BatchCall {
-    /// The entity stream of each item, pointing into the kernel's `BatchItem`s, valid only during the
-    /// call (the bridge does not touch the items while the plugin runs).
+    /// The entity stream of each item, pointing into the kernel's `BatchItem`s, valid only during
+    /// the call (the bridge does not touch the items while the plugin runs).
     pub(crate) rngs: Vec<*mut RngStream>,
     /// Pushed intents (item index, intent), committed only after a clean call.
     pub(crate) intents: Vec<(usize, Intent)>,
@@ -156,13 +158,14 @@ impl CallRecord {
 }
 
 thread_local! {
-    /// The calling thread's in-progress plugin calls, innermost last. Call-scoped (see the module docs).
+    /// The calling thread's in-progress plugin calls, innermost last. Call-scoped (see the module
+    /// docs).
     static CALLS: RefCell<Vec<CallRecord>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Whether the current thread is inside a call into `image` (re-entry check, RR-B1). Fails closed: if
-/// the stack cannot be read (thread-local storage torn down, or the stack borrowed), it answers `true`,
-/// so the caller refuses the call instead of risking a deadlock on the image's call lock.
+/// Whether the current thread is inside a call into `image` (re-entry check, RR-B1). Fails closed:
+/// if the stack cannot be read (thread-local storage torn down, or the stack borrowed), it answers
+/// `true`, so the caller refuses the call instead of risking a deadlock on the image's call lock.
 pub(crate) fn is_active(image: UmbraToken) -> bool {
     CALLS
         .try_with(|calls| {
@@ -175,8 +178,8 @@ pub(crate) fn is_active(image: UmbraToken) -> bool {
 
 /// Runs `f` on the top record of the current thread; `None` without a record.
 ///
-/// `f` must not call into a plugin or a [`PluginLog`] (the stack is borrowed while it runs); callers copy
-/// what they need out and act after it returns.
+/// `f` must not call into a plugin or a [`PluginLog`] (the stack is borrowed while it runs);
+/// callers copy what they need out and act after it returns.
 pub(crate) fn with_top<R>(f: impl FnOnce(&mut CallRecord) -> R) -> Option<R> {
     CALLS
         .try_with(|calls| {
@@ -196,8 +199,9 @@ pub(crate) struct Finished {
     pub(crate) breach: Option<String>,
 }
 
-/// A pushed [`CallRecord`]; popping it (by [`ActiveCall::finish`] or on drop, also during unwinding)
-/// keeps the stack call-scoped. Not `Send`: it must be finished on the thread that pushed it.
+/// A pushed [`CallRecord`]; popping it (by [`ActiveCall::finish`] or on drop, also during
+/// unwinding) keeps the stack call-scoped. Not `Send`: it must be finished on the thread that
+/// pushed it.
 pub(crate) struct ActiveCall {
     image: UmbraToken,
     generation: u32,
@@ -220,8 +224,8 @@ impl ActiveCall {
         }
     }
 
-    /// Whether the record is on the stack (it is not if thread-local storage was unusable; then every
-    /// callback of the call is refused).
+    /// Whether the record is on the stack (it is not if thread-local storage was unusable; then
+    /// every callback of the call is refused).
     #[cfg(test)]
     pub(crate) fn is_pushed(&self) -> bool {
         self.pushed
@@ -240,7 +244,8 @@ impl ActiveCall {
         CALLS
             .try_with(|calls| {
                 let mut calls = calls.try_borrow_mut().ok()?;
-                // Always the top record (calls nest strictly); searched from the top for robustness.
+                // Always the top record (calls nest strictly); searched from the top for
+                // robustness.
                 let at = calls
                     .iter()
                     .rposition(|r| r.image == image && r.generation == generation)?;

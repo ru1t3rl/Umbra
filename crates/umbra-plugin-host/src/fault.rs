@@ -1,19 +1,20 @@
-//! Per-host state: the fault state of the engine the host belongs to (ADR 0021 "Fault policy", R-M3,
-//! ASM-118), the host's log and mode, and whether an engine took the host.
+//! Per-host state: the fault state of the engine the host belongs to (ADR 0021 "Fault policy",
+//! R-M3, ASM-118), the host's log and mode, and whether an engine took the host.
 //!
-//! A fault is a panic caught by the SDK, a non-OK code, an unset or invalid status, an invalid intent or
-//! value, or a token or callback misuse. On the first fault of a capability the host records it (in
-//! occurrence order), marks the capability faulted, logs it once at error level, and under `abort`
-//! keeps it as the pending abort, handed out once by [`HostState::take_abort`]. A faulted capability is
-//! skipped by this host from then on, under both policies: its items fail without a plugin call,
-//! `configure` and `instantiate` fail, `halt`, `set_input` and `output` do nothing, `destroy_*` still
-//! runs. Nothing here is shared with other hosts: two hosts over one image have independent fault state.
+//! A fault is a panic caught by the SDK, a non-OK code, an unset or invalid status, an invalid
+//! intent or value, or a token or callback misuse. On the first fault of a capability the host
+//! records it (in occurrence order), marks the capability faulted, logs it once at error level, and
+//! under `abort` keeps it as the pending abort, handed out once by [`HostState::take_abort`]. A
+//! faulted capability is skipped by this host from then on, under both policies: its items fail
+//! without a plugin call, `configure` and `instantiate` fail, `halt`, `set_input` and `output` do
+//! nothing, `destroy_*` still runs. Nothing here is shared with other hosts: two hosts over one
+//! image have independent fault state.
 //!
 //! Lock order (ADR 0019): the fault lock is a leaf taken after the per-image call lock; the log is
 //! called after the fault lock is released.
 
 use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use umbra_core::{ComponentId, PluginFaultPolicy, PluginId};
@@ -26,6 +27,8 @@ pub(crate) type CapabilityKey = (usize, usize);
 
 /// What a host shares with the bridge objects it creates.
 pub(crate) struct HostState {
+    /// Unique in the process (never reused): the host's identity in the build-scope stack.
+    id: u64,
     /// The host's log.
     pub(crate) log: Arc<dyn PluginLog>,
     /// Run or validation mode.
@@ -45,7 +48,12 @@ struct Faults {
 impl HostState {
     /// A host state with no faults and the `abort` policy.
     pub(crate) fn new(log: Arc<dyn PluginLog>, mode: HostMode) -> Self {
+        /// Source of host ids (ASM-138). A process-wide counter that only names hosts: it never
+        /// affects simulation results, and unlike an address it is never reused, so a leaked build
+        /// scope (`mem::forget`) can never open the scope of a later host.
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
         Self {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             log,
             mode,
             attached: AtomicBool::new(false),
@@ -57,6 +65,11 @@ impl HostState {
     /// consistent at every point a panic could occur.
     fn lock(&self) -> MutexGuard<'_, Faults> {
         self.faults.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The host's process-unique id.
+    pub(crate) fn id(&self) -> u64 {
+        self.id
     }
 
     /// Marks the host taken by an engine; `false` if one already took it.
@@ -79,8 +92,8 @@ impl HostState {
         self.lock().faulted.clone()
     }
 
-    /// Records a fault of `key` (the first one per capability; later ones are ignored, the capability is
-    /// already skipped) and logs it at error level.
+    /// Records a fault of `key` (the first one per capability; later ones are ignored, the
+    /// capability is already skipped) and logs it at error level.
     pub(crate) fn fault(
         &self,
         key: CapabilityKey,
@@ -161,5 +174,7 @@ mod tests {
         assert_eq!(state.faulted().into_iter().collect::<Vec<_>>(), [(1, 2)]);
         assert!(state.try_attach());
         assert!(!state.try_attach());
+        let other = HostState::new(Arc::new(TracingLog), HostMode::Run);
+        assert_ne!(state.id(), other.id(), "ids are unique");
     }
 }

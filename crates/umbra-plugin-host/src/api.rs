@@ -1,6 +1,6 @@
-//! The public host API (M4 plan, Design "`umbra-plugin-host`"): options, discovered packages, loaded
-//! plugin information, and [`PluginHost`], one per scenario load. Loading and registration are M4 WI-8;
-//! the bridge, the fault state and the build scope are WI-9.
+//! The public host API (M4 plan, Design "`umbra-plugin-host`"): options, discovered packages,
+//! loaded plugin information, and [`PluginHost`], one per scenario load. Loading and registration
+//! are M4 WI-8; the bridge, the fault state and the build scope are WI-9.
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
@@ -112,9 +112,10 @@ pub struct PluginFault {
 
 /// One per scenario load, attached to at most one engine; owns that engine's fault state.
 ///
-/// Holds its plugins' images (shared with other hosts through the process-wide image table, ADR 0021)
-/// in load order; dropping the host releases them in reverse load order. An image's lifecycle ends when
-/// its last holder (a host, a registered factory, a behavior or instance handle) releases it.
+/// Holds its plugins' images (shared with other hosts through the process-wide image table, ADR
+/// 0021) in load order; dropping the host releases them in reverse load order. An image's lifecycle
+/// ends when its last holder (a host, a registered factory, a behavior or instance handle) releases
+/// it.
 pub struct PluginHost {
     options: HostOptions,
     /// Fault state, log and mode, shared with this host's capabilities (and so its factories).
@@ -157,9 +158,9 @@ impl PluginHost {
         discover::discover(paths)
     }
 
-    /// Loads one package: `plugin.toml` check (before opening), image table lookup by canonical path,
-    /// open with explicit flags, lookup by entry address (before the entry call), entry, copy and
-    /// validation, manifest match, `init`.
+    /// Loads one package: `plugin.toml` check (before opening), image table lookup by canonical
+    /// path, open with explicit flags, lookup by entry address (before the entry call), entry, copy
+    /// and validation, manifest match, `init`.
     ///
     /// # Errors
     /// Any load error.
@@ -280,16 +281,16 @@ impl PluginHost {
         self.state.take_abort()
     }
 
-    /// Opens this host's build scope on the calling thread (RR-m2, ASM-138): while the guard lives, the
-    /// factories this host registered build here, which in [`HostMode::Run`] they do nowhere else
-    /// ("plugin host not attached to this engine"). The engine the host is attached to opens it around
-    /// building and spawning; [`HostMode::Validation`] factories build without it.
+    /// Opens this host's build scope on the calling thread (RR-m2, ASM-138): while the guard lives,
+    /// the factories this host registered build here, which in [`HostMode::Run`] they do nowhere
+    /// else ("plugin host not attached to this engine"). The engine the host is attached to opens
+    /// it around building and spawning; [`HostMode::Validation`] factories build without it.
     pub fn build_scope(&self) -> BuildScope<'_> {
         BuildScope::open(&self.state)
     }
 
-    /// Marks this host as taken by an engine (ADR 0021: a host belongs to at most one engine); `false`
-    /// if an engine already took it. Called by `Engine::attach_plugins` (WI-12).
+    /// Marks this host as taken by an engine (ADR 0021: a host belongs to at most one engine);
+    /// `false` if an engine already took it. Called by `Engine::attach_plugins` (WI-12).
     #[must_use]
     pub fn try_attach(&self) -> bool {
         self.state.try_attach()
@@ -367,8 +368,8 @@ impl PluginHost {
 }
 
 impl Drop for PluginHost {
-    /// Releases this host's images in reverse load order; the last release of an image runs `shutdown`
-    /// (attributed to this host's log) and closes the library.
+    /// Releases this host's images in reverse load order; the last release of an image runs
+    /// `shutdown` (attributed to this host's log) and closes the library.
     fn drop(&mut self) {
         for held in &self.images {
             held.image.released_by(&self.options.log);

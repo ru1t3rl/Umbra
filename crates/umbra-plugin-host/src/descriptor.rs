@@ -2,14 +2,14 @@
 //! "Values", ADR 0020 "Metadata", ASM-119).
 //!
 //! The host reads the descriptor exactly once per image lifecycle, right after the entry calls, and
-//! copies everything it needs into owned values; it never re-reads plugin memory afterwards. Before any
-//! (pointer, length) becomes a slice: pointer non-null when the length is non-zero, arrays of structs
-//! 8-byte aligned, lengths within the caps (and so within `isize::MAX`), `checked_mul` for `count *
-//! stride`. Every headed struct is checked for its major (equal to the host's; a newer minor is an ABI
-//! mismatch too) and its `struct_size` (at least the minor-0 size, at most the host's size for the
-//! declared minor, a multiple of 8) before anything past the header is read; only `struct_size` bytes
-//! are read, newer fields are absent. Errors name the field as `descriptor.<f>`, `capabilities[<i>].<f>`
-//! or `capabilities[<i>].vtable.<f>` (ASM-125 b3).
+//! copies everything it needs into owned values; it never re-reads plugin memory afterwards. Before
+//! any (pointer, length) becomes a slice: pointer non-null when the length is non-zero, arrays of
+//! structs 8-byte aligned, lengths within the caps (and so within `isize::MAX`), `checked_mul` for
+//! `count * stride`. Every headed struct is checked for its major (equal to the host's; a newer
+//! minor is an ABI mismatch too) and its `struct_size` (at least the minor-0 size, at most the
+//! host's size for the declared minor, a multiple of 8) before anything past the header is read;
+//! only `struct_size` bytes are read, newer fields are absent. Errors name the field as
+//! `descriptor.<f>`, `capabilities[<i>].<f>` or `capabilities[<i>].vtable.<f>` (ASM-125 b3).
 
 #![expect(
     unsafe_code,
@@ -81,7 +81,8 @@ pub(crate) struct Capability {
     pub(crate) id: ComponentId,
     /// Capability version (the plugin's when the capability leaves it empty).
     pub(crate) version: Version,
-    /// The param schema (a JSON object; the ADR 0009 subset is checked by the template loader, ASM-114).
+    /// The param schema (a JSON object; the ADR 0009 subset is checked by the template loader,
+    /// ASM-114).
     pub(crate) schema: ParamSchema,
     /// The schema's top-level `description` (empty without one).
     pub(crate) description: String,
@@ -102,7 +103,8 @@ pub(crate) struct Metadata {
     pub(crate) result: Option<String>,
 }
 
-/// The behavior vtable entries this host knows, copied from the plugin (required ones are non-null).
+/// The behavior vtable entries this host knows, copied from the plugin (required ones are
+/// non-null).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct BehaviorVTable {
     pub(crate) configure: unsafe extern "C" fn(
@@ -145,12 +147,13 @@ pub(crate) struct BehaviorVTable {
 /// A headed ABI struct the host reads from plugin memory.
 ///
 /// # Safety
-/// Implementors are `#[repr(C)]`, start with `abi_version: u32, struct_size: u32`, and the all-zero bit
-/// pattern is a valid value (integers, raw pointers, `UmbraStr`, `Option` of function pointers only).
+/// Implementors are `#[repr(C)]`, start with `abi_version: u32, struct_size: u32`, and the all-zero
+/// bit pattern is a valid value (integers, raw pointers, `UmbraStr`, `Option` of function pointers
+/// only).
 pub(crate) unsafe trait Headed: Sized {}
 
-// SAFETY: `#[repr(C)]`, header first; fields are integers, `UmbraStr`, a raw pointer and `Option`s of
-// function pointers, for all of which zero is valid (null / `None`).
+// SAFETY: `#[repr(C)]`, header first; fields are integers, `UmbraStr`, a raw pointer and `Option`s
+// of function pointers, for all of which zero is valid (null / `None`).
 unsafe impl Headed for UmbraPluginDescriptor {}
 // SAFETY: as above; integers, `UmbraStr`s and a raw pointer.
 unsafe impl Headed for UmbraCapability {}
@@ -186,9 +189,9 @@ impl Ctx<'_> {
         Ok(())
     }
 
-    /// Checks a header (ADR 0019): the major equals the host's and the minor is not newer (REQ-P-9),
-    /// then the size is within `[minor-0 size, size of the declared minor]` and a multiple of 8.
-    /// Returns the size to read.
+    /// Checks a header (ADR 0019): the major equals the host's and the minor is not newer
+    /// (REQ-P-9), then the size is within `[minor-0 size, size of the declared minor]` and a
+    /// multiple of 8. Returns the size to read.
     fn header(
         &self,
         prefix: &str,
@@ -223,9 +226,9 @@ impl Ctx<'_> {
         if s.len > cap {
             return Err(self.err(field, format!("is {} bytes; max is {cap}", s.len)));
         }
-        // SAFETY: the length is within the cap (far below `isize::MAX`); `bytes` refuses a null pointer
-        // with a non-zero length. The plugin keeps descriptor strings valid and unchanged until
-        // `shutdown` (ADR 0019); they are copied right here and never read again.
+        // SAFETY: the length is within the cap (far below `isize::MAX`); `bytes` refuses a null
+        // pointer with a non-zero length. The plugin keeps descriptor strings valid and unchanged
+        // until `shutdown` (ADR 0019); they are copied right here and never read again.
         let bytes = unsafe { crate::host_api::bytes(s) }
             .ok_or_else(|| self.err(field, format!("is a null pointer with length {}", s.len)))?;
         std::str::from_utf8(bytes)
@@ -271,8 +274,9 @@ pub(crate) unsafe fn read_prefix<T: Headed>(ptr: *const T, size: usize) -> T {
 ///
 /// # Safety
 /// `ptr` is what the plugin's entry returned: if aligned, it points to a descriptor of at least its
-/// `struct_size` bytes, and every pointer in it is valid as documented in `umbra-plugin-api` (trusted
-/// plugin code, NFR-4). The host checks everything it can (null, alignment, sizes, caps, UTF-8).
+/// `struct_size` bytes, and every pointer in it is valid as documented in `umbra-plugin-api`
+/// (trusted plugin code, NFR-4). The host checks everything it can (null, alignment, sizes, caps,
+/// UTF-8).
 pub(crate) unsafe fn copy(
     ptr: *const UmbraPluginDescriptor,
     origin: &str,
@@ -596,9 +600,9 @@ fn check_entries(
     )
 }
 
-/// ADR 0020: `param_types` agree with the schema. A literal type must match its property's `type` when
-/// the schema has the property; `entity` and `position` are binding-only and must not be in the schema
-/// (ADR 0014). Params absent from the schema are binding-only.
+/// ADR 0020: `param_types` agree with the schema. A literal type must match its property's `type`
+/// when the schema has the property; `entity` and `position` are binding-only and must not be in
+/// the schema (ADR 0014). Params absent from the schema are binding-only.
 fn check_schema(
     cx: &Ctx<'_>,
     field: &str,
@@ -734,9 +738,10 @@ mod tests {
     #[test]
     fn binding_only_types_must_not_be_in_the_schema() {
         let c = cx();
-        let schema = ParamSchema::from_json_str(
-            r#"{"type":"object","properties":{"t":{"type":"integer"},"n":{"type":["number","null"]}}}"#,
-        )
+        let schema = ParamSchema::from_json_str(concat!(
+            r#"{"type":"object","properties":{"t":{"type":"integer"},"#,
+            r#""n":{"type":["number","null"]}}}"#
+        ))
         .unwrap_or_else(|e| panic!("{e}"));
         let mut m = Metadata::default();
         m.param_types.insert("n".to_owned(), BbType::Number);

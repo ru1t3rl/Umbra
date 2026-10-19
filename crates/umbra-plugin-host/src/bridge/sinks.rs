@@ -1,11 +1,11 @@
 //! The host's copying sinks for plugin output (ADR 0019 "Memory", ADR 0021 "Host-side guards"): the
 //! intent sink of a `tick_batch` call and the value sink of an `output` call.
 //!
-//! Both are `extern "C"` leaves: they catch panics, resolve their token against the calling thread's
-//! top call record only, copy what the plugin passed and never call into a plugin. No record is
-//! `UMBRA_ERR_STATE` without any lookup; with a record, every misuse records a breach on it (the call
-//! then faults the capability) and returns `UMBRA_ERR_STATE` (a token of another call or sink) or
-//! `UMBRA_ERR_INVALID_ARGUMENT` (a bad item index, intent or value).
+//! Both are `extern "C"` leaves: they catch panics, resolve their token against the calling
+//! thread's top call record only, copy what the plugin passed and never call into a plugin. No
+//! record is `UMBRA_ERR_STATE` without any lookup; with a record, every misuse records a breach on
+//! it (the call then faults the capability) and returns `UMBRA_ERR_STATE` (a token of another call
+//! or sink) or `UMBRA_ERR_INVALID_ARGUMENT` (a bad item index, intent or value).
 
 #![expect(
     unsafe_code,
@@ -41,6 +41,9 @@ pub(crate) fn value_sink(ctx: UmbraToken, minor: u32) -> UmbraValueSink {
         set: Some(value_set),
     }
 }
+
+/// The intent cap per item per call (ASM-119), short for messages.
+const MAX: usize = UMBRA_MAX_INTENTS_PER_ITEM;
 
 /// Refuses with `code` and records `why` as the call's breach.
 fn refuse(r: &mut CallRecord, code: UmbraCode, why: String) -> Result<(), UmbraCode> {
@@ -102,9 +105,7 @@ unsafe extern "C" fn intent_push(
                 return refuse(
                     r,
                     UMBRA_ERR_INVALID_ARGUMENT,
-                    format!(
-                        "intent sink: more than {UMBRA_MAX_INTENTS_PER_ITEM} intents for item {item}"
-                    ),
+                    format!("intent sink: more than {MAX} intents for item {item}"),
                 );
             }
             *pushed += 1;

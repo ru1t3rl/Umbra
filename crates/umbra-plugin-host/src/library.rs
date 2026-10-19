@@ -1,15 +1,17 @@
 //! Opening plugin libraries with explicit load flags (ADR 0023 item 1, R-M4, NFR-3).
 //!
-//! - Unix: `dlopen(path, RTLD_NOW | RTLD_LOCAL)`: every symbol resolved at load (a broken library fails
-//!   here, not in the middle of a tick), and nothing it exports can satisfy another library's symbols.
-//! - Windows: `LoadLibraryExW(path, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)`:
-//!   dependencies are searched in the plugin's own directory and the default safe directories, never in
-//!   the current directory or `PATH`. The host never calls the process-wide `SetDefaultDllDirectories`.
+//! - Unix: `dlopen(path, RTLD_NOW | RTLD_LOCAL)`: every symbol resolved at load (a broken library
+//!   fails here, not in the middle of a tick), and nothing it exports can satisfy another library's
+//!   symbols.
+//! - Windows: `LoadLibraryExW(path, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
+//!   LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)`: dependencies are searched in the plugin's own directory
+//!   and the default safe directories, never in the current directory or `PATH`. The host never
+//!   calls the process-wide `SetDefaultDllDirectories`.
 //!
-//! The path is always absolute, never a bare name (which would trigger the loader's search); a Windows
-//! verbatim prefix (`\\?\C:\..`, from `canonicalize`) is rewritten to the plain form, which these flags
-//! accept. The entry symbol is read as a raw pointer and null-checked before it becomes a function
-//! pointer.
+//! The path is always absolute, never a bare name (which would trigger the loader's search); a
+//! Windows verbatim prefix (`\\?\C:\..`, from `canonicalize`) is rewritten to the plain form, which
+//! these flags accept. The entry symbol is read as a raw pointer and null-checked before it becomes
+//! a function pointer.
 
 #![expect(
     unsafe_code,
@@ -43,7 +45,8 @@ impl Library {
         {
             use libloading::os::unix::{Library, RTLD_LOCAL, RTLD_NOW};
             // SAFETY: opening a library runs its initialisers. Plugins are trusted code (NFR-4,
-            // REQ-P-11, documented in the plugin guide); the path is absolute, so no search takes place.
+            // REQ-P-11, documented in the plugin guide); the path is absolute, so no search takes
+            // place.
             let inner = unsafe { Library::open(Some(path.as_path()), RTLD_NOW | RTLD_LOCAL) };
             inner.map(|inner| Self { inner }).map_err(|e| e.to_string())
         }
@@ -52,8 +55,9 @@ impl Library {
             use libloading::os::windows::{
                 LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, Library,
             };
-            // SAFETY: as for Unix: trusted code (NFR-4); an absolute, non-verbatim path with explicit
-            // search flags, so dependencies resolve from the plugin's directory and the safe defaults.
+            // SAFETY: as for Unix: trusted code (NFR-4); an absolute, non-verbatim path with
+            // explicit search flags, so dependencies resolve from the plugin's directory and the
+            // safe defaults.
             let inner = unsafe {
                 Library::load_with_flags(
                     path.as_path(),
@@ -73,10 +77,10 @@ impl Library {
         if address.is_null() {
             return None;
         }
-        // SAFETY: a non-null code address exported under the name `umbra_plugin_entry`, which REQ-P-1
-        // gives the type `UmbraPluginEntry` (trusted plugin, NFR-4); data and function pointers have the
-        // same size on the supported 64-bit targets (ADR 0019). The caller keeps the library open for as
-        // long as it uses the pointer (`LoadedImage` drops it last).
+        // SAFETY: a non-null code address exported under the name `umbra_plugin_entry`, which
+        // REQ-P-1 gives the type `UmbraPluginEntry` (trusted plugin, NFR-4); data and function
+        // pointers have the same size on the supported 64-bit targets (ADR 0019). The caller keeps
+        // the library open for as long as it uses the pointer (`LoadedImage` drops it last).
         Some(unsafe { std::mem::transmute::<*mut c_void, UmbraPluginEntry>(address) })
     }
 
@@ -92,8 +96,8 @@ fn load_path(path: &Path) -> std::io::Result<PathBuf> {
     Ok(strip_verbatim(&path).unwrap_or(path))
 }
 
-/// `\\?\C:\a` -> `C:\a` and `\\?\UNC\server\share\a` -> `\\server\share\a`; `None` for any other path
-/// (always `None` on Unix, which has no path prefixes).
+/// `\\?\C:\a` -> `C:\a` and `\\?\UNC\server\share\a` -> `\\server\share\a`; `None` for any other
+/// path (always `None` on Unix, which has no path prefixes).
 fn strip_verbatim(path: &Path) -> Option<PathBuf> {
     let mut components = path.components();
     let Some(Component::Prefix(prefix)) = components.next() else {

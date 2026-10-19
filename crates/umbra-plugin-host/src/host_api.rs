@@ -1,16 +1,17 @@
 //! The host side of the C ABI: the per-lifecycle `UmbraHostApi` and the host callbacks (REQ-P-5,
 //! REQ-P-7, ADR 0019, ADR 0021).
 //!
-//! Every callback is `extern "C"`, catches panics (including from an embedder's [`PluginLog`]) and turns
-//! them into an error code, checks its token against the calling thread's top call record
-//! ([`crate::tokens`]), checks null pointers, lengths and UTF-8, and never calls into a plugin (callbacks
-//! are leaves). The `UmbraHostApi` itself is leaked: one per image lifecycle, valid for the process
-//! lifetime (ADR 0019 "Pointer lifetime"); a call through an old lifecycle's `host_ctx` finds no record
-//! and is `UMBRA_ERR_STATE`.
+//! Every callback is `extern "C"`, catches panics (including from an embedder's [`PluginLog`]) and
+//! turns them into an error code, checks its token against the calling thread's top call record
+//! ([`crate::tokens`]), checks null pointers, lengths and UTF-8, and never calls into a plugin
+//! (callbacks are leaves). The `UmbraHostApi` itself is leaked: one per image lifecycle, valid for
+//! the process lifetime (ADR 0019 "Pointer lifetime"); a call through an old lifecycle's `host_ctx`
+//! finds no record and is `UMBRA_ERR_STATE`.
 //!
-//! The host writes the struct in its own layout (ABI minor 0): the plugin's declared minor is known only
-//! from the descriptor the entry returns, after the struct was passed. Hosts of a later minor must write
-//! the minor-0 prefix size here unless the ABI gains a way to declare the minor first (ASM-134).
+//! The host writes the struct in its own layout (ABI minor 0): the plugin's declared minor is known
+//! only from the descriptor the entry returns, after the struct was passed. Hosts of a later minor
+//! must write the minor-0 prefix size here unless the ABI gains a way to declare the minor first
+//! (ASM-134).
 
 #![expect(
     unsafe_code,
@@ -66,8 +67,8 @@ pub(crate) const fn abi_size<T>() -> u32 {
     size
 }
 
-/// Runs `f`, turning a panic into `on_panic`. The panic payload is dropped inside a second guard and
-/// forgotten if its own `Drop` panics, so nothing unwinds out of a callback (ADR 0019, R-M1).
+/// Runs `f`, turning a panic into `on_panic`. The panic payload is dropped inside a second guard
+/// and forgotten if its own `Drop` panics, so nothing unwinds out of a callback (ADR 0019, R-M1).
 pub(crate) fn guarded<R>(on_panic: R, f: impl FnOnce() -> R) -> R {
     match catch_unwind(AssertUnwindSafe(f)) {
         Ok(r) => r,
@@ -85,12 +86,12 @@ pub(crate) fn drop_payload(payload: Box<dyn Any + Send>) {
     }
 }
 
-/// Borrows the bytes of a plugin string: `None` for a null pointer with a non-zero length or a length
-/// above `isize::MAX`.
+/// Borrows the bytes of a plugin string: `None` for a null pointer with a non-zero length or a
+/// length above `isize::MAX`.
 ///
 /// # Safety
-/// A non-null `s.ptr` must point to `s.len` readable bytes that stay unchanged for `'a` (the plugin's
-/// promise for the duration of the call that passed them, ADR 0019).
+/// A non-null `s.ptr` must point to `s.len` readable bytes that stay unchanged for `'a` (the
+/// plugin's promise for the duration of the call that passed them, ADR 0019).
 pub(crate) unsafe fn bytes<'a>(s: UmbraStr) -> Option<&'a [u8]> {
     if s.len == 0 {
         return Some(&[]);
@@ -98,15 +99,16 @@ pub(crate) unsafe fn bytes<'a>(s: UmbraStr) -> Option<&'a [u8]> {
     if s.ptr.is_null() || isize::try_from(s.len).is_err() {
         return None;
     }
-    // SAFETY: non-null, length within `isize::MAX`, and readable for `'a` by the caller's contract; `u8`
-    // has alignment 1.
+    // SAFETY: non-null, length within `isize::MAX`, and readable for `'a` by the caller's contract;
+    // `u8` has alignment 1.
     Some(unsafe { std::slice::from_raw_parts(s.ptr, s.len) })
 }
 
-/// The host's `log` (ADR 0021): routed to the calling host's [`crate::PluginLog`], attributed to the
-/// plugin of the current call. `UMBRA_ERR_STATE` outside a call into this image lifecycle (another
-/// thread, before `init`, after `shutdown`, an old lifecycle's `host_ctx`); `UMBRA_ERR_INVALID_ARGUMENT`
-/// for an unknown level, a null pointer with a length, or invalid UTF-8.
+/// The host's `log` (ADR 0021): routed to the calling host's [`crate::PluginLog`], attributed to
+/// the plugin of the current call. `UMBRA_ERR_STATE` outside a call into this image lifecycle
+/// (another thread, before `init`, after `shutdown`, an old lifecycle's `host_ctx`);
+/// `UMBRA_ERR_INVALID_ARGUMENT` for an unknown level, a null pointer with a length, or invalid
+/// UTF-8.
 unsafe extern "C" fn host_log(
     host_ctx: UmbraToken,
     level: UmbraLogLevel,
@@ -132,13 +134,13 @@ unsafe extern "C" fn host_log(
     })
 }
 
-/// The host's RNG draw (ADR 0021, R-B4): the next `u64` of the entity stream named by `rng`, the RNG
-/// token of a batch item of the current `tick_batch` call. No call record on this thread is
-/// `UMBRA_ERR_STATE` without any lookup (another thread, outside a call). With a record, every misuse
-/// also records a breach that faults the capability: another image's `host_ctx` or a call without RNG
-/// tokens or a token of another call (`UMBRA_ERR_STATE`), a token naming no item or a null or misaligned
-/// `out` (`UMBRA_ERR_INVALID_ARGUMENT`). Another item's token of the same call cannot be detected: it
-/// draws that item's stream (ADR 0021, documented contract breach).
+/// The host's RNG draw (ADR 0021, R-B4): the next `u64` of the entity stream named by `rng`, the
+/// RNG token of a batch item of the current `tick_batch` call. No call record on this thread is
+/// `UMBRA_ERR_STATE` without any lookup (another thread, outside a call). With a record, every
+/// misuse also records a breach that faults the capability: another image's `host_ctx` or a call
+/// without RNG tokens or a token of another call (`UMBRA_ERR_STATE`), a token naming no item or a
+/// null or misaligned `out` (`UMBRA_ERR_INVALID_ARGUMENT`). Another item's token of the same call
+/// cannot be detected: it draws that item's stream (ADR 0021, documented contract breach).
 unsafe extern "C" fn host_rng_next_u64(
     host_ctx: UmbraToken,
     rng: UmbraToken,
@@ -211,17 +213,18 @@ fn draw<T>(
                 "null or misaligned out pointer",
             );
         }
-        // SAFETY: the bridge set this pointer from the item's `&mut RngStream` for the duration of the
-        // current call on this thread and does not touch the items while the plugin runs; the record
-        // (and so the pointer) is popped before the call returns to the kernel.
+        // SAFETY: the bridge set this pointer from the item's `&mut RngStream` for the duration of
+        // the current call on this thread and does not touch the items while the plugin runs; the
+        // record (and so the pointer) is popped before the call returns to the kernel.
         Ok(next(unsafe { &mut *stream }))
     })
     .unwrap_or(Err(UMBRA_ERR_STATE))
 }
 
-/// The host's error sink (ADR 0019 "Results"): the first message of a call wins, later ones and messages
-/// for another call are ignored; the text is cut at `UMBRA_MAX_ERROR_LEN` bytes on a character boundary
-/// and decoded lossily; a null pointer with a length records a placeholder without reading.
+/// The host's error sink (ADR 0019 "Results"): the first message of a call wins, later ones and
+/// messages for another call are ignored; the text is cut at `UMBRA_MAX_ERROR_LEN` bytes on a
+/// character boundary and decoded lossily; a null pointer with a length records a placeholder
+/// without reading.
 unsafe extern "C" fn host_error_set(ctx: UmbraToken, message: UmbraStr) {
     guarded((), || {
         let wanted = tokens::with_top(|r| r.sink(Sink::Error) == ctx && r.error.is_none());
@@ -256,7 +259,8 @@ pub(crate) unsafe fn truncated(s: UmbraStr) -> String {
         );
     };
     let mut end = b.len().min(UMBRA_MAX_ERROR_LEN);
-    // Back off over UTF-8 continuation bytes so a character is never split (`b[end]` exists when cut).
+    // Back off over UTF-8 continuation bytes so a character is never split (`b[end]` exists when
+    // cut).
     while end > 0 && end < b.len() && (b[end] & 0xC0) == 0x80 {
         end -= 1;
     }

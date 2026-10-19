@@ -1,12 +1,12 @@
 //! Plugin package discovery (REQ-P-10, ADR 0022 and its amendment, ASM-121).
 //!
-//! A plugin path is a directory; each immediate subdirectory is one package holding exactly one library
-//! with the platform extension (`.so`, `.dll`, `.dylib`; matched by extension only) and optionally a
-//! `plugin.toml`. Loose files in the plugin path are ignored. Packages come in path order, then by the
-//! UTF-8 bytes of the subdirectory name; a non-UTF-8 name is an error on every OS, so the order never
-//! depends on UTF-16 or locale rules. Symlinked packages and libraries are followed; the library path
-//! of a package is canonical (the identity used for duplicates and the image table). Discovery never
-//! opens a library.
+//! A plugin path is a directory; each immediate subdirectory is one package holding exactly one
+//! library with the platform extension (`.so`, `.dll`, `.dylib`; matched by extension only) and
+//! optionally a `plugin.toml`. Loose files in the plugin path are ignored. Packages come in path
+//! order, then by the UTF-8 bytes of the subdirectory name; a non-UTF-8 name is an error on every
+//! OS, so the order never depends on UTF-16 or locale rules. Symlinked packages and libraries are
+//! followed; the library path of a package is canonical (the identity used for duplicates and the
+//! image table). Discovery never opens a library.
 
 use std::fs;
 use std::path::{Path, PathBuf};

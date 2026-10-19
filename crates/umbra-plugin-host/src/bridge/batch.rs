@@ -2,18 +2,19 @@
 //!
 //! [`PluginCapability`] is created once per (host, loaded capability) and shared by `Arc` by the
 //! registered factory, every behavior it builds and every instance of those: it is the capability's
-//! [`BehaviorBatch`] (one `Arc`, so the kernel groups all of them into one `tick_batch` call per tick)
-//! and the place calls are made and faults recorded.
+//! [`BehaviorBatch`] (one `Arc`, so the kernel groups all of them into one `tick_batch` call per
+//! tick) and the place calls are made and faults recorded.
 //!
 //! A batch call: items whose instance is not one of this capability's (per host) are ticked through
-//! their own `tick` first, outside any plugin call; then, unless the capability is faulted for this host
-//! or the host is a validation host (both: every item Failure, no plugin call), all others go to the
-//! plugin in **one** `tick_batch` call, under the image's blocking call lock, with views written in the
-//! plugin's minor, statuses pre-filled `UNSET`, one RNG token per item and the intents buffered. The
-//! call is clean when the plugin returned `UMBRA_OK`, no callback recorded a breach, every status is
-//! valid and the capability was not faulted during the call (re-entry from the same thread faults it);
-//! only then are statuses and intents committed. Otherwise the whole batch is discarded: every item is
-//! Failure with no intents, and RNG draws made before the fault stay consumed (ADR 0020).
+//! their own `tick` first, outside any plugin call; then, unless the capability is faulted for this
+//! host or the host is a validation host (both: every item Failure, no plugin call), all others go
+//! to the plugin in **one** `tick_batch` call, under the image's blocking call lock, with views
+//! written in the plugin's minor, statuses pre-filled `UNSET`, one RNG token per item and the
+//! intents buffered. The call is clean when the plugin returned `UMBRA_OK`, no callback recorded a
+//! breach, every status is valid and the capability was not faulted during the call (re-entry from
+//! the same thread faults it); only then are statuses and intents committed. Otherwise the whole
+//! batch is discarded: every item is Failure with no intents, and RNG draws made before the fault
+//! stay consumed (ADR 0020).
 
 #![expect(
     unsafe_code,
@@ -119,8 +120,8 @@ impl PluginCapability {
         self.image.call(&self.host.log, f)
     }
 
-    /// The fault message of a call that returned `code` with what it left in its record; `None` when
-    /// the call was clean.
+    /// The fault message of a call that returned `code` with what it left in its record; `None`
+    /// when the call was clean.
     pub(crate) fn problem(code: i32, finished: &Finished) -> Option<String> {
         match (&finished.breach, code) {
             (Some(breach), UMBRA_OK) => Some(breach.clone()),
@@ -213,11 +214,12 @@ impl PluginCapability {
             return Verdict::Fault("no call record on this thread (thread-local storage)".into());
         }
         let tick_batch = self.vtable().tick_batch;
-        // SAFETY: `tick_batch` is a required, non-null entry of this image's validated vtable and the
-        // library is open (this capability holds the image). Every pointer in `batch` points into the
-        // scratch or the items, which are neither moved nor touched until the call returns; the sink and
-        // the error sink live on this frame; the instances and behaviors are live handles of this
-        // capability; calls into the image are serialised by the call lock. A plugin cannot unwind.
+        // SAFETY: `tick_batch` is a required, non-null entry of this image's validated vtable and
+        // the library is open (this capability holds the image). Every pointer in `batch` points
+        // into the scratch or the items, which are neither moved nor touched until the call
+        // returns; the sink and the error sink live on this frame; the instances and behaviors are
+        // live handles of this capability; calls into the image are serialised by the call lock. A
+        // plugin cannot unwind.
         let code = unsafe { tick_batch(&raw const batch, scope.error_sink()) };
         let (state, error, breach) =
             tokens::with_top(|r| (r.batch.take(), r.error.clone(), r.breach.take()))
@@ -273,7 +275,8 @@ impl BehaviorBatch for PluginCapability {
             if self.owns(item) {
                 ours += 1;
             } else {
-                // ADR 0020 / ASM-123: not ours, ticked through its own `tick` (never inside our call).
+                // ADR 0020 / ASM-123: not ours, ticked through its own `tick` (never inside our
+                // call).
                 item.tick_instance();
             }
         }

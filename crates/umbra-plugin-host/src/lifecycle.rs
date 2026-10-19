@@ -1,21 +1,22 @@
-//! Image lifecycles (REQ-P-8, ADR 0021 "Lifecycle mapping", RR-M1, RR-m4) and the per-image call lock
-//! (RR-B1).
+//! Image lifecycles (REQ-P-8, ADR 0021 "Lifecycle mapping", RR-M1, RR-m4) and the per-image call
+//! lock (RR-B1).
 //!
-//! A lifecycle: load (open the library or take a linked-in entry; find or reserve the image-table slot),
-//! describe (the entry is called **exactly twice** with the same `UmbraHostApi*` and must return the same
-//! pointer; the descriptor is copied and validated completely), init (optional, once), calls, shutdown
-//! (optional, once, only if `init` succeeded, after every handle was released), unload (close the library
-//! unless `keep_loaded`). A host that finds the image `Live` reuses it and calls nothing. Every handle,
-//! every registered factory and every host holds the image by `Arc`, so the last release runs
-//! `shutdown` and the close, and every copied function pointer is gone before the library closes.
+//! A lifecycle: load (open the library or take a linked-in entry; find or reserve the image-table
+//! slot), describe (the entry is called **exactly twice** with the same `UmbraHostApi*` and must
+//! return the same pointer; the descriptor is copied and validated completely), init (optional,
+//! once), calls, shutdown (optional, once, only if `init` succeeded, after every handle was
+//! released), unload (close the library unless `keep_loaded`). A host that finds the image `Live`
+//! reuses it and calls nothing. Every handle, every registered factory and every host holds the
+//! image by `Arc`, so the last release runs `shutdown` and the close, and every copied function
+//! pointer is gone before the library closes.
 //!
-//! **Call lock.** Every call into one image (`init`, `shutdown` and every vtable call of the bridge) goes
-//! through [`LoadedImage::call`]: a call into an image that already has a record on the current thread's
-//! call stack is re-entry and fails without touching the lock; otherwise the image's call lock is taken
-//! **blocking** (contention from other threads waits and never faults, REQ-K-4), a call record is pushed
-//! for the duration of the call ([`crate::tokens`]) and popped after it. A poisoned lock is reported.
-//! The entry calls are not "calls" in this sense: they run before `init`, so the plugin's host API is not
-//! usable yet (no record, `UMBRA_ERR_STATE`).
+//! **Call lock.** Every call into one image (`init`, `shutdown` and every vtable call of the
+//! bridge) goes through [`LoadedImage::call`]: a call into an image that already has a record on
+//! the current thread's call stack is re-entry and fails without touching the lock; otherwise the
+//! image's call lock is taken **blocking** (contention from other threads waits and never faults,
+//! REQ-K-4), a call record is pushed for the duration of the call ([`crate::tokens`]) and popped
+//! after it. A poisoned lock is reported. The entry calls are not "calls" in this sense: they run
+//! before `init`, so the plugin's host API is not usable yet (no record, `UMBRA_ERR_STATE`).
 
 #![expect(
     unsafe_code,
@@ -49,8 +50,8 @@ pub(crate) struct LoadRequest<'a> {
     pub(crate) log: &'a Arc<dyn PluginLog>,
     /// The loading host's `keep_loaded` (sticky per image, RR-M3).
     pub(crate) keep_loaded: bool,
-    /// Per-host checks run on the copied descriptor: before `init` for a new lifecycle, after the lookup
-    /// for a reused image (manifest match, plugin id unique in the host).
+    /// Per-host checks run on the copied descriptor: before `init` for a new lifecycle, after the
+    /// lookup for a reused image (manifest match, plugin id unique in the host).
     pub(crate) precheck: &'a dyn Fn(&Descriptor) -> Result<(), PluginError>,
 }
 
@@ -131,7 +132,8 @@ impl LoadedImage {
         self.keep_loaded.store(true, Ordering::SeqCst);
     }
 
-    /// Records the log of a host that releases the image; the last one receives `shutdown` messages.
+    /// Records the log of a host that releases the image; the last one receives `shutdown`
+    /// messages.
     pub(crate) fn released_by(&self, log: &Arc<dyn PluginLog>) {
         *self
             .release_log
@@ -189,7 +191,12 @@ impl LoadedImage {
                 Sink::Error,
             )),
         };
+        // The scratch holds call-scoped raw pointers: it is empty when the lock is taken and
+        // emptied again on every return from `f`, whatever path `f` took (the `Send` claim of
+        // `Scratch`). A panic in `f` poisons the lock, and the next user clears it first.
+        state.scratch.clear();
         let result = f(&scope, &mut state.scratch);
+        state.scratch.clear();
         let finished = record.finish();
         drop(state);
         Ok((result, finished))
@@ -203,9 +210,10 @@ impl LoadedImage {
         };
         let api: *const UmbraHostApi = self.api;
         let outcome = self.call(log, |scope, _| {
-            // SAFETY: `init` is a non-null function pointer from the validated descriptor of this image,
-            // whose library is open; `api` is the process-lifetime host API of this lifecycle and the
-            // error sink lives for the call. A plugin cannot unwind out of an `extern "C"` function.
+            // SAFETY: `init` is a non-null function pointer from the validated descriptor of this
+            // image, whose library is open; `api` is the process-lifetime host API of this
+            // lifecycle and the error sink lives for the call. A plugin cannot unwind out of an
+            // `extern "C"` function.
             unsafe { init(api, scope.error_sink()) }
         });
         let fail = |message: String| PluginError::Init {
@@ -227,8 +235,8 @@ impl LoadedImage {
 }
 
 impl Drop for LoadedImage {
-    /// The end of a lifecycle: `Closing`, `shutdown` (only after a successful `init`), close (unless
-    /// `keep_loaded`), then the slot is removed and waiting loads retry.
+    /// The end of a lifecycle: `Closing`, `shutdown` (only after a successful `init`), close
+    /// (unless `keep_loaded`), then the slot is removed and waiting loads retry.
     fn drop(&mut self) {
         image::closing(self.slot);
         let log = Arc::clone(
@@ -241,8 +249,8 @@ impl Drop for LoadedImage {
             && let Some(shutdown) = self.descriptor.shutdown
         {
             // SAFETY: `shutdown` is a non-null function pointer from the validated descriptor; the
-            // library is still open (closed below). Every handle of this image is gone (they hold the
-            // image's `Arc`), so this is the last call (ADR 0021).
+            // library is still open (closed below). Every handle of this image is gone (they hold
+            // the image's `Arc`), so this is the last call (ADR 0021).
             let outcome = self.call_inner(&log, true, |_, _| unsafe { shutdown() });
             if let Err(e) = outcome {
                 log.log(
@@ -277,8 +285,8 @@ pub(crate) fn describe(code: UmbraCode) -> String {
     format!("returned {name} ({code})")
 }
 
-/// Loads the library at the canonical `path` (ADR 0021, ADR 0022): reuse by path, open, reuse by entry
-/// address, or a new lifecycle.
+/// Loads the library at the canonical `path` (ADR 0021, ADR 0022): reuse by path, open, reuse by
+/// entry address, or a new lifecycle.
 pub(crate) fn load_library(
     path: &Path,
     request: &LoadRequest<'_>,
@@ -312,7 +320,8 @@ pub(crate) fn load_library(
     }
 }
 
-/// Loads an entry function linked into the process (`PluginHost::load_static`): keyed by its address.
+/// Loads an entry function linked into the process (`PluginHost::load_static`): keyed by its
+/// address.
 pub(crate) fn load_static(
     entry: UmbraPluginEntry,
     request: &LoadRequest<'_>,
@@ -342,14 +351,15 @@ fn reuse(
     Ok(image)
 }
 
-/// The pieces of a lifecycle before its image exists. Field order is drop order: on a failed load the
-/// library closes first, then the slot is freed and waiting loads retry.
+/// The pieces of a lifecycle before its image exists. Field order is drop order: on a failed load
+/// the library closes first, then the slot is freed and waiting loads retry.
 struct Pending {
     library: Option<Library>,
     reservation: Reservation,
 }
 
-/// Starts a new lifecycle: host API, entry twice, copy and validate, per-host checks, `init`, publish.
+/// Starts a new lifecycle: host API, entry twice, copy and validate, per-host checks, `init`,
+/// publish.
 fn start(
     pending: Pending,
     entry: UmbraPluginEntry,
@@ -358,9 +368,9 @@ fn start(
     let origin = request.origin;
     let host_ctx = tokens::make(pending.reservation.generation(), tokens::HOST_CTX_INDEX);
     let api = host_api::leak(host_ctx);
-    // SAFETY: `entry` is the plugin's `umbra_plugin_entry` (a linked-in function, or the non-null symbol
-    // of the library held open in `pending`); `api` is valid for the process lifetime. A plugin cannot
-    // unwind out of an `extern "C"` function (the SDK returns null on a panic).
+    // SAFETY: `entry` is the plugin's `umbra_plugin_entry` (a linked-in function, or the non-null
+    // symbol of the library held open in `pending`); `api` is valid for the process lifetime. A
+    // plugin cannot unwind out of an `extern "C"` function (the SDK returns null on a panic).
     let first = unsafe { entry(api) };
     if first.is_null() {
         return Err(PluginError::NullDescriptor {
@@ -374,8 +384,9 @@ fn start(
             origin: origin.to_owned(),
         });
     }
-    // SAFETY: `first` is the non-null pointer the entry returned; the plugin keeps the descriptor valid
-    // while its library is open (held in `pending`). `copy` checks alignment, sizes, caps and UTF-8.
+    // SAFETY: `first` is the non-null pointer the entry returned; the plugin keeps the descriptor
+    // valid while its library is open (held in `pending`). `copy` checks alignment, sizes, caps and
+    // UTF-8.
     let descriptor = unsafe { descriptor::copy(first, origin) }?;
     (request.precheck)(&descriptor)?;
     let Pending {

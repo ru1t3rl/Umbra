@@ -1,18 +1,19 @@
-//! The registry factory of a plugin behavior capability, and the host's build scope (ADR 0021 RR-m2,
-//! ASM-118, ASM-138).
+//! The registry factory of a plugin behavior capability, and the host's build scope (ADR 0021
+//! RR-m2, ASM-118, ASM-138).
 //!
-//! `build` is the plugin's `configure` (params as JSON text). A non-OK result (a panic included) or an
-//! OK with a null handle is a [`BuildError`] with the plugin's message, not a fault (R-M9); on a faulted
-//! capability `build` fails without a call.
+//! `build` is the plugin's `configure` (params as JSON text). A non-OK result (a panic included) or
+//! an OK with a null handle is a [`BuildError`] with the plugin's message, not a fault (R-M9); on a
+//! faulted capability `build` fails without a call.
 //!
 //! **Build scope (RR-m2).** A run-mode host's factories build only while that host's build scope is
-//! open on the calling thread ([`crate::PluginHost::build_scope`]); the engine the host is attached to
-//! opens it around building and spawning (`instantiate_with_plugins`, WI-12). Outside it, `build` fails
-//! with "plugin host not attached to this engine", so a cloned registry cannot build plugin behaviors
-//! for an engine that does not own the host's fault state. A validation-mode host's factories build
-//! anywhere (dry runs); its instances refuse to tick. The open scopes are a thread-local stack of host
-//! identities (the address of the host's shared state, alive while any of its factories is), pushed by
-//! the guard and popped when it drops: call-scoped, like the call records, not persistent global state.
+//! open on the calling thread ([`crate::PluginHost::build_scope`]); the engine the host is attached
+//! to opens it around building and spawning (`instantiate_with_plugins`, WI-12). Outside it,
+//! `build` fails with "plugin host not attached to this engine", so a cloned registry cannot build
+//! plugin behaviors for an engine that does not own the host's fault state. A validation-mode
+//! host's factories build anywhere (dry runs); its instances refuse to tick. The open scopes are a
+//! thread-local stack of host ids (process-unique, never reused, ASM-138), pushed by the guard and
+//! popped when it drops: call-scoped, like the call records, not persistent global state. A guard
+//! leaked with `mem::forget` leaves its id on the stack, but no other host ever has that id.
 
 #![expect(
     unsafe_code,
@@ -34,19 +35,20 @@ use crate::fault::HostState;
 
 thread_local! {
     /// Hosts whose build scope is open on this thread, innermost last.
-    static SCOPES: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
+    static SCOPES: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
 }
 
-/// The identity of a host in the scope stack.
-fn identity(host: &Arc<HostState>) -> usize {
-    Arc::as_ptr(host) as usize
+/// The identity of a host in the scope stack: its process-unique id (never reused, unlike an
+/// address).
+fn identity(host: &HostState) -> u64 {
+    host.id()
 }
 
 /// While alive, the factories of the host that opened it build on this thread (RR-m2). Not `Send`:
 /// dropped on the thread that opened it.
 #[must_use = "the scope closes when the guard drops"]
 pub struct BuildScope<'host> {
-    host: usize,
+    host: u64,
     _host: PhantomData<&'host HostState>,
     _thread_bound: PhantomData<*const ()>,
 }
@@ -126,8 +128,8 @@ impl Factory<dyn Behavior> for PluginFactory {
         let params = serde_json::to_string(params).map_err(|e| fail(e.to_string()))?;
         let configure = cap.vtable().configure;
         let mut out: *mut UmbraBehavior = std::ptr::null_mut();
-        // SAFETY: `configure` is a required entry of the open image's vtable; `params`, `out` and the
-        // error sink outlive the call; the call lock serialises calls.
+        // SAFETY: `configure` is a required entry of the open image's vtable; `params`, `out` and
+        // the error sink outlive the call; the call lock serialises calls.
         let outcome = cap.call(|scope, _| unsafe {
             configure(marshal::text(&params), &raw mut out, scope.error_sink())
         });
@@ -144,6 +146,39 @@ impl Factory<dyn Behavior> for PluginFactory {
                 }
                 Ok(Arc::new(PluginBehavior::new(Arc::clone(cap), out, id)))
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::log::TracingLog;
+
+    #[test]
+    fn a_scope_is_open_only_while_its_guard_lives() {
+        let host = Arc::new(HostState::new(Arc::new(TracingLog), HostMode::Run));
+        assert!(!in_scope(&host));
+        {
+            let _scope = BuildScope::open(&host);
+            assert!(in_scope(&host));
+        }
+        assert!(!in_scope(&host));
+    }
+
+    #[test]
+    fn a_forgotten_scope_never_opens_a_later_host() {
+        let first = Arc::new(HostState::new(Arc::new(TracingLog), HostMode::Run));
+        std::mem::forget(BuildScope::open(&first));
+        assert!(
+            in_scope(&first),
+            "the leaked guard keeps the first host's scope open"
+        );
+        drop(first);
+        for _ in 0..64 {
+            // A later host may well get the freed allocation; its id is new.
+            let later = Arc::new(HostState::new(Arc::new(TracingLog), HostMode::Run));
+            assert!(!in_scope(&later));
         }
     }
 }

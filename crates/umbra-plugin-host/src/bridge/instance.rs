@@ -1,12 +1,12 @@
-//! A plugin behavior instance as a core [`BehaviorInstance`] (REQ-B-5, REQ-B-10, ADR 0013 amendment,
-//! ADR 0020, ASM-096).
+//! A plugin behavior instance as a core [`BehaviorInstance`] (REQ-B-5, REQ-B-10, ADR 0013
+//! amendment, ADR 0020, ASM-096).
 //!
 //! `tick` is a batch of one through the capability's batch (the path of a plugin behavior used as a
-//! `subgraph` child); `halt` and `halt_running` (the vtable entry when present, else `halt`, the full
-//! reset) and `set_input` / `output` (through `UmbraValue`) are single calls whose non-OK result, panic
-//! or contract breach faults the capability. On a faulted capability they do nothing (`output` is
-//! `None`). The instance holds its behavior, so instances are destroyed first; `destroy_instance` runs
-//! even when the capability is faulted.
+//! `subgraph` child); `halt` and `halt_running` (the vtable entry when present, else `halt`, the
+//! full reset) and `set_input` / `output` (through `UmbraValue`) are single calls whose non-OK
+//! result, panic or contract breach faults the capability. On a faulted capability they do nothing
+//! (`output` is `None`). The instance holds its behavior, so instances are destroyed first;
+//! `destroy_instance` runs even when the capability is faulted.
 
 #![expect(
     unsafe_code,
@@ -37,10 +37,11 @@ pub(crate) struct PluginInstance {
     single: Vec<Intent>,
 }
 
-// SAFETY: the instance handle is an opaque plugin pointer that the host never dereferences; it is only
-// passed to calls into the plugin, which take the image's blocking call lock, so the plugin never sees
-// two calls at once even when instances move between threads (ADR 0019 "Threads and re-entry": calls
-// may come from different threads over time, plugins must not rely on thread-local state).
+// SAFETY: the instance handle is an opaque plugin pointer that the host never dereferences; it is
+// only passed to calls into the plugin, which take the image's blocking call lock, so the plugin
+// never sees two calls at once even when instances move between threads (ADR 0019 "Threads and
+// re-entry": calls may come from different threads over time, plugins must not rely on thread-local
+// state).
 unsafe impl Send for PluginInstance {}
 
 impl PluginInstance {
@@ -140,8 +141,8 @@ impl BehaviorInstance for PluginInstance {
                 return (UMBRA_OK, None, false);
             }
             let sink = sinks::value_sink(scope.sink(Sink::Value), minor);
-            // SAFETY: `entry` is the vtable's `output` of this capability's open image; `handle` is a
-            // live instance; `port` and `sink` outlive the call; the call lock serialises calls.
+            // SAFETY: `entry` is the vtable's `output` of this capability's open image; `handle` is
+            // a live instance; `port` and `sink` outlive the call; the call lock serialises calls.
             let code = unsafe { entry(handle, marshal::text(port), &raw const sink) };
             let output = tokens::with_top(|r| r.output.take()).flatten();
             let reported = output.as_ref().is_some_and(|o| o.calls > 0);
@@ -199,9 +200,9 @@ impl BehaviorInstance for PluginInstance {
         let handle = self.handle;
         let outcome = cap.call(|scope, _| {
             let ptr = raw.as_ref().map_or(std::ptr::null(), std::ptr::from_ref);
-            // SAFETY: `entry` is the vtable's `set_input` of this capability's open image; `handle` is a
-            // live instance; `param`, `raw` (and the string it borrows from `value`) and the error sink
-            // outlive the call; the call lock serialises calls.
+            // SAFETY: `entry` is the vtable's `set_input` of this capability's open image; `handle`
+            // is a live instance; `param`, `raw` (and the string it borrows from `value`) and the
+            // error sink outlive the call; the call lock serialises calls.
             unsafe { entry(handle, marshal::text(param), ptr, scope.error_sink()) }
         });
         match outcome {
@@ -221,14 +222,14 @@ impl BehaviorInstance for PluginInstance {
 }
 
 impl Drop for PluginInstance {
-    /// `destroy_instance`, also for a faulted capability (ADR 0021); a re-entrant drop leaks the handle
-    /// (logged) rather than deadlock.
+    /// `destroy_instance`, also for a faulted capability (ADR 0021); a re-entrant drop leaks the
+    /// handle (logged) rather than deadlock.
     fn drop(&mut self) {
         let cap = self.capability();
         let destroy = cap.vtable().destroy_instance;
         let handle = self.handle;
-        // SAFETY: `destroy_instance` is a required vtable entry of the open image; `handle` is a live
-        // instance destroyed exactly once, here; the call lock serialises calls.
+        // SAFETY: `destroy_instance` is a required vtable entry of the open image; `handle` is a
+        // live instance destroyed exactly once, here; the call lock serialises calls.
         if let Err(e) = cap.call(|_, _| unsafe { destroy(handle) }) {
             cap.host().log.log(
                 cap.plugin(),

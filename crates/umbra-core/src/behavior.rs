@@ -6,10 +6,11 @@
 //! [`BehaviorContext`] (REQ-K-4).
 //!
 //! Batches (REQ-B-4, ADR 0020): [`Behavior::batch`] lets behaviors share a [`BehaviorBatch`] that
-//! ticks many instances in one call. A batch must match per-instance ticking item by item, with
-//! one exception: it is all-or-nothing. If a batch faults, every item fails and none of its
-//! intents are kept (whole-batch discard); RNG draws made before the fault stay consumed. The kernel passes one `ctx.now` per call, may pass an empty slice, and
-//! groups behaviors by `Arc::ptr_eq` on the `Arc` returned from [`Behavior::batch`].
+//! ticks many instances in one call. A batch must match per-instance ticking item by item, with one
+//! exception: it is all-or-nothing. If a batch faults, every item fails and none of its intents are
+//! kept (whole-batch discard); RNG draws made before the fault stay consumed. The kernel passes one
+//! `ctx.now` per call, may pass an empty slice, and groups behaviors by `Arc::ptr_eq` on the `Arc`
+//! returned from [`Behavior::batch`].
 
 use std::collections::BTreeMap;
 use std::fmt;

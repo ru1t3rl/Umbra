@@ -32,7 +32,7 @@ required), the descriptor copied and validated completely (sizes, majors, bounds
 semver, kinds, metadata against the schema), per-host checks (manifest match, plugin id unique), `init`.
 
 - **Image table** (`image.rs`): the one piece of persistent process-global mutable state in the engine
-  (ASM-122). One `LoadedImage` per image lifecycle, shared by `Arc` across hosts, registered factories
+  (ASM-122), apart from the host-id counter that names hosts for the build scope (ASM-138). One `LoadedImage` per image lifecycle, shared by `Arc` across hosts, registered factories
   and handles; slot states `Loading`, `Live`, `Closing`, and a load that meets `Loading` or `Closing`
   waits on the table's condvar, then reuses a live image (no entry call) or starts a new lifecycle. The
   last release runs `shutdown` (only after a successful `init`) and closes the library unless

@@ -1,10 +1,11 @@
-//! The process-wide image table (R-B5, ADR 0021 "One image per process" and "Image lifecycle states",
-//! RR-M1, ASM-122).
+//! The process-wide image table (R-B5, ADR 0021 "One image per process" and "Image lifecycle
+//! states", RR-M1, ASM-122).
 //!
-//! The operating system's loader shares one image of a library per process, so the host mirrors it: one
-//! [`LoadedImage`] per image lifecycle, shared by `Arc` across hosts. The table is the **only persistent
-//! process-global mutable state** of the host (an accepted exception to section 16, ASM-122); it never
-//! affects simulation results (fault state is per host, ASM-118).
+//! The operating system's loader shares one image of a library per process, so the host mirrors it:
+//! one [`LoadedImage`] per image lifecycle, shared by `Arc` across hosts. The table is the
+//! **persistent process-global mutable state** of the host (an accepted exception to section 16,
+//! ASM-122; the only other process-global item is the host-id counter that names hosts for the
+//! build scope, ASM-138); it never affects simulation results (fault state is per host, ASM-118).
 //!
 //! Each slot has up to two keys, the canonical library path (before opening) and the address of
 //! `umbra_plugin_entry` (after opening, **before** calling it), a state and a `Weak` to the image:
@@ -13,12 +14,12 @@
 //! - `Live`: published; a load reuses it (no entry call) while the `Weak` upgrades;
 //! - `Closing`: the last `Arc` is gone and `shutdown` / the close are running.
 //!
-//! A load that meets `Loading`, `Closing` or a `Live` slot whose image is already dropping waits on the
-//! table's condvar and retries; when the slot is gone it starts a new lifecycle. Slots are removed when
-//! their lifecycle ends (no dead entry outlives its image's `Drop`).
+//! A load that meets `Loading`, `Closing` or a `Live` slot whose image is already dropping waits on
+//! the table's condvar and retries; when the slot is gone it starts a new lifecycle. Slots are
+//! removed when their lifecycle ends (no dead entry outlives its image's `Drop`).
 //!
-//! Lock order (ADR 0019, RR-M2): (1) this table, (2) the per-image call lock, (3) per-host fault state,
-//! (4) `PluginLog`. The table lock is never held while plugin code runs, and never while an
+//! Lock order (ADR 0019, RR-M2): (1) this table, (2) the per-image call lock, (3) per-host fault
+//! state, (4) `PluginLog`. The table lock is never held while plugin code runs, and never while an
 //! `Arc<LoadedImage>` may drop: it only upgrades `Weak`s and hands the `Arc` out.
 
 use std::path::{Path, PathBuf};
@@ -59,8 +60,8 @@ static TABLE: Mutex<Table> = Mutex::new(Table {
 /// Signalled whenever a slot is published or removed.
 static CHANGED: Condvar = Condvar::new();
 
-/// Locks the table. Nothing under the lock panics or runs foreign code, so a poisoned lock (impossible
-/// in practice) still holds a consistent table and is recovered.
+/// Locks the table. Nothing under the lock panics or runs foreign code, so a poisoned lock
+/// (impossible in practice) still holds a consistent table and is recovered.
 fn lock() -> MutexGuard<'static, Table> {
     TABLE.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -142,8 +143,8 @@ enum Key<'a> {
     Entry(usize),
 }
 
-/// Looks the canonical library `path` up: a live image to reuse, or a new `Loading` slot keyed by the
-/// path. Waits while the slot is `Loading` or `Closing`.
+/// Looks the canonical library `path` up: a live image to reuse, or a new `Loading` slot keyed by
+/// the path. Waits while the slot is `Loading` or `Closing`.
 pub(crate) fn claim_path(path: &Path) -> Claim {
     let mut table = lock();
     loop {
@@ -163,9 +164,10 @@ pub(crate) fn claim_path(path: &Path) -> Claim {
 }
 
 /// Looks the entry address up, after opening and before calling the entry. With a reservation from
-/// [`claim_path`], a live image found under the address replaces it (the reservation's slot is removed);
-/// otherwise the address becomes a key of the reserved slot. Without one (`load_static`), a new `Loading`
-/// slot keyed by the address is reserved. Waits while a slot with the address is `Loading` or `Closing`.
+/// [`claim_path`], a live image found under the address replaces it (the reservation's slot is
+/// removed); otherwise the address becomes a key of the reserved slot. Without one (`load_static`),
+/// a new `Loading` slot keyed by the address is reserved. Waits while a slot with the address is
+/// `Loading` or `Closing`.
 pub(crate) fn claim_entry(reservation: Option<Reservation>, entry: usize) -> Claim {
     let own = reservation.as_ref().map_or(0, |r| r.id);
     let mut table = lock();

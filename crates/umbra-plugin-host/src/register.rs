@@ -1,12 +1,12 @@
-//! Registration of plugin capabilities in the one registry (D-8, REQ-P-3, REQ-P-4, REQ-B-13, REQ-T-1,
-//! ADR 0020 "Metadata", ASM-091 d, ASM-099 e).
+//! Registration of plugin capabilities in the one registry (D-8, REQ-P-3, REQ-P-4, REQ-B-13,
+//! REQ-T-1, ADR 0020 "Metadata", ASM-091 d, ASM-099 e).
 //!
-//! Every `behavior` capability becomes a registered behavior with `Provenance::Plugin` (read-only in the
-//! catalog): description from the schema's top-level `description`, version from the capability (else
-//! the plugin), `param_types`, `outputs` and `result` from the metadata; no subgraphs (v0 metadata has
-//! none, so a plugin behavior counts one level of subgraph depth). Registration is all-or-nothing: the
-//! capabilities of every loaded plugin go into a copy of the registry, which replaces the original only
-//! when all of them were accepted.
+//! Every `behavior` capability becomes a registered behavior with `Provenance::Plugin` (read-only
+//! in the catalog): description from the schema's top-level `description`, version from the
+//! capability (else the plugin), `param_types`, `outputs` and `result` from the metadata; no
+//! subgraphs (v0 metadata has none, so a plugin behavior counts one level of subgraph depth).
+//! Registration is all-or-nothing: the capabilities of every loaded plugin go into a copy of the
+//! registry, which replaces the original only when all of them were accepted.
 
 use std::sync::Arc;
 

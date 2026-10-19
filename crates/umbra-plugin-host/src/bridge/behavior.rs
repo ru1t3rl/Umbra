@@ -1,11 +1,11 @@
 //! A configured plugin behavior as a core [`Behavior`] (REQ-B-4, REQ-B-5, ADR 0020).
 //!
-//! `instantiate` calls the vtable's `instantiate`; a non-OK result (a panic included) or an OK with a
-//! null handle is an [`InstantiateError`] with the plugin's message, not a fault (R-M9). On a faulted
-//! capability `instantiate` fails without a call. `batch()` returns the capability's one shared batch,
-//! so the kernel ticks all instances of the capability in one call per tick. The configured handle
-//! lives in a [`BehaviorHandle`] shared with the instances, so `destroy_behavior` runs after the last
-//! instance's `destroy_instance`, also for a faulted capability.
+//! `instantiate` calls the vtable's `instantiate`; a non-OK result (a panic included) or an OK with
+//! a null handle is an [`InstantiateError`] with the plugin's message, not a fault (R-M9). On a
+//! faulted capability `instantiate` fails without a call. `batch()` returns the capability's one
+//! shared batch, so the kernel ticks all instances of the capability in one call per tick. The
+//! configured handle lives in a [`BehaviorHandle`] shared with the instances, so `destroy_behavior`
+//! runs after the last instance's `destroy_instance`, also for a faulted capability.
 
 #![expect(
     unsafe_code,
@@ -31,8 +31,9 @@ pub(crate) struct BehaviorHandle {
 }
 
 // SAFETY: the handle is an opaque plugin pointer the host never dereferences; it is only passed to
-// calls into the plugin, which are serialised by the image's blocking call lock (ADR 0019 "Threads and
-// re-entry"), so sharing and sending it between threads never lets the plugin see concurrent calls.
+// calls into the plugin, which are serialised by the image's blocking call lock (ADR 0019 "Threads
+// and re-entry"), so sharing and sending it between threads never lets the plugin see concurrent
+// calls.
 unsafe impl Send for BehaviorHandle {}
 // SAFETY: as above; `&BehaviorHandle` only reads the pointer value.
 unsafe impl Sync for BehaviorHandle {}
@@ -54,9 +55,9 @@ impl Drop for BehaviorHandle {
         let cap = &self.capability;
         let destroy = cap.vtable().destroy_behavior;
         let handle = self.handle;
-        // SAFETY: `destroy_behavior` is a required entry of the open image's vtable; `handle` is a live
-        // configured behavior, destroyed exactly once, here, after every instance (they hold this
-        // handle); the call lock serialises calls.
+        // SAFETY: `destroy_behavior` is a required entry of the open image's vtable; `handle` is a
+        // live configured behavior, destroyed exactly once, here, after every instance (they hold
+        // this handle); the call lock serialises calls.
         if let Err(e) = cap.call(|_, _| unsafe { destroy(handle) }) {
             cap.host().log.log(
                 cap.plugin(),

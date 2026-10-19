@@ -1,7 +1,7 @@
 //! Plugin log routing (REQ-P-5, ADR 0021): the `log` host callback hands each message to the
 //! [`PluginLog`] of the host that made the current call, attributed to the plugin. The default sink
-//! forwards to `tracing` (target `umbra_plugin`, field `plugin`). `PluginLog` is a leaf in the lock order
-//! (ADR 0019): it must never call into the host or a plugin.
+//! forwards to `tracing` (target `umbra_plugin`, field `plugin`). `PluginLog` is a leaf in the lock
+//! order (ADR 0019): it must never call into the host or a plugin.
 
 use umbra_core::PluginId;
 use umbra_plugin_api::{
@@ -26,7 +26,8 @@ pub enum LogLevel {
 }
 
 impl LogLevel {
-    /// The level of an ABI `UMBRA_LOG_*` value; `None` for an unknown value (never a cast, ADR 0019).
+    /// The level of an ABI `UMBRA_LOG_*` value; `None` for an unknown value (never a cast, ADR
+    /// 0019).
     pub(crate) fn from_abi(level: UmbraLogLevel) -> Option<Self> {
         Some(match level {
             UMBRA_LOG_ERROR => Self::Error,
@@ -41,9 +42,9 @@ impl LogLevel {
 
 /// Where plugin log messages go; the default forwards to `tracing`.
 ///
-/// Implementations are leaves (ADR 0019 lock order, step 4): they may be called while a plugin call is in
-/// progress on the calling thread, so they must never call into the host or a plugin. A panic is caught
-/// at the boundary and reported to the plugin as an error code.
+/// Implementations are leaves (ADR 0019 lock order, step 4): they may be called while a plugin call
+/// is in progress on the calling thread, so they must never call into the host or a plugin. A panic
+/// is caught at the boundary and reported to the plugin as an error code.
 pub trait PluginLog: Send + Sync {
     /// Called with the plugin the message is attributed to.
     fn log(&self, plugin: &PluginId, level: LogLevel, message: &str);

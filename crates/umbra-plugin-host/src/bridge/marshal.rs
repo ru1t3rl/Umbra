@@ -1,20 +1,21 @@
 //! Marshalling between the core types and the C ABI (ADR 0019 "Values", "Bounds", R-B3; ADR 0020
 //! "Marshalling"; ADR 0016 intent table).
 //!
-//! **Host-written structs** (batch, items, entity views, contacts, values, sinks) are written in the
-//! layout of the plugin's declared minor (R-B3). ABI v0 has one minor, so that is the host's own
-//! layout; [`written_size`] is the one place a later minor adds its size table.
+//! **Host-written structs** (batch, items, entity views, contacts, values, sinks) are written in
+//! the layout of the plugin's declared minor (R-B3). ABI v0 has one minor, so that is the host's
+//! own layout; [`written_size`] is the one place a later minor adds its size table.
 //!
-//! **Plugin-written structs** (intents, output values) are read like the descriptor: pointer non-null
-//! and 8-byte aligned, the major equal and the minor not newer than the host's, `struct_size` within
-//! `[minor-0 size, size of the declared minor]` and a multiple of 8, only `struct_size` bytes read,
-//! every value checked (finite numbers, non-zero entities, UTF-8, ADR 0002 id grammar, JSON payloads).
+//! **Plugin-written structs** (intents, output values) are read like the descriptor: pointer
+//! non-null and 8-byte aligned, the major equal and the minor not newer than the host's,
+//! `struct_size` within `[minor-0 size, size of the declared minor]` and a multiple of 8, only
+//! `struct_size` bytes read, every value checked (finite numbers, non-zero entities, UTF-8, ADR
+//! 0002 id grammar, JSON payloads).
 //!
 //! **Scratch.** The buffers of a `tick_batch` call live in the image's call state (guarded by the
-//! per-image call lock) and are reused: after warm-up a batch call allocates nothing. Views point into
-//! kernel data (forces, contacts' forces) and into the scratch's own route and contact arrays only for
-//! the duration of the call; every buffer holding pointers is cleared after the call. Routes are copied
-//! (core `Ecef` is never cast).
+//! per-image call lock) and are reused: after warm-up a batch call allocates nothing. Views point
+//! into kernel data (forces, contacts' forces) and into the scratch's own route and contact arrays
+//! only for the duration of the call; every buffer holding pointers is cleared after the call.
+//! Routes are copied (core `Ecef` is never cast).
 
 #![expect(
     unsafe_code,
@@ -48,8 +49,8 @@ const HOST_MINORS: usize = UMBRA_ABI_VERSION_MINOR as usize + 1;
 const INTENT_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraIntent>()];
 const VALUE_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraValue>()];
 
-/// `struct_size` of a host-written struct `T` for a plugin of minor `minor`: ABI v0 has one minor, so it
-/// is the host's own size (R-B3; a later minor adds a size table here).
+/// `struct_size` of a host-written struct `T` for a plugin of minor `minor`: ABI v0 has one minor,
+/// so it is the host's own size (R-B3; a later minor adds a size table here).
 pub(crate) const fn written_size<T>(_minor: u32) -> u32 {
     abi_size::<T>()
 }
@@ -63,7 +64,8 @@ pub(crate) struct Span {
     pub(crate) route_len: usize,
 }
 
-/// Reusable buffers of the behavior bridge, one set per image (calls into one image are serialised).
+/// Reusable buffers of the behavior bridge, one set per image (calls into one image are
+/// serialised).
 #[derive(Default)]
 pub(crate) struct Scratch {
     /// Slice indices of the items this call ticks.
@@ -76,15 +78,17 @@ pub(crate) struct Scratch {
     pub(crate) views: Vec<UmbraEntityView>,
     pub(crate) items: Vec<UmbraBehaviorItem>,
     pub(crate) statuses: Vec<UmbraStatus>,
-    /// RNG pointers, pushed intents and per-item intent counts; moved into the call record during the
-    /// call and back afterwards.
+    /// RNG pointers, pushed intents and per-item intent counts; moved into the call record during
+    /// the call and back afterwards.
     pub(crate) batch: BatchCall,
 }
 
-// SAFETY: the raw pointers in the scratch (handles, views, contacts, items, RNG streams) are written,
-// used and cleared within one plugin call made under the image's call lock, on the thread making the
-// call; between calls every pointer-holding buffer is empty (only capacity remains), so moving the
-// scratch to another thread (with the lock) moves no live pointer.
+// SAFETY: the raw pointers in the scratch (handles, views, contacts, items, RNG streams) are
+// written, used and cleared within one plugin call made under the image's call lock, on the thread
+// making the call; `LoadedImage::call` clears the scratch before and after every call body, on
+// every return path, so between calls every pointer-holding buffer is empty (only capacity remains)
+// and moving the scratch to another thread (with the lock) moves no live pointer. The pointers are
+// never dereferenced by the host in any case.
 unsafe impl Send for Scratch {}
 
 impl Scratch {
@@ -143,8 +147,8 @@ impl Scratch {
         span
     }
 
-    /// The view of `entity`, pointing into this scratch's contact and route arrays (filled first, so
-    /// they no longer move) and into kernel data (force strings) for the duration of the call.
+    /// The view of `entity`, pointing into this scratch's contact and route arrays (filled first,
+    /// so they no longer move) and into kernel data (force strings) for the duration of the call.
     pub(crate) fn view(&self, entity: &EntityView<'_>, span: Span, minor: u32) -> UmbraEntityView {
         let s = entity.state;
         UmbraEntityView {
@@ -212,7 +216,8 @@ fn finite_vec3(v: UmbraVec3, what: &str) -> Result<Ecef, String> {
     }
 }
 
-/// The core status of a plugin-written status; `Err` names the problem (unset vs out of range, R-B2).
+/// The core status of a plugin-written status; `Err` names the problem (unset vs out of range,
+/// R-B2).
 pub(crate) fn status(value: UmbraStatus) -> Result<Status, String> {
     match value {
         UMBRA_STATUS_SUCCESS => Ok(Status::Success),
@@ -251,8 +256,8 @@ fn header(
 /// Reads a plugin-written headed struct.
 ///
 /// # Safety
-/// A non-null, aligned `ptr` points to at least its own `struct_size` readable bytes for the duration
-/// of the call (the plugin's promise).
+/// A non-null, aligned `ptr` points to at least its own `struct_size` readable bytes for the
+/// duration of the call (the plugin's promise).
 unsafe fn read<T: Headed>(
     ptr: *const T,
     what: &str,
@@ -297,7 +302,8 @@ unsafe fn id_text(s: UmbraStr, what: &str) -> Result<String, String> {
 /// The core intent of a plugin-written `UmbraIntent` (ADR 0016 set v1); `Err` names the problem.
 ///
 /// # Safety
-/// `ptr` is what the plugin passed to the intent sink: null, or valid for the call with its strings.
+/// `ptr` is what the plugin passed to the intent sink: null, or valid for the call with its
+/// strings.
 pub(crate) unsafe fn intent(ptr: *const UmbraIntent) -> Result<Intent, String> {
     // SAFETY: forwarded caller contract.
     let i = unsafe { read(ptr, "intent", &INTENT_SIZES) }?;
@@ -384,7 +390,8 @@ pub(crate) unsafe fn value_in(ptr: *const UmbraValue) -> Result<Option<BbValue>,
     }))
 }
 
-/// A host-written value for `set_input`, its string borrowed from `value` (valid while `value` lives).
+/// A host-written value for `set_input`, its string borrowed from `value` (valid while `value`
+/// lives).
 pub(crate) fn value_out(value: &BbValue, minor: u32) -> UmbraValue {
     let mut out = UmbraValue {
         abi_version: UMBRA_ABI_VERSION,

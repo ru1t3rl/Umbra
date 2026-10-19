@@ -7,9 +7,9 @@
 //! abi = "0.0"                    # "<major>.<minor>"
 //! name = "Wander example"        # optional
 //! ```
-//! Unknown keys are errors. An ABI this host cannot load (major differs, or minor newer) is rejected
-//! before the library is opened; after loading, the descriptor's id, version and ABI must equal the
-//! manifest's ([`Manifest::check`]).
+//! Unknown keys are errors. An ABI this host cannot load (major differs, or minor newer) is
+//! rejected before the library is opened; after loading, the descriptor's id, version and ABI must
+//! equal the manifest's ([`Manifest::check`]).
 
 use std::collections::BTreeMap;
 use std::path::Path;
