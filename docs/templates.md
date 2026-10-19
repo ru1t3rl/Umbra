@@ -1,6 +1,7 @@
 # Template and scenario file reference (format v1)
 
-Source of truth for the format: ADR 0010 (decisions), ASM-053..ASM-069 (details), and the readers in
+Source of truth for the format: ADR 0010 (decisions; its planned key `plugins` became `plugin_paths`, ADR
+0022), ASM-053..ASM-069 (details), and the readers in
 `crates/umbra-templates`. The JSON Schemas `crates/umbra-templates/schemas/{template,scenario}.v1.schema.json`
 (printed by `umbra schema template|scenario`) describe the structure for editors; they are hand-written,
 use only the ADR 0009 subset, and the reader is authoritative where they differ (REQ-T-3, NFR-5, D-14).
@@ -97,6 +98,14 @@ like the motion model, with these rules for behavior params (ADR 0014):
 - Behaviors are not overridable per placement (scenario overrides stay motion-only, ASM-083): swapping a
   behavior is a template change.
 
+**Plugin behaviors (M4).** A plugin behavior is a registered behavior (ASM-107, ASM-114) and follows the
+rules above. Its plugin must be loaded (`--plugin-path` or the scenario's `plugin_paths`), otherwise its
+ID is `unknown_id`; `umbra validate` loads the plugins and dry-runs their `configure` (ADR 0022). A
+param the plugin declares bindable but not in its schema (and every `entity`/`position` param) is
+binding-only, so such a behavior is `missing_param` as a template behavior. A rule that combines two
+params passed through different calls may be checked only by the plugin's `configure` at spawn time
+(ASM-106 d). Details: `docs/plugin-guide.md`, "Params, schemas and bindable params".
+
 Sensor `params` are validated against the sensor's schema and dry-run; an entity without a sensor has no
 contacts, so conditions such as `builtin.cond.enemy_in_range` never succeed for it.
 
@@ -115,8 +124,8 @@ template (ASM-053).
 | `clock` | `afap` \| `realtime` \| `stepped` \| `scaled` | default `afap` |
 | `time_scale` | number in [0.001, 1000000] | required with `clock = "scaled"`, an error otherwise |
 | `template_paths` | array of strings | directories relative to the scenario file, searched recursively for `*.toml` (templates and `*.behavior.toml` graphs) |
-| `plugin_paths` | array of strings | plugin directories relative to the scenario file, like `template_paths` (REQ-P-10, ADR 0022); absent is none. Each entry must be a string (`wrong_type`, located at the entry). `plugins` is not a key (`unknown_key`) |
-| `on_plugin_fault` | `abort` \| `disable_capability` | default `abort` (REQ-P-7, ADR 0021); another string is `invalid_value` naming both values, a non-string `wrong_type` (ASM-143) |
+| `plugin_paths` | array of strings | plugin directories relative to the scenario file, like `template_paths` (joined as written, not normalised; REQ-P-10, ADR 0022, ASM-143); absent is none. Each entry must be a string (`wrong_type`, located at the entry). CLI `--plugin-path` directories come first, duplicates (by canonical path) are dropped; a missing directory is a load error, not a diagnostic (ASM-144). Package layout: `docs/plugin-guide.md`. `plugins` is not a key (`unknown_key`) |
+| `on_plugin_fault` | `abort` \| `disable_capability` | default `abort` (REQ-P-7, ADR 0021): what a plugin fault during the run does (`abort` ends the run after the faulting tick, `disable_capability` continues without the capability; `docs/plugin-guide.md`, "Faults"); another string is `invalid_value` naming both values, a non-string `wrong_type` (ASM-143) |
 | `[terrain]` | table | `provider` (default `builtin.terrain.flat`), `params` (default `{ height_m = 0.0 }` for the default provider) |
 | `[[entities]]` | array of tables | spawned in file order |
 
@@ -183,6 +192,8 @@ the errors of the closest branch are reported), `$defs` at the root with local `
 (any cycle is rejected, including through `properties` or `items`; a schema whose `$ref` expansion exceeds 10 000 nodes is rejected, ASM-068). `$schema`, `$id`, `$comment`, `title`, `description`, `default`,
 `examples`, `deprecated`, `readOnly`, `writeOnly` are accepted and ignored. Any other keyword makes the
 schema invalid; a registered component with such a schema is a component bug and the loader refuses to start.
+For a plugin capability this is `LoaderError::Schema` naming the capability, so every scenario load with
+that plugin fails (ASM-114).
 
 ## Built-in components
 `umbra schema component <ID>` prints the registered parameter schema of any component and is the

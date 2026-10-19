@@ -49,7 +49,9 @@ Option 1:
   behavior runtime follows it via `FollowRoute`), so the key does not have to be removed later.
 - **Not in v1 yet** (unknown keys today, optional keys when their milestone lands): `plugins` and
   `on_plugin_fault` (M4), scenario-level network adapters (M6), scheduled events (M5, with command
-  ingest), template `components`.
+  ingest), template `components`. *(Superseded in part by ADR 0022 (D-40), M4: the key is `plugin_paths`
+  (plugin directories), not `plugins`, which stays an unknown key so the frozen M2 tests hold;
+  `on_plugin_fault` was added as planned. Marked in M4 WI-15.)*
 - **Units at the edge** by key suffix: `_m`, `_s`, `_deg`, `_dps`, `_mps`, `_mps2`, `_hz` (REQ-C-4).
 - **Diagnostics**: `path:line:column: error[code]: message` plus `note:` lines; line and column 1-based,
   column in Unicode scalar values; stable snake_case codes; sorted by path, byte offset, code, message.

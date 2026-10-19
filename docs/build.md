@@ -11,7 +11,18 @@ From M4 also a C compiler (gcc or clang on Linux and macOS, MSVC on Windows), fo
 (`CC` overrides it). `cbindgen` (MPL-2.0) is a pinned tool, never a dependency (ADR 0023 item 2, ASM-009):
 `cargo xtask gen-header` refuses any other `cbindgen --version` and runs `cbindgen` from `PATH` or the
 program named by the `CBINDGEN` environment variable. Gate 3 needs both too (`xtask/tests/gen_header.rs`,
-`crates/umbra-plugin-host/tests/c_header.rs`).
+`crates/umbra-plugin-host/tests/c_header.rs`, `c_example.rs`).
+
+Which gates need what (from M4):
+
+| Prerequisite | Gates |
+|---|---|
+| `cbindgen` 0.29.4 | 3 (`gen_header.rs`), 11 |
+| C compiler | 3 (`c_header.rs`, `c_example.rs`, the no-entry and null-entry fixtures of `plugin_failures.rs`), 12 (`c-circle`), 13 |
+| Offline cargo cache (`cargo fetch --locked` once online) | 3, 4, 13: tests build plugin libraries with a nested `cargo build --locked --offline` into `CARGO_TARGET_TMPDIR` (ADR 0023 item 4) |
+
+Plugin builds inside tests use about 630 MB under `target/tmp/plugin-build` (M4 WI-10). Windows (MSVC)
+and macOS paths of gates 3, 12 and 13 were not run in M4 (NFR-3 unverified, human decision 2026-10-19).
 
 ## Local gate (canonical, ADR 0004 / D-19)
 There is no CI gate: this list, run in this order, is the definition of done (CLAUDE.md rule 8, NFR-3/4/5). Stop at the first failure; fix the cause, never weaken a gate. The `verify-and-build` skill follows this list. Commands are identical on Linux and Windows; on Windows also check path handling and `.dll` plugin loading, on Linux `.so`.
@@ -28,9 +39,9 @@ There is no CI gate: this list, run in this order, is the definition of done (CL
 | 8 | Docs, warnings are errors | `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked` | M0 |
 | 9 | Release build | `cargo build --workspace --release --locked` | M0 |
 | 10 | Schema drift | `cargo xtask gen-api --check` | from M5 |
-| 11 | C header drift (REQ-SDK-2) | `cargo xtask gen-header --check` | from M4 (active from WI-4) |
-| 12 | Plugin build | `cargo xtask build-plugins --release` | from M4 (active from WI-13) |
-| 13 | Plugin failure matrix | `cargo test -p umbra-plugin-host --test plugin_failures` | from M4 |
+| 11 | C header drift (REQ-SDK-2) | `cargo xtask gen-header --check` | from M4 (active from WI-4); needs `cbindgen` 0.29.4 |
+| 12 | Plugin build | `cargo xtask build-plugins --release` | from M4 (active from WI-13); packages `wander` and `c-circle` (C compiler) |
+| 13 | Plugin failure matrix (REQ-P-7..9) | `cargo test -p umbra-plugin-host --test plugin_failures --locked` | from M4 (active from WI-10); builds the `umbra-test-plugin` variants and two C fixtures |
 | 14 | Benchmarks compile | `cargo bench -p umbra-kernel --bench tick --no-run --locked` | from M1 |
 | 15 | GUI | `(cd gui && bun install --frozen-lockfile && bun run gen:api --check && bun run typecheck && bun run lint && bun run check:deps && bun test && bun run build)`, then `bun run tauri build` on Windows | from M8 (see the `verify-frontend` skill) |
 
@@ -55,6 +66,6 @@ More `cargo xtask` subcommands will be documented here as they are added.
 
 ## Supply chain (NFR-4, NFR-6, ADR 0001)
 - Licenses: `LICENSE-MIT` and `LICENSE-APACHE` at the root; every crate inherits `license = "MIT OR Apache-2.0"` from `[workspace.package]`.
-- `deny.toml`: license allow-list limited to what the current tree uses (MIT, Apache-2.0, Unicode-3.0; ASM-020), copyleft denied; wildcards denied (path wildcards allowed); unknown registries and git sources denied; yanked crates denied; duplicate versions warn. Run `cargo deny check` and `cargo audit` locally before done; a new advisory can fail them with no code change: triage it, never silence it.
+- `deny.toml`: license allow-list limited to what the current tree uses (MIT, Apache-2.0, Unicode-3.0, Zlib for `foldhash` (ADR 0005), ISC for `libloading` (ADR 0023 item 1, ASM-133); ASM-020), copyleft denied; `cbindgen` (MPL-2.0) is an installed tool and never enters `Cargo.lock`; wildcards denied (path wildcards allowed); unknown registries and git sources denied; yanked crates denied; duplicate versions warn. Run `cargo deny check` and `cargo audit` locally before done; a new advisory can fail them with no code change: triage it, never silence it.
 - Adding a dependency: run `cargo deny check`; if it brings a new license, add it to `deny.toml` in the same PR with a note (ASM-020).
 - Dev-dependency licenses are checked too (`include-dev = true` in `[licenses]`); the WI-4 mutation check showed that without it a GPL `[dev-dependencies]` entry passes.

@@ -109,10 +109,12 @@ The file is in seven numbered sections; read it top to bottom next to this list.
    the host API: host callbacks made before `init` are refused with `UMBRA_ERR_STATE`.
 
 ## What the host checks
-Before the first call into the library the host validates everything above: the manifest, the
-descriptor's ABI version (major equal, minor not newer), every `struct_size`, the ids and their
-grammar, UTF-8 and size caps of every string, that the schema is in the supported subset, that the
-metadata matches the vtable, and that the required vtable entries are non-null. A mistake is a load
+After calling `umbra_plugin_entry` (twice, to check that the descriptor pointer is stable) and before
+`init`, the host validates everything above: the manifest, the descriptor's ABI version (major equal,
+minor not newer), every `struct_size`, the ids and their grammar, UTF-8 and size caps of every string,
+that the schema is a JSON object (the supported keyword subset is checked when the scenario loader
+starts, as `LoaderError::Schema`, ASM-114), that the metadata matches the vtable, and that the
+required vtable entries are non-null. A mistake is a load
 error naming the package and the field (for example `capabilities[0].vtable.halt`). During a run a
 non-OK return, an unset status or a refused intent is a plugin fault handled by the scenario's
 `on_plugin_fault` policy (`abort` by default, or `disable_capability`).

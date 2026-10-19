@@ -22,7 +22,7 @@ crate) showed: `#![forbid(unsafe_code)]` plus a macro that emits only `#[unsafe(
 cleanly; the same macro emitting `#[allow(unsafe_code)]` or `#[expect(unsafe_code)]` is error E0453.
 
 ## Options and decision (one row per question; recommended option first)
-1. **Library loading**: (a) `libloading` (ISC; tiny, cross-platform) and add `ISC` to `deny.toml` in that
+1. **Library loading** *(note 2026-10-19: version 0.9.0 is used, the one in the offline cache, instead of 0.8.x; ASM-133)*: (a) `libloading` (ISC; tiny, cross-platform) and add `ISC` to `deny.toml` in that
    PR; (b) hand-written `dlopen`/`LoadLibraryW` declarations (no dependency, more `unsafe` and platform
    code). **Chosen: (a).** *(amended: R-M4)* Load flags are explicit: Linux
    `libloading::os::unix::Library::open(path, RTLD_NOW | RTLD_LOCAL)`; Windows

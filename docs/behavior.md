@@ -23,7 +23,8 @@ model turns into movement. A behavior never changes entity state directly (REQ-B
 Contents: [files and discovery](#files-and-discovery), [complete example](#complete-example),
 [file format](#file-format), [evaluation](#evaluation-order-and-node-semantics), [halt](#halt),
 [FSM rules](#fsm-rules), [interface and blackboard](#interface-and-blackboard),
-[subgraphs](#subgraphs), [load-time checks](#load-time-checks), [built-in catalog](#built-in-catalog),
+[subgraphs](#subgraphs), [plugin behaviors](#plugin-behaviors-m4), [load-time checks](#load-time-checks),
+[built-in catalog](#built-in-catalog),
 [perception](#perception), [intents](#intents-and-what-they-do-not-do-yet),
 [diagnostics](#diagnostics), [determinism](#determinism), [embedding](#embedding-stack-size).
 
@@ -501,8 +502,9 @@ Halting abandons a Running activation. It follows ADR 0013 as amended on 2026-10
 - **Through a subgraph:** a parent halt of a Running `subgraph` node calls `halt_running` on the child
   instance, which for a graph child is the same Running-only halt from its root, so the inlined and the
   subgraph forms behave identically. An instance halt of the caller is an instance halt of the child.
-  A child behavior that does not override `halt_running` (built-in or plugin behaviors written in code)
-  gets the full reset.
+  A child behavior that does not override `halt_running` (built-in behaviors written in code) gets the
+  full reset. A plugin child gets its `halt_running` entry if it has one, otherwise `halt`, the full
+  reset (ADR 0020; see [Plugin behaviors](#plugin-behaviors-m4)).
 
 ## FSM rules
 An `fsm` node has states (each runs one node, which may itself be an `fsm`, giving hierarchy), optional
@@ -641,6 +643,38 @@ example `builtin.subgraph.engage_target`, or a plugin behavior) adds 1. So 15 of
 `builtin.fsm.patrol_and_engage` are 17 levels and `subgraph_too_deep` at the call that crosses the limit
 (reported once), with a note that names the registered chain; what `validate` accepts also instantiates
 (ASM-099 e).
+
+## Plugin behaviors (M4)
+A plugin behavior (provenance `plugin`, ADR 0020) is a registered behavior: a graph calls it with a
+`subgraph` node exactly like a built-in graph, and a template uses it as `[behavior] ref`. Load its
+plugin with `--plugin-path` or the scenario's `plugin_paths`, otherwise the ID is `unknown_id`. Writing
+plugins: `docs/plugin-guide.md`. Worked example: `examples/scenarios/plugin_wander`, whose
+`behaviors/wander_graph.behavior.toml` wraps the plugin behavior `example.behavior.wander` in a
+`timeout`, binds its `speed_mps` and copies its output `turns`.
+
+- **Inputs.** Only params the plugin declares bindable (`param_types` in its metadata, listed in the
+  catalog) accept a `{ key = .. }` binding; binding any other param is `invalid_binding`. Before every
+  tick the bound value (or unset) is passed to the plugin's `set_input`, after the type and finiteness
+  checks; an optional param unset this way falls back to whatever the plugin does without it (wander:
+  its configured speed). A bindable param that the plugin's schema does not list, and every `entity`
+  or `position` param, is binding-only (`missing_param` without a binding, and as a template behavior).
+- **Outputs.** Ports from the metadata's `outputs`; after every tick each bound port is read with the
+  plugin's `output` and copied to its parent key (unset copies as unset).
+- **Halt.** A parent halt of a Running plugin child (a `timeout` expiring, pre-emption, an FSM guard, an
+  unset required input) calls the plugin's `halt_running`; when the plugin has none (a null entry, as
+  in the C example `c-circle`) the host calls `halt`, the full reset. Plugins built with `umbra-sdk`
+  always have the entry, whose default is `halt`. In the wander example the 20 s `timeout` fires at
+  tick 601: the child is halted, the node returns Failure for that tick, and the next tick starts a
+  fresh walk.
+- **Batching.** A plugin behavior used as a template behavior is ticked in batches (one call per
+  capability per tick for all its entities, REQ-B-4); as a `subgraph` child it is ticked inside its
+  caller's graph, one entity at a time, like any child. Both give the same results per entity.
+- **Faults.** If the plugin faults (a panic, an error code, an invalid intent), the child returns
+  Failure in its graph, and the scenario's `on_plugin_fault` decides whether the run stops (`abort`, the
+  default) or continues without that capability (`disable_capability`) (ADR 0021).
+- **Depth.** A plugin behavior counts as one level of subgraph depth (it declares no subgraphs).
+- **Cross-param rules** of a plugin's `configure` may be checked only at spawn time when the values come
+  from different calls (see [Load-time checks](#load-time-checks), "Accepted limit").
 
 ## Load-time checks
 `umbra validate` and every scenario load run the M2 pipeline over graph files too (A-001): all errors of
@@ -852,6 +886,9 @@ gate 4 runs `examples/scenarios/patrol_and_engage`):
   random stream, so the visiting order cannot change results.
 - Durations are whole ticks, fixed when the instance is created; `timer_elapsed` uses the absolute tick.
 - `[editor]` contents never reach the engine: changing layout changes nothing.
+- Plugin behaviors (M4) get time in each call and draw only from the entity's stream through the host;
+  gate 4 also runs `examples/scenarios/plugin_wander` (ASM-115). Plugin authors' rules:
+  `docs/plugin-guide.md`, "Determinism".
 - The state hash stays version 2: node state, blackboards, contacts and intents are not hashed (their
   effects reach the hash through motion and the random streams). The determinism gate therefore also
   compares per-tick intents and contacts (ASM-081, ASM-087).

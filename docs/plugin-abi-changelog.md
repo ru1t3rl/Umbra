@@ -5,7 +5,12 @@ is versioned `major.minor` and packed as `UMBRA_ABI_VERSION = major << 16 | mino
 major, structs and vtables are append-only (REQ-P-2): every appended field or entry is optional with a
 documented meaning when absent, and bumps the minor. A plugin built against a newer minor needs a host of
 at least that minor (the SDK writes its own minor, ADR 0019). Every entry lists the structs whose size
-changed, so the host's size-per-minor table (R-B3) can be checked against it.
+changed, so the host's size-per-minor table (R-B3) can be checked against it. Rules for plugin authors:
+`docs/plugin-guide.md`.
+
+A minor bump changes, in one PR: the Rust types in `umbra-plugin-api`, the host's size-per-minor table,
+the pins in `crates/umbra-plugin-api/tests/layout.rs`, the regenerated header (gate 11; the generated C
+asserts of `c_header.rs` follow), the SDK's own minor, and an entry here. A major bump needs an ADR.
 
 ## 0.0 (M4, provisional)
 - First ABI. Layouts: the table in `docs/plans/M4.md` ("Layout table"), pinned by
@@ -23,6 +28,12 @@ changed, so the host's size-per-minor table (R-B3) can be checked against it.
 - **Provisional** (ADR 0019 R-M10, ASM-117): M4 WI-3..WI-14 may still change this layout, updating the
   plan table, the pins, the header and this entry together. The field-by-field freeze review is part of
   M4 WI-16; after `m4-done` the rules of REQ-P-2 apply in full.
+- Constraints for later minors (M4 WI-15, from ASM-134 a, ASM-128, ASM-148 b2): `UmbraHostApi` is passed
+  to the entry before the host knows the plugin's minor, so it is written in the minor-0 layout; a later
+  host minor must keep passing the minor-0 prefix size unless the ABI first gains a way to declare the
+  plugin's minor before that call. Readers of host-written array elements (`items`, `contacts`)
+  require `struct_size` equal to their own size (the stride they index with), so the host must keep
+  writing array elements in the plugin's declared minor.
 - **Layout final** (M4 WI-14, 2026-10-19): the C example `examples/plugins/c-circle` compiles against the
   header with `-std=c11 -pedantic -Wall -Wextra -Werror`, loads and drives entities; no struct, field,
   constant or header text changed for it. ABI 0.0 layout final, pending the WI-16 freeze review.
