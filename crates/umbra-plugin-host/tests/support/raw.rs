@@ -406,7 +406,7 @@ unsafe fn tick_inner(batch: *const UmbraBehaviorBatch, err: *const UmbraErrorSin
                         return c;
                     }
                 }
-                "flood" if n == 0 => {
+                "flood" => {
                     for _ in 0..65 {
                         let c = send(UMBRA_INTENT_SET_SPEED, n, &speed);
                         if c != UMBRA_OK {

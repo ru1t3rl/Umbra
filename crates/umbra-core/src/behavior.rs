@@ -7,8 +7,8 @@
 //!
 //! Batches (REQ-B-4, ADR 0020): [`Behavior::batch`] lets behaviors share a [`BehaviorBatch`] that
 //! ticks many instances in one call. A batch must match per-instance ticking item by item, with
-//! one exception: it is all-or-nothing. If a batch faults, none of its items' effects are kept
-//! (whole-batch discard). The kernel passes one `ctx.now` per call, may pass an empty slice, and
+//! one exception: it is all-or-nothing. If a batch faults, every item fails and none of its
+//! intents are kept (whole-batch discard); RNG draws made before the fault stay consumed. The kernel passes one `ctx.now` per call, may pass an empty slice, and
 //! groups behaviors by `Arc::ptr_eq` on the `Arc` returned from [`Behavior::batch`].
 
 use std::collections::BTreeMap;
@@ -301,8 +301,9 @@ pub trait BehaviorInstance: Send {
 /// the batch may rely on but must not reorder observably.
 ///
 /// Exception to per-item semantics (ADR 0020): a batch is all-or-nothing. If a batch call faults
-/// (error code, panic, contract breach), the whole batch is discarded: none of its items'
-/// effects (statuses, intents, RNG draws) are kept, not even those of items already written.
+/// (error code, panic, contract breach), the whole batch is discarded: every item's status is
+/// Failure and none of its intents are kept, not even those of items already written. RNG draws
+/// made before the fault stay consumed (the entity streams advanced; part of the state hash).
 pub trait BehaviorBatch: Send + Sync {
     /// Ticks every item, writing each item's `status` and appending to its `out`.
     ///

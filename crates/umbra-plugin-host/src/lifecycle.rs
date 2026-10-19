@@ -9,7 +9,7 @@
 //! every registered factory and every host holds the image by `Arc`, so the last release runs
 //! `shutdown` and the close, and every copied function pointer is gone before the library closes.
 //!
-//! **Call lock.** Every call into one image (`init`, `shutdown`, and from WI-9 every vtable call) goes
+//! **Call lock.** Every call into one image (`init`, `shutdown` and every vtable call of the bridge) goes
 //! through [`LoadedImage::call`]: a call into an image that already has a record on the current thread's
 //! call stack is re-entry and fails without touching the lock; otherwise the image's call lock is taken
 //! **blocking** (contention from other threads waits and never faults, REQ-K-4), a call record is pushed
@@ -32,13 +32,14 @@ use umbra_plugin_api::{
     UmbraPluginEntry, UmbraToken,
 };
 
+use crate::bridge::marshal::Scratch;
 use crate::descriptor::{self, Descriptor};
 use crate::error::PluginError;
 use crate::host_api;
 use crate::image::{self, Claim, Reservation};
 use crate::library::Library;
 use crate::log::{LogLevel, PluginLog};
-use crate::tokens::{self, ActiveCall, CallRecord};
+use crate::tokens::{self, ActiveCall, CallRecord, Finished, Sink};
 
 /// What a load asks of the image layer.
 pub(crate) struct LoadRequest<'a> {
@@ -73,6 +74,8 @@ impl std::fmt::Display for CallError {
 
 /// The call-scoped context handed to the code that calls the plugin.
 pub(crate) struct CallScope {
+    image: UmbraToken,
+    generation: u32,
     error_sink: UmbraErrorSink,
 }
 
@@ -81,12 +84,25 @@ impl CallScope {
     pub(crate) fn error_sink(&self) -> *const UmbraErrorSink {
         &raw const self.error_sink
     }
+
+    /// The token of `sink` in this call.
+    pub(crate) fn sink(&self, sink: Sink) -> UmbraToken {
+        tokens::sink_token(self.image, self.generation, sink)
+    }
+
+    /// The call generation (high half of this call's RNG tokens).
+    pub(crate) fn generation(&self) -> u32 {
+        self.generation
+    }
 }
 
-/// Per-image call state, guarded by the call lock.
+/// Per-image call state, guarded by the call lock: the call generation and the bridge's reusable
+/// marshalling buffers (one set per image suffices, calls into one image are serialised).
 struct CallState {
     /// The last call generation (high half of call-scoped tokens).
     generation: u32,
+    /// Marshalling buffers of the behavior bridge.
+    scratch: Scratch,
 }
 
 /// One image lifecycle (see the module docs).
@@ -123,13 +139,22 @@ impl LoadedImage {
             .unwrap_or_else(PoisonError::into_inner) = Arc::clone(log);
     }
 
-    /// Runs `f` as one call into the plugin (see the module docs); returns its result and the first
-    /// message the plugin wrote to the call's error sink.
+    /// Sum of the capacities of the scratch buffers (blocking; never called from inside a call).
+    pub(crate) fn scratch_capacity(&self) -> usize {
+        self.calls
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .scratch
+            .capacity()
+    }
+
+    /// Runs `f` as one call into the plugin (see the module docs) with the image's scratch buffers;
+    /// returns its result and what the call left in its record (first error message, first breach).
     pub(crate) fn call<R>(
         &self,
         log: &Arc<dyn PluginLog>,
-        f: impl FnOnce(&CallScope) -> R,
-    ) -> Result<(R, Option<String>), CallError> {
+        f: impl FnOnce(&CallScope, &mut Scratch) -> R,
+    ) -> Result<(R, Finished), CallError> {
         self.call_inner(log, false, f)
     }
 
@@ -137,8 +162,8 @@ impl LoadedImage {
         &self,
         log: &Arc<dyn PluginLog>,
         recover_poison: bool,
-        f: impl FnOnce(&CallScope) -> R,
-    ) -> Result<(R, Option<String>), CallError> {
+        f: impl FnOnce(&CallScope, &mut Scratch) -> R,
+    ) -> Result<(R, Finished), CallError> {
         if tokens::is_active(self.host_ctx) {
             return Err(CallError::Reentry);
         }
@@ -149,30 +174,35 @@ impl LoadedImage {
         };
         state.generation = tokens::next_generation(state.generation);
         let generation = state.generation;
-        let record = ActiveCall::push(CallRecord {
+        let record = ActiveCall::push(CallRecord::new(
+            self.host_ctx,
+            generation,
+            self.descriptor.id.clone(),
+            Arc::clone(log),
+        ));
+        let scope = CallScope {
             image: self.host_ctx,
             generation,
-            plugin: self.descriptor.id.clone(),
-            log: Arc::clone(log),
-            error: None,
-        });
-        let scope = CallScope {
-            error_sink: host_api::error_sink(tokens::make(generation, tokens::ERROR_SINK_INDEX)),
+            error_sink: host_api::error_sink(tokens::sink_token(
+                self.host_ctx,
+                generation,
+                Sink::Error,
+            )),
         };
-        let result = f(&scope);
-        let error = record.finish();
+        let result = f(&scope, &mut state.scratch);
+        let finished = record.finish();
         drop(state);
-        Ok((result, error))
+        Ok((result, finished))
     }
 
     /// Runs the plugin's `init`, if any (ADR 0021: once per lifecycle, before any other call).
-    fn init(&mut self, log: &Arc<dyn PluginLog>) -> Result<(), PluginError> {
+    fn init(&mut self, log: &Arc<dyn PluginLog>, origin: &str) -> Result<(), PluginError> {
         let Some(init) = self.descriptor.init else {
             self.init_ok = true;
             return Ok(());
         };
         let api: *const UmbraHostApi = self.api;
-        let outcome = self.call(log, |scope| {
+        let outcome = self.call(log, |scope, _| {
             // SAFETY: `init` is a non-null function pointer from the validated descriptor of this image,
             // whose library is open; `api` is the process-lifetime host API of this lifecycle and the
             // error sink lives for the call. A plugin cannot unwind out of an `extern "C"` function.
@@ -180,14 +210,14 @@ impl LoadedImage {
         });
         let fail = |message: String| PluginError::Init {
             plugin: self.descriptor.id.clone(),
-            message,
+            message: format!("{origin}: {message}"),
         };
         match outcome {
             Ok((UMBRA_OK, _)) => {
                 self.init_ok = true;
                 Ok(())
             }
-            Ok((code, message)) => Err(fail(match message {
+            Ok((code, Finished { error: message, .. })) => Err(fail(match message {
                 Some(m) => format!("{}: {m}", describe(code)),
                 None => describe(code),
             })),
@@ -213,7 +243,7 @@ impl Drop for LoadedImage {
             // SAFETY: `shutdown` is a non-null function pointer from the validated descriptor; the
             // library is still open (closed below). Every handle of this image is gone (they hold the
             // image's `Arc`), so this is the last call (ADR 0021).
-            let outcome = self.call_inner(&log, true, |_| unsafe { shutdown() });
+            let outcome = self.call_inner(&log, true, |_, _| unsafe { shutdown() });
             if let Err(e) = outcome {
                 log.log(
                     &self.descriptor.id,
@@ -360,11 +390,14 @@ fn start(
         init_ok: false,
         keep_loaded: AtomicBool::new(request.keep_loaded),
         release_log: Mutex::new(Arc::clone(request.log)),
-        calls: Mutex::new(CallState { generation: 0 }),
+        calls: Mutex::new(CallState {
+            generation: 0,
+            scratch: Scratch::default(),
+        }),
         library,
     };
     // On failure `image` drops: no `shutdown` (init did not succeed), close, slot removed.
-    image.init(request.log)?;
+    image.init(request.log, origin)?;
     let image = Arc::new(image);
     image::publish(image.slot, &image);
     Ok(image)

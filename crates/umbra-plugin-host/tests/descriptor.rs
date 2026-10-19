@@ -41,7 +41,7 @@ macro_rules! load {
 
 /// A forged descriptor that must be rejected with the given variant, naming the origin and the field
 /// (the `field` of `Descriptor` and `AbiMismatch`, spelled `descriptor.x`, `capabilities[i].x`,
-/// `vtable.x`; the message repeats it).
+/// `capabilities[i].vtable.x`; the message repeats it).
 macro_rules! rejected {
     ($name:ident, $edit:expr, Descriptor, $field:expr) => {
         rejected!(@body $name, $edit, [PluginError::Descriptor { field, .. } if field.as_str() == $field], $field);
@@ -135,19 +135,19 @@ rejected!(
     vtable_struct_size_too_small,
     |p| p.vtable.struct_size = 16,
     Descriptor,
-    "vtable.struct_size"
+    "capabilities[0].vtable.struct_size"
 );
 rejected!(
     vtable_struct_size_above_host,
     |p| p.vtable.struct_size = VT + 8,
     Descriptor,
-    "vtable.struct_size"
+    "capabilities[0].vtable.struct_size"
 );
 rejected!(
     vtable_struct_size_not_a_multiple_of_8,
     |p| p.vtable.struct_size = VT - 4,
     Descriptor,
-    "vtable.struct_size"
+    "capabilities[0].vtable.struct_size"
 );
 
 // Required vtable entries.
@@ -155,37 +155,37 @@ rejected!(
     vtable_configure_null,
     |p| p.vtable.configure = None,
     Descriptor,
-    "vtable.configure"
+    "capabilities[0].vtable.configure"
 );
 rejected!(
     vtable_destroy_behavior_null,
     |p| p.vtable.destroy_behavior = None,
     Descriptor,
-    "vtable.destroy_behavior"
+    "capabilities[0].vtable.destroy_behavior"
 );
 rejected!(
     vtable_instantiate_null,
     |p| p.vtable.instantiate = None,
     Descriptor,
-    "vtable.instantiate"
+    "capabilities[0].vtable.instantiate"
 );
 rejected!(
     vtable_destroy_instance_null,
     |p| p.vtable.destroy_instance = None,
     Descriptor,
-    "vtable.destroy_instance"
+    "capabilities[0].vtable.destroy_instance"
 );
 rejected!(
     vtable_tick_batch_null,
     |p| p.vtable.tick_batch = None,
     Descriptor,
-    "vtable.tick_batch"
+    "capabilities[0].vtable.tick_batch"
 );
 rejected!(
     vtable_halt_null,
     |p| p.vtable.halt = None,
     Descriptor,
-    "vtable.halt"
+    "capabilities[0].vtable.halt"
 );
 
 // Bounds and caps.
@@ -338,13 +338,13 @@ rejected!(
     param_types_without_set_input,
     |p| p.caps[0].metadata = leak_str(r#"{"param_types":{"speed":"number"}}"#),
     Descriptor,
-    "vtable.set_input"
+    "capabilities[0].vtable.set_input"
 );
 rejected!(
     outputs_without_output_entry,
     |p| p.caps[0].metadata = leak_str(r#"{"outputs":{"turns":"integer"}}"#),
     Descriptor,
-    "vtable.output"
+    "capabilities[0].vtable.output"
 );
 rejected!(
     param_type_that_disagrees_with_the_schema,
@@ -381,7 +381,7 @@ rejected!(
     vtable_abi_major_differs,
     |p| p.vtable.abi_version = 1 << 16,
     AbiMismatch,
-    "vtable.abi_version"
+    "capabilities[0].vtable.abi_version"
 );
 
 #[test]

@@ -33,7 +33,6 @@ fn batch_of(b: &Arc<dyn Behavior>) -> Arc<dyn BehaviorBatch> {
 /// ADR 0020: a batch gives every item what its own `instance.tick` would: statuses, intents and RNG
 /// states (here compared with `tick_each` over fresh, identical entities).
 #[test]
-#[ignore = "WI-9"]
 fn batch_contract_equals_tick_each() {
     raw::clear();
     let env = raw_env!();
@@ -60,7 +59,6 @@ fn batch_contract_equals_tick_each() {
 
 /// REQ-B-4: the plugin sees the entity's state, force, route and contacts of the pre-tick view.
 #[test]
-#[ignore = "WI-9"]
 fn views_carry_state_force_route_contacts() {
     raw::clear();
     let env = raw_env!();
@@ -134,7 +132,6 @@ fn views_carry_state_force_route_contacts() {
 
 /// ADR 0019 (R-B3): every struct the host passes is written in the plugin's declared minor.
 #[test]
-#[ignore = "WI-9"]
 fn host_writes_structs_in_the_plugins_minor() {
     raw::clear();
     let env = raw_env!();
@@ -176,7 +173,6 @@ fn host_writes_structs_in_the_plugins_minor() {
 
 /// ADR 0013 amendment: with a `halt_running` entry the host calls it for `halt_running`.
 #[test]
-#[ignore = "WI-9"]
 fn halt_running_entry_used_when_present() {
     raw::clear();
     let env = raw_env_with!(HostOptions::default(), true);
@@ -196,7 +192,6 @@ fn halt_running_entry_used_when_present() {
 
 /// ADR 0020: a null `halt_running` falls back to `halt` (the full reset).
 #[test]
-#[ignore = "WI-9"]
 fn halt_used_when_halt_running_is_null() {
     raw::clear();
     let env = raw_env_with!(HostOptions::default(), false);
@@ -216,7 +211,6 @@ fn halt_used_when_halt_running_is_null() {
 
 /// ASM-096 (c): halt is idempotent and safe on an instance that never ticked.
 #[test]
-#[ignore = "WI-9"]
 fn halt_is_idempotent_and_safe_before_first_tick() {
     raw::clear();
     let env = raw_env!();
@@ -233,7 +227,6 @@ fn halt_is_idempotent_and_safe_before_first_tick() {
 
 /// REQ-B-10: every value type crosses `set_input` and `output`; `None` unsets.
 #[test]
-#[ignore = "WI-9"]
 fn set_input_and_output_every_value_type() {
     raw::clear();
     let env = raw_env!();
@@ -279,7 +272,6 @@ fn set_input_and_output_every_value_type() {
 
 /// R-B4, REQ-K-4: the plugin's draws come from the entity's own stream, and that stream advances.
 #[test]
-#[ignore = "WI-9"]
 fn rng_token_draws_the_entity_stream() {
     raw::clear();
     let env = raw_env!();
@@ -334,7 +326,6 @@ impl BehaviorInstance for Foreign {
 /// ADR 0020 / ASM-123: an item the bridge does not recognise is ticked through `instance.tick`, never a
 /// panic; recognised items in the same slice are still batched.
 #[test]
-#[ignore = "WI-9"]
 fn downcast_failure_falls_back_to_instance_tick() {
     raw::clear();
     let env = raw_env!();
@@ -359,7 +350,6 @@ fn downcast_failure_falls_back_to_instance_tick() {
 
 /// ADR 0019: handles are destroyed instance first, then the behavior.
 #[test]
-#[ignore = "WI-9"]
 fn instances_are_destroyed_before_their_behavior() {
     raw::clear();
     let env = raw_env!();
@@ -380,4 +370,54 @@ fn instances_are_destroyed_before_their_behavior() {
         what: String::new(),
         hz: 0,
     };
+}
+
+/// REQ-B-4, NFR-1 (M4 plan WI-9): the bridge's scratch buffers stop growing after warm-up; a batch
+/// call then allocates nothing in the bridge.
+#[test]
+fn scratch_buffers_stop_growing_after_warm_up() {
+    raw::clear();
+    let env = raw_env!();
+    let b = env.behavior("ok");
+    let batch = batch_of(&b);
+    let mut ents: Vec<Ent> = (1..=6).map(|n| Ent::new(n, &b, 4)).collect();
+    for tick in 0..3 {
+        tick_batched(&batch, &mut ents, tick);
+    }
+    let warm = env.host.scratch_capacity();
+
+    for tick in 3..40 {
+        tick_batched(&batch, &mut ents, tick);
+    }
+
+    assert!(warm > 0, "the probe sees the scratch");
+    assert_eq!(env.host.scratch_capacity(), warm, "no growth after warm-up");
+}
+
+/// WI-9 acceptance: the handle types are `Send`/`Sync` because every call into the image takes its call
+/// lock; an instance created on one thread ticks on another and back, with the results of a single
+/// thread (the concurrent case is `contention.rs`).
+#[test]
+fn an_instance_ticks_from_two_threads_in_turn() {
+    raw::clear();
+    let env = raw_env!();
+    let b = env.behavior("ok");
+    let batch = batch_of(&b);
+    let mut moved = vec![Ent::new(1, &b, 6)];
+    let mut stayed = vec![Ent::new(1, &b, 6)];
+
+    for tick in 0..4 {
+        let on_thread = Arc::clone(&batch);
+        moved = std::thread::spawn(move || {
+            tick_batched(&on_thread, &mut moved, tick);
+            moved
+        })
+        .join()
+        .expect("thread");
+        tick_batched(&batch, &mut stayed, tick);
+        assert_eq!(moved[0].status, stayed[0].status, "tick {tick}");
+        assert_eq!(moved[0].buf, stayed[0].buf, "tick {tick}");
+        assert_eq!(moved[0].rng.state(), stayed[0].rng.state(), "tick {tick}");
+    }
+    assert_eq!(env.host.faults(), Vec::new());
 }

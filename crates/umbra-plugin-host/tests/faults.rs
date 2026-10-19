@@ -37,9 +37,9 @@ macro_rules! faulting {
 }
 
 macro_rules! tick_fault {
-    ($name:ident, $mode:expr, $needle:expr) => {
+    ($(#[$attr:meta])* $name:ident, $mode:expr, $needle:expr) => {
         #[test]
-        #[ignore = "WI-9"]
+        $(#[$attr])*
         fn $name() {
             let (env, ents) = faulting!($mode);
 
@@ -96,7 +96,6 @@ tick_fault!(
 
 /// A status left `UNSET` and a status out of range are different faults (R-B2): the messages differ.
 #[test]
-#[ignore = "WI-9"]
 fn unset_and_out_of_range_status_are_reported_differently() {
     let (a, _) = faulting!("unset");
     let (b, _) = faulting!("bad_status");
@@ -106,7 +105,6 @@ fn unset_and_out_of_range_status_are_reported_differently() {
 
 /// ADR 0020: RNG draws made before the fault stay consumed (the streams advanced), the intents do not.
 #[test]
-#[ignore = "WI-9"]
 fn whole_batch_discard_keeps_rng_draws_consumed() {
     let (_env, ents) = faulting!("error_code");
 
@@ -123,7 +121,6 @@ fn whole_batch_discard_keeps_rng_draws_consumed() {
 
 /// ADR 0021: `abort` is the default; the first fault is handed out once.
 #[test]
-#[ignore = "WI-9"]
 fn abort_policy_hands_out_the_first_fault_once() {
     let (env, _) = faulting!("error_code");
 
@@ -137,7 +134,6 @@ fn abort_policy_hands_out_the_first_fault_once() {
 /// ADR 0021: `disable_capability` skips the capability from then on: items fail without a plugin call,
 /// `configure` and `instantiate` fail, and the capability is marked faulted.
 #[test]
-#[ignore = "WI-9"]
 fn disable_capability_skips_the_capability_afterwards() {
     raw::clear();
     let env = raw_env!();
@@ -175,7 +171,6 @@ fn disable_capability_skips_the_capability_afterwards() {
 
 /// ADR 0021: `destroy_*` is still called for handles of a faulted capability.
 #[test]
-#[ignore = "WI-9"]
 fn destroy_still_called_on_a_faulted_capability() {
     raw::clear();
     let env = raw_env!();
@@ -201,7 +196,6 @@ fn destroy_still_called_on_a_faulted_capability() {
 
 /// ADR 0021: a fault is logged once at error level with plugin, capability and call.
 #[test]
-#[ignore = "WI-9"]
 fn a_fault_is_logged_once_at_error_level() {
     raw::clear();
     let recorder = Recorder::arc();
@@ -230,7 +224,6 @@ fn a_fault_is_logged_once_at_error_level() {
 
 /// ASM-118, R-M3: two hosts over one image keep independent fault state and policy.
 #[test]
-#[ignore = "WI-9"]
 fn two_hosts_over_one_image_keep_independent_fault_state() {
     raw::clear();
     let first = raw_env!();
@@ -265,7 +258,6 @@ fn two_hosts_over_one_image_keep_independent_fault_state() {
 
 /// R-M9: `configure` returning an error is a `BuildError` with the plugin's message, not a fault.
 #[test]
-#[ignore = "WI-9"]
 fn configure_error_is_a_build_error() {
     raw::clear();
     let env = raw_env!();
@@ -280,7 +272,6 @@ fn configure_error_is_a_build_error() {
 
 /// R-M9: `configure` returning OK with a null handle is a build error.
 #[test]
-#[ignore = "WI-9"]
 fn configure_ok_with_a_null_handle_is_a_build_error() {
     raw::clear();
     let env = raw_env!();
@@ -292,7 +283,6 @@ fn configure_ok_with_a_null_handle_is_a_build_error() {
 
 /// R-M9: `instantiate` returning an error is an `InstantiateError`.
 #[test]
-#[ignore = "WI-9"]
 fn instantiate_error_is_an_instantiate_error() {
     raw::clear();
     let env = raw_env!();
@@ -305,7 +295,6 @@ fn instantiate_error_is_an_instantiate_error() {
 
 /// R-M9: `instantiate` returning OK with a null handle is an `InstantiateError`, never a null instance.
 #[test]
-#[ignore = "WI-9"]
 fn instantiate_ok_with_a_null_handle_is_an_instantiate_error() {
     raw::clear();
     let env = raw_env!();
@@ -318,7 +307,6 @@ fn instantiate_ok_with_a_null_handle_is_an_instantiate_error() {
 
 /// R-M9: `halt` returning an error code is a fault of call `halt`.
 #[test]
-#[ignore = "WI-9"]
 fn halt_returning_an_error_code_is_a_fault() {
     raw::clear();
     let env = raw_env!();
@@ -335,7 +323,6 @@ fn halt_returning_an_error_code_is_a_fault() {
 macro_rules! output_fault {
     ($name:ident, $mode:expr) => {
         #[test]
-        #[ignore = "WI-9"]
         fn $name() {
             raw::clear();
             let env = raw_env!();
@@ -362,7 +349,6 @@ output_fault!(value_with_invalid_utf8_is_a_fault, "bad_utf8");
 /// RR-B1: re-entering the same image on the same thread (from inside a plugin call) is a fault, never a
 /// deadlock.
 #[test]
-#[ignore = "WI-9"]
 fn same_thread_reentry_is_a_fault() {
     raw::clear();
     let env = raw_env!();
@@ -391,7 +377,6 @@ fn same_thread_reentry_is_a_fault() {
 
 /// Validation hosts (RR-m2): builds work, instances refuse to tick.
 #[test]
-#[ignore = "WI-9"]
 fn validation_host_builds_but_its_instances_refuse_to_tick() {
     raw::clear();
     let mut options = HostOptions::default();

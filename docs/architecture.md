@@ -46,7 +46,18 @@ semver, kinds, metadata against the schema), per-host checks (manifest match, pl
   `Arc<LoadedImage>` may drop; (2) the per-image call lock, blocking (contention waits, never faults; no
   `try_lock`); (3) per-host fault state, a leaf; (4) `PluginLog`, a leaf.
 - Errors name the origin (the library path as discovered) and the field (`descriptor.<f>`,
-  `capabilities[<i>].<f>`, `vtable.<f>`, `plugin.toml abi`).
+  `capabilities[<i>].<f>`, `capabilities[<i>].vtable.<f>`, `plugin.toml abi`).
+- **Behavior bridge** (`bridge/`, WI-9): each registered capability is one `PluginCapability` per host,
+  which is also the capability's single `BehaviorBatch`; the kernel's grouped phase gives it all its
+  instances in one `tick_batch` call per tick (views in the plugin's minor, statuses pre-filled `UNSET`,
+  one RNG token per item drawing the entity's own stream, intents buffered). Statuses and intents are
+  committed only after a clean call; otherwise the whole batch is discarded (every item Failure, RNG
+  draws kept). Scratch buffers live in the image's call state and stop growing after warm-up.
+- **Fault state** (`fault.rs`): per host, so per engine (ASM-118): faulted capabilities, the faults in
+  order and the pending abort under `abort`; a faulted capability is skipped by that host only.
+- **Build scope** (RR-m2, ASM-138): `PluginHost::build_scope()` on the calling thread lets a run-mode
+  host's factories build; the engine the host is attached to (`PluginHost::try_attach`) opens it around
+  building and spawning.
 
 ## Tick pipeline (`umbra-kernel`, REQ-K-2)
 Every tick runs the six phases of `Phase::ALL` in this order. Perception, Behavior and Motion act on

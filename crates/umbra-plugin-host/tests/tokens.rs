@@ -39,7 +39,6 @@ fn draw(api: &UmbraHostApi, token: u64) -> i32 {
 
 /// R-B4: a token used after its call finished is refused (no call record on this thread).
 #[test]
-#[ignore = "WI-9"]
 fn rng_draw_outside_a_call_is_err_state() {
     raw::clear();
     let env = raw_env!();
@@ -57,7 +56,6 @@ fn rng_draw_outside_a_call_is_err_state() {
 
 /// RR-M2: callbacks from another thread find no call record: `UMBRA_ERR_STATE`.
 #[test]
-#[ignore = "WI-9"]
 fn callback_from_another_thread_is_err_state() {
     raw::clear();
     let env = raw_env!();
@@ -77,7 +75,6 @@ fn callback_from_another_thread_is_err_state() {
 /// R-B4: a token kept across calls (and the sink ctx with it) is refused in the next call and faults the
 /// capability; the batch is discarded.
 #[test]
-#[ignore = "WI-9"]
 fn stale_token_in_a_later_call_is_a_fault() {
     raw::clear();
     let env = raw_env!();
@@ -100,7 +97,6 @@ fn stale_token_in_a_later_call_is_a_fault() {
 /// ADR 0021: drawing with another item's token of the same call is a contract breach the host cannot
 /// detect; it draws that item's stream, deterministically.
 #[test]
-#[ignore = "WI-9"]
 fn rng_with_another_items_token_draws_that_items_stream() {
     raw::clear();
     let env = raw_env!();
@@ -136,7 +132,6 @@ fn rng_with_another_items_token_draws_that_items_stream() {
 
 /// ADR 0021: `log` routes to the host's `PluginLog` attributed to the plugin.
 #[test]
-#[ignore = "WI-9"]
 fn log_during_a_call_is_routed_and_attributed() {
     raw::clear();
     let recorder = Recorder::arc();
@@ -159,7 +154,6 @@ fn log_during_a_call_is_routed_and_attributed() {
 
 /// ADR 0021: an unknown log level is `UMBRA_ERR_INVALID_ARGUMENT` and nothing is logged.
 #[test]
-#[ignore = "WI-9"]
 fn log_with_an_unknown_level_is_invalid_argument() {
     raw::clear();
     let recorder = Recorder::arc();
@@ -177,7 +171,6 @@ fn log_with_an_unknown_level_is_invalid_argument() {
 
 /// ADR 0021: invalid UTF-8 in a log message is `UMBRA_ERR_INVALID_ARGUMENT`.
 #[test]
-#[ignore = "WI-9"]
 fn log_with_invalid_utf8_is_invalid_argument() {
     raw::clear();
     let env = raw_env!();
@@ -201,7 +194,6 @@ impl PluginLog for Boom {
 /// R-M1: host callbacks catch panics (here from the embedder's `PluginLog`); the plugin gets an error
 /// code instead of an unwind through its frames.
 #[test]
-#[ignore = "WI-9"]
 fn a_panicking_plugin_log_is_caught_at_the_boundary() {
     raw::clear();
     let mut options = HostOptions::default();
@@ -222,7 +214,6 @@ fn a_panicking_plugin_log_is_caught_at_the_boundary() {
 
 /// R-M2: an error message longer than 4 KiB is truncated at 4 KiB.
 #[test]
-#[ignore = "WI-9"]
 fn error_sink_with_a_huge_length_is_truncated_to_4_kib() {
     raw::clear();
     let env = raw_env!();
@@ -243,7 +234,6 @@ fn error_sink_with_a_huge_length_is_truncated_to_4_kib() {
 
 /// R-M2: a null pointer with a non-zero length is refused without reading; the call still faults.
 #[test]
-#[ignore = "WI-9"]
 fn error_sink_with_a_null_pointer_and_a_length_does_not_crash() {
     raw::clear();
     let env = raw_env!();
@@ -257,7 +247,6 @@ fn error_sink_with_a_null_pointer_and_a_length_does_not_crash() {
 
 /// ADR 0019: the first error message of a call wins.
 #[test]
-#[ignore = "WI-9"]
 fn second_error_message_is_ignored() {
     raw::clear();
     let env = raw_env!();

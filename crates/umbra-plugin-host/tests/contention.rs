@@ -15,7 +15,6 @@ use support::bridge::{Ent, tick_batched};
 use support::raw;
 
 #[test]
-#[ignore = "WI-9"]
 fn cross_thread_contention_never_faults() {
     let env = raw_env!();
     let b = env.behavior("spin");

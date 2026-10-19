@@ -10,31 +10,24 @@
 
 use std::sync::Arc;
 
-use umbra_core::{
-    Behavior, BuildError, ComponentId, ComponentInfo, Factory, ParamSchema, ParamValue, Provenance,
-    Registry,
-};
+use umbra_core::{ComponentInfo, Provenance, Registry};
 
+use crate::bridge::batch::PluginCapability;
+use crate::bridge::factory::PluginFactory;
 use crate::descriptor::Capability;
 use crate::error::PluginError;
-use crate::lifecycle::LoadedImage;
 
-/// Registers every capability of `images`, in load order then descriptor order; all-or-nothing.
+/// Registers `capabilities` (the host's, in load order then descriptor order); all-or-nothing. Each
+/// factory holds its capability and so its image: a registry (or a clone) keeps the library loaded.
 pub(crate) fn register<'a>(
-    images: impl IntoIterator<Item = &'a Arc<LoadedImage>>,
+    capabilities: impl IntoIterator<Item = &'a Arc<PluginCapability>>,
     registry: &mut Registry,
 ) -> Result<(), PluginError> {
     let mut staged = registry.clone();
-    for image in images {
-        for (index, capability) in image.descriptor().capabilities.iter().enumerate() {
-            let factory = PluginFactory {
-                image: Arc::clone(image),
-                index,
-                id: capability.id.clone(),
-                schema: capability.schema.clone(),
-            };
-            staged.register_behavior(Arc::new(factory), component_info(capability))?;
-        }
+    for capability in capabilities {
+        let info = component_info(capability.capability());
+        let factory = PluginFactory::new(Arc::clone(capability));
+        staged.register_behavior(Arc::new(factory), info)?;
     }
     *registry = staged;
     Ok(())
@@ -58,38 +51,4 @@ fn component_info(capability: &Capability) -> ComponentInfo {
         info = info.with_result(result.clone());
     }
     info
-}
-
-/// The registry factory of one plugin behavior capability. It holds its image, so a registry (or a
-/// clone of it) keeps the library loaded (ADR 0021).
-struct PluginFactory {
-    image: Arc<LoadedImage>,
-    #[expect(
-        dead_code,
-        reason = "selects the capability's vtable in the behavior bridge (M4 WI-9)"
-    )]
-    index: usize,
-    id: ComponentId,
-    schema: ParamSchema,
-}
-
-impl Factory<dyn Behavior> for PluginFactory {
-    fn id(&self) -> &ComponentId {
-        &self.id
-    }
-
-    fn param_schema(&self) -> &ParamSchema {
-        &self.schema
-    }
-
-    /// The behavior bridge (`configure` through the vtable, host-bound build scope) is M4 WI-9; until
-    /// then every build is refused with a [`BuildError`] naming the plugin.
-    fn build(&self, _params: &ParamValue) -> Result<Arc<dyn Behavior>, BuildError> {
-        Err(BuildError::new(format!(
-            "plugin behavior {} of {}: building plugin behaviors arrives with the behavior bridge \
-             (M4 WI-9)",
-            self.id,
-            self.image.descriptor().id
-        )))
-    }
 }

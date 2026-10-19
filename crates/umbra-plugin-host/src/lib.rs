@@ -33,15 +33,18 @@
 //!
 //! This is one of the three crates allowed to contain `unsafe` (CLAUDE.md rule 5, NFR-2). Every
 //! `unsafe` block carries a `// SAFETY:` comment naming the invariant it relies on and is exercised by
-//! a test. The behavior bridge and the per-host fault state land in WI-9.
+//! a test. The behavior bridge (module `bridge`) and the per-host fault state (module `fault`) are
+//! M4 WI-9.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(clippy::undocumented_unsafe_blocks)]
 
 mod api;
+mod bridge;
 mod descriptor;
 mod discover;
 mod error;
+mod fault;
 mod host_api;
 mod image;
 mod library;
@@ -54,5 +57,6 @@ mod tokens;
 pub use api::{
     CapabilityInfo, HostMode, HostOptions, PluginFault, PluginHost, PluginInfo, PluginPackage,
 };
+pub use bridge::factory::BuildScope;
 pub use error::PluginError;
 pub use log::{LogLevel, PluginLog};

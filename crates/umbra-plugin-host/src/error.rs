@@ -1,6 +1,6 @@
 //! Load and registration errors (REQ-P-9, ADR 0019, ADR 0022). Every variant names the origin of the
 //! plugin (library path as discovered, or the `load_static` origin) and, where there is one, the offending
-//! field (`descriptor.<f>`, `capabilities[<i>].<f>`, `vtable.<f>`, `plugin.toml abi`; ASM-125 b3).
+//! field (`descriptor.<f>`, `capabilities[<i>].<f>`, `capabilities[<i>].vtable.<f>`, `plugin.toml abi`; ASM-125 b3).
 
 use std::path::PathBuf;
 
@@ -58,7 +58,7 @@ pub enum PluginError {
         /// Origin.
         origin: String,
         /// The struct that carries the version (`descriptor.abi_version`, `capabilities[0].abi_version`,
-        /// `vtable.abi_version`, `plugin.toml abi`); a discriminator added to the plan's design (ASM-125).
+        /// `capabilities[0].vtable.abi_version`, `plugin.toml abi`); a discriminator added to the plan's design (ASM-125).
         field: String,
         /// Plugin `(major, minor)`.
         plugin: (u32, u32),

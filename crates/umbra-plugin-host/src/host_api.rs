@@ -28,8 +28,10 @@ use umbra_plugin_api::{
     UmbraStr, UmbraToken,
 };
 
+use umbra_core::RngStream;
+
 use crate::log::LogLevel;
-use crate::tokens;
+use crate::tokens::{self, Sink};
 
 /// Leaks a fresh host API for an image lifecycle whose `host_ctx` is `host_ctx`.
 pub(crate) fn leak(host_ctx: UmbraToken) -> &'static UmbraHostApi {
@@ -54,7 +56,7 @@ pub(crate) fn error_sink(ctx: UmbraToken) -> UmbraErrorSink {
 }
 
 /// `size_of::<T>()` as the ABI's `u32` `struct_size` (every ABI struct is far below 4 GiB).
-const fn abi_size<T>() -> u32 {
+pub(crate) const fn abi_size<T>() -> u32 {
     const { assert!(size_of::<T>() <= u32::MAX as usize) };
     #[expect(
         clippy::cast_possible_truncation,
@@ -130,35 +132,91 @@ unsafe extern "C" fn host_log(
     })
 }
 
-/// The host's RNG draw (ADR 0021). The RNG token of a batch item exists only inside a `tick_batch` call
-/// (the behavior bridge, M4 WI-9); in every other call, and outside any call, the draw is refused.
+/// The host's RNG draw (ADR 0021, R-B4): the next `u64` of the entity stream named by `rng`, the RNG
+/// token of a batch item of the current `tick_batch` call. No call record on this thread is
+/// `UMBRA_ERR_STATE` without any lookup (another thread, outside a call). With a record, every misuse
+/// also records a breach that faults the capability: another image's `host_ctx` or a call without RNG
+/// tokens or a token of another call (`UMBRA_ERR_STATE`), a token naming no item or a null or misaligned
+/// `out` (`UMBRA_ERR_INVALID_ARGUMENT`). Another item's token of the same call cannot be detected: it
+/// draws that item's stream (ADR 0021, documented contract breach).
 unsafe extern "C" fn host_rng_next_u64(
     host_ctx: UmbraToken,
-    _rng: UmbraToken,
+    rng: UmbraToken,
     out: *mut u64,
 ) -> UmbraCode {
-    guarded(UMBRA_ERR_INTERNAL, || rng_refusal(host_ctx, out.cast()))
+    guarded(UMBRA_ERR_INTERNAL, || {
+        match draw(host_ctx, rng, out.cast(), RngStream::next_u64) {
+            Ok(value) => {
+                // SAFETY: `draw` checked `out` non-null and 8-byte aligned; the plugin passes it
+                // writable for the duration of this call.
+                unsafe { out.write(value) };
+                UMBRA_OK
+            }
+            Err(code) => code,
+        }
+    })
 }
 
-/// See [`host_rng_next_u64`].
+/// See [`host_rng_next_u64`]; draws an `f64` in `[0, 1)`.
 unsafe extern "C" fn host_rng_next_f64(
     host_ctx: UmbraToken,
-    _rng: UmbraToken,
+    rng: UmbraToken,
     out: *mut f64,
 ) -> UmbraCode {
-    guarded(UMBRA_ERR_INTERNAL, || rng_refusal(host_ctx, out.cast()))
+    guarded(UMBRA_ERR_INTERNAL, || {
+        match draw(host_ctx, rng, out.cast(), RngStream::next_f64) {
+            Ok(value) => {
+                // SAFETY: as in `host_rng_next_u64`.
+                unsafe { out.write(value) };
+                UMBRA_OK
+            }
+            Err(code) => code,
+        }
+    })
 }
 
-/// The code of an RNG draw without a batch item: `UMBRA_ERR_STATE` (no call of this image on the thread,
-/// or a call without RNG tokens), `UMBRA_ERR_INVALID_ARGUMENT` for a null or misaligned `out`.
-fn rng_refusal(host_ctx: UmbraToken, out: *mut u8) -> UmbraCode {
-    if tokens::with_top(|r| r.image == host_ctx) != Some(true) {
-        return UMBRA_ERR_STATE;
-    }
-    if out.is_null() || !(out as usize).is_multiple_of(8) {
-        return UMBRA_ERR_INVALID_ARGUMENT;
-    }
-    UMBRA_ERR_STATE
+/// Resolves an RNG token against the calling thread's top record and draws from the item's stream.
+fn draw<T>(
+    host_ctx: UmbraToken,
+    rng: UmbraToken,
+    out: *mut u8,
+    next: fn(&mut RngStream) -> T,
+) -> Result<T, UmbraCode> {
+    tokens::with_top(|r| {
+        let refuse = |r: &mut tokens::CallRecord, code: UmbraCode, why: &str| {
+            r.breach(|| format!("RNG draw refused: {why}"));
+            Err(code)
+        };
+        if r.image != host_ctx {
+            return refuse(r, UMBRA_ERR_STATE, "host_ctx of another image or lifecycle");
+        }
+        let Some(batch) = r.batch.as_ref() else {
+            return refuse(
+                r,
+                UMBRA_ERR_STATE,
+                "no RNG token is valid outside tick_batch",
+            );
+        };
+        if tokens::generation_of(rng) != r.generation {
+            return refuse(r, UMBRA_ERR_STATE, "stale RNG token of another call");
+        }
+        let index = tokens::index_of(rng) as usize;
+        let Some(&stream) = index.checked_sub(1).and_then(|i| batch.rngs.get(i)) else {
+            return refuse(r, UMBRA_ERR_INVALID_ARGUMENT, "the RNG token names no item");
+        };
+        if out.is_null() || !(out as usize).is_multiple_of(8) {
+            return refuse(
+                r,
+                UMBRA_ERR_INVALID_ARGUMENT,
+                "null or misaligned out pointer",
+            );
+        }
+        // SAFETY: the bridge set this pointer from the item's `&mut RngStream` for the duration of the
+        // current call on this thread and does not touch the items while the plugin runs; the record
+        // (and so the pointer) is popped before the call returns to the kernel.
+        Ok(next(unsafe { &mut *stream }))
+    })
+    .unwrap_or(Err(UMBRA_ERR_STATE))
 }
 
 /// The host's error sink (ADR 0019 "Results"): the first message of a call wins, later ones and messages
@@ -166,7 +224,7 @@ fn rng_refusal(host_ctx: UmbraToken, out: *mut u8) -> UmbraCode {
 /// and decoded lossily; a null pointer with a length records a placeholder without reading.
 unsafe extern "C" fn host_error_set(ctx: UmbraToken, message: UmbraStr) {
     guarded((), || {
-        let wanted = tokens::with_top(|r| r.error_ctx() == ctx && r.error.is_none());
+        let wanted = tokens::with_top(|r| r.sink(Sink::Error) == ctx && r.error.is_none());
         if wanted != Some(true) {
             return;
         }
@@ -174,7 +232,7 @@ unsafe extern "C" fn host_error_set(ctx: UmbraToken, message: UmbraStr) {
         // `UMBRA_MAX_ERROR_LEN + 1` of its `len` bytes are read.
         let text = unsafe { truncated(message) };
         tokens::with_top(|r| {
-            if r.error_ctx() == ctx && r.error.is_none() {
+            if r.sink(Sink::Error) == ctx && r.error.is_none() {
                 r.error = Some(text);
             }
         });
@@ -185,7 +243,7 @@ unsafe extern "C" fn host_error_set(ctx: UmbraToken, message: UmbraStr) {
 ///
 /// # Safety
 /// As [`bytes`], for the first `min(s.len, UMBRA_MAX_ERROR_LEN + 1)` bytes.
-unsafe fn truncated(s: UmbraStr) -> String {
+pub(crate) unsafe fn truncated(s: UmbraStr) -> String {
     let head = UmbraStr {
         ptr: s.ptr,
         len: s.len.min(UMBRA_MAX_ERROR_LEN + 1),
@@ -221,13 +279,12 @@ mod tests {
     }
 
     fn call(image: UmbraToken, generation: u32) -> ActiveCall {
-        ActiveCall::push(CallRecord {
+        ActiveCall::push(CallRecord::new(
             image,
             generation,
-            plugin: PluginId::new("test.plugin.api").unwrap_or_else(|e| panic!("{e}")),
-            log: Arc::new(TracingLog),
-            error: None,
-        })
+            PluginId::new("test.plugin.api").unwrap_or_else(|e| panic!("{e}")),
+            Arc::new(TracingLog),
+        ))
     }
 
     #[test]
@@ -293,7 +350,10 @@ mod tests {
         unsafe {
             assert_eq!(log(api.host_ctx, UMBRA_LOG_INFO, s("x")), UMBRA_ERR_STATE);
             assert_eq!(draw(api.host_ctx, 1, &raw mut out), UMBRA_ERR_STATE);
-            host_error_set(tokens::make(1, tokens::ERROR_SINK_INDEX), s("ignored"));
+            host_error_set(
+                tokens::sink_token(api.host_ctx, 1, Sink::Error),
+                s("ignored"),
+            );
         }
     }
 
@@ -304,7 +364,7 @@ mod tests {
         let log = api.log.unwrap_or_else(|| panic!("log"));
         let draw = api.rng_next_f64.unwrap_or_else(|| panic!("rng"));
         let active = call(image, 5);
-        let sink = error_sink(tokens::make(5, tokens::ERROR_SINK_INDEX));
+        let sink = error_sink(tokens::sink_token(image, 5, Sink::Error));
         let set = sink.set.unwrap_or_else(|| panic!("set"));
         let bad = [0xFF_u8, 0xFE];
         let mut out = 0.0_f64;
@@ -323,15 +383,71 @@ mod tests {
                 "another lifecycle's host_ctx"
             );
             assert_eq!(
-                draw(image, 1, std::ptr::null_mut()),
-                UMBRA_ERR_INVALID_ARGUMENT
+                draw(image, tokens::rng_token(5, 0), &raw mut out),
+                UMBRA_ERR_STATE,
+                "no RNG tokens outside tick_batch"
             );
-            assert_eq!(draw(image, 1, &raw mut out), UMBRA_ERR_STATE);
-            set(tokens::make(6, tokens::ERROR_SINK_INDEX), s("other call"));
+            set(tokens::sink_token(image, 6, Sink::Error), s("other call"));
+            let other_image = tokens::make(101, tokens::HOST_CTX_INDEX);
+            set(
+                tokens::sink_token(other_image, 5, Sink::Error),
+                s("other image"),
+            );
             set(sink.ctx, s("first"));
             set(sink.ctx, s("second"));
         }
-        assert_eq!(active.finish().as_deref(), Some("first"));
+        let finished = active.finish();
+        assert_eq!(finished.error.as_deref(), Some("first"));
+        assert!(
+            finished
+                .breach
+                .is_some_and(|b| b.contains("outside tick_batch")),
+            "a draw without RNG tokens is a breach"
+        );
+    }
+
+    #[test]
+    fn rng_tokens_draw_the_items_stream_and_misuse_is_a_breach() {
+        let image = tokens::make(102, tokens::HOST_CTX_INDEX);
+        let api = leak(image);
+        let next = api.rng_next_u64.unwrap_or_else(|| panic!("rng"));
+        let mut stream = umbra_core::SimRng::new(4).stream(umbra_core::StreamKey::scenario(1));
+        let mut reference = stream.clone();
+        let active = call(image, 9);
+        tokens::with_top(|r| {
+            r.batch = Some(tokens::BatchCall {
+                rngs: vec![&raw mut stream],
+                ..tokens::BatchCall::default()
+            });
+        });
+        let mut out = 0_u64;
+        // SAFETY: valid out pointers; the stream outlives the record.
+        unsafe {
+            assert_eq!(next(image, tokens::rng_token(9, 0), &raw mut out), UMBRA_OK);
+            assert_eq!(out, reference.next_u64(), "the item's own stream");
+            assert_eq!(
+                next(image, tokens::rng_token(9, 1), &raw mut out),
+                UMBRA_ERR_INVALID_ARGUMENT,
+                "no such item"
+            );
+            assert_eq!(
+                next(image, tokens::rng_token(8, 0), &raw mut out),
+                UMBRA_ERR_STATE,
+                "a token of another call"
+            );
+            let misaligned = std::ptr::without_provenance_mut::<u64>(4);
+            assert_eq!(
+                next(image, tokens::rng_token(9, 0), misaligned),
+                UMBRA_ERR_INVALID_ARGUMENT
+            );
+        }
+        tokens::with_top(|r| r.batch = None);
+        let finished = active.finish();
+        assert!(
+            finished.breach.is_some_and(|b| b.contains("names no item")),
+            "the first misuse is the breach"
+        );
+        assert_eq!(stream.state(), reference.state(), "only the one draw");
     }
 
     #[test]

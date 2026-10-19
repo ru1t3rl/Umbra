@@ -9,7 +9,7 @@
 //! mismatch too) and its `struct_size` (at least the minor-0 size, at most the host's size for the
 //! declared minor, a multiple of 8) before anything past the header is read; only `struct_size` bytes
 //! are read, newer fields are absent. Errors name the field as `descriptor.<f>`, `capabilities[<i>].<f>`
-//! or `vtable.<f>` (ASM-125 b3).
+//! or `capabilities[<i>].vtable.<f>` (ASM-125 b3).
 
 #![expect(
     unsafe_code,
@@ -24,8 +24,8 @@ use umbra_plugin_api::{
     UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_CAPABILITY_BEHAVIOR,
     UMBRA_MAX_CAPABILITIES, UMBRA_MAX_ID_LEN, UMBRA_MAX_METADATA_LEN, UMBRA_MAX_SCHEMA_LEN,
     UmbraBehavior, UmbraBehaviorBatch, UmbraBehaviorVTable, UmbraCapability, UmbraCode,
-    UmbraErrorSink, UmbraHostApi, UmbraInstance, UmbraPluginDescriptor, UmbraStr, UmbraValue,
-    UmbraValueSink,
+    UmbraErrorSink, UmbraHostApi, UmbraInstance, UmbraIntent, UmbraPluginDescriptor, UmbraStr,
+    UmbraValue, UmbraValueSink,
 };
 
 use crate::error::PluginError;
@@ -88,7 +88,6 @@ pub(crate) struct Capability {
     /// The behavior metadata (ADR 0020).
     pub(crate) metadata: Metadata,
     /// The behavior vtable, copied.
-    #[expect(dead_code, reason = "called by the behavior bridge (M4 WI-9)")]
     pub(crate) vtable: BehaviorVTable,
 }
 
@@ -105,10 +104,6 @@ pub(crate) struct Metadata {
 
 /// The behavior vtable entries this host knows, copied from the plugin (required ones are non-null).
 #[derive(Debug, Clone, Copy)]
-#[expect(
-    dead_code,
-    reason = "the call entries are used by the behavior bridge (M4 WI-9)"
-)]
 pub(crate) struct BehaviorVTable {
     pub(crate) configure: unsafe extern "C" fn(
         params: UmbraStr,
@@ -152,7 +147,7 @@ pub(crate) struct BehaviorVTable {
 /// # Safety
 /// Implementors are `#[repr(C)]`, start with `abi_version: u32, struct_size: u32`, and the all-zero bit
 /// pattern is a valid value (integers, raw pointers, `UmbraStr`, `Option` of function pointers only).
-unsafe trait Headed: Sized {}
+pub(crate) unsafe trait Headed: Sized {}
 
 // SAFETY: `#[repr(C)]`, header first; fields are integers, `UmbraStr`, a raw pointer and `Option`s of
 // function pointers, for all of which zero is valid (null / `None`).
@@ -161,6 +156,10 @@ unsafe impl Headed for UmbraPluginDescriptor {}
 unsafe impl Headed for UmbraCapability {}
 // SAFETY: as above; integers and `Option`s of function pointers.
 unsafe impl Headed for UmbraBehaviorVTable {}
+// SAFETY: as above; integers, an `f64`, `UmbraVec3` (three `f64`) and `UmbraStr`s.
+unsafe impl Headed for UmbraIntent {}
+// SAFETY: as above; integers, `f64`s, a byte array, `UmbraStr` and `UmbraVec3`.
+unsafe impl Headed for UmbraValue {}
 
 /// Context for error construction: the origin of the load.
 struct Ctx<'a> {
@@ -239,7 +238,7 @@ impl Ctx<'_> {
 ///
 /// # Safety
 /// `ptr` is non-null, 8-byte aligned and points to at least 8 readable bytes (a header).
-unsafe fn read_header<T: Headed>(ptr: *const T) -> (u32, u32) {
+pub(crate) unsafe fn read_header<T: Headed>(ptr: *const T) -> (u32, u32) {
     let words = ptr.cast::<[u32; 2]>();
     // SAFETY: by the caller's contract; `[u32; 2]` needs 4-byte alignment and 8 bytes.
     let [abi_version, struct_size] = unsafe { words.read() };
@@ -250,7 +249,7 @@ unsafe fn read_header<T: Headed>(ptr: *const T) -> (u32, u32) {
 ///
 /// # Safety
 /// `ptr` points to at least `size` readable bytes; `size <= size_of::<T>()` (checked by `header`).
-unsafe fn read_prefix<T: Headed>(ptr: *const T, size: usize) -> T {
+pub(crate) unsafe fn read_prefix<T: Headed>(ptr: *const T, size: usize) -> T {
     debug_assert!(size <= size_of::<T>());
     let mut value = MaybeUninit::<T>::zeroed();
     // SAFETY: the source has `size` readable bytes (caller), the destination is a local of
@@ -436,9 +435,10 @@ unsafe fn capability(
     let metadata_field = format!("{prefix}.metadata");
     let metadata_text = cx.text(cap.metadata, UMBRA_MAX_METADATA_LEN, &metadata_field)?;
     let metadata = metadata(cx, &metadata_field, &metadata_text)?;
+    let vtable_field = format!("{prefix}.vtable");
     // SAFETY: forwarded caller contract for the vtable pointer.
-    let vtable = unsafe { vtable(cx, cap.vtable.cast()) }?;
-    check_entries(cx, &id_text, &metadata, &vtable)?;
+    let vtable = unsafe { vtable(cx, &vtable_field, cap.vtable.cast()) }?;
+    check_entries(cx, &vtable_field, &metadata, &vtable)?;
     check_schema(cx, &metadata_field, &metadata, &schema)?;
     Ok(Capability {
         kind: ComponentKind::Behavior,
@@ -457,18 +457,19 @@ unsafe fn capability(
 /// As [`copy`]: a non-null, aligned `ptr` points to a vtable of at least its `struct_size` bytes.
 unsafe fn vtable(
     cx: &Ctx<'_>,
+    field: &str,
     ptr: *const UmbraBehaviorVTable,
 ) -> Result<BehaviorVTable, PluginError> {
-    cx.pointer(ptr, "vtable")?;
+    cx.pointer(ptr, field)?;
     // SAFETY: non-null and aligned (checked); the plugin's vtable has a header (caller).
-    let size = cx.header("vtable", unsafe { read_header(ptr) }, VTABLE_SIZES)?;
+    let size = cx.header(field, unsafe { read_header(ptr) }, VTABLE_SIZES)?;
     // SAFETY: `size` bytes are readable (caller) and checked against the host's size.
     let raw = unsafe { read_prefix(ptr, size) };
     let required = |entry: bool, name: &str| {
         if entry {
             Ok(())
         } else {
-            Err(cx.err(format!("vtable.{name}"), "required entry is null"))
+            Err(cx.err(format!("{field}.{name}"), "required entry is null"))
         }
     };
     let (
@@ -492,7 +493,7 @@ unsafe fn vtable(
         required(raw.instantiate.is_some(), "instantiate")?;
         required(raw.destroy_instance.is_some(), "destroy_instance")?;
         required(raw.tick_batch.is_some(), "tick_batch")?;
-        return Err(cx.err("vtable.halt", "required entry is null"));
+        return Err(cx.err(format!("{field}.halt"), "required entry is null"));
     };
     Ok(BehaviorVTable {
         configure,
@@ -566,7 +567,7 @@ fn ports(
 /// ADR 0020: `set_input` present iff `param_types` is non-empty, `output` iff `outputs` is.
 fn check_entries(
     cx: &Ctx<'_>,
-    capability: &str,
+    field: &str,
     metadata: &Metadata,
     vtable: &BehaviorVTable,
 ) -> Result<(), PluginError> {
@@ -575,13 +576,11 @@ fn check_entries(
             return Ok(());
         }
         let message = if declared {
-            format!(
-                "capability {capability}: the metadata declares {key}, so the entry is required"
-            )
+            format!("the metadata declares {key}, so the entry is required")
         } else {
-            format!("capability {capability}: present without {key} in the metadata")
+            format!("present without {key} in the metadata")
         };
-        Err(cx.err(format!("vtable.{entry}"), message))
+        Err(cx.err(format!("{field}.{entry}"), message))
     };
     rule(
         !metadata.param_types.is_empty(),

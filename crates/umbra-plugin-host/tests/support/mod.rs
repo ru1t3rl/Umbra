@@ -83,22 +83,24 @@ pub fn garbage_package(root: &Path, package: &str, manifest: Option<&str>) -> Pa
     dir
 }
 
-/// Builds a behavior of `registry`'s plugin factory `id` from JSON `params` inside the build scope of the
-/// host's engine (ASM-118, RR-m2).
-///
-/// Plan gap: the plan defines the build scope only through `Engine::attach_plugins` and
-/// `instantiate_with_plugins` (umbra-engine), which this crate's tests cannot use (`umbra-plugin-host`
-/// may not depend on the engine), and names no host-level way in. WI-9 must provide one (for example a
-/// scope guard on `PluginHost`) and implement this helper with it; every bridge, fault and token test
-/// builds through it.
-#[expect(clippy::todo, reason = "M4 WI-9 stub")]
+/// Builds a behavior of `registry`'s plugin factory `id` from JSON `params` inside the host's build
+/// scope (ASM-118, RR-m2, ASM-138): what the engine the host is attached to does around building and
+/// spawning (`instantiate_with_plugins`, WI-12).
 pub fn build_behavior(
-    _host: &umbra_plugin_host::PluginHost,
-    _registry: &umbra_core::Registry,
-    _id: &str,
-    _params: &str,
+    host: &umbra_plugin_host::PluginHost,
+    registry: &umbra_core::Registry,
+    id: &str,
+    params: &str,
 ) -> Result<Arc<dyn umbra_core::Behavior>, umbra_core::BuildError> {
-    todo!("M4 WI-9: enter the host's build scope, then Factory::build")
+    let id =
+        umbra_core::ComponentId::new(id).map_err(|e| umbra_core::BuildError::new(e.to_string()))?;
+    let factory = registry
+        .behavior(&id)
+        .ok_or_else(|| umbra_core::BuildError::new(format!("no behavior {id}")))?;
+    let params: umbra_core::ParamValue = serde_json::from_str(params)
+        .map_err(|e| umbra_core::BuildError::new(format!("params: {e}")))?;
+    let _scope = host.build_scope();
+    factory.build(&params)
 }
 
 /// Keeps the textual macros "used" in binaries that do not need them.

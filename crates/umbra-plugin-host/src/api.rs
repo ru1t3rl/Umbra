@@ -1,15 +1,18 @@
 //! The public host API (M4 plan, Design "`umbra-plugin-host`"): options, discovered packages, loaded
 //! plugin information, and [`PluginHost`], one per scenario load. Loading and registration are M4 WI-8;
-//! the fault-state methods arrive with the behavior bridge (WI-9).
+//! the bridge, the fault state and the build scope are WI-9.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use umbra_core::{ComponentId, ComponentKind, PluginFaultPolicy, PluginId, Registry, Version};
 use umbra_plugin_api::UmbraPluginEntry;
 
+use crate::bridge::batch::PluginCapability;
+use crate::bridge::factory::BuildScope;
 use crate::descriptor::Descriptor;
 use crate::error::PluginError;
+use crate::fault::HostState;
 use crate::lifecycle::{self, LoadRequest, LoadedImage};
 use crate::log::{PluginLog, TracingLog};
 use crate::manifest::Manifest;
@@ -114,7 +117,12 @@ pub struct PluginFault {
 /// its last holder (a host, a registered factory, a behavior or instance handle) releases it.
 pub struct PluginHost {
     options: HostOptions,
+    /// Fault state, log and mode, shared with this host's capabilities (and so its factories).
+    state: Arc<HostState>,
     plugins: Vec<PluginInfo>,
+    /// `plugins()` with the `faulted` flags after `k` faults, built on demand (the faulted set only
+    /// grows, so the snapshot for each count is unique); reset by `load`.
+    snapshots: Vec<OnceLock<Vec<PluginInfo>>>,
     images: Vec<HostImage>,
 }
 
@@ -124,6 +132,8 @@ struct HostImage {
     origin: String,
     /// The canonical library path (`None` for `load_static`).
     path: Option<PathBuf>,
+    /// This host's view of each capability (the registered factories' and batches' shared state).
+    capabilities: Vec<Arc<PluginCapability>>,
 }
 
 impl PluginHost {
@@ -131,8 +141,10 @@ impl PluginHost {
     #[must_use]
     pub fn new(options: HostOptions) -> Self {
         Self {
+            state: Arc::new(HostState::new(Arc::clone(&options.log), options.mode)),
             options,
             plugins: Vec::new(),
+            snapshots: vec![OnceLock::new()],
             images: Vec::new(),
         }
     }
@@ -224,33 +236,74 @@ impl PluginHost {
     /// # Errors
     /// `Registry`.
     pub fn register(&self, registry: &mut Registry) -> Result<(), PluginError> {
-        register::register(self.images.iter().map(|held| &held.image), registry)
+        register::register(
+            self.images.iter().flat_map(|held| &held.capabilities),
+            registry,
+        )
     }
 
-    /// The loaded plugins in load order.
+    /// The loaded plugins in load order, with each capability's `faulted` flag for this host.
     #[must_use]
     pub fn plugins(&self) -> &[PluginInfo] {
-        &self.plugins
+        let faulted = self.state.faulted();
+        let Some(slot) = self.snapshots.get(faulted.len()) else {
+            return &self.plugins;
+        };
+        slot.get_or_init(|| {
+            let mut plugins = self.plugins.clone();
+            for &(plugin, capability) in &faulted {
+                if let Some(c) = plugins
+                    .get_mut(plugin)
+                    .and_then(|p| p.capabilities.get_mut(capability))
+                {
+                    c.faulted = true;
+                }
+            }
+            plugins
+        })
     }
 
-    /// Sets the policy applied to faults.
-    #[expect(clippy::todo, reason = "M4 WI-9 stub")]
-    pub fn set_fault_policy(&self, _policy: PluginFaultPolicy) {
-        todo!("M4 WI-9")
+    /// Sets the policy applied to later faults (ADR 0021; default `Abort`).
+    pub fn set_fault_policy(&self, policy: PluginFaultPolicy) {
+        self.state.set_policy(policy);
     }
 
     /// Faults in occurrence order, this host only.
     #[must_use]
-    #[expect(clippy::todo, reason = "M4 WI-9 stub")]
     pub fn faults(&self) -> Vec<PluginFault> {
-        todo!("M4 WI-9")
+        self.state.faults()
     }
 
     /// The first fault under `Abort`, once.
     #[must_use]
-    #[expect(clippy::todo, reason = "M4 WI-9 stub")]
     pub fn take_abort(&self) -> Option<PluginFault> {
-        todo!("M4 WI-9")
+        self.state.take_abort()
+    }
+
+    /// Opens this host's build scope on the calling thread (RR-m2, ASM-138): while the guard lives, the
+    /// factories this host registered build here, which in [`HostMode::Run`] they do nowhere else
+    /// ("plugin host not attached to this engine"). The engine the host is attached to opens it around
+    /// building and spawning; [`HostMode::Validation`] factories build without it.
+    pub fn build_scope(&self) -> BuildScope<'_> {
+        BuildScope::open(&self.state)
+    }
+
+    /// Marks this host as taken by an engine (ADR 0021: a host belongs to at most one engine); `false`
+    /// if an engine already took it. Called by `Engine::attach_plugins` (WI-12).
+    #[must_use]
+    pub fn try_attach(&self) -> bool {
+        self.state.try_attach()
+    }
+
+    /// Sum of the capacities of the bridge's scratch buffers of every image of this host: the
+    /// warm-up growth probe of the tests (like `Kernel::behavior_scratch_capacity`, ASM-125 a).
+    #[doc(hidden)]
+    #[must_use]
+    pub fn scratch_capacity(&self) -> usize {
+        self.images
+            .iter()
+            .map(|held| held.image.scratch_capacity())
+            .sum()
     }
 
     /// ADR 0021: one plugin id per host; another image with a loaded id is a `Duplicate`.
@@ -289,13 +342,26 @@ impl PluginHost {
             });
         }
         let info = plugin_info(image.descriptor(), &origin);
+        let index = self.plugins.len();
+        let capabilities = (0..image.descriptor().capabilities.len())
+            .map(|c| {
+                Arc::new(PluginCapability::new(
+                    Arc::clone(&image),
+                    c,
+                    (index, c),
+                    Arc::clone(&self.state),
+                ))
+            })
+            .collect();
         self.images.push(HostImage {
             image,
             origin,
             path,
+            capabilities,
         });
-        let index = self.plugins.len();
         self.plugins.push(info);
+        let total: usize = self.plugins.iter().map(|p| p.capabilities.len()).sum();
+        self.snapshots = (0..=total).map(|_| OnceLock::new()).collect();
         Ok(&self.plugins[index])
     }
 }
