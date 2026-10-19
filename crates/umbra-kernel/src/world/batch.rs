@@ -1,6 +1,7 @@
 //! The grouped Behavior phase's world-side half (REQ-B-4, ADR 0020).
 //!
-//! Hands every member of a batch group to `tick_batch` as one [`BatchItem`] over that entity's own
+//! Slots are paired with entities by id (a merge join over the id-ordered slot map), never by
+//! position. Hands every member of a batch group to `tick_batch` as one [`BatchItem`] over that entity's own
 //! view, RNG stream, intent buffer and instance. All buffers live in [`BatchScratch`] and keep
 //! their capacity between ticks. The items borrow from the world for one call only, so the stored
 //! vectors are typed `'static` and re-typed to the tick's lifetime by [`relife`]; a vector is
@@ -134,9 +135,15 @@ impl World {
         }
         rows_t.sort_unstable_by_key(|r| r.id);
         let mut pending_t = relife_pending(std::mem::take(pending));
-        let slots = self.behaviors.values_mut().filter(|s| s.batch.is_some());
-        for ((row, slot), &(id, group)) in rows_t.drain(..).zip(slots).zip(batched.iter()) {
-            debug_assert_eq!(row.id, id, "rows and slots cover the same entities");
+        // Merge join by id: `batched`, the sorted rows and the slot map all ascend by id. Slots of
+        // entities that are not batched this tick (Remote ones) are skipped, never paired.
+        let mut slots = self.behaviors.iter_mut();
+        for (row, &(id, group)) in rows_t.drain(..).zip(batched.iter()) {
+            debug_assert_eq!(row.id, id, "rows cover the batched entities");
+            let Some((_, slot)) = slots.find(|(k, _)| **k == id) else {
+                debug_assert!(false, "a batched entity has a behavior slot");
+                continue;
+            };
             pending_t.push(Pending {
                 group,
                 row,
@@ -145,16 +152,16 @@ impl World {
         }
         *rows = relife_rows(rows_t);
         pending_t.sort_unstable_by_key(|p| (p.group, p.row.id));
-        let mut items_t = relife_items(std::mem::take(items));
-        items_t.extend(pending_t.drain(..).map(|p| make_item(p, now)));
-        *pending = relife_pending(pending_t);
         counts.clear();
         counts.resize(groups.len(), 0);
-        for (_, group) in batched.iter() {
-            if let Some(n) = counts.get_mut(*group) {
+        for p in &pending_t {
+            if let Some(n) = counts.get_mut(p.group) {
                 *n += 1;
             }
         }
+        let mut items_t = relife_items(std::mem::take(items));
+        items_t.extend(pending_t.drain(..).map(|p| make_item(p, now)));
+        *pending = relife_pending(pending_t);
         results.clear();
         let mut start = 0;
         for (group, count) in groups.iter().zip(counts.iter()) {
@@ -168,9 +175,13 @@ impl World {
         }
         *items = relife_items(items_t);
         results.sort_unstable_by_key(|r| r.0);
-        let slots = self.behaviors.values_mut().filter(|s| s.batch.is_some());
-        for (slot, (_, status)) in slots.zip(results.iter()) {
-            slot.last = Some(*status);
+        let mut slots = self.behaviors.iter_mut();
+        for (id, status) in &*results {
+            if let Some((_, slot)) = slots.find(|(k, _)| **k == *id) {
+                slot.last = Some(*status);
+            } else {
+                debug_assert!(false, "a result belongs to a behavior slot");
+            }
         }
     }
 
@@ -225,4 +236,27 @@ fn make_item(p: Pending<'_>, now: SimTime) -> BatchItem<'_> {
         &mut **p.instance,
         IntentBuffer::new(&mut intents.0),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The guard of ASM-126 (b): the re-typing keeps the allocation (capacity and pointer).
+    macro_rules! keeps_allocation {
+        ($test:ident, $relife:ident, $ty:ident) => {
+            #[test]
+            fn $test() {
+                let v: Vec<$ty<'static>> = Vec::with_capacity(16);
+                let (cap, ptr) = (v.capacity(), v.as_ptr().cast::<u8>());
+                let back = $relife(v);
+                assert_eq!(back.capacity(), cap);
+                assert_eq!(back.as_ptr().cast::<u8>(), ptr);
+            }
+        };
+    }
+
+    keeps_allocation!(relife_rows_keeps_allocation, relife_rows, Row);
+    keeps_allocation!(relife_pending_keeps_allocation, relife_pending, Pending);
+    keeps_allocation!(relife_items_keeps_allocation, relife_items, BatchItem);
 }
