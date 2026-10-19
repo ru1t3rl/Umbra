@@ -12,7 +12,7 @@ A minor bump changes, in one PR: the Rust types in `umbra-plugin-api`, the host'
 the pins in `crates/umbra-plugin-api/tests/layout.rs`, the regenerated header (gate 11; the generated C
 asserts of `c_header.rs` follow), the SDK's own minor, and an entry here. A major bump needs an ADR.
 
-## 0.0 (M4, provisional)
+## 0.0 (M4, frozen at `m4-done`)
 - First ABI. Layouts: the table in `docs/plans/M4.md` ("Layout table"), pinned by
   `crates/umbra-plugin-api/tests/layout.rs` (64-bit only, ASM-120). Minor-0 sizes: `UmbraErrorSink` 24,
   `UmbraHostApi` 40, `UmbraPluginDescriptor` 88, `UmbraCapability` 88, `UmbraBehaviorVTable` 80,
@@ -37,3 +37,8 @@ asserts of `c_header.rs` follow), the SDK's own minor, and an entry here. A majo
 - **Layout final** (M4 WI-14, 2026-10-19): the C example `examples/plugins/c-circle` compiles against the
   header with `-std=c11 -pedantic -Wall -Wextra -Werror`, loads and drives entities; no struct, field,
   constant or header text changed for it. ABI 0.0 layout final, pending the WI-16 freeze review.
+- **Frozen** (M4 WI-16, 2026-10-19, at `5f41ea1`): field-by-field freeze review against ADR 0019 signed off
+  ("0.0 freeze: approved"; 16 structs recomputed for x86_64, aarch64 and Win64, no implicit padding,
+  112 fields pinned by `layout.rs` and the generated C asserts). The only change from the review was
+  comment-level (`UmbraHostApi` is written in the host's own layout, ASM-134 a). From `m4-done` the rules
+  of REQ-P-2 apply in full: within major 0, append only, with a minor bump and an entry here.
