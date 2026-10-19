@@ -191,7 +191,6 @@ fn validate_example_without_plugin_path_reports_unknown_id() {
 /// ADR 0021, REQ-P-7: a plugin fault under `abort` is exit 1 with the fault message (plugin,
 /// capability and call) on stderr.
 #[test]
-#[ignore = "WI-12"]
 fn run_fault_under_abort_exits_1_with_the_fault_message() {
     let scenario = s(&plugin_support::fault_scenario(
         "cli-abort",
@@ -222,7 +221,6 @@ fn run_fault_under_abort_exits_1_with_the_fault_message() {
 
 /// ADR 0021: under `disable_capability` the same run ends normally (exit 0) with its final hash.
 #[test]
-#[ignore = "WI-12"]
 fn run_fault_under_disable_capability_exits_0() {
     let scenario = s(&plugin_support::fault_scenario(
         "cli-disable",
@@ -251,7 +249,6 @@ fn run_fault_under_disable_capability_exits_0() {
 
 /// ADR 0022: a `--plugin-path` that does not exist is a load error, exit 1, naming the path.
 #[test]
-#[ignore = "WI-12"]
 fn missing_plugin_dir_is_exit_1_naming_the_path() {
     let scenario = s(&plugin_support::fault_scenario(
         "cli-missing",

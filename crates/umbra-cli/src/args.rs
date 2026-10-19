@@ -25,6 +25,8 @@ pub enum Command {
     Validate(ValidateArgs),
     /// Print a JSON Schema: the file formats or a registered component's parameters.
     Schema(SchemaArgs),
+    /// List the plugins found in the plugin directories and their capabilities.
+    ListPlugins(ListPluginsArgs),
 }
 
 /// Options of `run`.
@@ -53,6 +55,9 @@ pub struct RunArgs {
     /// Log level: off, error, warn, info, debug or trace.
     #[arg(long, default_value = "warn", value_parser = parse_level)]
     pub log_level: LevelFilter,
+    /// A directory of plugin packages to load (repeatable); the scenario's `plugin_paths` follow.
+    #[arg(long = "plugin-path", value_name = "DIR")]
+    pub plugin_path: Vec<PathBuf>,
 }
 
 /// Options of `validate`.
@@ -64,6 +69,22 @@ pub struct ValidateArgs {
     /// Print one JSON document instead of text.
     #[arg(long)]
     pub json: bool,
+    /// A directory of plugin packages to load (repeatable); the scenario's `plugin_paths` follow.
+    #[arg(long = "plugin-path", value_name = "DIR")]
+    pub plugin_path: Vec<PathBuf>,
+}
+
+/// Options of `list-plugins`.
+#[derive(Debug, clap::Args)]
+pub struct ListPluginsArgs {
+    /// A scenario file, or a directory of them, whose `plugin_paths` are listed too.
+    pub scenario: Option<PathBuf>,
+    /// Print one JSON document instead of text.
+    #[arg(long)]
+    pub json: bool,
+    /// A directory of plugin packages to load (repeatable); the scenario's `plugin_paths` follow.
+    #[arg(long = "plugin-path", value_name = "DIR")]
+    pub plugin_path: Vec<PathBuf>,
 }
 
 /// Options of `schema`.

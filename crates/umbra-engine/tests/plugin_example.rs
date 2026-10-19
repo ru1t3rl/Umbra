@@ -328,7 +328,6 @@ fn caller_scenario(name: &str, target: &str) -> PathBuf {
 /// REQ-B-9, ADR 0013 amendment, ASM-096: through one `subgraph` node a real plugin behavior and the
 /// M3 `Provenance::Plugin` stub with the same logic give the same trace and intents on every tick.
 #[test]
-#[ignore = "WI-12"]
 fn plugin_and_stub_targets_are_indistinguishable_in_a_subgraph() {
     let mut stub_registry: Registry = standard();
     let stub_id = ComponentId::new("test.behavior.draw_speed_stub").expect("id");

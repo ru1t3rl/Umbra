@@ -4,6 +4,7 @@
 //! motion model or terrain type.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use umbra_core::{ComponentKind, EntityId, Ownership, Registry, TemplateId};
 use umbra_kernel::{ClockMode, TimeScale, WallClock};
@@ -11,6 +12,8 @@ use umbra_templates::{ClockSetting, Loader, LoaderError, Placement};
 pub use umbra_templates::{
     Diagnostic, DiagnosticCode, Diagnostics, Location, Note, Scenario, ValidationReport,
 };
+
+use umbra_plugin_host::PluginHost;
 
 use crate::engine::{AgentInit, Engine, EngineConfig, RouteSpec, SpawnSpec};
 use crate::error::EngineError;
@@ -164,6 +167,17 @@ pub fn instantiate(
     scenario: &Scenario,
     options: RunOptions,
 ) -> Result<ScenarioRun, EngineError> {
+    instantiate_in(registry, scenario, options, None)
+}
+
+/// [`instantiate`], optionally with a plugin host: the host is attached to the new engine, and
+/// building and spawning happen inside the host's build scope (RR-m2, ASM-138).
+pub(crate) fn instantiate_in(
+    registry: &Registry,
+    scenario: &Scenario,
+    options: RunOptions,
+    host: Option<&Arc<PluginHost>>,
+) -> Result<ScenarioRun, EngineError> {
     let registry = &scenario_registry(registry, scenario)?;
     let unknown = |kind, id: &umbra_core::ComponentId| EngineError::UnknownComponent {
         kind,
@@ -183,6 +197,14 @@ pub fn instantiate(
         },
     };
     let mut engine = Engine::with_wall_clock(config, terrain, options.wall);
+    // Declared after the engine, so the scope closes before the engine moves out.
+    let _scope = match host {
+        Some(host) => {
+            engine.attach_plugins(Arc::clone(host))?;
+            Some(host.build_scope())
+        }
+        None => None,
+    };
     let mut entities = Vec::with_capacity(scenario.entities.len());
     for (index, placement) in scenario.entities.iter().enumerate() {
         let motion = registry

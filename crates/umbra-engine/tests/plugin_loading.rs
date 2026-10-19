@@ -70,7 +70,6 @@ fn invalid(result: Result<umbra_engine::LoadedScenario, ScenarioError>) -> Vec<S
 /// ASM-099 e, ASM-073: a plugin behavior at the end of a `subgraph` chain counts as one level, at
 /// load (validate) and at instantiate: 15 file graphs + the plugin are 16, the limit, and are accepted.
 #[test]
-#[ignore = "WI-12"]
 fn plugin_behavior_counts_one_level_at_the_limit() {
     let scenario = chain("plugin-depth-ok", 15);
 
@@ -86,7 +85,6 @@ fn plugin_behavior_counts_one_level_at_the_limit() {
 /// ASM-099 e: 16 file graphs + the plugin are 17: `subgraph_too_deep` at load, from `validate` and
 /// from the scenario load alike.
 #[test]
-#[ignore = "WI-12"]
 fn plugin_behavior_one_level_more_is_subgraph_too_deep() {
     let scenario = chain("plugin-depth-over", 16);
 
@@ -125,7 +123,6 @@ fn single_template(name: &str, behavior: &str, params: &str) -> PathBuf {
 /// REQ-B-10, ASM-107 a: a param the plugin declares as `entity` in its metadata is binding-only, so a
 /// template that does not supply it gets `missing_param`, as for a graph.
 #[test]
-#[ignore = "WI-12"]
 fn binding_only_plugin_param_is_missing_param_in_template() {
     let scenario = single_template("plugin-binding-only", "test.behavior.needs_target", "");
 
@@ -141,7 +138,6 @@ fn binding_only_plugin_param_is_missing_param_in_template() {
 /// ADR 0014, ASM-107 a: `{ key }` and `{ param }` forms are not allowed in the `[behavior] params`
 /// of a template, for a plugin behavior as for any registered one.
 #[test]
-#[ignore = "WI-12"]
 fn key_and_param_forms_in_template_params_are_invalid_binding_for_plugin() {
     for (form, params) in [
         ("key", "{ target = { key = \"t\" } }"),
@@ -163,6 +159,12 @@ fn key_and_param_forms_in_template_params_are_invalid_binding_for_plugin() {
             codes.iter().any(|c| c == "invalid_binding"),
             "{form} form: {codes:?}"
         );
+        // ASM-107 a: a form under a binding-only param absent from the schema (ASM-142) gives only
+        // `invalid_binding`, no `unknown_param` cascade.
+        assert!(
+            !codes.iter().any(|c| c == "unknown_param"),
+            "{form} form: {codes:?}"
+        );
     }
 }
 
@@ -170,7 +172,6 @@ fn key_and_param_forms_in_template_params_are_invalid_binding_for_plugin() {
 /// only by the plugin's `configure`, at spawn time, and arrives as `EngineError::BehaviorBuild` for
 /// that entity.
 #[test]
-#[ignore = "WI-12"]
 fn plugin_configure_error_at_spawn_is_behavior_build() {
     let graph = "schema_version = 1\nid = \"test.graph.range\"\nversion = \"1.0.0\"\nroot = \"call\"\n\n\
                  [interface]\nparams = { lo = { type = \"number\", default = 0.0 }, hi = { type = \"number\", default = 10.0 } }\n\n\
@@ -208,7 +209,6 @@ fn plugin_configure_error_at_spawn_is_behavior_build() {
 /// ASM-114: a plugin whose param schema is outside the ADR 0009 subset makes every load with that
 /// plugin fail with the existing `LoaderError::Schema`, naming the capability.
 #[test]
-#[ignore = "WI-12"]
 fn plugin_schema_outside_subset_is_loader_schema_error() {
     let dir = plugin_support::fixture(&["bad_schema"]);
     let scenario = single_template("plugin-bad-schema", "test.behavior.ok", "");

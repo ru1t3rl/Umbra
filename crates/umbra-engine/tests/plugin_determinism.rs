@@ -247,7 +247,6 @@ fn plugin_load_order_is_independent_of_directory_listing_order() {
 /// engines share. The second engine, loaded after the first has faulted and disabled a capability
 /// of the same library, has its own fault history and runs exactly like the first.
 #[test]
-#[ignore = "WI-12"]
 fn second_engine_in_process_is_not_affected_by_the_first() {
     let plugins = plugin_support::fixture(&[]);
     let scenario = plugin_support::fault_scenario(

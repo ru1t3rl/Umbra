@@ -17,6 +17,8 @@ use umbra_kernel::{
     TickReport, WallClock,
 };
 
+use umbra_plugin_host::PluginHost;
+
 use crate::error::{EngineError, SpawnParam};
 
 /// Engine construction parameters.
@@ -102,6 +104,8 @@ pub struct RunSummary {
 /// The embeddable, synchronous engine.
 pub struct Engine {
     kernel: Kernel,
+    /// The plugin host bound by `attach_plugins` (M4, ADR 0021); checked after every tick.
+    pub(crate) plugins: Option<Arc<PluginHost>>,
 }
 
 impl Engine {
@@ -127,6 +131,7 @@ impl Engine {
         };
         Self {
             kernel: Kernel::new(kernel_config, Box::new(terrain), wall),
+            plugins: None,
         }
     }
 
@@ -206,7 +211,9 @@ impl Engine {
     /// explicit stack of 4 MiB or more.
     ///
     /// # Errors
-    /// [`EngineError::Kernel`] if a tick fails (time overflow).
+    /// [`EngineError::Kernel`] if a tick fails (time overflow); [`EngineError::PluginFault`] if an
+    /// attached plugin host reports a fault under the `abort` policy after a tick: the run stops
+    /// right after that tick, before `on_tick` sees it (ADR 0021).
     pub fn run(
         &mut self,
         until: RunUntil,
@@ -224,6 +231,9 @@ impl Engine {
                 Pace::Tick => {
                     let report = self.kernel.tick()?;
                     ticks_run += 1;
+                    if let Some(fault) = self.plugins.as_ref().and_then(|h| h.take_abort()) {
+                        return Err(EngineError::PluginFault(fault));
+                    }
                     let view = TickView {
                         report: &report,
                         kernel: &self.kernel,
@@ -254,7 +264,7 @@ impl Engine {
     /// explicit stack of 4 MiB or more.
     ///
     /// # Errors
-    /// [`EngineError::Kernel`] if a tick fails (time overflow).
+    /// The errors of [`Engine::run`].
     pub fn step(
         &mut self,
         n: u64,
@@ -264,8 +274,10 @@ impl Engine {
             self.kernel.clock_mut().request_steps(n);
         }
         let target = self.kernel.now().tick().saturating_add(n);
-        let summary = self.run(RunUntil::Ticks(target), on_tick)?;
-        if summary.stopped_early {
+        let result = self.run(RunUntil::Ticks(target), on_tick);
+        let stopped = !matches!(&result, Ok(s) if !s.stopped_early);
+        let summary = result?;
+        if stopped {
             // Steps requested above but not run must not fire in a later `run`.
             self.kernel.clock_mut().cancel_steps();
         }

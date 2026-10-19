@@ -5,7 +5,7 @@ use std::io::{self, Write};
 
 use serde_json::json;
 use umbra_engine::scenario::{Diagnostic, EntityInfo, Location};
-use umbra_engine::{EntityDisplay, EntityId, Snapshot, StateHash};
+use umbra_engine::{EntityDisplay, EntityId, PluginInfo, Snapshot, StateHash};
 
 /// Output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,6 +191,49 @@ pub fn validation_summary(files_checked: usize, diagnostics: &[Diagnostic]) -> S
         diagnostics.len(),
         paths.len() + unlocated
     )
+}
+
+/// The `list-plugins --json` document (ASM-144):
+/// `{"plugins":[{"id","name","version","abi":"<major>.<minor>","path","capabilities":[{"kind","id","version"}]}]}`
+/// in load order; `kind` is the component noun (`behavior`).
+pub fn plugins_json(plugins: &[PluginInfo]) -> String {
+    let plugins: Vec<_> = plugins
+        .iter()
+        .map(|p| {
+            json!({
+                "id": p.id.as_str(),
+                "name": p.name,
+                "version": p.version.to_string(),
+                "abi": format!("{}.{}", p.abi.0, p.abi.1),
+                "path": p.origin,
+                "capabilities": p.capabilities.iter().map(|c| json!({
+                    "kind": c.kind.to_string(),
+                    "id": c.id.as_str(),
+                    "version": c.version.to_string(),
+                })).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    json!({ "plugins": plugins }).to_string()
+}
+
+/// The `list-plugins` text: one line per plugin, then one indented line per capability.
+pub fn plugins_text(plugins: &[PluginInfo]) -> String {
+    use std::fmt::Write as _;
+    let mut text = String::new();
+    for p in plugins {
+        // Writing to a String cannot fail.
+        let _ = writeln!(
+            text,
+            "{} {} abi={}.{} path={}",
+            p.id, p.version, p.abi.0, p.abi.1, p.origin
+        );
+        for c in &p.capabilities {
+            let _ = writeln!(text, "  {} {} {}", c.kind, c.id, c.version);
+        }
+    }
+    let _ = write!(text, "{} plugin(s)", plugins.len());
+    text
 }
 
 #[cfg(test)]

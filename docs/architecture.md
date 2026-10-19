@@ -15,7 +15,7 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 | `umbra-sdk` | `crates/umbra-sdk` | Safe Rust traits, conversions, panic guards and `export_plugin!` for plugin authors (M4, REQ-SDK-1, D-7); re-exports the ABI as `umbra_sdk::abi`; its only global state is the copied host API of the current plugin lifecycle, the static descriptor and an empty contacts scratch buffer (ASM-127); `unsafe` allowed (FFI crate, NFR-2) | `umbra-plugin-api` only (REQ-A-3) |
 | `umbra-test-plugin` | `crates/umbra-test-plugin` | Test fixture plugin (M4 WI-10, ADR 0023 item 4): a `cdylib` built with `umbra-sdk` and `#![forbid(unsafe_code)]`, plugin `test.plugin.fixture` 0.1.0 with one capability per fault an SDK plugin can produce (ASM-132) and the capabilities the engine tests use (`ok`, `draw_speed`, `needs_target`, `cross_param`); features `entry_panics`, `init_fails`, `init_panics`, `shutdown_panics`, `bad_schema`. Built by the tests' build helper into `CARGO_TARGET_TMPDIR`, never linked | `umbra-sdk` only (REQ-SDK-3) |
 | `umbra-engine` | `crates/umbra-engine` | Embeddable synchronous facade, placement by ECEF or lat/lon/alt, the M1 hard-coded demo is replaced by `examples/scenarios/walking_skeleton/` (M2); built-in registry, `builtin.terrain.flat`, scenario load/validate/instantiate, `ControlFlow` run callbacks (M2); M3: `builtin.visual` sensor, the two built-in graphs (`behaviors/*.behavior.toml`), `standard_registry` (`builtin_registry` keeps its M2 contents, ASM-084), `scenario_registry` (a registry clone with the scenario's file graphs), `Engine::spawn_with` | `umbra-core`, `umbra-kernel`, `umbra-motion`, `umbra-templates`, `umbra-behavior` |
-| `umbra-cli` | `crates/umbra-cli` | Binary; `run`, `validate`, `schema` commands (M2; `demo` removed); M3: all commands use `standard_registry()`, `schema behavior`, the command runs on a thread with an 8 MiB stack (ASM-098, ASM-109) | `umbra-engine` |
+| `umbra-cli` | `crates/umbra-cli` | Binary; `run`, `validate`, `schema` commands (M2; `demo` removed); M4: `--plugin-path` on `run` and `validate`, `list-plugins [SCENARIO] [--plugin-path DIR].. [--json]`; M3: all commands use `standard_registry()`, `schema behavior`, the command runs on a thread with an 8 MiB stack (ASM-098, ASM-109) | `umbra-engine` |
 
 `umbra-templates` and `umbra-behavior` do not know each other: the first turns graph files into `GraphDef`s
 (a `umbra-core` type), the second runs them, and `umbra-engine` is the one place that composes both (ADR
@@ -59,6 +59,25 @@ semver, kinds, metadata against the schema), per-host checks (manifest match, pl
 - **Build scope** (RR-m2, ASM-138): `PluginHost::build_scope()` on the calling thread lets a run-mode
   host's factories build; the engine the host is attached to (`PluginHost::try_attach`) opens it around
   building and spawning.
+
+## Engine and CLI plugin wiring (M4 WI-12)
+- **Loading** (`umbra-engine/src/plugins.rs`): `load_scenario_with_plugins` reads the scenario's
+  `plugin_paths` leniently (`scenario_plugin_paths`), puts the CLI paths first, drops duplicates by
+  canonical path (`resolve_plugin_paths`), creates a fresh `PluginHost`, loads and registers the packages
+  (ADR 0022 order), loads the scenario against the extended registry inside the host's build scope (the
+  loader dry-runs `configure`), and sets the scenario's `on_plugin_fault` policy. `validate_path_with_plugins`
+  does the same with a `HostMode::Validation` host and no scope. The same plugin ID from two directories is a
+  `PluginError::Duplicate` load error (ASM-144).
+- **Running**: `instantiate_with_plugins` creates the engine, calls `Engine::attach_plugins` (`try_attach`;
+  `false` is `EngineError::PluginHostInUse`) and builds and spawns inside `build_scope()`. Plain
+  `instantiate` builds outside any scope, so a run-mode plugin factory fails with `BehaviorBuild`.
+  `Engine::run`/`step` call `take_abort()` after every tick; a fault under `abort` ends the run with
+  `EngineError::PluginFault`, before `on_tick` sees the faulting tick.
+- **CLI**: `run` and `validate` always use the `*_with_plugins` functions (an empty host without plugins);
+  `run` prints one `info:` line per loaded plugin to stderr when `--log-level` is `info` or more verbose, and
+  nothing on stdout. `list-plugins` prints the plugins and capabilities as text, or with `--json`:
+  `{"plugins":[{"id","name","version","abi":"<major>.<minor>","path","capabilities":[{"kind","id","version"}]}]}`
+  in load order. Exit codes: 0 success, 1 invalid input, load error or plugin fault, 2 usage error.
 
 ## Tick pipeline (`umbra-kernel`, REQ-K-2)
 Every tick runs the six phases of `Phase::ALL` in this order. Perception, Behavior and Motion act on

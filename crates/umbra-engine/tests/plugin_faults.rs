@@ -56,7 +56,6 @@ fn run(
 /// ADR 0021: under `abort` (the default) the run stops after the tick in which the plugin faulted,
 /// with `EngineError::PluginFault` naming the plugin, the capability and the call.
 #[test]
-#[ignore = "WI-12"]
 fn abort_stops_after_the_faulting_tick_with_plugin_fault() {
     let loaded = load(&plugin_support::fault_scenario(
         "abort-direct",
@@ -83,7 +82,6 @@ fn abort_stops_after_the_faulting_tick_with_plugin_fault() {
 /// ADR 0021: the state at the faulting tick does not depend on the policy: the `abort` run's hash at
 /// the stop equals a `disable_capability` run's hash at the same tick.
 #[test]
-#[ignore = "WI-12"]
 fn abort_and_disable_capability_agree_on_the_faulting_tick() {
     let abort = load(&plugin_support::fault_scenario(
         "agree-abort",
@@ -113,7 +111,6 @@ fn abort_and_disable_capability_agree_on_the_faulting_tick() {
 /// ADR 0021: under `disable_capability` the run goes to the end; the capability is marked faulted
 /// in this host, the fault is recorded once, and the healthy entity keeps ticking.
 #[test]
-#[ignore = "WI-12"]
 fn disable_capability_runs_to_the_end_and_records_one_fault() {
     let loaded = load(&plugin_support::fault_scenario(
         "disable-direct",
@@ -142,7 +139,6 @@ fn disable_capability_runs_to_the_end_and_records_one_fault() {
 /// AT-4 faults row: a plugin behavior used as a `subgraph` child of a file graph (it runs inside its
 /// caller's graph, unbatched) faults like a top-level one: `abort` stops the run.
 #[test]
-#[ignore = "WI-12"]
 fn fault_in_a_plugin_subgraph_child_under_abort_stops_the_run() {
     let loaded = load(&plugin_support::fault_scenario(
         "abort-child",
@@ -162,7 +158,6 @@ fn fault_in_a_plugin_subgraph_child_under_abort_stops_the_run() {
 /// AT-4 faults row, the other policy: the child faults, the capability is disabled and the run ends
 /// normally.
 #[test]
-#[ignore = "WI-12"]
 fn fault_in_a_plugin_subgraph_child_under_disable_capability_runs_on() {
     let loaded = load(&plugin_support::fault_scenario(
         "disable-child",
@@ -181,7 +176,6 @@ fn fault_in_a_plugin_subgraph_child_under_disable_capability_runs_on() {
 
 /// ADR 0021: a host belongs to one engine. A second engine refuses a host that is already attached.
 #[test]
-#[ignore = "WI-12"]
 fn attach_plugins_refuses_a_host_already_attached() {
     let loaded = load(&plugin_support::fault_scenario(
         "attach-twice",
@@ -204,7 +198,6 @@ fn attach_plugins_refuses_a_host_already_attached() {
 /// attached to. Plain `instantiate` on the loaded registry fails with `BehaviorBuild`; the same
 /// scenario instantiates with `instantiate_with_plugins`.
 #[test]
-#[ignore = "WI-12"]
 fn plain_instantiate_with_run_mode_plugin_factories_fails_with_behavior_build() {
     let loaded = load(&plugin_support::fault_scenario(
         "build-scope",

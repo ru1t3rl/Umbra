@@ -28,7 +28,7 @@ pub use error::{EngineError, SpawnParam};
 pub use plugins::{
     CapabilityInfo, HostOptions, LoadedScenario, PluginError, PluginFault, PluginFaultPolicy,
     PluginHost, PluginInfo, PluginLog, instantiate_with_plugins, load_plugins,
-    load_scenario_with_plugins, validate_path_with_plugins,
+    load_scenario_with_plugins, resolve_plugin_paths, validate_path_with_plugins,
 };
 pub use umbra_core::{
     Catalog, CatalogEntry, CatalogKind, ComponentId, ComponentKind, EntityId, FlatTerrain,

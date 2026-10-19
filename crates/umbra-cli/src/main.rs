@@ -20,15 +20,14 @@ use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use tracing_subscriber::filter::LevelFilter;
 
-use args::{Cli, Command, RunArgs, SchemaArgs, SchemaKind, ValidateArgs};
+use args::{Cli, Command, ListPluginsArgs, RunArgs, SchemaArgs, SchemaKind, ValidateArgs};
 use output::Format;
 use umbra_engine::builtins::standard_registry;
-use umbra_engine::scenario::{
-    Diagnostic, Diagnostics, RunOptions, ScenarioError, instantiate, load_scenario, validate_path,
-};
+use umbra_engine::scenario::{Diagnostic, Diagnostics, RunOptions, ScenarioError};
 use umbra_engine::{
-    BEHAVIOR_FILE_SCHEMA, ComponentId, ComponentKind, SCENARIO_FILE_SCHEMA, StdWallClock,
-    TEMPLATE_FILE_SCHEMA,
+    BEHAVIOR_FILE_SCHEMA, ComponentId, ComponentKind, HostOptions, PluginInfo,
+    SCENARIO_FILE_SCHEMA, StdWallClock, TEMPLATE_FILE_SCHEMA, instantiate_with_plugins,
+    load_plugins, load_scenario_with_plugins, resolve_plugin_paths, validate_path_with_plugins,
 };
 
 /// Stack of the thread that runs the command. Behavior graphs are ticked by recursion and need up
@@ -66,6 +65,7 @@ fn command(cli: Cli) -> ExitCode {
         Command::Run(args) => run(&args),
         Command::Validate(args) => validate(&args),
         Command::Schema(args) => schema(&args),
+        Command::ListPlugins(args) => list_plugins(&args),
     };
     match result {
         Ok(code) => code,
@@ -99,8 +99,8 @@ fn report_invalid(diagnostics: &[Diagnostic]) -> ExitCode {
 fn run(args: &RunArgs) -> Result<ExitCode> {
     init_logging(args.log_level)?;
     let registry = standard_registry().context("building the component registry")?;
-    let scenario = match load_scenario(&registry, &args.scenario) {
-        Ok(scenario) => scenario,
+    let loaded = match load_scenario_with_plugins(&registry, &args.scenario, &args.plugin_path) {
+        Ok(loaded) => loaded,
         Err(ScenarioError::Invalid(diagnostics)) => {
             return Ok(report_invalid(&diagnostics.into_vec()));
         }
@@ -111,7 +111,8 @@ fn run(args: &RunArgs) -> Result<ExitCode> {
         seed: args.seed,
         clock: args.clock,
     };
-    let mut run = instantiate(&registry, &scenario, options).context("instantiating")?;
+    log_plugins(args.log_level, loaded.plugins.plugins());
+    let mut run = instantiate_with_plugins(&loaded, options).context("instantiating")?;
     let ticks = args.ticks.unwrap_or(run.duration_ticks);
     let format = if args.json {
         Format::Json
@@ -161,12 +162,44 @@ fn run(args: &RunArgs) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// One stderr line per loaded plugin when the log level admits info (ASM-113). Nothing is printed
+/// without plugins, and stdout is never touched.
+fn log_plugins(level: LevelFilter, plugins: &[PluginInfo]) {
+    if level < LevelFilter::INFO {
+        return;
+    }
+    let mut err = io::stderr().lock();
+    for p in plugins {
+        // Nothing sensible remains to do if stderr is gone.
+        let _ = writeln!(
+            err,
+            "info: loaded plugin {} {} (abi {}.{}) from {}",
+            p.id, p.version, p.abi.0, p.abi.1, p.origin
+        );
+    }
+}
+
+fn list_plugins(args: &ListPluginsArgs) -> Result<ExitCode> {
+    let registry = standard_registry().context("building the component registry")?;
+    let paths = resolve_plugin_paths(&args.plugin_path, args.scenario.as_deref());
+    let (_, host) =
+        load_plugins(&registry, &paths, HostOptions::default()).context("loading the plugins")?;
+    let text = if args.json {
+        output::plugins_json(host.plugins())
+    } else {
+        output::plugins_text(host.plugins())
+    };
+    writeln!(io::stdout().lock(), "{text}").context("writing output")?;
+    Ok(ExitCode::SUCCESS)
+}
+
 fn validate(args: &ValidateArgs) -> Result<ExitCode> {
     let registry = standard_registry().context("building the component registry")?;
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
     for path in &args.paths {
-        let report = validate_path(&registry, path).context("validating")?;
+        let report =
+            validate_path_with_plugins(&registry, path, &args.plugin_path).context("validating")?;
         files.extend(report.files_checked);
         diagnostics.extend(report.diagnostics);
     }
