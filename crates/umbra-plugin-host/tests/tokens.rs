@@ -89,7 +89,10 @@ fn stale_token_in_a_later_call_is_a_fault() {
 
     tick_batched(&batch, &mut ents, 1);
 
-    assert_eq!(env.host.faults().len(), 1);
+    let faults = env.host.faults();
+    assert_eq!(faults.len(), 1);
+    assert_eq!(faults[0].call, "tick_batch");
+    assert!(faults[0].message.contains("token"), "{}", faults[0].message);
     assert_eq!(ents[0].status, Some(Status::Failure));
     assert_eq!(ents[0].buf, Vec::new());
 }
