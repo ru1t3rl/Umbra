@@ -1,8 +1,8 @@
 //! The grouped Behavior phase's world-side half (REQ-B-4, ADR 0020).
 //!
 //! Slots are paired with entities by id (a merge join over the id-ordered slot map), never by
-//! position. Hands every member of a batch group to `tick_batch` as one [`BatchItem`] over that entity's own
-//! view, RNG stream, intent buffer and instance. All buffers live in [`BatchScratch`] and keep
+//! position. Hands every member of a batch group to `tick_batch` as one [`BatchItem`] over that
+//! entity's own view, RNG stream, intent buffer and instance. All buffers live in [`BatchScratch`] and keep
 //! their capacity between ticks. The items borrow from the world for one call only, so the stored
 //! vectors are typed `'static` and re-typed to the tick's lifetime by [`relife`]; a vector is
 //! always empty while it is stored, so no reference outlives its borrow.
