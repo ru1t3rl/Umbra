@@ -1,0 +1,25 @@
+<!-- @dsCard group="Navigation" height=160 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>CommandBar — preview</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap" rel="stylesheet">
+<style></style></head>
+<body>
+<div id="root" style="background: radial-gradient(circle at 70% 120%, var(--surface-3), var(--surface-0) 70%); padding-bottom: var(--space-2)"></div>
+<script>
+  var V = window.Vantage, h = React.createElement, F = React.Fragment;
+  function Demo() {
+    var p = React.useState(false), paused = p[0], setPaused = p[1];
+    return h(F, null,
+      h(V.CommandBar, { title: 'Exercise Northern Shield', subtitle: 'Run 3 · 48 entities', clock: '14:32:07Z', paused: paused },
+        h(V.Chip, { selected: true }, '1:4'),
+        h(V.Button, { variant: 'outline', size: 'sm', icon: paused ? 'play_arrow' : 'pause', onClick: function () { setPaused(!paused); } }, paused ? 'Resume' : 'Pause'),
+        h(V.Button, { variant: 'filled', size: 'sm', icon: 'flag' }, 'End run')),
+      h(V.CommandBar, { floating: true, title: 'Northern Shield', subtitle: 'review', clock: '09:12:44Z', paused: true },
+        h(V.Button, { variant: 'ghost', size: 'sm', icon: 'skip_previous', 'aria-label': 'Previous bookmark' }),
+        h(V.Button, { variant: 'tonal', size: 'sm', icon: 'play_arrow' }, 'Play'),
+        h(V.Button, { variant: 'ghost', size: 'sm', icon: 'skip_next', 'aria-label': 'Next bookmark' })));
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(h(Demo));
+</script>
+</body>
+</html>

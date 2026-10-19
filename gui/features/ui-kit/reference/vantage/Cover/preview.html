@@ -1,0 +1,57 @@
+<!-- @dsCard height=288 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vantage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--surface-0); color: var(--ink); font-family: var(--font-display); overflow: hidden; }
+  .cover { position: relative; width: 960px; height: 288px; overflow: hidden; }
+  .art { position: absolute; top: 0; left: 480px; width: 480px; height: 288px; overflow: hidden; }
+  .art svg { display: block; width: 480px; height: 288px; }
+  .azure { fill: var(--azure); }
+  .deep { fill: var(--surface-3); }
+  .cyan { fill: var(--cyan); }
+  .glass { fill: var(--glass); stroke: var(--glass-stroke); stroke-width: 1; }
+  .plus { stroke: var(--cyan); stroke-width: 1.5; fill: none; }
+  .lg { rx: var(--radius-lg); }
+  .sm { rx: var(--radius-sm); }
+  .words { position: absolute; left: var(--space-6); bottom: var(--space-6); max-width: 440px; }
+  .name { margin: 0; font-size: 104px; line-height: .9; font-weight: 700; letter-spacing: -0.03em; color: var(--ink); }
+  .tag { margin: var(--space-2) 0 0 6px; font-family: var(--font-sans); font-size: 14px; line-height: 20px; color: var(--ink-muted); }
+</style>
+</head>
+<body>
+<div class="cover">
+<div class="art" aria-hidden="true">
+<svg viewBox="0 0 480 288" width="480" height="288">
+<!--
+  blocks      azure 144×232 bled off the top (the command accent, the cyan-blue the system is known by) · surface-3 320×216 bleeding off the right edge (the tonal ladder's top step, the operator's dark ground) · cyan 144×32 (the teal data accent, small: it is for values, not fields) · one glass pane 160×144 over the seam (the floating-panel language) — together ≈ 38% of 960×288
+  arrangement one tall azure slab with a wide deep slab beside it, bottoms on one line space-6 above the edge, space-4 gutter; the glass pane straddles both
+  pattern     plus grid, from "Standards win over taste" and the 4px grid / tabular mono data: 1.5px cyan pluses with space-2 arms at a space-8 pitch, cut into the deep slab only (54 units), reading as a map grid under glass
+  scales      sides in space-2 multiples; gutters space-4; pitch space-8; arms space-2; corners radius-lg on slabs and pane, radius-sm on the cyan bar
+-->
+<rect class="azure lg" x="16" y="-16" width="144" height="232" rx="16"/>
+<rect class="deep lg" x="176" y="48" width="320" height="216" rx="16"/>
+<g class="plus">
+  <path d="M208 76h8M212 72v8 M240 76h8M244 72v8 M272 76h8M276 72v8 M304 76h8M308 72v8 M336 76h8M340 72v8 M368 76h8M372 72v8 M400 76h8M404 72v8 M432 76h8M436 72v8 M464 76h8M468 72v8"/>
+  <path d="M208 108h8M212 104v8 M240 108h8M244 104v8 M272 108h8M276 104v8 M304 108h8M308 104v8 M336 108h8M340 104v8 M368 108h8M372 104v8 M400 108h8M404 104v8 M432 108h8M436 104v8 M464 108h8M468 104v8"/>
+  <path d="M208 140h8M212 136v8 M240 140h8M244 136v8 M272 140h8M276 136v8 M304 140h8M308 136v8 M336 140h8M340 136v8 M368 140h8M372 136v8 M400 140h8M404 136v8 M432 140h8M436 136v8 M464 140h8M468 136v8"/>
+  <path d="M208 172h8M212 168v8 M240 172h8M244 168v8 M272 172h8M276 168v8 M304 172h8M308 168v8 M336 172h8M340 168v8 M368 172h8M372 168v8 M400 172h8M404 168v8 M432 172h8M436 168v8 M464 172h8M468 168v8"/>
+  <path d="M208 204h8M212 200v8 M240 204h8M244 200v8 M272 204h8M276 200v8 M304 204h8M308 200v8 M336 204h8M340 200v8 M368 204h8M372 200v8 M400 204h8M404 200v8 M432 204h8M436 200v8 M464 204h8M468 200v8"/>
+  <path d="M208 236h8M212 232v8 M240 236h8M244 232v8 M272 236h8M276 232v8 M304 236h8M308 232v8 M336 236h8M340 232v8 M368 236h8M372 232v8 M400 236h8M404 232v8 M432 236h8M436 232v8 M464 236h8M468 232v8"/>
+</g>
+<rect class="cyan sm" x="16" y="232" width="144" height="32" rx="8"/>
+<rect class="glass lg" x="112.5" y="120.5" width="160" height="143" rx="16"/>
+</svg>
+</div>
+<div class="words">
+  <h1 class="name">Vantage</h1>
+  <p class="tag">Command-grade interface for computer generated forces.</p>
+</div>
+</div>
+</body>
+</html>

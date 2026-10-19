@@ -1,0 +1,22 @@
+<!-- @dsCard group="Containers" height=280 -->
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Panel — preview</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..24,400,0,0&display=swap" rel="stylesheet">
+<style></style></head>
+<body>
+<div id="root" class="vt-row" style="background: radial-gradient(circle at 30% 40%, var(--surface-3), var(--surface-0) 60%); min-height: 240px; align-items:flex-start;"></div>
+<script>
+  var V = window.Vantage, h = React.createElement, F = React.Fragment;
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    h(V.Panel, { title: 'Movement orders', actions: h(F, null,
+        h(V.Button, { size: 'sm', variant: 'ghost', icon: 'open_in_full', 'aria-label': 'Expand' }),
+        h(V.Button, { size: 'sm', variant: 'ghost', icon: 'close', 'aria-label': 'Close' })) },
+      h('div', { className: 'vt-col', style: { padding: 0 } },
+        h('p', { style: { margin: 0, color: 'var(--ink-muted)' } }, 'Alpha Company, 2nd Mechanised Brigade'),
+        h(V.TextField, { label: 'Destination', mono: true, defaultValue: '31U FT 12345 67890', style: { width: '100%' } }),
+        h('div', { className: 'vt-row', style: { padding: 0, justifyContent: 'flex-end' } },
+          h(V.Button, { variant: 'ghost', size: 'sm' }, 'Discard'),
+          h(V.Button, { variant: 'filled', size: 'sm' }, 'Issue order')))));
+</script>
+</body>
+</html>

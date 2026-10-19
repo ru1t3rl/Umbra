@@ -1,0 +1,11 @@
+/* Self-hosted fonts (the desktop app must work offline; the design system's Google Fonts links are not used).
+   Families keep the exact names the tokens reference. Install with:
+   bun add --cwd gui/features/ui-kit @fontsource/archivo @fontsource/jetbrains-mono material-symbols
+   Verify the package paths after install; adjust here only. */
+@import "@fontsource/archivo/400.css";
+@import "@fontsource/archivo/500.css";
+@import "@fontsource/archivo/600.css";
+@import "@fontsource/archivo/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "material-symbols/rounded.css"; /* family: "Material Symbols Rounded" */
