@@ -1,6 +1,7 @@
 //! Shared harness of the plugin-host acceptance tests (M4 step 4): forged descriptors, a hand-written
 //! raw-ABI behavior plugin with selectable misbehavior, a log recorder, a temp-directory helper and the
-//! WI-10 build-helper stub. Each test binary uses a subset.
+//! shared build helper (`plugins.rs`). Each test binary uses a subset.
+#![warn(clippy::undocumented_unsafe_blocks)]
 #![expect(dead_code, reason = "each test binary uses a subset of the harness")]
 #![expect(unsafe_code, reason = "the harness plays the plugin side of the C ABI")]
 #![expect(
@@ -12,6 +13,7 @@
 
 #[macro_use]
 pub mod forge;
+#[macro_use]
 pub mod bridge;
 pub mod plugins;
 pub mod raw;
@@ -103,4 +105,6 @@ pub fn build_behavior(
 fn macros_are_used() {
     let _ = forged!(forge::parts());
     let _ = forged_null!();
+    let _ = raw_env!();
+    let _ = raw_env_with!(umbra_plugin_host::HostOptions::default(), false);
 }

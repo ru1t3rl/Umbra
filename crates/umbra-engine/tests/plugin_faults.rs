@@ -73,7 +73,11 @@ fn abort_stops_after_the_faulting_tick_with_plugin_fault() {
     assert_eq!(fault.plugin.as_str(), "test.plugin.fixture");
     assert_eq!(fault.capability.as_str(), "test.behavior.panic_tick");
     assert_eq!(fault.call, "tick_batch");
-    assert!(engine.now().tick() < TICKS, "the run stopped early");
+    assert_eq!(
+        engine.now().tick(),
+        1,
+        "`panic_tick` faults on its first tick, and the run stops right after it"
+    );
 }
 
 /// ADR 0021: the state at the faulting tick does not depend on the policy: the `abort` run's hash at

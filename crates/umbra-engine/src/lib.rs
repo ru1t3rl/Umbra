@@ -7,8 +7,8 @@
 //! This crate re-exports the core, kernel and motion types that `umbra-cli` needs, because the
 //! dependency rules let the CLI depend on `umbra-engine` only (ASM-026).
 //!
-//! Dependency rule (REQ-A-2): depends on `umbra-core`, `umbra-kernel`, `umbra-motion` and (M4) `umbra-plugin-host`. It contains
-//! no `unsafe` code.
+//! Dependency rule (REQ-A-2): depends on `umbra-core`, `umbra-kernel`, `umbra-motion` and (M4)
+//! `umbra-plugin-host`. It contains no `unsafe` code.
 
 #![forbid(unsafe_code)]
 

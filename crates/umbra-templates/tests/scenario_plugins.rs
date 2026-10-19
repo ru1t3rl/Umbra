@@ -135,11 +135,11 @@ fn on_plugin_fault_invalid_value_located_lists_both() {
 #[test]
 #[ignore = "WI-11"]
 fn on_plugin_fault_wrong_type_is_located() {
-    let text = with("on_plugin_fault = 1");
+    let text = with("on_plugin_fault = 42");
 
     assert_eq!(
         failing(&text),
-        vec![row("wrong_type", SCN, pos_of(&text, "1\n"))]
+        vec![row("wrong_type", SCN, pos_of(&text, "42"))]
     );
 }
 

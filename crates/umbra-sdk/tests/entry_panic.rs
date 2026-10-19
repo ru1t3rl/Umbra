@@ -3,6 +3,8 @@
 //! plugin that panics in its entry has no usable descriptor.
 #![forbid(unsafe_code)]
 
+use std::mem::size_of;
+
 use umbra_sdk::abi::{UMBRA_ABI_VERSION, UmbraHostApi};
 use umbra_sdk::{
     Behavior, BehaviorFactory, BehaviorInstance, EntityView, Error, Intents, Interface, Params,
@@ -48,7 +50,7 @@ export_plugin! {
 fn entry_panic_returns_null() {
     let host = UmbraHostApi {
         abi_version: UMBRA_ABI_VERSION,
-        struct_size: 40,
+        struct_size: u32::try_from(size_of::<UmbraHostApi>()).expect("small"),
         host_ctx: 1,
         log: None,
         rng_next_u64: None,

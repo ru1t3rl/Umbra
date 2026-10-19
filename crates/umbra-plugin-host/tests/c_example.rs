@@ -13,7 +13,6 @@
 mod support;
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use support::bridge::{Ent, rate, tick_batched};
 use support::{build_behavior, lib_name, tmp_dir};
@@ -28,65 +27,11 @@ fn include_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../umbra-plugin-api/include")
 }
 
-fn target_triple() -> String {
-    let arch = std::env::consts::ARCH;
-    match std::env::consts::OS {
-        "linux" => format!("{arch}-unknown-linux-gnu"),
-        "windows" => format!("{arch}-pc-windows-msvc"),
-        "macos" => format!("{arch}-apple-darwin"),
-        os => format!("{arch}-unknown-{os}"),
-    }
-}
-
 /// Compiles the example into a shared library with the strict header flags; `Err` is the compiler output.
 fn compile(dir: &Path) -> Result<PathBuf, String> {
-    let triple = target_triple();
-    let mut build = cc::Build::new();
-    build
-        .cargo_metadata(false)
-        .cargo_warnings(false)
-        .emit_rerun_if_env_changed(false)
-        .target(&triple)
-        .host(&triple)
-        .opt_level(0)
-        .debug(false)
-        .out_dir(dir)
-        .include(include_dir())
-        .warnings(true)
-        .extra_warnings(true)
-        .warnings_into_errors(true)
-        .std("c11");
-    let tool = build.try_get_compiler().map_err(|e| e.to_string())?;
-    let msvc = tool.is_like_msvc();
-    if !msvc {
-        build.flag("-pedantic");
-    }
-    let mut cmd: Command = build
-        .try_get_compiler()
-        .map_err(|e| e.to_string())?
-        .to_command();
     let lib = dir.join(lib_name("c_circle"));
-    if msvc {
-        cmd.arg("/LD")
-            .arg(source())
-            .arg(format!("/Fe{}", lib.display()));
-    } else {
-        cmd.arg("-shared")
-            .arg("-fPIC")
-            .arg(source())
-            .arg("-o")
-            .arg(&lib);
-    }
-    let out = cmd.output().map_err(|e| format!("spawn compiler: {e}"))?;
-    if out.status.success() {
-        Ok(lib)
-    } else {
-        Err(format!(
-            "{}{}",
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        ))
-    }
+    support::plugins::compile_shared(&source(), &lib, Some(&include_dir()))?;
+    Ok(lib)
 }
 
 /// A plugin directory holding one package with the freshly compiled example.

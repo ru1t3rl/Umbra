@@ -107,7 +107,8 @@ fn destroy_panics_are_swallowed() {
     unsafe { vtable().destroy_behavior.expect("destroy_behavior")(b) };
 }
 
-/// REQ-P-6: params that are not JSON are `UMBRA_ERR_PARAMS` with a message, and no handle.
+/// REQ-P-6: an `Error::params` returned by `configure` is `UMBRA_ERR_PARAMS` with its message, and no
+/// handle; so is the error of `Params::value` on text that is not JSON (the SDK maps the error's code).
 #[test]
 #[ignore = "WI-7"]
 fn bad_params_json_is_err_params() {
@@ -116,6 +117,12 @@ fn bad_params_json_is_err_params() {
     assert_eq!(code, UMBRA_ERR_PARAMS);
     assert!(handle.is_null());
     assert!(msg.is_some_and(|m| !m.is_empty()));
+
+    let (code, handle, msg) = configure(&params("no_such_mode"));
+
+    assert_eq!(code, UMBRA_ERR_PARAMS, "the factory's own Error::params");
+    assert!(handle.is_null());
+    assert!(msg.is_some_and(|m| m.contains("no_such_mode")));
 }
 
 /// Runs a forged batch and checks that it was refused before any trait call: invalid-argument code,
@@ -181,6 +188,67 @@ fn malformed_batch_rejected_before_trait_call() {
     assert_rejected("null entity view", |r, _| {
         r.items[0].entity = std::ptr::null()
     });
+}
+
+/// R-M2: an error sink with a short `struct_size`, a size that is not a multiple of 8 or another major
+/// is refused before the trait is called: invalid-argument code and no handle (there is no sink to
+/// write a message to).
+#[test]
+#[ignore = "WI-7"]
+fn malformed_error_sink_rejected_before_trait_call() {
+    type Forge<T> = fn(&mut T);
+    let forged: [(&str, Forge<umbra_sdk::abi::UmbraErrorSink>); 3] = [
+        ("short struct_size", |e| e.struct_size = 16),
+        ("struct_size not a multiple of 8", |e| {
+            e.struct_size = size_of::<umbra_sdk::abi::UmbraErrorSink>() as u32 - 4;
+        }),
+        ("other major", |e| {
+            e.abi_version = (1 << 16) | UMBRA_ABI_VERSION
+        }),
+    ];
+    for (name, forge) in forged {
+        reset();
+        let mut err = err_sink();
+        forge(&mut err);
+        let mut out: *mut umbra_sdk::abi::UmbraBehavior = std::ptr::null_mut();
+        let f = vtable().configure.expect("configure");
+
+        // SAFETY: valid params and out; the sink is forged on purpose and must be refused unread.
+        let code = unsafe { f(s("{}"), &mut out, &err) };
+
+        assert_eq!(code, UMBRA_ERR_INVALID_ARGUMENT, "{name}");
+        assert!(out.is_null(), "{name}: no handle");
+    }
+}
+
+/// R-M2: the same for the value sink handed to `output`: refused before the trait is called, and
+/// nothing is written to the sink.
+#[test]
+#[ignore = "WI-7"]
+fn malformed_value_sink_rejected_before_trait_call() {
+    type Forge<T> = fn(&mut T);
+    let forged: [(&str, Forge<UmbraValueSink>); 3] = [
+        ("short struct_size", |v| v.struct_size = 16),
+        ("struct_size not a multiple of 8", |v| {
+            v.struct_size = size_of::<UmbraValueSink>() as u32 - 4;
+        }),
+        ("other major", |v| {
+            v.abi_version = (1 << 16) | UMBRA_ABI_VERSION
+        }),
+    ];
+    for (name, forge) in forged {
+        reset();
+        let rig = Rig::new(&[(1, 11)], "{}");
+        let mut sink: UmbraValueSink = support::value_sink();
+        forge(&mut sink);
+
+        // SAFETY: a live instance and port; the sink is forged on purpose and must be refused unread.
+        let code =
+            unsafe { vtable().output.expect("output")(rig.items[0].instance, s("turns"), &sink) };
+
+        assert_eq!(code, UMBRA_ERR_INVALID_ARGUMENT, "{name}");
+        assert!(support::values().is_empty(), "{name}: nothing written");
+    }
 }
 
 /// REQ-P-6: a header with the plugin's own major is accepted (control for the rows above).

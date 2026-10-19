@@ -263,11 +263,14 @@ fn second_engine_in_process_is_not_affected_by_the_first() {
                 .expect("instantiate")
                 .engine;
         let trace = run_to(engine, 90, false);
-        (trace, loaded.plugins.faults())
+        let faults = loaded.plugins.faults();
+        // The loaded scenario (and so its host) is returned to stay alive: the second engine runs
+        // while the first engine's host still holds its fault history.
+        (trace, faults, loaded)
     };
 
-    let (first, first_faults) = run_once();
-    let (second, second_faults) = run_once();
+    let (first, first_faults, first_loaded) = run_once();
+    let (second, second_faults, _second_loaded) = run_once();
 
     assert_eq!(first_faults.len(), 1, "exactly one fault: {first_faults:?}");
     assert_eq!(first_faults[0].call, "tick_batch");
@@ -276,4 +279,9 @@ fn second_engine_in_process_is_not_affected_by_the_first() {
         "the second engine faulted by itself, at the same call with the same message"
     );
     assert_same_behavior_trace("second engine", &second, &first);
+    assert_eq!(
+        first_loaded.plugins.faults(),
+        first_faults,
+        "the first host's history is unchanged by the second engine"
+    );
 }

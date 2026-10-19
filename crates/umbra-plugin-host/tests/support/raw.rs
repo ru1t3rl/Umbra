@@ -81,6 +81,26 @@ pub static IN_CALL: AtomicUsize = AtomicUsize::new(0);
 pub static MAX_CONCURRENT: AtomicUsize = AtomicUsize::new(0);
 pub static CALLS: AtomicUsize = AtomicUsize::new(0);
 
+/// Problems found inside `extern "C"` callbacks, which must not panic (a panic would abort the test
+/// process): recorded here, returned as `UMBRA_ERR_INTERNAL`, and asserted empty when the `Env` drops.
+static FAILURES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+fn missing(what: &str) -> UmbraCode {
+    FAILURES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .push(format!("raw plugin: {what} is not set"));
+    UMBRA_ERR_INTERNAL
+}
+
+/// The callback problems recorded so far.
+pub fn failures() -> Vec<String> {
+    FAILURES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
 pub fn events() -> Vec<String> {
     EVENTS.with(|e| e.borrow().clone())
 }
@@ -251,8 +271,11 @@ unsafe fn draw(host: *const UmbraHostApi, token: u64) -> Result<u64, UmbraCode> 
     // SAFETY: the host API is process-lifetime.
     let h = unsafe { &*host };
     let mut out = 0_u64;
-    // SAFETY: valid out pointer.
-    let code = unsafe { (h.rng_next_u64.expect("rng"))(h.host_ctx, token, &mut out) };
+    let Some(rng) = h.rng_next_u64 else {
+        return Err(missing("host rng_next_u64"));
+    };
+    // SAFETY: valid out pointer; the host API stays valid.
+    let code = unsafe { rng(h.host_ctx, token, &mut out) };
     if code == UMBRA_OK { Ok(out) } else { Err(code) }
 }
 
@@ -279,7 +302,9 @@ unsafe fn tick_inner(batch: *const UmbraBehaviorBatch, err: *const UmbraErrorSin
         let b = &*batch;
         let items = std::slice::from_raw_parts(b.items, b.count);
         let sink = &*b.intents;
-        let push = sink.push.expect("push");
+        let Some(push) = sink.push else {
+            return missing("intent sink push");
+        };
         for (n, item) in items.iter().enumerate() {
             let beh = &*item.behavior.cast::<Behav>();
             let view = &*item.entity;
@@ -360,7 +385,10 @@ unsafe fn tick_inner(batch: *const UmbraBehaviorBatch, err: *const UmbraErrorSin
                 }
                 "null_error" => {
                     let e = &*err;
-                    (e.set.expect("set"))(
+                    let Some(set) = e.set else {
+                        return missing("error sink set");
+                    };
+                    set(
                         e.ctx,
                         UmbraStr {
                             ptr: std::ptr::null(),
@@ -463,7 +491,10 @@ unsafe fn tick_inner(batch: *const UmbraBehaviorBatch, err: *const UmbraErrorSin
                     } else {
                         str_of("raw says hello")
                     };
-                    let code = (h.log.expect("log"))(h.host_ctx, level, msg);
+                    let Some(log) = h.log else {
+                        return missing("host log");
+                    };
+                    let code = log(h.host_ctx, level, msg);
                     CODES.with(|c| c.borrow_mut().push(code));
                 }
                 "reenter" => {
@@ -548,6 +579,7 @@ unsafe extern "C" fn set_input(
     let got = if value.is_null() {
         Got::Unset
     } else {
+        // SAFETY: the host passes null (handled above) or a valid value for the call.
         from_abi(unsafe { &*value })
     };
     INPUTS.with(|l| l.borrow_mut().push((name.clone(), got.clone())));
@@ -582,9 +614,15 @@ unsafe extern "C" fn output(
 ) -> UmbraCode {
     // SAFETY: live instance; valid sink.
     let (inst, sink) = unsafe { (&*i.cast::<Inst>(), &*sink) };
-    let set = sink.set.expect("set");
+    let Some(set) = sink.set else {
+        return missing("value sink set");
+    };
     let name = text(port).replacen("out_", "in_", 1);
-    let call = |v: *const UmbraValue| unsafe { set(sink.ctx, v) };
+    let call = |v: *const UmbraValue| {
+        // SAFETY: the sink is valid for the call (host contract); `v` is null or a valid `UmbraValue`
+        // that outlives the call.
+        unsafe { set(sink.ctx, v) }
+    };
     match inst.mode.as_str() {
         "output_twice" => {
             let v = abi_value(UMBRA_VALUE_INTEGER);

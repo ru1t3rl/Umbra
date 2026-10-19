@@ -13,7 +13,7 @@ use std::sync::atomic::Ordering;
 use std::thread;
 
 use support::Recorder;
-use support::bridge::{Ent, eid, env, env_with, tick_batched};
+use support::bridge::{Ent, eid, tick_batched};
 use support::raw;
 use umbra_core::{
     Behavior, BehaviorBatch, Intent, MetersPerSecond, PluginId, SimRng, Status, StreamKey,
@@ -42,7 +42,7 @@ fn draw(api: &UmbraHostApi, token: u64) -> i32 {
 #[ignore = "WI-9"]
 fn rng_draw_outside_a_call_is_err_state() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("stale");
     let mut ents = vec![Ent::new(1, &b, 3)];
     tick_batched(&batch_of(&b), &mut ents, 0);
@@ -60,7 +60,7 @@ fn rng_draw_outside_a_call_is_err_state() {
 #[ignore = "WI-9"]
 fn callback_from_another_thread_is_err_state() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("stale");
     let mut ents = vec![Ent::new(1, &b, 3)];
     tick_batched(&batch_of(&b), &mut ents, 0);
@@ -80,7 +80,7 @@ fn callback_from_another_thread_is_err_state() {
 #[ignore = "WI-9"]
 fn stale_token_in_a_later_call_is_a_fault() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("stale");
     let batch = batch_of(&b);
     let mut ents = vec![Ent::new(1, &b, 3)];
@@ -100,7 +100,7 @@ fn stale_token_in_a_later_call_is_a_fault() {
 #[ignore = "WI-9"]
 fn rng_with_another_items_token_draws_that_items_stream() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("foreign_rng");
     let mut ents = vec![Ent::new(1, &b, 5), Ent::new(2, &b, 5)];
 
@@ -139,7 +139,7 @@ fn log_during_a_call_is_routed_and_attributed() {
     let recorder = Recorder::arc();
     let mut options = HostOptions::default();
     options.log = recorder.clone();
-    let env = env_with(options, true);
+    let env = raw_env_with!(options, true);
     let b = env.behavior("log");
     let mut ents = vec![Ent::new(1, &b, 3)];
 
@@ -162,7 +162,7 @@ fn log_with_an_unknown_level_is_invalid_argument() {
     let recorder = Recorder::arc();
     let mut options = HostOptions::default();
     options.log = recorder.clone();
-    let env = env_with(options, true);
+    let env = raw_env_with!(options, true);
     let b = env.behavior("log_bad_level");
     let mut ents = vec![Ent::new(1, &b, 3)];
 
@@ -177,7 +177,7 @@ fn log_with_an_unknown_level_is_invalid_argument() {
 #[ignore = "WI-9"]
 fn log_with_invalid_utf8_is_invalid_argument() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("log_bad_utf8");
     let mut ents = vec![Ent::new(1, &b, 3)];
 
@@ -203,7 +203,7 @@ fn a_panicking_plugin_log_is_caught_at_the_boundary() {
     raw::clear();
     let mut options = HostOptions::default();
     options.log = Arc::new(Boom);
-    let env = env_with(options, true);
+    let env = raw_env_with!(options, true);
     let b = env.behavior("log");
     let mut ents = vec![Ent::new(1, &b, 3)];
 
@@ -222,7 +222,7 @@ fn a_panicking_plugin_log_is_caught_at_the_boundary() {
 #[ignore = "WI-9"]
 fn error_sink_with_a_huge_length_is_truncated_to_4_kib() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("huge_error");
     let mut ents = vec![Ent::new(1, &b, 3)];
 
@@ -230,7 +230,12 @@ fn error_sink_with_a_huge_length_is_truncated_to_4_kib() {
 
     let faults = env.host.faults();
     assert_eq!(faults.len(), 1);
-    assert_eq!(faults[0].message.matches('x').count(), 4096);
+    let message = &faults[0].message;
+    assert!(
+        message.contains(&"x".repeat(4096)) && !message.contains(&"x".repeat(4097)),
+        "the plugin's text is cut at exactly 4096 bytes: {} bytes of message",
+        message.len()
+    );
 }
 
 /// R-M2: a null pointer with a non-zero length is refused without reading; the call still faults.
@@ -238,7 +243,7 @@ fn error_sink_with_a_huge_length_is_truncated_to_4_kib() {
 #[ignore = "WI-9"]
 fn error_sink_with_a_null_pointer_and_a_length_does_not_crash() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("null_error");
     let mut ents = vec![Ent::new(1, &b, 3)];
 
@@ -252,7 +257,7 @@ fn error_sink_with_a_null_pointer_and_a_length_does_not_crash() {
 #[ignore = "WI-9"]
 fn second_error_message_is_ignored() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("two_errors");
     let mut ents = vec![Ent::new(1, &b, 3)];
 

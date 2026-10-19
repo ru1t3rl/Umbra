@@ -6,6 +6,7 @@
 //! subgraph side of the null-entry fallback is the M3 test `subgraph_halt.rs` (children without an
 //! override, ASM-096 d). Step 4 of M4: the host bridge lands in WI-9.
 #![expect(clippy::expect_used, reason = "helpers build known-valid fixtures")]
+#![expect(unsafe_code, reason = "raw_env! expands forged entry functions")]
 
 #[macro_use]
 mod support;
@@ -13,7 +14,7 @@ mod support;
 use std::mem::size_of;
 use std::sync::Arc;
 
-use support::bridge::{Ent, eid, env, env_with, rate, state, tick_batched, tick_singly};
+use support::bridge::{Ent, eid, rate, state, tick_batched, tick_singly};
 use support::raw::{self, Got};
 use umbra_core::{
     BatchItem, BbValue, Behavior, BehaviorBatch, BehaviorContext, BehaviorInstance,
@@ -35,7 +36,7 @@ fn batch_of(b: &Arc<dyn Behavior>) -> Arc<dyn BehaviorBatch> {
 #[ignore = "WI-9"]
 fn batch_contract_equals_tick_each() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("ok");
     let batch = batch_of(&b);
     let mut batched: Vec<Ent> = (1..=4).map(|n| Ent::new(n, &b, 9)).collect();
@@ -62,7 +63,7 @@ fn batch_contract_equals_tick_each() {
 #[ignore = "WI-9"]
 fn views_carry_state_force_route_contacts() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("ok");
     let batch = batch_of(&b);
     let mut inst = b.instantiate(rate()).expect("instantiate");
@@ -136,7 +137,7 @@ fn views_carry_state_force_route_contacts() {
 #[ignore = "WI-9"]
 fn host_writes_structs_in_the_plugins_minor() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("ok");
     let batch = batch_of(&b);
     let mut ents = [Ent::new(1, &b, 1)];
@@ -178,7 +179,7 @@ fn host_writes_structs_in_the_plugins_minor() {
 #[ignore = "WI-9"]
 fn halt_running_entry_used_when_present() {
     raw::clear();
-    let env = env_with(HostOptions::default(), true);
+    let env = raw_env_with!(HostOptions::default(), true);
     let b = env.behavior("ok");
     let mut inst = b.instantiate(rate()).expect("instantiate");
 
@@ -198,7 +199,7 @@ fn halt_running_entry_used_when_present() {
 #[ignore = "WI-9"]
 fn halt_used_when_halt_running_is_null() {
     raw::clear();
-    let env = env_with(HostOptions::default(), false);
+    let env = raw_env_with!(HostOptions::default(), false);
     let b = env.behavior("ok");
     let mut inst = b.instantiate(rate()).expect("instantiate");
 
@@ -218,7 +219,7 @@ fn halt_used_when_halt_running_is_null() {
 #[ignore = "WI-9"]
 fn halt_is_idempotent_and_safe_before_first_tick() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("ok");
     let mut inst = b.instantiate(rate()).expect("instantiate");
 
@@ -235,7 +236,7 @@ fn halt_is_idempotent_and_safe_before_first_tick() {
 #[ignore = "WI-9"]
 fn set_input_and_output_every_value_type() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("ok");
     let mut inst = b.instantiate(rate()).expect("instantiate");
     let position = Ecef(Vec3 {
@@ -281,7 +282,7 @@ fn set_input_and_output_every_value_type() {
 #[ignore = "WI-9"]
 fn rng_token_draws_the_entity_stream() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("ok");
     let batch = batch_of(&b);
     let mut ents: Vec<Ent> = (1..=3).map(|n| Ent::new(n, &b, 77)).collect();
@@ -336,7 +337,7 @@ impl BehaviorInstance for Foreign {
 #[ignore = "WI-9"]
 fn downcast_failure_falls_back_to_instance_tick() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("ok");
     let batch = batch_of(&b);
     let own = Ent::new(1, &b, 5);
@@ -361,7 +362,7 @@ fn downcast_failure_falls_back_to_instance_tick() {
 #[ignore = "WI-9"]
 fn instances_are_destroyed_before_their_behavior() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("ok");
     let inst = b.instantiate(rate()).expect("instantiate");
 

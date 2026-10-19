@@ -3,6 +3,7 @@
 //! per-host state), ASM-118. Raw-ABI plugin from `support/raw.rs`; the engine-scope build helper is a
 //! plan gap (see `support::build_behavior`). Step 4 of M4: the bridge lands in WI-9.
 #![expect(clippy::expect_used, reason = "helpers build known-valid fixtures")]
+#![expect(unsafe_code, reason = "raw_env! expands forged entry functions")]
 
 #[macro_use]
 mod support;
@@ -11,7 +12,7 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use support::Recorder;
-use support::bridge::{Ent, Env, env, env_with, rate, tick_batched, tick_singly};
+use support::bridge::{Ent, rate, tick_batched, tick_singly};
 use support::raw;
 use umbra_core::{Behavior, BehaviorBatch, PluginFaultPolicy, Status};
 use umbra_plugin_host::{HostMode, HostOptions, LogLevel, PluginHost};
@@ -20,16 +21,19 @@ fn batch_of(b: &Arc<dyn Behavior>) -> Arc<dyn BehaviorBatch> {
     b.batch().expect("batch")
 }
 
-/// Ticks one entity of `mode` after a healthy neighbour; returns the env and both entities.
-fn faulting(mode: &str) -> (Env, Vec<Ent>) {
-    raw::clear();
-    let env = env();
-    let good = env.behavior("ok");
-    let bad = env.behavior(mode);
-    let batch = batch_of(&good);
-    let mut ents = vec![Ent::new(1, &good, 3), Ent::new(2, &bad, 3)];
-    tick_batched(&batch, &mut ents, 0);
-    (env, ents)
+/// Ticks one entity of `mode` after a healthy neighbour; yields the env and both entities. A macro, so
+/// that each test gets its own forged image (one call site per test, `support/forge.rs`).
+macro_rules! faulting {
+    ($mode:expr) => {{
+        raw::clear();
+        let env = raw_env!();
+        let good = env.behavior("ok");
+        let bad = env.behavior($mode);
+        let batch = batch_of(&good);
+        let mut ents = vec![Ent::new(1, &good, 3), Ent::new(2, &bad, 3)];
+        tick_batched(&batch, &mut ents, 0);
+        (env, ents)
+    }};
 }
 
 macro_rules! tick_fault {
@@ -37,7 +41,7 @@ macro_rules! tick_fault {
         #[test]
         #[ignore = "WI-9"]
         fn $name() {
-            let (env, ents) = faulting($mode);
+            let (env, ents) = faulting!($mode);
 
             let faults = env.host.faults();
             assert_eq!(faults.len(), 1, "one fault: {faults:?}");
@@ -94,8 +98,8 @@ tick_fault!(
 #[test]
 #[ignore = "WI-9"]
 fn unset_and_out_of_range_status_are_reported_differently() {
-    let (a, _) = faulting("unset");
-    let (b, _) = faulting("bad_status");
+    let (a, _) = faulting!("unset");
+    let (b, _) = faulting!("bad_status");
 
     assert_ne!(a.host.faults()[0].message, b.host.faults()[0].message);
 }
@@ -104,7 +108,7 @@ fn unset_and_out_of_range_status_are_reported_differently() {
 #[test]
 #[ignore = "WI-9"]
 fn whole_batch_discard_keeps_rng_draws_consumed() {
-    let (_env, ents) = faulting("error_code");
+    let (_env, ents) = faulting!("error_code");
 
     let mut reference =
         umbra_core::SimRng::new(3).stream(umbra_core::StreamKey::entity(ents[0].id));
@@ -121,7 +125,7 @@ fn whole_batch_discard_keeps_rng_draws_consumed() {
 #[test]
 #[ignore = "WI-9"]
 fn abort_policy_hands_out_the_first_fault_once() {
-    let (env, _) = faulting("error_code");
+    let (env, _) = faulting!("error_code");
 
     let first = env.host.take_abort();
     let second = env.host.take_abort();
@@ -136,7 +140,7 @@ fn abort_policy_hands_out_the_first_fault_once() {
 #[ignore = "WI-9"]
 fn disable_capability_skips_the_capability_afterwards() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     env.host
         .set_fault_policy(PluginFaultPolicy::DisableCapability);
     let bad = env.behavior("error_code");
@@ -174,7 +178,7 @@ fn disable_capability_skips_the_capability_afterwards() {
 #[ignore = "WI-9"]
 fn destroy_still_called_on_a_faulted_capability() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let bad = env.behavior("error_code");
     let batch = batch_of(&bad);
     let mut ents = vec![Ent::new(1, &bad, 3)];
@@ -203,7 +207,7 @@ fn a_fault_is_logged_once_at_error_level() {
     let recorder = Recorder::arc();
     let mut options = HostOptions::default();
     options.log = recorder.clone();
-    let env = env_with(options, true);
+    let env = raw_env_with!(options, true);
     let bad = env.behavior("error_code");
     let batch = batch_of(&bad);
     let mut ents = vec![Ent::new(1, &bad, 3)];
@@ -229,7 +233,7 @@ fn a_fault_is_logged_once_at_error_level() {
 #[ignore = "WI-9"]
 fn two_hosts_over_one_image_keep_independent_fault_state() {
     raw::clear();
-    let first = env();
+    let first = raw_env!();
     let mut second_host = PluginHost::new(HostOptions::default());
     second_host
         .load_static("second-host", first.f.entry)
@@ -264,7 +268,7 @@ fn two_hosts_over_one_image_keep_independent_fault_state() {
 #[ignore = "WI-9"]
 fn configure_error_is_a_build_error() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
 
     let err = env
         .try_behavior("configure_error")
@@ -279,7 +283,7 @@ fn configure_error_is_a_build_error() {
 #[ignore = "WI-9"]
 fn configure_ok_with_a_null_handle_is_a_build_error() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
 
     let err = env.try_behavior("null_handle").err().expect("build error");
 
@@ -291,7 +295,7 @@ fn configure_ok_with_a_null_handle_is_a_build_error() {
 #[ignore = "WI-9"]
 fn instantiate_error_is_an_instantiate_error() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("instantiate_error");
 
     let err = b.instantiate(rate()).err().expect("instantiate error");
@@ -304,7 +308,7 @@ fn instantiate_error_is_an_instantiate_error() {
 #[ignore = "WI-9"]
 fn instantiate_ok_with_a_null_handle_is_an_instantiate_error() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("instantiate_null");
 
     let err = b.instantiate(rate()).err().expect("instantiate error");
@@ -317,7 +321,7 @@ fn instantiate_ok_with_a_null_handle_is_an_instantiate_error() {
 #[ignore = "WI-9"]
 fn halt_returning_an_error_code_is_a_fault() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("halt_error");
     let mut inst = b.instantiate(rate()).expect("instantiate");
 
@@ -334,7 +338,7 @@ macro_rules! output_fault {
         #[ignore = "WI-9"]
         fn $name() {
             raw::clear();
-            let env = env();
+            let env = raw_env!();
             let b = env.behavior($mode);
             let inst = b.instantiate(rate()).expect("instantiate");
 
@@ -361,7 +365,7 @@ output_fault!(value_with_invalid_utf8_is_a_fault, "bad_utf8");
 #[ignore = "WI-9"]
 fn same_thread_reentry_is_a_fault() {
     raw::clear();
-    let env = env();
+    let env = raw_env!();
     let outer = env.behavior("reenter");
     let inner_behavior = env.behavior("ok");
     let inner = RefCell::new(Ent::new(9, &inner_behavior, 1));
@@ -392,7 +396,7 @@ fn validation_host_builds_but_its_instances_refuse_to_tick() {
     raw::clear();
     let mut options = HostOptions::default();
     options.mode = HostMode::Validation;
-    let env = env_with(options, true);
+    let env = raw_env_with!(options, true);
     let b = env.behavior("ok");
     let mut ents = vec![Ent::new(1, &b, 3)];
 

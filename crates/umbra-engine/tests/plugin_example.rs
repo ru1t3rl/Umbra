@@ -25,7 +25,7 @@ use core::time::Duration;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
-use behavior_support::{assert_same_behavior_trace, entity, id_of, standard};
+use behavior_support::{assert_same_behavior_trace, entity, standard};
 use common::{options, run_to};
 use umbra_core::{
     BbType, BbValue, Behavior, BehaviorContext, BehaviorId, BehaviorInstance, BlackboardError,
@@ -53,14 +53,23 @@ fn load(dir: &Path) -> umbra_engine::LoadedScenario {
     .unwrap_or_else(|e| panic!("load {}: {e}", dir.display()))
 }
 
-fn run_example(dir: &Path, ticks: u64) -> (common::Trace, umbra_engine::scenario::ScenarioRun) {
+/// Instantiates once (a host attaches to one engine only), runs `ticks`, and returns the trace with the
+/// entities' ids by name.
+fn run_example(dir: &Path, ticks: u64) -> (common::Trace, Vec<umbra_engine::scenario::EntityInfo>) {
     let loaded = load(dir);
-    let probe = instantiate_with_plugins(&loaded, options(Duration::ZERO, None, None))
-        .expect("instantiate for ids");
     let run = instantiate_with_plugins(&loaded, options(Duration::from_micros(500), None, None))
         .expect("instantiate");
+    let entities = run.entities.clone();
     let trace = run_to(run.engine, ticks, false);
-    (trace, probe)
+    (trace, entities)
+}
+
+fn id_named(entities: &[umbra_engine::scenario::EntityInfo], name: &str) -> umbra_core::EntityId {
+    entities
+        .iter()
+        .find(|e| e.name.as_deref() == Some(name))
+        .unwrap_or_else(|| panic!("no entity named {name}"))
+        .id
 }
 
 /// The `SetHeading` intent texts of `id` per tick (empty text when none).
@@ -116,8 +125,8 @@ fn example_fails_validation_without_plugin_path_with_unknown_id() {
 fn wander_entity_changes_heading_every_turn_period() {
     let loaded = load(&example_dir());
     let period = usize::try_from(10 * loaded.scenario.tick_rate.hz()).expect("fits");
-    let (trace, run) = run_example(&example_dir(), 1000);
-    let seen = headings(&trace, id_of(&run, "wander-direct"));
+    let (trace, ents) = run_example(&example_dir(), 1000);
+    let seen = headings(&trace, id_named(&ents, "wander-direct"));
 
     let change_ticks: Vec<usize> = (0..seen.len())
         .filter(|&i| i == 0 || seen[i] != seen[i - 1])
@@ -135,9 +144,9 @@ fn wander_entity_changes_heading_every_turn_period() {
 #[test]
 #[ignore = "WI-13"]
 fn plugin_intents_visible_in_snapshot() {
-    let (trace, run) = run_example(&example_dir(), 3);
+    let (trace, ents) = run_example(&example_dir(), 3);
 
-    let intents = &entity(&trace.snapshots[2], id_of(&run, "wander-direct")).intents;
+    let intents = &entity(&trace.snapshots[2], id_named(&ents, "wander-direct")).intents;
 
     assert!(
         intents.contains(&Intent::SetSpeed(MetersPerSecond(5.0))),
@@ -180,9 +189,9 @@ fn catalog_lists_wander_as_plugin_read_only_with_version_and_schema() {
 #[test]
 #[ignore = "WI-13"]
 fn graph_calls_plugin_as_subgraph_with_bound_input_and_output() {
-    let (trace, run) = run_example(&example_dir(), 10);
+    let (trace, ents) = run_example(&example_dir(), 10);
 
-    let intents = &entity(&trace.snapshots[9], id_of(&run, "wander-graph")).intents;
+    let intents = &entity(&trace.snapshots[9], id_named(&ents, "wander-graph")).intents;
 
     assert!(
         intents.contains(&Intent::SetSpeed(MetersPerSecond(12.0))),
@@ -227,10 +236,10 @@ fn swapping_builtin_for_plugin_behavior_is_a_template_change() {
         "the scenario file is untouched"
     );
 
-    let (before, run) = run_example(&example_dir(), 400);
+    let (before, ents) = run_example(&example_dir(), 400);
     let (after, _) = run_example(&copy, 400);
 
-    let id = id_of(&run, "patrol-builtin");
+    let id = id_named(&ents, "patrol-builtin");
     assert!(
         headings(&after, id).iter().any(|h| h != "[]"),
         "after the swap the entity runs the plugin and emits headings"

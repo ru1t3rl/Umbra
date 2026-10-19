@@ -3,6 +3,8 @@
 //! because `forbid` is crate-wide and the other AT-3 files play the host with `unsafe`.
 #![forbid(unsafe_code)]
 
+use std::mem::size_of;
+
 use umbra_sdk::abi::{UMBRA_ABI_VERSION, UmbraHostApi};
 use umbra_sdk::{
     Behavior, BehaviorFactory, BehaviorInstance, EntityView, Error, Intents, Params, Status,
@@ -45,7 +47,7 @@ export_plugin! {
 fn export_macro_compiles_under_forbid_unsafe_code() {
     let host = UmbraHostApi {
         abi_version: UMBRA_ABI_VERSION,
-        struct_size: 40,
+        struct_size: u32::try_from(size_of::<UmbraHostApi>()).expect("small"),
         host_ctx: 1,
         log: None,
         rng_next_u64: None,

@@ -11,6 +11,7 @@ use umbra_plugin_api::UmbraPluginEntry;
 
 /// Log severity of a plugin message (`UMBRA_LOG_*`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum LogLevel {
     /// Error.
     Error,
@@ -165,10 +166,13 @@ pub enum PluginError {
         origin: String,
     },
     /// ABI major differs or minor is newer (REQ-P-9).
-    #[error("{origin}: plugin ABI {}.{} is not loadable by host ABI {}.{}", .plugin.0, .plugin.1, .host.0, .host.1)]
+    #[error("{origin}: {field}: plugin ABI {}.{} is not loadable by host ABI {}.{}", .plugin.0, .plugin.1, .host.0, .host.1)]
     AbiMismatch {
         /// Origin.
         origin: String,
+        /// The struct that carries the version (`descriptor.abi_version`, `capabilities[0].abi_version`,
+        /// `vtable.abi_version`, `plugin.toml abi`); a discriminator added to the plan's design (ASM-125).
+        field: String,
         /// Plugin `(major, minor)`.
         plugin: (u32, u32),
         /// Host `(major, minor)`.

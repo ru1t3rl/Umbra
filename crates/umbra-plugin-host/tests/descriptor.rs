@@ -25,18 +25,34 @@ use umbra_plugin_api::{
     UMBRA_CAPABILITY_BEHAVIOR, UMBRA_CAPABILITY_MOTION_MODEL, UmbraBehaviorVTable, UmbraCapability,
     UmbraPluginDescriptor,
 };
-use umbra_plugin_host::{HostOptions, PluginError, PluginHost, PluginInfo};
+use umbra_plugin_host::{HostOptions, PluginError, PluginHost};
 
 const ORIGIN: &str = "forged-origin";
 
-fn load(p: Parts) -> Result<PluginInfo, PluginError> {
-    let f = forged!(p);
-    let mut host = PluginHost::new(HostOptions::default());
-    host.load_static(ORIGIN, f.entry).cloned()
+/// Publishes `$p` behind this call site's own entry function and loads it into a new host. A macro:
+/// every test needs its own forged image (one call site per test, `support/forge.rs`).
+macro_rules! load {
+    ($p:expr) => {{
+        let f = forged!($p);
+        let mut host = PluginHost::new(HostOptions::default());
+        host.load_static(ORIGIN, f.entry).cloned()
+    }};
 }
 
+/// A forged descriptor that must be rejected with the given variant, naming the origin and the field
+/// (the `field` of `Descriptor` and `AbiMismatch`, spelled `descriptor.x`, `capabilities[i].x`,
+/// `vtable.x`; the message repeats it).
 macro_rules! rejected {
+    ($name:ident, $edit:expr, Descriptor, $field:expr) => {
+        rejected!(@body $name, $edit, [PluginError::Descriptor { field, .. } if field.as_str() == $field], $field);
+    };
+    ($name:ident, $edit:expr, AbiMismatch, $field:expr) => {
+        rejected!(@body $name, $edit, [PluginError::AbiMismatch { field, .. } if field.as_str() == $field], $field);
+    };
     ($name:ident, $edit:expr, $variant:pat, $needle:expr) => {
+        rejected!(@body $name, $edit, [$variant], $needle);
+    };
+    (@body $name:ident, $edit:expr, [$($variant:tt)+], $needle:expr) => {
         #[test]
         #[ignore = "WI-8"]
         fn $name() {
@@ -44,9 +60,9 @@ macro_rules! rejected {
             let edit: fn(&mut Parts) = $edit;
             edit(&mut p);
 
-            let err = load(p).expect_err("the descriptor must be rejected");
+            let err = load!(p).expect_err("the descriptor must be rejected");
 
-            assert!(matches!(err, $variant), "variant: {err:?}");
+            assert!(matches!(&err, $($variant)+), "variant and field: {err:?}");
             let msg = err.to_string();
             assert!(msg.contains(ORIGIN), "names the origin: {msg}");
             assert!(msg.contains($needle), "names {:?}: {msg}", $needle);
@@ -61,7 +77,7 @@ const VT: u32 = size_of::<UmbraBehaviorVTable>() as u32;
 #[test]
 #[ignore = "WI-8"]
 fn given_a_valid_descriptor_when_loaded_then_info_is_copied() {
-    let info = load(parts()).expect("valid");
+    let info = load!(parts()).expect("valid");
 
     assert_eq!(info.id.as_str(), "test.plugin.forge");
     assert_eq!(info.name, "Forge");
@@ -84,108 +100,108 @@ fn given_a_valid_descriptor_when_loaded_then_info_is_copied() {
 rejected!(
     descriptor_struct_size_too_small,
     |p| p.desc.struct_size = 16,
-    PluginError::Descriptor { .. },
-    "struct_size"
+    Descriptor,
+    "descriptor.struct_size"
 );
 rejected!(
     descriptor_struct_size_above_host,
     |p| p.desc.struct_size = DESC + 8,
-    PluginError::Descriptor { .. },
-    "struct_size"
+    Descriptor,
+    "descriptor.struct_size"
 );
 rejected!(
     descriptor_struct_size_not_a_multiple_of_8,
     |p| p.desc.struct_size = DESC - 4,
-    PluginError::Descriptor { .. },
-    "struct_size"
+    Descriptor,
+    "descriptor.struct_size"
 );
 rejected!(
     capability_struct_size_too_small,
     |p| p.caps[0].struct_size = 16,
-    PluginError::Descriptor { .. },
-    "struct_size"
+    Descriptor,
+    "capabilities[0].struct_size"
 );
 rejected!(
     capability_struct_size_above_host,
     |p| p.caps[0].struct_size = CAP + 8,
-    PluginError::Descriptor { .. },
-    "struct_size"
+    Descriptor,
+    "capabilities[0].struct_size"
 );
 rejected!(
     capability_struct_size_not_a_multiple_of_8,
     |p| p.caps[0].struct_size = CAP - 4,
-    PluginError::Descriptor { .. },
-    "struct_size"
+    Descriptor,
+    "capabilities[0].struct_size"
 );
 rejected!(
     vtable_struct_size_too_small,
     |p| p.vtable.struct_size = 16,
-    PluginError::Descriptor { .. },
-    "struct_size"
+    Descriptor,
+    "vtable.struct_size"
 );
 rejected!(
     vtable_struct_size_above_host,
     |p| p.vtable.struct_size = VT + 8,
-    PluginError::Descriptor { .. },
-    "struct_size"
+    Descriptor,
+    "vtable.struct_size"
 );
 rejected!(
     vtable_struct_size_not_a_multiple_of_8,
     |p| p.vtable.struct_size = VT - 4,
-    PluginError::Descriptor { .. },
-    "struct_size"
+    Descriptor,
+    "vtable.struct_size"
 );
 
 // Required vtable entries.
 rejected!(
     vtable_configure_null,
     |p| p.vtable.configure = None,
-    PluginError::Descriptor { .. },
-    "configure"
+    Descriptor,
+    "vtable.configure"
 );
 rejected!(
     vtable_destroy_behavior_null,
     |p| p.vtable.destroy_behavior = None,
-    PluginError::Descriptor { .. },
-    "destroy_behavior"
+    Descriptor,
+    "vtable.destroy_behavior"
 );
 rejected!(
     vtable_instantiate_null,
     |p| p.vtable.instantiate = None,
-    PluginError::Descriptor { .. },
-    "instantiate"
+    Descriptor,
+    "vtable.instantiate"
 );
 rejected!(
     vtable_destroy_instance_null,
     |p| p.vtable.destroy_instance = None,
-    PluginError::Descriptor { .. },
-    "destroy_instance"
+    Descriptor,
+    "vtable.destroy_instance"
 );
 rejected!(
     vtable_tick_batch_null,
     |p| p.vtable.tick_batch = None,
-    PluginError::Descriptor { .. },
-    "tick_batch"
+    Descriptor,
+    "vtable.tick_batch"
 );
 rejected!(
     vtable_halt_null,
     |p| p.vtable.halt = None,
-    PluginError::Descriptor { .. },
-    "halt"
+    Descriptor,
+    "vtable.halt"
 );
 
 // Bounds and caps.
 rejected!(
     capability_count_above_256,
     |p| p.desc.capability_count = 257,
-    PluginError::Descriptor { .. },
-    "capability_count"
+    Descriptor,
+    "descriptor.capability_count"
 );
 rejected!(
     null_capabilities_with_a_count,
     |p| p.desc.capabilities = std::ptr::null(),
-    PluginError::Descriptor { .. },
-    "capabilities"
+    Descriptor,
+    "descriptor.capabilities"
 );
 rejected!(
     misaligned_capability_array,
@@ -193,79 +209,86 @@ rejected!(
         let m = misaligned_caps(p);
         p.desc.capabilities = m;
     },
-    PluginError::Descriptor { .. },
-    "capabilities"
+    Descriptor,
+    "descriptor.capabilities"
 );
 rejected!(
     plugin_id_over_128_bytes,
     |p| p.desc.id = leak_str(&format!("a.{}", "b".repeat(130))),
-    PluginError::Descriptor { .. },
-    "id"
+    Descriptor,
+    "descriptor.id"
 );
 rejected!(
     capability_id_over_128_bytes,
     |p| p.caps[0].id = leak_str(&format!("test.{}", "b".repeat(130))),
-    PluginError::Descriptor { .. },
-    "id"
+    Descriptor,
+    "capabilities[0].id"
 );
 rejected!(
     schema_over_1_mib,
     |p| p.caps[0].param_schema =
         leak_str(&format!("{{\"description\":\"{}\"}}", "x".repeat(1 << 20))),
-    PluginError::Descriptor { .. },
-    "param_schema"
+    Descriptor,
+    "capabilities[0].param_schema"
 );
 rejected!(
     metadata_over_64_kib,
     |p| p.caps[0].metadata = leak_str(&format!("{{\"result\":\"{}\"}}", "x".repeat(1 << 16))),
-    PluginError::Descriptor { .. },
-    "metadata"
+    Descriptor,
+    "capabilities[0].metadata"
 );
 
 // UTF-8.
 rejected!(
     invalid_utf8_in_plugin_id,
     |p| p.desc.id = bad_utf8(),
-    PluginError::Descriptor { .. },
-    "id"
+    Descriptor,
+    "descriptor.id"
 );
 rejected!(
     invalid_utf8_in_plugin_name,
     |p| p.desc.name = bad_utf8(),
-    PluginError::Descriptor { .. },
-    "name"
+    Descriptor,
+    "descriptor.name"
 );
 rejected!(
     invalid_utf8_in_schema,
     |p| p.caps[0].param_schema = bad_utf8(),
-    PluginError::Descriptor { .. },
-    "param_schema"
+    Descriptor,
+    "capabilities[0].param_schema"
 );
 rejected!(
     invalid_utf8_in_metadata,
     |p| p.caps[0].metadata = bad_utf8(),
-    PluginError::Descriptor { .. },
-    "metadata"
+    Descriptor,
+    "capabilities[0].metadata"
+);
+
+rejected!(
+    invalid_utf8_in_capability_id,
+    |p| p.caps[0].id = bad_utf8(),
+    Descriptor,
+    "capabilities[0].id"
 );
 
 // Grammar.
 rejected!(
     bad_plugin_id_grammar,
     |p| p.desc.id = leak_str("Bad Id!"),
-    PluginError::Descriptor { .. },
-    "id"
+    Descriptor,
+    "descriptor.id"
 );
 rejected!(
     bad_plugin_semver,
     |p| p.desc.version = leak_str("1.x"),
-    PluginError::Descriptor { .. },
-    "version"
+    Descriptor,
+    "descriptor.version"
 );
 rejected!(
     bad_capability_semver,
     |p| p.caps[0].version = leak_str("not-semver"),
-    PluginError::Descriptor { .. },
-    "version"
+    Descriptor,
+    "capabilities[0].version"
 );
 rejected!(
     builtin_capability_id_is_reserved,
@@ -292,38 +315,38 @@ rejected!(
 rejected!(
     schema_that_is_not_json,
     |p| p.caps[0].param_schema = leak_str("{"),
-    PluginError::Descriptor { .. },
-    "param_schema"
+    Descriptor,
+    "capabilities[0].param_schema"
 );
 rejected!(
     schema_that_is_not_an_object,
     |p| p.caps[0].param_schema = leak_str("[1]"),
-    PluginError::Descriptor { .. },
-    "param_schema"
+    Descriptor,
+    "capabilities[0].param_schema"
 );
 rejected!(
     metadata_that_is_not_json,
     |p| p.caps[0].metadata = leak_str("{"),
-    PluginError::Descriptor { .. },
-    "metadata"
+    Descriptor,
+    "capabilities[0].metadata"
 );
 rejected!(
     metadata_with_an_unknown_key,
     |p| p.caps[0].metadata = leak_str(r#"{"bogus":1}"#),
-    PluginError::Descriptor { .. },
-    "metadata"
+    Descriptor,
+    "capabilities[0].metadata"
 );
 rejected!(
     param_types_without_set_input,
     |p| p.caps[0].metadata = leak_str(r#"{"param_types":{"speed":"number"}}"#),
-    PluginError::Descriptor { .. },
-    "set_input"
+    Descriptor,
+    "vtable.set_input"
 );
 rejected!(
     outputs_without_output_entry,
     |p| p.caps[0].metadata = leak_str(r#"{"outputs":{"turns":"integer"}}"#),
-    PluginError::Descriptor { .. },
-    "output"
+    Descriptor,
+    "vtable.output"
 );
 rejected!(
     param_type_that_disagrees_with_the_schema,
@@ -333,34 +356,34 @@ rejected!(
             leak_str(r#"{"type":"object","properties":{"speed":{"type":"number"}}}"#);
         p.caps[0].metadata = leak_str(r#"{"param_types":{"speed":"string"}}"#);
     },
-    PluginError::Descriptor { .. },
-    "speed"
+    Descriptor,
+    "capabilities[0].metadata.param_types.speed"
 );
 
 // ABI versions (REQ-P-9): the descriptor's and every struct's own major.
 rejected!(
     descriptor_abi_major_differs,
     |p| p.desc.abi_version = 1 << 16,
-    PluginError::AbiMismatch { .. },
-    "ABI"
+    AbiMismatch,
+    "descriptor.abi_version"
 );
 rejected!(
     descriptor_abi_minor_is_newer,
     |p| p.desc.abi_version = 1,
-    PluginError::AbiMismatch { .. },
-    "ABI"
+    AbiMismatch,
+    "descriptor.abi_version"
 );
 rejected!(
     capability_abi_major_differs,
     |p| p.caps[0].abi_version = 1 << 16,
-    PluginError::AbiMismatch { .. },
-    "ABI"
+    AbiMismatch,
+    "capabilities[0].abi_version"
 );
 rejected!(
     vtable_abi_major_differs,
     |p| p.vtable.abi_version = 1 << 16,
-    PluginError::AbiMismatch { .. },
-    "ABI"
+    AbiMismatch,
+    "vtable.abi_version"
 );
 
 #[test]
@@ -375,7 +398,7 @@ fn given_consistent_metadata_and_entries_when_loaded_then_it_is_accepted() {
         r#"{"param_types":{"speed":"number","target":"entity"},"outputs":{"turns":"integer"},"result":"done"}"#,
     );
 
-    assert!(load(p).is_ok());
+    assert!(load!(p).is_ok());
 }
 
 #[test]
@@ -384,8 +407,12 @@ fn given_a_duplicate_capability_in_one_plugin_when_loaded_then_rejected() {
     let mut p = parts();
     p.add_capability("test.behavior.forge");
 
-    let err = load(p).expect_err("duplicate");
+    let err = load!(p).expect_err("duplicate");
 
+    assert!(
+        matches!(&err, PluginError::Descriptor { field, .. } if field == "capabilities[1].id"),
+        "{err:?}"
+    );
     let msg = err.to_string();
     assert!(
         msg.contains("test.behavior.forge") && msg.contains(ORIGIN),

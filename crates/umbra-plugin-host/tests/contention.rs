@@ -3,19 +3,21 @@
 //! Own test binary: the raw plugin's concurrency counters are process-wide, and any other test ticking
 //! the plugin would pollute them. Step 4 of M4: the bridge lands in WI-9.
 
+#![expect(unsafe_code, reason = "raw_env! expands forged entry functions")]
+
 #[macro_use]
 mod support;
 
 use std::sync::atomic::Ordering;
 use std::thread;
 
-use support::bridge::{Ent, env, tick_batched};
+use support::bridge::{Ent, tick_batched};
 use support::raw;
 
 #[test]
 #[ignore = "WI-9"]
 fn cross_thread_contention_never_faults() {
-    let env = env();
+    let env = raw_env!();
     let b = env.behavior("spin");
     let batch = b.batch().expect("batch");
     let run = |first_id: u64| {

@@ -2,6 +2,7 @@
 //! SDK sends), a test plugin built with `export_plugin!`, and helpers to call its vtable through the
 //! raw ABI. Each test binary includes this module once, so each gets its own exported
 //! `umbra_plugin_entry`.
+#![warn(clippy::undocumented_unsafe_blocks)]
 #![expect(dead_code, reason = "each test binary uses a subset of the harness")]
 #![expect(unsafe_code, reason = "the harness plays the host side of the C ABI")]
 #![expect(

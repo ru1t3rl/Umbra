@@ -92,23 +92,35 @@ fn two_hosts_load_the_same_entry_concurrently() {
     let f = forged!(parts());
     let entry = f.entry;
 
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
     let handles: Vec<_> = (0..2)
         .map(|n| {
+            let barrier = std::sync::Arc::clone(&barrier);
             thread::spawn(move || {
                 let mut h = host();
-                h.load_static(&format!("thread-{n}"), entry)
-                    .map(|i| i.id.as_str().to_owned())
+                let loaded = h
+                    .load_static(&format!("thread-{n}"), entry)
+                    .map(|i| i.id.as_str().to_owned());
+                // Both hosts are alive here: neither thread may drop its host before the other loaded.
+                barrier.wait();
+                (loaded, h)
             })
         })
         .collect();
-    let ids: Vec<_> = handles
+    let results: Vec<_> = handles
         .into_iter()
         .map(|t| t.join().expect("thread"))
         .collect();
 
-    assert!(ids.iter().all(Result::is_ok), "{ids:?}");
+    assert!(results.iter().all(|(r, _)| r.is_ok()), "load results");
     assert_eq!(f.entry_calls.load(Ordering::SeqCst), 2, "one lifecycle");
     assert_eq!(f.init_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        f.shutdown_calls.load(Ordering::SeqCst),
+        0,
+        "both hosts alive"
+    );
+    drop(results);
     assert_eq!(f.shutdown_calls.load(Ordering::SeqCst), 1);
 }
 
@@ -196,6 +208,10 @@ fn keep_loaded_is_sticky_per_image() {
 
 #[test]
 #[ignore = "WI-8"]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a bounded real-time window is the only way to observe that a load did NOT proceed"
+)]
 fn load_waits_while_image_is_closing() {
     let f = forged!(parts());
     let mut h = host();
@@ -210,6 +226,16 @@ fn load_waits_while_image_is_closing() {
             .map(|_| ())
             .map_err(|e| e.to_string())
     });
+
+    // Give the second load a bounded window to (wrongly) proceed while the image is closing: it must
+    // wait, so no further entry or init call happens while the gate is closed.
+    thread::sleep(std::time::Duration::from_millis(100));
+    assert_eq!(
+        f.entry_calls.load(Ordering::SeqCst),
+        2,
+        "no entry call while the image is closing"
+    );
+    assert_eq!(*f.order.lock().expect("order"), ["init"]);
 
     f.gate.open();
     closer.join().expect("closer");

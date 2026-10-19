@@ -45,21 +45,22 @@ fn taken(id: &str) -> (Arc<dyn Factory<dyn Behavior>>, ComponentInfo) {
     )
 }
 
-fn host_with(plugins: Vec<support::forge::Parts>) -> PluginHost {
-    let mut host = PluginHost::new(HostOptions::default());
-    for (n, p) in plugins.into_iter().enumerate() {
-        let f = forged!(p);
-        host.load_static(&format!("register-{n}"), f.entry)
-            .expect("load");
-    }
-    host
+/// A new host with one forged plugin loaded. A macro: one `forged!` call site per test
+/// (`support/forge.rs`), so tests never share an image.
+macro_rules! host_with {
+    ($parts:expr) => {{
+        let f = forged!($parts);
+        let mut host = PluginHost::new(HostOptions::default());
+        host.load_static("register-origin", f.entry).expect("load");
+        host
+    }};
 }
 
 #[test]
 #[ignore = "WI-8"]
 fn register_maps_metadata_to_component_info() {
     let mut registry = Registry::new();
-    let host = host_with(vec![raw::parts(true)]);
+    let host = host_with!(raw::parts(true));
 
     host.register(&mut registry).expect("register");
 
@@ -95,7 +96,7 @@ fn register_maps_metadata_to_component_info() {
 #[ignore = "WI-8"]
 fn register_keeps_the_param_schema() {
     let mut registry = Registry::new();
-    host_with(vec![raw::parts(true)])
+    host_with!(raw::parts(true))
         .register(&mut registry)
         .expect("register");
 
@@ -112,9 +113,7 @@ fn a_capability_version_overrides_the_plugin_version() {
     p.caps[0].version = leak_str("2.1.0");
     let mut registry = Registry::new();
 
-    host_with(vec![p])
-        .register(&mut registry)
-        .expect("register");
+    host_with!(p).register(&mut registry).expect("register");
 
     let info = registry.info(&cid("test.behavior.forge")).expect("info");
     assert_eq!(info.version, Version::new(2, 1, 0));
@@ -127,7 +126,7 @@ fn registering_an_id_that_is_already_registered_is_a_registry_error() {
     let (f, info) = taken("test.behavior.forge");
     registry.register_behavior(f, info).expect("pre-register");
 
-    let err = host_with(vec![parts()])
+    let err = host_with!(parts())
         .register(&mut registry)
         .expect_err("duplicate id");
 
@@ -143,14 +142,21 @@ fn registering_an_id_that_is_already_registered_is_a_registry_error() {
 fn register_is_all_or_nothing() {
     let mut first = parts();
     first.desc.id = leak_str("test.plugin.first");
-    first.caps[0] = support::forge::capability("test.behavior.first");
+    first.set_capability(0, "test.behavior.first");
     let mut second = parts();
     second.desc.id = leak_str("test.plugin.second");
-    second.caps[0] = support::forge::capability("test.behavior.second");
+    second.set_capability(0, "test.behavior.second");
     let mut registry = Registry::new();
     let (f, info) = taken("test.behavior.second");
     registry.register_behavior(f, info).expect("pre-register");
-    let host = host_with(vec![first, second]);
+    // One `forged!` per plugin: two plugins from one call site would be one image.
+    let mut host = PluginHost::new(HostOptions::default());
+    let f1 = forged!(first);
+    host.load_static("register-first", f1.entry)
+        .expect("load first");
+    let f2 = forged!(second);
+    host.load_static("register-second", f2.entry)
+        .expect("load second");
 
     let result = host.register(&mut registry);
 

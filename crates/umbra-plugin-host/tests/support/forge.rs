@@ -3,6 +3,13 @@
 //! A [`Parts`] is a valid one-capability plugin whose raw structs a test edits before publishing it.
 //! `forged!` publishes the parts behind a fresh entry function: image identity is the entry address, so
 //! every test needs its own function, and the macro's statics are per expansion site.
+//!
+//! **One call site per test.** Never call `forged!` from a helper function that several tests share: the
+//! helper is one expansion, so all its callers would publish into the same statics and the same image
+//! key, and parallel tests would overwrite each other's descriptors, reuse each other's live images and
+//! share counters. Use a macro that expands `forged!` inside the test function (`load!` in
+//! `descriptor.rs`, `host_with!` in `register.rs`, `raw_env!` in `support/bridge.rs`), and one `forged!`
+//! per plugin when a test loads several.
 
 use std::ffi::c_void;
 use std::mem::size_of;
@@ -146,6 +153,12 @@ impl Parts {
         self.desc.capability_count = self.caps.len();
     }
 
+    /// Replaces capability `index` by a fresh valid one with `id` and re-links vtable pointers.
+    pub fn set_capability(&mut self, index: usize, id: &str) {
+        self.caps[index] = capability(id);
+        self.link();
+    }
+
     /// Adds a capability with the given id.
     pub fn add_capability(&mut self, id: &str) {
         self.caps.push(capability(id));
@@ -171,11 +184,18 @@ pub fn misaligned_caps(p: &Parts) -> *const UmbraCapability {
 }
 
 /// Calls the host `log` entry (INFO) the way a plugin does.
+///
+/// Returns -1 when the host API has no `log` entry (the tests assert the code, so a missing entry is a
+/// test failure outside the callback; a panic here would abort the process).
 pub fn log_through(host: *const umbra_plugin_api::UmbraHostApi, message: &str) -> i32 {
-    // SAFETY: the host API is a process-lifetime struct whose `log` entry is set.
+    // SAFETY: the host API is a process-lifetime struct.
+    let h = unsafe { &*host };
+    let Some(log) = h.log else {
+        return -1;
+    };
+    // SAFETY: the `log` entry is set by the host; the string is leaked and so valid.
     unsafe {
-        let h = &*host;
-        (h.log.expect("log"))(
+        log(
             h.host_ctx,
             umbra_plugin_api::UMBRA_LOG_INFO,
             leak_str(message),
@@ -215,12 +235,13 @@ impl Gate {
     }
     /// Called by the plugin's `shutdown`.
     pub fn pass(&self) {
-        let mut g = self.state.lock().expect("gate");
+        let relax = std::sync::PoisonError::into_inner;
+        let mut g = self.state.lock().unwrap_or_else(relax);
         if g.0 {
             g.1 = true;
             self.cv.notify_all();
             while !g.2 {
-                g = self.cv.wait(g).expect("gate");
+                g = self.cv.wait(g).unwrap_or_else(relax);
             }
             g.0 = false;
         }
@@ -276,7 +297,7 @@ macro_rules! forged {
         ) -> umbra_plugin_api::UmbraCode {
             INIT.fetch_add(1, Ordering::SeqCst);
             INIT_LOG.store($crate::support::forge::log_through(host, "init says hi"), Ordering::SeqCst);
-            ORDER.lock().expect("order").push("init");
+            ORDER.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push("init");
             INIT_CODE.load(Ordering::SeqCst)
         }
         unsafe extern "C" fn shutdown() {
@@ -285,7 +306,7 @@ macro_rules! forged {
                 $crate::support::forge::log_through(HOST.load(Ordering::SeqCst) as *const _, "shutdown says bye"),
                 Ordering::SeqCst,
             );
-            ORDER.lock().expect("order").push("shutdown");
+            ORDER.lock().unwrap_or_else(std::sync::PoisonError::into_inner).push("shutdown");
             GATE.pass();
         }
         let mut parts: $crate::support::forge::Parts = $parts;

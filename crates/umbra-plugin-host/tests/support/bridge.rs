@@ -20,21 +20,47 @@ pub struct Env {
     pub f: Forged,
 }
 
-pub fn env_with(options: HostOptions, with_halt_running: bool) -> Env {
-    let f = forged!(raw::parts(with_halt_running));
-    let mut host = PluginHost::new(options);
-    host.load_static("bridge-origin", f.entry)
-        .expect("load raw plugin");
-    let mut registry = Registry::new();
-    host.register(&mut registry).expect("register raw plugin");
-    Env { host, registry, f }
+/// An [`Env`] over the raw plugin published by the caller's own `forged!`.
+///
+/// One call site per test (see `forge.rs`): use the macros `raw_env!()` and `raw_env_with!(options,
+/// with_halt_running)`, which expand `forged!` in the test function. A shared helper function would
+/// give every test the same image key and the same counters.
+macro_rules! raw_env_with {
+    ($options:expr, $with_halt_running:expr) => {{
+        let f = forged!($crate::support::raw::parts($with_halt_running));
+        $crate::support::bridge::Env::load(f, $options)
+    }};
 }
 
-pub fn env() -> Env {
-    env_with(HostOptions::default(), true)
+/// [`raw_env_with!`] with default options and a `halt_running` entry.
+macro_rules! raw_env {
+    () => {
+        raw_env_with!(umbra_plugin_host::HostOptions::default(), true)
+    };
+}
+
+impl Drop for Env {
+    /// Problems the raw plugin met inside its `extern "C"` callbacks (it cannot panic there).
+    fn drop(&mut self) {
+        let failures = raw::failures();
+        assert!(
+            failures.is_empty() || std::thread::panicking(),
+            "raw plugin callbacks failed: {failures:?}"
+        );
+    }
 }
 
 impl Env {
+    /// Loads the forged raw plugin into a new host and registers it.
+    pub fn load(f: Forged, options: HostOptions) -> Self {
+        let mut host = PluginHost::new(options);
+        host.load_static("bridge-origin", f.entry)
+            .expect("load raw plugin");
+        let mut registry = Registry::new();
+        host.register(&mut registry).expect("register raw plugin");
+        Self { host, registry, f }
+    }
+
     /// Builds a configured behavior in `mode` (see `raw`).
     pub fn try_behavior(&self, mode: &str) -> Result<Arc<dyn Behavior>, BuildError> {
         let addr = self.f.host.load(std::sync::atomic::Ordering::SeqCst);

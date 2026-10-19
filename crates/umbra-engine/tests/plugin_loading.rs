@@ -173,7 +173,7 @@ fn key_and_param_forms_in_template_params_are_invalid_binding_for_plugin() {
 #[ignore = "WI-12"]
 fn plugin_configure_error_at_spawn_is_behavior_build() {
     let graph = "schema_version = 1\nid = \"test.graph.range\"\nversion = \"1.0.0\"\nroot = \"call\"\n\n\
-                 [interface]\nparams = { lo = { type = \"number\", default = 0.0 }, hi = { type = \"number\", default = 1.0 } }\n\n\
+                 [interface]\nparams = { lo = { type = \"number\", default = 0.0 }, hi = { type = \"number\", default = 10.0 } }\n\n\
                  [nodes.call]\ntype = \"subgraph\"\nref = \"test.behavior.cross_param\"\n\
                  params = { lo = { param = \"lo\" }, hi = { param = \"hi\" } }\n"
         .to_owned();

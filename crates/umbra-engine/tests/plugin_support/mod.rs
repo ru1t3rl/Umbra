@@ -21,7 +21,15 @@
 //! - `test.behavior.cross_param`: params `lo` and `hi` (numbers); `configure` fails when `lo > hi`.
 //!
 //! The cargo feature `bad_schema` adds `test.behavior.bad_schema`, whose param schema is outside the
-//! ADR 0009 subset (a `oneOf`).
+//! ADR 0009 subset (an `anyOf`; `oneOf` IS in the subset). The plugin-level fault features are
+//! `entry_panics`, `init_fails`, `init_panics` and `shutdown_panics`. A library without the entry symbol,
+//! or whose entry symbol resolves to null, cannot be built from a `forbid(unsafe_code)` Rust crate: the
+//! host tests build those two from a few lines of C with `cc`. The panic strategy is a profile setting,
+//! not a feature: `library_with` passes extra cargo arguments, for example `--config
+//! profile.dev.panic="abort"`.
+//!
+//! This is the one build helper of the M4 tests: the host tests include it by path too
+//! (`umbra-plugin-host/tests/support/plugins.rs`).
 #![expect(
     dead_code,
     reason = "each test binary uses a subset of the shared helpers"
@@ -45,8 +53,22 @@ fn tmp_root() -> PathBuf {
 
 /// The built library of `package` with `features`, cached per process. Builds are serialised.
 pub fn library(package: &str, features: &[&str]) -> PathBuf {
+    library_with(package, features, &[])
+}
+
+/// [`library`] with extra arguments for `cargo build` (for example `--config` overrides); they are part
+/// of the cache key and of the build directory name.
+pub fn library_with(package: &str, features: &[&str], extra: &[&str]) -> PathBuf {
     static CACHE: Mutex<BTreeMap<String, PathBuf>> = Mutex::new(BTreeMap::new());
-    let key = format!("{package}+{}", features.join("+"));
+    let mut key = format!("{package}+{}", features.join("+"));
+    if !extra.is_empty() {
+        let tag: String = extra
+            .iter()
+            .flat_map(|a| a.chars())
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
+        key = format!("{key}+{tag}");
+    }
     let mut cache = CACHE.lock().expect("build cache lock");
     if let Some(found) = cache.get(&key) {
         return found.clone();
@@ -56,7 +78,8 @@ pub fn library(package: &str, features: &[&str]) -> PathBuf {
     cmd.current_dir(workspace_root())
         .args(["build", "--locked", "--offline", "-p", package])
         .arg("--target-dir")
-        .arg(&target);
+        .arg(&target)
+        .args(extra);
     if !features.is_empty() {
         cmd.arg("--features").arg(features.join(","));
     }
@@ -92,6 +115,13 @@ pub fn plugins_dir(packages: &[(&str, &Path)]) -> PathBuf {
         std::fs::copy(lib, dir.join(file)).expect("copy the library");
     }
     root
+}
+
+/// Writes `<plugins dir>/<package>/plugin.toml` for plugin `id` `version` and ABI 0.0 (ADR 0022).
+pub fn write_manifest(plugins: &Path, package: &str, id: &str, version: &str) {
+    let text =
+        format!("schema_version = 1\nid = \"{id}\"\nversion = \"{version}\"\nabi = \"0.0\"\n");
+    std::fs::write(plugins.join(package).join("plugin.toml"), text).expect("manifest");
 }
 
 /// A plugin directory with the example plugin (`example.plugin.wander`) as package `wander`.

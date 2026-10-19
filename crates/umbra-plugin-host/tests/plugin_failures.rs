@@ -6,22 +6,29 @@
 //! are in `descriptor.rs`, `manifest.rs`, `image.rs`, `faults.rs`, `tokens.rs`, `contention.rs`.
 //!
 //! Step 4 of M4. Everything is ignored with WI-10: the fixture crate and the build helper do not exist.
-//! The fixture contract the tests assume beyond the plan's capability list (plan gaps, reported):
-//! cargo features `entry_panics` and `null_entry` (the plan lists only `no_entry`, `init_fails`,
-//! `init_panics`, `shutdown_panics`, `panic_abort_profile`); the package is `test.plugin.fixture` 0.1.0
-//! with a `plugin.toml`; `test.behavior.lifecycle` logs exactly `create_behavior`, `create_instance`,
-//! `destroy_instance`, `destroy_behavior` and the plugin's `shutdown` logs `shutdown`; every faulty
-//! capability's fault shows in `PluginHost::faults()` with the call named in its test.
+//! The fixture contract the tests assume beyond the plan's capability list (plan gaps, reported; see
+//! also `umbra-engine/tests/plugin_support/mod.rs`, the one build helper): cargo features
+//! `entry_panics`, `init_fails`, `init_panics`, `shutdown_panics` (the plan's `no_entry` and
+//! `panic_abort_profile` are not features: a library without the entry symbol, or with a null one, is
+//! built from C with `cc`, and the panic strategy is a profile setting passed to the build helper as
+//! `--config profile.dev.panic="abort"`); the package is `test.plugin.fixture` 0.1.0 with a
+//! `plugin.toml` written by the helper; `test.behavior.lifecycle` logs exactly `create_behavior`,
+//! `create_instance`, `destroy_instance`, `destroy_behavior` and the plugin's `shutdown` logs
+//! `shutdown`; `test.behavior.ok` ticks Running; every faulty capability's fault shows in
+//! `PluginHost::faults()` with the call named in its test and a message naming the problem.
 #![expect(clippy::expect_used, reason = "helpers build known-valid fixtures")]
 
 #[macro_use]
 mod support;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 
 use support::bridge::{Ent, rate, tick_batched};
-use support::plugins::package_dir;
+use support::plugins::{
+    C_COUNTER, C_NO_ENTRY, C_NULL_ENTRY, c_package_dir, package_dir, package_dir_with,
+};
 use support::{Recorder, build_behavior, garbage_package, tmp_dir};
 use umbra_core::{Behavior, BehaviorInstance, Registry, Status};
 use umbra_plugin_host::{HostOptions, LogLevel, PluginError, PluginHost};
@@ -45,10 +52,22 @@ fn build(host: &PluginHost, registry: &Registry, capability: &str) -> Arc<dyn Be
     build_behavior(host, registry, &format!("test.behavior.{capability}"), "{}").expect("build")
 }
 
-fn load_error(variant: &str, features: &[&str]) -> PluginError {
+fn load_error_in(dir: PathBuf) -> PluginError {
     let mut host = PluginHost::new(HostOptions::default());
-    let pkgs = PluginHost::discover(&[package_dir(variant, features)]).expect("discover");
+    let pkgs = PluginHost::discover(&[dir]).expect("discover");
     host.load(&pkgs[0]).expect_err("the load must fail")
+}
+
+fn load_error(variant: &str, features: &[&str]) -> PluginError {
+    load_error_in(package_dir(variant, features))
+}
+
+/// A host whose plugin log goes to a recorder.
+fn logging_host() -> (PluginHost, Arc<Recorder>) {
+    let recorder = Recorder::arc();
+    let mut options = HostOptions::default();
+    options.log = recorder.clone();
+    (PluginHost::new(options), recorder)
 }
 
 // ------------------------------------------------------------------------------------ load rows
@@ -70,18 +89,25 @@ fn given_a_file_that_is_not_a_library_then_open_error() {
 #[test]
 #[ignore = "WI-10"]
 fn given_a_library_without_umbra_plugin_entry_then_missing_entry() {
-    let err = load_error("no-entry", &["no_entry"]);
+    let err = load_error_in(c_package_dir("no-entry", C_NO_ENTRY));
 
     assert!(matches!(err, PluginError::MissingEntry { .. }), "{err:?}");
-    assert!(err.to_string().contains("umbra_plugin_entry"), "{err}");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("umbra_plugin_entry") && msg.contains("no-entry"),
+        "names the symbol and the library path: {msg}"
+    );
 }
 
+/// The entry symbol resolves to a null address (an ELF absolute symbol of value 0).
+#[cfg(target_os = "linux")]
 #[test]
 #[ignore = "WI-10"]
 fn given_a_null_entry_symbol_then_missing_entry() {
-    let err = load_error("null-entry", &["null_entry"]);
+    let err = load_error_in(c_package_dir("null-entry", C_NULL_ENTRY));
 
     assert!(matches!(err, PluginError::MissingEntry { .. }), "{err:?}");
+    assert!(err.to_string().contains("null-entry"), "{err}");
 }
 
 #[test]
@@ -90,6 +116,10 @@ fn given_an_entry_that_panics_then_null_descriptor() {
     let err = load_error("entry-panics", &["entry_panics"]);
 
     assert!(matches!(err, PluginError::NullDescriptor { .. }), "{err:?}");
+    assert!(
+        err.to_string().contains("entry-panics"),
+        "names the origin: {err}"
+    );
 }
 
 #[test]
@@ -97,7 +127,10 @@ fn given_an_entry_that_panics_then_null_descriptor() {
 fn given_init_returns_an_error_then_init_error() {
     let err = load_error("init-fails", &["init_fails"]);
 
-    assert!(matches!(err, PluginError::Init { .. }), "{err:?}");
+    assert!(
+        matches!(&err, PluginError::Init { plugin, .. } if plugin.as_str() == "test.plugin.fixture"),
+        "{err:?}"
+    );
 }
 
 #[test]
@@ -105,8 +138,29 @@ fn given_init_returns_an_error_then_init_error() {
 fn given_init_panics_then_init_error_with_the_panic_message() {
     let err = load_error("init-panics", &["init_panics"]);
 
-    assert!(matches!(err, PluginError::Init { .. }), "{err:?}");
+    assert!(
+        matches!(&err, PluginError::Init { plugin, .. } if plugin.as_str() == "test.plugin.fixture"),
+        "{err:?}"
+    );
     assert!(err.to_string().contains("panic"), "{err}");
+}
+
+/// ADR 0021: `shutdown` runs only after a successful `init`. The fixture's `shutdown` logs `shutdown`.
+#[test]
+#[ignore = "WI-10"]
+fn given_init_panics_then_no_shutdown_runs_afterwards() {
+    let (mut host, recorder) = logging_host();
+    let pkgs = PluginHost::discover(&[package_dir("init-panics-quiet", &["init_panics"])])
+        .expect("discover");
+
+    host.load(&pkgs[0]).expect_err("init panics");
+    drop(host);
+
+    assert!(
+        recorder.all().iter().all(|e| !e.2.contains("shutdown")),
+        "{:?}",
+        recorder.all()
+    );
 }
 
 #[test]
@@ -151,6 +205,10 @@ fn given_a_manifest_whose_id_differs_from_the_descriptor_then_manifest_mismatch(
         matches!(err, PluginError::ManifestMismatch { field: "id", .. }),
         "{err:?}"
     );
+    assert!(
+        err.to_string().contains("manifest-id"),
+        "names the origin: {err}"
+    );
 }
 
 #[test]
@@ -175,6 +233,10 @@ fn given_a_manifest_whose_version_differs_from_the_descriptor_then_manifest_mism
         ),
         "{err:?}"
     );
+    assert!(
+        err.to_string().contains("manifest-version"),
+        "names the origin: {err}"
+    );
 }
 
 #[test]
@@ -189,24 +251,34 @@ fn given_a_manifest_with_another_abi_then_rejected_without_opening_the_library()
 
     let err = host.load(&pkgs[0]).expect_err("mismatch");
 
-    assert!(matches!(err, PluginError::AbiMismatch { .. }), "{err:?}");
+    assert!(
+        matches!(&err, PluginError::AbiMismatch { field, .. } if field == "plugin.toml abi"),
+        "{err:?}"
+    );
+    assert!(
+        err.to_string().contains("manifest-abi"),
+        "names the origin: {err}"
+    );
 }
 
 #[test]
 #[ignore = "WI-10"]
 fn given_the_same_plugin_id_from_two_images_then_duplicate() {
-    let first = package_dir("twin-a", &[]);
-    let second = package_dir("twin-b", &[]);
+    let first = PluginHost::discover(&[package_dir("twin-a", &[])]).expect("discover a");
+    let second = PluginHost::discover(&[package_dir("twin-b", &[])]).expect("discover b");
     let mut host = PluginHost::new(HostOptions::default());
-    for dir in [first, second.clone()] {
-        let pkgs = PluginHost::discover(&[dir]).expect("discover");
-        if let Err(err) = host.load(&pkgs[0]) {
-            assert!(matches!(err, PluginError::Duplicate { .. }), "{err:?}");
-            assert!(err.to_string().contains("test.plugin.fixture"), "{err}");
-            return;
-        }
-    }
-    panic!("the second image with the same plugin id must be a duplicate");
+    host.load(&first[0]).expect("the first image loads");
+
+    let err = host
+        .load(&second[0])
+        .expect_err("same plugin id, other image");
+
+    assert!(matches!(err, PluginError::Duplicate { .. }), "{err:?}");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("test.plugin.fixture") && msg.contains("twin-b"),
+        "{msg}"
+    );
 }
 
 #[cfg(unix)]
@@ -227,6 +299,38 @@ fn given_the_same_file_reached_through_a_symlink_then_duplicate_in_one_host() {
         .expect_err("the same canonical library");
 
     assert!(matches!(err, PluginError::Duplicate { .. }), "{err:?}");
+    assert!(
+        err.to_string().contains("alias"),
+        "names the second path: {err}"
+    );
+}
+
+/// ADR 0022: the same file reached twice is found by its canonical path BEFORE a second entry call.
+/// A C plugin counts its entry calls and reports the count from `shutdown`: exactly the two calls of
+/// one lifecycle.
+#[cfg(unix)]
+#[test]
+#[ignore = "WI-10"]
+fn the_same_file_reached_twice_is_found_before_a_second_entry_call() {
+    let dir = c_package_dir("counter-link", C_COUNTER);
+    let alias_root = tmp_dir("counter-alias");
+    let pkgs = PluginHost::discover(std::slice::from_ref(&dir)).expect("discover");
+    std::os::unix::fs::symlink(&pkgs[0].dir, alias_root.join("alias")).expect("symlink");
+    let aliased = PluginHost::discover(&[alias_root]).expect("discover alias");
+    let (mut host, recorder) = logging_host();
+    host.load(&pkgs[0]).expect("first path");
+
+    let err = host
+        .load(&aliased[0])
+        .expect_err("the same canonical library");
+    drop(host);
+
+    assert!(matches!(err, PluginError::Duplicate { .. }), "{err:?}");
+    let reported: Vec<_> = recorder.all().into_iter().map(|e| e.2).collect();
+    assert!(
+        reported.iter().any(|m| m == "entry_calls=2"),
+        "one lifecycle, two entry calls: {reported:?}"
+    );
 }
 
 #[test]
@@ -286,6 +390,34 @@ fn reload_with_keep_loaded() {
     }
 }
 
+/// ADR 0021 (RR-M3): with `keep_loaded` the library stays mapped after the last handle is gone (and
+/// `shutdown` still ran); without it the close unmaps it. A C plugin, because a Rust cdylib with
+/// thread-local destructors may pin itself. Linux only: it reads `/proc/self/maps`.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "WI-10"]
+fn keep_loaded_skips_the_close() {
+    let mapped = |marker: &str| {
+        std::fs::read_to_string("/proc/self/maps")
+            .expect("maps")
+            .contains(marker)
+    };
+    for keep in [false, true] {
+        let variant = format!("maps-{keep}");
+        let marker = format!("lib{variant}-");
+        let mut options = HostOptions::default();
+        options.keep_loaded = keep;
+        let mut host = PluginHost::new(options);
+        let pkgs = PluginHost::discover(&[c_package_dir(&variant, C_COUNTER)]).expect("discover");
+        host.load(&pkgs[0]).expect("load");
+        assert!(mapped(&marker), "mapped while loaded (keep_loaded {keep})");
+
+        drop(host);
+
+        assert_eq!(mapped(&marker), keep, "mapped after the last release");
+    }
+}
+
 /// RR-M1 on a real library: loads racing with last releases never fail or crash. The deterministic
 /// version of the closing wait is `image.rs::load_waits_while_image_is_closing` (gated `shutdown`).
 #[test]
@@ -337,7 +469,7 @@ fn panic_in_instantiate_is_an_instantiate_error() {
 }
 
 macro_rules! tick_fault {
-    ($name:ident, $capability:expr) => {
+    ($name:ident, $capability:expr, $needle:expr) => {
         #[test]
         #[ignore = "WI-10"]
         fn $name() {
@@ -350,9 +482,16 @@ macro_rules! tick_fault {
             let faults = host.faults();
             assert_eq!(faults.len(), 1, "{faults:?}");
             assert_eq!(faults[0].call, "tick_batch");
+            assert_eq!(faults[0].plugin.as_str(), "test.plugin.fixture");
             assert_eq!(
                 faults[0].capability.as_str(),
                 concat!("test.behavior.", $capability)
+            );
+            assert!(
+                faults[0].message.to_lowercase().contains($needle),
+                "{:?} in {:?}",
+                $needle,
+                faults[0].message
             );
             assert!(
                 ents.iter()
@@ -362,13 +501,17 @@ macro_rules! tick_fault {
     };
 }
 
-tick_fault!(panic_in_tick_batch_is_a_fault, "panic_tick");
-tick_fault!(status_left_unset_is_a_fault, "no_status");
-tick_fault!(status_out_of_range_is_a_fault, "bad_status");
-tick_fault!(invalid_intent_is_a_fault, "bad_intent");
-tick_fault!(more_than_64_intents_is_a_fault, "intent_flood");
-tick_fault!(intent_index_at_count_is_a_fault, "bad_index");
-tick_fault!(rng_with_another_calls_token_is_a_fault, "stale_token");
+tick_fault!(panic_in_tick_batch_is_a_fault, "panic_tick", "panic");
+tick_fault!(status_left_unset_is_a_fault, "no_status", "unset");
+tick_fault!(status_out_of_range_is_a_fault, "bad_status", "status");
+tick_fault!(invalid_intent_is_a_fault, "bad_intent", "intent");
+tick_fault!(more_than_64_intents_is_a_fault, "intent_flood", "64");
+tick_fault!(intent_index_at_count_is_a_fault, "bad_index", "index");
+tick_fault!(
+    rng_with_another_calls_token_is_a_fault,
+    "stale_token",
+    "token"
+);
 
 macro_rules! method_fault {
     ($name:ident, $capability:expr, $call:expr, $act:expr) => {
@@ -385,6 +528,8 @@ macro_rules! method_fault {
             let faults = host.faults();
             assert_eq!(faults.len(), 1, "{faults:?}");
             assert_eq!(faults[0].call, $call);
+            assert_eq!(faults[0].plugin.as_str(), "test.plugin.fixture");
+            assert!(!faults[0].message.is_empty(), "a message names the problem");
         }
     };
 }
@@ -508,17 +653,25 @@ fn the_library_stays_loaded_while_a_handle_lives() {
     let (host, registry, _) = fixture("handle-lives", &[]);
     let b = build(&host, &registry, "ok");
     let clone = registry.clone();
+    let factory = clone
+        .behavior(&umbra_core::ComponentId::new("test.behavior.ok").expect("id"))
+        .expect("the factory of the registry clone")
+        .clone();
     drop(registry);
     drop(host);
     drop(clone);
 
+    // The behavior and the factory still hold the image: the library is mapped, ticking works.
     let mut ents = vec![Ent::new(1, &b, 1)];
     tick_batched(&b.batch().expect("batch"), &mut ents, 0);
 
-    assert!(
-        ents[0].status.is_some(),
-        "ticking a handle after host and registry dropped"
+    assert_eq!(
+        ents[0].status,
+        Some(Status::Running),
+        "a handle ticks after host and registry dropped (a fault would be Failure)"
     );
+    assert!(ents[0].buf.len() < 65, "intents within the cap");
+    drop(factory);
 }
 
 // ------------------------------------------------------------------------------------ optional rows
@@ -531,7 +684,12 @@ fn a_plugin_built_with_panic_abort_aborts_the_process() {
     let exe = std::env::current_exe().expect("exe");
 
     let status = std::process::Command::new(exe)
-        .args(["--exact", "panic_abort_child", "--ignored", "--nocapture"])
+        .args([
+            "--exact",
+            "panic_abort_child",
+            "--include-ignored",
+            "--nocapture",
+        ])
         .env("UMBRA_PANIC_ABORT_CHILD", "1")
         .status()
         .expect("spawn the child");
@@ -540,32 +698,52 @@ fn a_plugin_built_with_panic_abort_aborts_the_process() {
         !status.success(),
         "the child must not exit normally: {status:?}"
     );
+    #[cfg(unix)]
     assert_eq!(
         status.code(),
         None,
         "terminated by a signal (abort), not an exit code"
     );
+    #[cfg(windows)]
+    assert!(
+        // The CRT abort exit code, or STATUS_STACK_BUFFER_OVERRUN (fast fail).
+        matches!(status.code(), Some(3 | -1_073_740_791)),
+        "abort on Windows: {status:?}"
+    );
 }
 
-/// The child of the test above; does nothing unless the parent set the variable.
+/// The child of the test above; a no-op unless the parent set the variable, so it is not ignored.
 #[test]
-#[ignore = "WI-10 (subprocess child)"]
 fn panic_abort_child() {
     if std::env::var_os("UMBRA_PANIC_ABORT_CHILD").is_none() {
         return;
     }
-    let (host, registry, _) = fixture("panic-abort", &["panic_abort_profile"]);
+    // The panic strategy is a profile setting, not a feature: build the fixture with the profile
+    // override.
+    let dir = package_dir_with(
+        "panic-abort",
+        &[],
+        &["--config", "profile.dev.panic=\"abort\""],
+    );
+    let mut host = PluginHost::new(HostOptions::default());
+    for pkg in PluginHost::discover(&[dir]).expect("discover") {
+        host.load(&pkg).expect("load");
+    }
+    let mut registry = Registry::new();
+    host.register(&mut registry).expect("register");
     let b = build(&host, &registry, "panic_tick");
     let mut ents = vec![Ent::new(1, &b, 1)];
     tick_batched(&b.batch().expect("batch"), &mut ents, 0);
     panic!("unreachable: the plugin's panic must abort the process");
 }
 
-/// "Exactly one exported symbol" (REQ-P-1), where `nm` exists.
+/// "Exactly one exported symbol" (REQ-P-1), where `nm` exists. Linker-provided text symbols are
+/// ignored; everything else the library defines in its dynamic symbol table must be the entry.
 #[cfg(unix)]
 #[test]
 #[ignore = "WI-10"]
 fn the_library_exports_exactly_one_umbra_symbol() {
+    const LINKER: [&str; 4] = ["_init", "_fini", "__cxa_finalize", "__gmon_start__"];
     let dir = package_dir("symbols", &[]);
     let pkgs = PluginHost::discover(&[dir]).expect("discover");
     let Ok(out) = std::process::Command::new("nm")
@@ -574,15 +752,20 @@ fn the_library_exports_exactly_one_umbra_symbol() {
         .arg(&pkgs[0].library)
         .output()
     else {
-        return; // no nm on this machine: not a failure
+        eprintln!("SKIPPED the_library_exports_exactly_one_umbra_symbol: `nm` is not installed");
+        return;
     };
     let text = String::from_utf8_lossy(&out.stdout);
 
-    let umbra: Vec<&str> = text
+    let mut exported: Vec<&str> = text
         .lines()
-        .filter_map(|l| l.split_whitespace().last())
-        .filter(|s| s.contains("umbra") || s.contains("plugin"))
+        .filter_map(|l| {
+            let mut f = l.split_whitespace();
+            let (_addr, kind, name) = (f.next()?, f.next()?, f.next()?);
+            (matches!(kind, "T" | "t" | "W" | "w" | "i") && !LINKER.contains(&name)).then_some(name)
+        })
         .collect();
+    exported.sort_unstable();
 
-    assert_eq!(umbra, ["umbra_plugin_entry"], "{text}");
+    assert_eq!(exported, ["umbra_plugin_entry"], "{text}");
 }
