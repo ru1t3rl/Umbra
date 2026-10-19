@@ -1,7 +1,7 @@
 //! AT-4 (faults, calls and values): what a misbehaving plugin does to the host, per engine. Requirements:
 //! REQ-P-7, REQ-B-4, REQ-B-5, REQ-K-4, ADR 0019, ADR 0020 (whole-batch discard), ADR 0021 (fault policy,
 //! per-host state), ASM-118. Raw-ABI plugin from `support/raw.rs`; the engine-scope build helper is a
-//! plan gap (see `support::build_behavior`). Step 4 of M4: the bridge lands in WI-9.
+//! plan gap (see `support::build_behavior`). Step 4 of M4: the bridge landed in WI-9.
 #![expect(clippy::expect_used, reason = "helpers build known-valid fixtures")]
 #![expect(unsafe_code, reason = "raw_env! expands forged entry functions")]
 

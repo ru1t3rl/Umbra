@@ -1,7 +1,8 @@
 //! AT-1 (M4 WI-3): layout pins of ABI v0 on 64-bit targets (REQ-P-2, ADR 0019 R-B1, R-B2, R-M7).
 //!
-//! The literal numbers are the layout table of `docs/plans/M4.md`; changing one is an ABI change
-//! (provisional until WI-14, ASM-117: the plan table, these pins, the header and
+//! The literal numbers are the layout table of `docs/plans/M4.md`; changing one is an ABI change (the
+//! 0.0 layout is final as of WI-14 and frozen at the M4 close-out, WI-16, ASM-117; any later change is
+//! append-only with a minor bump, and the plan table, these pins, the header and
 //! `docs/plugin-abi-changelog.md` change together). `support/abi_layout.rs` holds the same structs as
 //! Rust computes them; the C side checks those values against the header (`umbra-plugin-host`
 //! `tests/c_header.rs`).

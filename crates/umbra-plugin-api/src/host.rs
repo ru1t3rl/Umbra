@@ -7,7 +7,8 @@ use crate::consts::{UmbraCapabilityKind, UmbraCode, UmbraLogLevel, UmbraToken};
 use crate::types::{UmbraErrorSink, UmbraStr};
 
 /// Host API v0 (ADR 0021): logging and RNG; time arrives in every call, registration is the descriptor.
-/// Written by the host in the plugin's declared minor and passed to `umbra_plugin_entry`; it is a
+/// Written by the host in its own minor-0 layout (not the plugin's declared minor, which is known only
+/// from the descriptor the entry returns, ASM-134 a) and passed to `umbra_plugin_entry`; it is a
 /// process-lifetime allocation (one per image lifecycle, never freed), so the pointer stays valid
 /// forever, but calls through it outside the plugin's lifecycle (before `init`, after `shutdown`) return
 /// `UMBRA_ERR_STATE`. Callbacks are leaf calls: they never call into any plugin. Terrain queries and
@@ -16,7 +17,8 @@ use crate::types::{UmbraErrorSink, UmbraStr};
 pub struct UmbraHostApi {
     /// ABI version the host was compiled against (`UMBRA_ABI_VERSION`).
     pub abi_version: u32,
-    /// `sizeof` this struct in the layout of the plugin's declared minor.
+    /// `sizeof` this struct in the minor-0 layout (ASM-134 a); a later host minor keeps passing the
+    /// minor-0 size unless the ABI gains a way to declare the plugin's minor before the entry call.
     pub struct_size: u32,
     /// Opaque host token of this image lifecycle, passed back to every callback.
     pub host_ctx: UmbraToken,

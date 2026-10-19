@@ -1,7 +1,7 @@
 //! AT-4 `cross_thread_contention_never_faults` (RR-B1): two threads tick instances of the same image at
 //! the same time. The per-image call lock is blocking, so nothing faults and results equal a serial run.
 //! Own test binary: the raw plugin's concurrency counters are process-wide, and any other test ticking
-//! the plugin would pollute them. Step 4 of M4: the bridge lands in WI-9.
+//! the plugin would pollute them. Step 4 of M4: the bridge landed in WI-9.
 
 #![expect(unsafe_code, reason = "raw_env! expands forged entry functions")]
 

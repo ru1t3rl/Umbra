@@ -8,7 +8,8 @@
 // ---------------------------------------------------------------- versions
 
 /// ABI major version. A reader requires the major in every struct it reads to equal its own; major 0 is
-/// a real major (REQ-P-2, REQ-P-9, ADR 0019). ABI 0.0 is provisional until M4 WI-14 (ASM-117).
+/// a real major (REQ-P-2, REQ-P-9, ADR 0019). The ABI 0.0 layout is final as of M4 WI-14 and frozen at
+/// the M4 close-out (WI-16, ASM-117).
 pub const UMBRA_ABI_VERSION_MAJOR: u32 = 0;
 /// ABI minor version: bumped for every appended field, vtable entry or kind (append-only, REQ-P-2).
 pub const UMBRA_ABI_VERSION_MINOR: u32 = 0;

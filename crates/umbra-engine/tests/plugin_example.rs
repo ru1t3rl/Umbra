@@ -12,7 +12,7 @@
 //!   that names it in a single `ref`);
 //! - no `plugin_paths` in the scenario (ASM-113): the paths are passed through the library API.
 //!
-//! Ignored with WI-13 (the example) or WI-12 (the fixture plugin and the engine wiring).
+//! Ignored until WI-13 (the example) or WI-12 (the fixture plugin and the engine wiring).
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]

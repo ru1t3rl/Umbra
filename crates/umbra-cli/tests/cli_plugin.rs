@@ -6,8 +6,8 @@
 //! Plugin libraries are built by the nested-cargo helper shared with the engine tests
 //! (`plugin_support`, included by path). Contract with the example scenario (WI-13): entities
 //! `wander-direct`, `wander-graph` and `patrol-builtin`. Step 4 of M4: written before WI-12/WI-13;
-//! the rows that need the example are ignored with WI-13, those that need only the fixture plugin
-//! and the new flags with WI-12.
+//! the rows that needed the example were ignored until WI-13, those that needed only the fixture
+//! plugin and the new flags until WI-12.
 //!
 //! Assumptions the plan leaves open (reported): `list-plugins --json` prints one JSON document that
 //! contains, as string values, the plugin id, its version, each capability id and its kind; the text

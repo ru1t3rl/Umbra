@@ -10,7 +10,9 @@
 //! is a multiple of 8; enums are `u32` typedefs with `UMBRA_*` constants; booleans are `u8`; every
 //! function-pointer field is nullable (`Option`); strings are UTF-8 [`UmbraStr`]. Host contexts are
 //! opaque [`UmbraToken`]s. Layouts are pinned by `tests/layout.rs` and checked from C by the generated
-//! asserts of `umbra-plugin-host/tests/c_header.rs`. ABI 0.0 is provisional until M4 WI-14 (ASM-117).
+//! asserts of `umbra-plugin-host/tests/c_header.rs`. The ABI 0.0 layout is final as of M4 WI-14 and
+//! frozen at the M4 close-out (WI-16); after that it changes only append-only, by a minor bump (REQ-P-2,
+//! ASM-117). The plugin author's reference is `docs/plugin-guide.md`.
 //!
 //! The ABI supports 64-bit targets only (ADR 0019, ASM-120); the build fails elsewhere.
 //!

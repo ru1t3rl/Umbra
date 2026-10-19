@@ -3,7 +3,7 @@
 //! plugin `umbra-test-plugin` (capabilities `test.behavior.ok`, `.needs_target`, `.cross_param`
 //! and, with the feature `bad_schema`, `.bad_schema`; see `plugin_support/mod.rs`).
 //!
-//! Step 4 of M4: written before WI-12; ignored with WI-12 (the fixture exists since WI-10).
+//! Step 4 of M4: written before WI-12; ignored until WI-12 (the fixture exists since WI-10).
 
 #![forbid(unsafe_code)]
 

@@ -1,7 +1,7 @@
 //! AT-4 (callback and token rows): tokens are opaque, generation-checked and resolved against the calling
 //! thread's active call only; host callbacks never unwind. Requirements: REQ-P-5, REQ-P-7, REQ-K-4,
 //! ADR 0019 (R-B4, RR-M2), ADR 0021 (host API v0). Raw-ABI plugin from `support/raw.rs`; the build helper
-//! is a plan gap (`support::build_behavior`). Step 4 of M4: the bridge lands in WI-9.
+//! is a plan gap (`support::build_behavior`). Step 4 of M4: the bridge landed in WI-9.
 #![expect(unsafe_code, reason = "calls the host API like a plugin would")]
 #![expect(clippy::expect_used, reason = "helpers build known-valid fixtures")]
 

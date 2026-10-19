@@ -7,7 +7,10 @@
 //!
 //! Dependency rule (section 4): `umbra-core` and `umbra-plugin-api` only.
 //!
-//! # Loading (M4 WI-8)
+//! The plugin author's reference (ABI rules, lifecycle, memory, faults, packaging) is
+//! `docs/plugin-guide.md`; this crate is the host side of the rules stated there.
+//!
+//! # Loading and the image table
 //! [`PluginHost::discover`] lists packages (ADR 0022); [`PluginHost::load`] checks the manifest
 //! before opening, looks the image up by canonical path, opens the library with explicit flags
 //! (`RTLD_NOW | RTLD_LOCAL`; on Windows `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
@@ -17,12 +20,44 @@
 //! for an entry function linked into the process. [`PluginHost::register`] registers every
 //! capability, all-or-nothing.
 //!
+//! Images live in a process-wide table (module `image`), one `LoadedImage` per image lifecycle,
+//! shared by `Arc` across hosts, so a second host (or a second load) of a live image reuses it
+//! without calling the entry again (ADR 0021 "One image per process"). Every host, registered
+//! factory, behavior and instance handle holds its image; the last release runs `shutdown` and
+//! closes the library (module `lifecycle`), so unloading happens only after every handle is gone.
+//!
+//! # The bridge
+//! Each behavior capability is registered as a core `Factory<dyn Behavior>` whose `build` calls the
+//! plugin's `configure` (module `bridge`). The configured behavior and its instances are core
+//! `Behavior` / `BehaviorInstance` objects; all instances of one capability share one
+//! `BehaviorBatch`, so the kernel ticks them in one `tick_batch` call per tick. Every call into a
+//! plugin goes through the image's call lock and pushes a call record that scopes the tokens the
+//! plugin may use (host context, RNG, sinks); plugin handles are opaque and never dereferenced.
+//!
+//! # Per-host fault state and policies
+//! Each [`PluginHost`] owns the fault state of the one engine it belongs to (module `fault`, ADR
+//! 0021, ASM-118): faults ([`PluginHost::faults`]) are recorded in occurrence order, the faulted
+//! capability is skipped by this host from then on, and [`PluginHost::set_fault_policy`] chooses
+//! `abort` (the first fault is handed out once by [`PluginHost::take_abort`], which the engine
+//! checks after every tick) or `disable_capability` (the run continues without it). Two hosts over
+//! one image never share fault state.
+//!
+//! # Modes, build scope and attaching
+//! [`HostMode::Run`] factories build only inside their host's build scope
+//! ([`PluginHost::build_scope`], RR-m2, ASM-138), which `umbra-engine` opens around loading a
+//! scenario (the loader dry-runs `configure`) and, for the engine the host is attached to, around
+//! building and spawning (ASM-145); anywhere else `build` fails ("plugin host not attached to this
+//! engine"), so a cloned registry cannot build plugin behaviors whose faults no engine would see.
+//! [`HostMode::Validation`] factories build anywhere (dry runs of `configure`) but their instances
+//! refuse to tick. [`PluginHost::try_attach`] marks a host as taken by an engine (a host belongs
+//! to at most one engine); `umbra-engine` calls it from `Engine::attach_plugins`.
+//!
 //! # Global state, threads and locks
 //! - **Process-wide image table** (module `image`): the one piece of persistent process-global
-//!   mutable state (ASM-122). One `LoadedImage` per image lifecycle, shared by `Arc` across hosts,
-//!   with the states `Loading`, `Live` and `Closing`; loads that meet `Loading` or `Closing` wait
-//!   on a condvar. The only other process-global item is the host-id counter of the build scope
-//!   (module `fault`, ASM-138), which only names hosts and never affects results.
+//!   mutable state (ASM-122), with the image states `Loading`, `Live` and `Closing`; loads that meet
+//!   `Loading` or `Closing` wait on a condvar. The only other process-global item is the host-id
+//!   counter of the build scope (module `fault`, ASM-138), which only names hosts and never affects
+//!   results.
 //! - **Thread-local call records** (module `tokens`): a stack of in-progress plugin calls per
 //!   thread, pushed for every call into a plugin (`init`, `shutdown`, and the bridge's calls) and
 //!   popped after it, so it is call-scoped and empty whenever no plugin call runs on that thread
@@ -37,8 +72,7 @@
 //!
 //! This is one of the three crates allowed to contain `unsafe` (CLAUDE.md rule 5, NFR-2). Every
 //! `unsafe` block carries a `// SAFETY:` comment naming the invariant it relies on and is exercised
-//! by a test. The behavior bridge (module `bridge`) and the per-host fault state (module `fault`)
-//! are M4 WI-9.
+//! by a test.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(clippy::undocumented_unsafe_blocks)]

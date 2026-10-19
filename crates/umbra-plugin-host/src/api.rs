@@ -1,6 +1,7 @@
 //! The public host API (M4 plan, Design "`umbra-plugin-host`"): options, discovered packages,
-//! loaded plugin information, and [`PluginHost`], one per scenario load. Loading and registration
-//! are M4 WI-8; the bridge, the fault state and the build scope are WI-9.
+//! loaded plugin information, and [`PluginHost`], one per scenario load: loading and registration,
+//! the per-host fault state and policy, the build scope and attaching to an engine (see the crate
+//! docs for the overview).
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
@@ -290,7 +291,7 @@ impl PluginHost {
     }
 
     /// Marks this host as taken by an engine (ADR 0021: a host belongs to at most one engine);
-    /// `false` if an engine already took it. Called by `Engine::attach_plugins` (WI-12).
+    /// `false` if an engine already took it. Called by `Engine::attach_plugins` (`umbra-engine`).
     #[must_use]
     pub fn try_attach(&self) -> bool {
         self.state.try_attach()

@@ -6,9 +6,9 @@
 //! faulted capability `build` fails without a call.
 //!
 //! **Build scope (RR-m2).** A run-mode host's factories build only while that host's build scope is
-//! open on the calling thread ([`crate::PluginHost::build_scope`]); the engine the host is attached
-//! to opens it around building and spawning (`instantiate_with_plugins`, WI-12). Outside it,
-//! `build` fails with "plugin host not attached to this engine", so a cloned registry cannot build
+//! open on the calling thread ([`crate::PluginHost::build_scope`]); `umbra-engine` opens it around
+//! loading a scenario (the loader dry-runs `configure`) and, for the engine the host is attached to,
+//! around building and spawning (`instantiate_with_plugins`). Outside it, `build` fails with "plugin host not attached to this engine", so a cloned registry cannot build
 //! plugin behaviors for an engine that does not own the host's fault state. A validation-mode
 //! host's factories build anywhere (dry runs); its instances refuse to tick. The open scopes are a
 //! thread-local stack of host ids (process-unique, never reused, ASM-138), pushed by the guard and

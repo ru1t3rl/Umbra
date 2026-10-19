@@ -9,7 +9,7 @@
 //! Step 4 of M4: written before WI-12/WI-13. Contract with the example scenario (WI-13): it has the
 //! entities `wander-direct` (`[behavior] ref = "example.behavior.wander"` with the default
 //! `turn_every_s`, so a new heading every `ceil(10 * 30) = 300` ticks), `wander-graph` and
-//! `patrol-builtin`. Every test is ignored with the work item that makes it pass: WI-13 for the
+//! `patrol-builtin`. Every test was ignored until the work item that made it pass: WI-13 for the
 //! example, WI-12 for the fixture-plugin test (`second_engine_...`).
 
 #![forbid(unsafe_code)]

@@ -33,7 +33,8 @@ extern "C" {
 
 /**
  * ABI major version. A reader requires the major in every struct it reads to equal its own; major 0 is
- * a real major (REQ-P-2, REQ-P-9, ADR 0019). ABI 0.0 is provisional until M4 WI-14 (ASM-117).
+ * a real major (REQ-P-2, REQ-P-9, ADR 0019). The ABI 0.0 layout is final as of M4 WI-14 and frozen at
+ * the M4 close-out (WI-16, ASM-117).
  */
 #define UMBRA_ABI_VERSION_MAJOR 0
 
@@ -215,7 +216,8 @@ typedef struct {
 
 /**
  * Host API v0 (ADR 0021): logging and RNG; time arrives in every call, registration is the descriptor.
- * Written by the host in the plugin's declared minor and passed to `umbra_plugin_entry`; it is a
+ * Written by the host in its own minor-0 layout (not the plugin's declared minor, which is known only
+ * from the descriptor the entry returns, ASM-134 a) and passed to `umbra_plugin_entry`; it is a
  * process-lifetime allocation (one per image lifecycle, never freed), so the pointer stays valid
  * forever, but calls through it outside the plugin's lifecycle (before `init`, after `shutdown`) return
  * `UMBRA_ERR_STATE`. Callbacks are leaf calls: they never call into any plugin. Terrain queries and
@@ -227,7 +229,8 @@ typedef struct {
    */
   uint32_t abi_version;
   /**
-   * `sizeof` this struct in the layout of the plugin's declared minor.
+   * `sizeof` this struct in the minor-0 layout (ASM-134 a); a later host minor keeps passing the
+   * minor-0 size unless the ABI gains a way to declare the plugin's minor before the entry call.
    */
   uint32_t struct_size;
   /**

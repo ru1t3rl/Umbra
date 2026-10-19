@@ -4,7 +4,7 @@
 //!
 //! Uses the fixture plugin (`test.behavior.ok`, `test.behavior.panic_tick`: panics in `tick_batch`
 //! on its first tick) through `plugin_support::fault_scenario`. Step 4 of M4: written before WI-12;
-//! ignored with WI-12.
+//! ignored until WI-12.
 
 #![forbid(unsafe_code)]
 

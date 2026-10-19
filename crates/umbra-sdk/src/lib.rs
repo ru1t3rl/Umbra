@@ -7,6 +7,9 @@
 //!
 //! Dependency rule (REQ-A-3): the only workspace dependency is `umbra-plugin-api`.
 //!
+//! The plugin author's guide (ABI rules, lifecycle, determinism, packaging, the Rust and C examples)
+//! is `docs/plugin-guide.md`; these docs cover the SDK API.
+//!
 //! # Writing a plugin
 //! Implement [`BehaviorFactory`], [`Behavior`] and [`BehaviorInstance`] for each behavior, then export
 //! them once per crate (a `cdylib` with `#![forbid(unsafe_code)]`):
@@ -83,6 +86,22 @@
 //!   [`TickContext::rng`], with the batch item's own host token. The SDK has no clock and no RNG.
 //! - **Handles** are plugin-owned boxes tagged per capability; a handle of another capability is
 //!   refused, never reinterpreted.
+//!
+//! # Rules for plugin authors (ADR 0021, `docs/plugin-guide.md` "State, reload and thread-locals")
+//! - **Per-handle state** (RR-m3): results may depend only on per-handle state (the configured
+//!   [`Behavior`] and its [`BehaviorInstance`]s, the call's arguments and its RNG draws), never on
+//!   global state shared across handles, images, hosts or engines. Two engines in one process share
+//!   one image, items of one batch may come from different configured behaviors, and grouping and
+//!   call order are an engine detail. Globals that never influence results are fine.
+//! - **`init` must reset global state** (RR-M1): an image can be loaded again in the same process
+//!   after its last handle was released and `shutdown` ran (entry, `init` and a new host API again).
+//!   With `keep_loaded`, or when the OS keeps the library mapped, statics keep their old values, so
+//!   set any global state you keep in the `init:` hook of `export_plugin!`, never assume it is zero.
+//!   The SDK resets its own state in `init`.
+//! - **No thread-locals with destructors** (ASM-142): calls arrive on varying threads, and glibc never
+//!   unmaps a library that registered a thread-local destructor (closing it is a crash risk on
+//!   macOS). Do not use `thread_local!` values that need `Drop` on the load or call path; use a
+//!   `static` with `Mutex` or `OnceLock`, as the SDK does.
 //!
 //! This is one of the three crates allowed to contain `unsafe` (CLAUDE.md rule 5, NFR-2). It lives in
 //! the modules `convert`, `guard`, `host` and `export`; every `unsafe` block carries a `// SAFETY:`

@@ -4,7 +4,7 @@
 //! The tests use a raw-ABI plugin forged in `support/raw.rs` (host tests cannot use `umbra-behavior`,
 //! ASM-005) and `support::build_behavior` for the engine-scope build (plan gap, see its doc). The
 //! subgraph side of the null-entry fallback is the M3 test `subgraph_halt.rs` (children without an
-//! override, ASM-096 d). Step 4 of M4: the host bridge lands in WI-9.
+//! override, ASM-096 d). Step 4 of M4: the host bridge landed in WI-9.
 #![expect(clippy::expect_used, reason = "helpers build known-valid fixtures")]
 #![expect(unsafe_code, reason = "raw_env! expands forged entry functions")]
 

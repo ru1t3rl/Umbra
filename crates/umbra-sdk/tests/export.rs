@@ -1,5 +1,5 @@
 //! AT-3 (export row): the descriptor the macro-generated entry returns. Requirements: REQ-SDK-1,
-//! REQ-P-1, REQ-P-3, ADR 0019, ADR 0020. Step 4 of M4: the SDK is a stub until WI-7.
+//! REQ-P-1, REQ-P-3, ADR 0019, ADR 0020. Step 4 of M4: the SDK was a stub until WI-7.
 #![expect(unsafe_code, reason = "reads the raw descriptor like a host does")]
 
 mod support;

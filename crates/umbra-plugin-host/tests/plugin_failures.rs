@@ -13,9 +13,9 @@
 //! code, the output sink called twice (`faults.rs`), and a stale token and another item's RNG token
 //! (`tokens.rs`).
 //!
-//! Step 4 of M4. Everything that needs the fixture crate is ignored with WI-10; the rows that need only
-//! a garbage file or a C library (open error, missing and null entry, same file twice, `keep_loaded`)
-//! run from WI-8.
+//! Step 4 of M4. Everything that needs the fixture crate was ignored until WI-10; the rows that need
+//! only a garbage file or a C library (open error, missing and null entry, same file twice,
+//! `keep_loaded`) run from WI-8.
 //! The fixture contract the tests assume beyond the plan's capability list (plan gaps, reported; see
 //! also `umbra-engine/tests/plugin_support/mod.rs`, the one build helper): cargo features
 //! `entry_panics`, `init_fails`, `init_panics`, `shutdown_panics` (the plan's `no_entry` and

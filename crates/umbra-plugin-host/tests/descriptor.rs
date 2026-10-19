@@ -2,8 +2,8 @@
 //! loaded with `PluginHost::load_static`. Requirements: REQ-P-1..4, REQ-P-8, REQ-P-9, ADR 0019
 //! (bounds, caps, per-struct major and size), ADR 0020 (metadata), ADR 0021 (init/shutdown), ASM-119.
 //!
-//! Step 4 of M4: written before WI-8; the host API is a `todo!()` stub, so every test is ignored with
-//! that work item. Every failure checks the error variant and that the message names the plugin origin
+//! Step 4 of M4: written before WI-8, when the host API was a `todo!()` stub; every test was ignored
+//! until that work item. Every failure checks the error variant and that the message names the plugin origin
 //! and the offending field (field spellings are WI-8's; the needles below are the plain ABI names).
 #![expect(unsafe_code, reason = "forges raw ABI structs")]
 #![expect(
