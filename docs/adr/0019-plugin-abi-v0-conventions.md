@@ -49,7 +49,11 @@ Option 1, with these rules (they bind every later kind):
   reader's major; it reads only fields inside `struct_size` and treats missing newer fields as absent.
   Readers never compare `abi_version` for equality. *(amended: R-B3)* **The host writes every struct it
   passes to a plugin in the layout of the plugin's declared minor** (from an append-only size-per-minor
-  table in the host), so a plugin may index host-written arrays with its own `sizeof`. Arrays a plugin
+  table in the host), so a plugin may index host-written arrays with its own `sizeof`. *(Amended
+  2026-10-19 at the WI-16 freeze review, comment-level, no layout change:)* the one exception is
+  `UmbraHostApi`, passed to the entry before the plugin's minor is known: the host writes it in its own
+  (newest) layout and the plugin reads its prefix under the reader rule, never comparing its
+  `struct_size` for equality (ASM-134 a); this keeps the M7 host-API extension (ADR 0021) reachable. Arrays a plugin
   writes for the host use the first element's `struct_size` as the stride, and all elements of one array
   have the same size. Exempt from the header, frozen for the major, never grown: the value primitives
   `UmbraStr {ptr, len}` (16 bytes), `UmbraVec3 {x, y, z}` (24), `UmbraQuat {w, x, y, z}` (32).

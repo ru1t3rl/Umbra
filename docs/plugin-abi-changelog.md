@@ -29,9 +29,9 @@ asserts of `c_header.rs` follow), the SDK's own minor, and an entry here. A majo
   plan table, the pins, the header and this entry together. The field-by-field freeze review is part of
   M4 WI-16; after `m4-done` the rules of REQ-P-2 apply in full.
 - Constraints for later minors (M4 WI-15, from ASM-134 a, ASM-128, ASM-148 b2): `UmbraHostApi` is passed
-  to the entry before the host knows the plugin's minor, so it is written in the minor-0 layout; a later
-  host minor must keep passing the minor-0 prefix size unless the ABI first gains a way to declare the
-  plugin's minor before that call. Readers of host-written array elements (`items`, `contacts`)
+  to the entry before the host knows the plugin's minor, so it is written in the host's own (newest)
+  layout and plugins of an older minor read their prefix (reader rule); appended callbacks (M7) are
+  invisible to older plugins (amended 2026-10-19 at the WI-16 freeze review). Readers of host-written array elements (`items`, `contacts`)
   require `struct_size` equal to their own size (the stride they index with), so the host must keep
   writing array elements in the plugin's declared minor.
 - **Layout final** (M4 WI-14, 2026-10-19): the C example `examples/plugins/c-circle` compiles against the

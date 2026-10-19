@@ -216,8 +216,10 @@ typedef struct {
 
 /**
  * Host API v0 (ADR 0021): logging and RNG; time arrives in every call, registration is the descriptor.
- * Written by the host in its own minor-0 layout (not the plugin's declared minor, which is known only
- * from the descriptor the entry returns, ASM-134 a) and passed to `umbra_plugin_entry`; it is a
+ * Written by the host in its own (newest) layout, with its own `abi_version` and `struct_size` (not the
+ * plugin's declared minor, which is known only from the descriptor the entry returns, ASM-134 a); a
+ * plugin of an older minor reads only its own prefix (reader rule, ADR 0019), so never compare this
+ * `struct_size` for equality. Passed to `umbra_plugin_entry`; it is a
  * process-lifetime allocation (one per image lifecycle, never freed), so the pointer stays valid
  * forever, but calls through it outside the plugin's lifecycle (before `init`, after `shutdown`) return
  * `UMBRA_ERR_STATE`. Callbacks are leaf calls: they never call into any plugin. Terrain queries and
@@ -229,8 +231,8 @@ typedef struct {
    */
   uint32_t abi_version;
   /**
-   * `sizeof` this struct in the minor-0 layout (ASM-134 a); a later host minor keeps passing the
-   * minor-0 size unless the ABI gains a way to declare the plugin's minor before the entry call.
+   * `sizeof` this struct in the host's own layout (ASM-134 a): at least the minor-0 size; larger
+   * when a later host minor appends callbacks (M7), which older plugins ignore.
    */
   uint32_t struct_size;
   /**

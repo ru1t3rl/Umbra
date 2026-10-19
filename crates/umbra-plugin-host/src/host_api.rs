@@ -8,10 +8,10 @@
 //! the process lifetime (ADR 0019 "Pointer lifetime"); a call through an old lifecycle's `host_ctx`
 //! finds no record and is `UMBRA_ERR_STATE`.
 //!
-//! The host writes the struct in its own layout (ABI minor 0): the plugin's declared minor is known
-//! only from the descriptor the entry returns, after the struct was passed. Hosts of a later minor
-//! must write the minor-0 prefix size here unless the ABI gains a way to declare the minor first
-//! (ASM-134).
+//! The host writes the struct in its own (newest) layout, today ABI minor 0: the plugin's declared minor
+//! is known only from the descriptor the entry returns, after the struct was passed. A host of a later
+//! minor writes its larger size, and plugins of an older minor read their prefix (ADR 0019 reader rule;
+//! ASM-134).
 
 #![expect(
     unsafe_code,

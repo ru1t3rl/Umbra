@@ -209,7 +209,8 @@ REQ-P-2 applies in full (`docs/plugin-abi-changelog.md`).
 - **The host writes every struct it passes to a plugin in the layout of the plugin's declared minor**,
   so a plugin may index host-written arrays with its own `sizeof` (exact stride, see `ELEMENT_OK`).
   Exception: `UmbraHostApi` is passed to the entry before the host knows your minor, so it is written in
-  the minor-0 layout (ASM-134 a). Arrays a plugin writes for the host (the capabilities) use the first
+  the host's own (newest) layout (ASM-134 a); read only the prefix your minor knows and never compare
+  its `struct_size` for equality (callbacks appended in later minors, e.g. M7, are simply ignored). Arrays a plugin writes for the host (the capabilities) use the first
   element's `struct_size` as the stride, and all elements must have that size.
 - **Values.** Enums are `uint32_t` with `UMBRA_*` constants (0 and unknown values are errors, never
   cast). Booleans are `uint8_t` 0 or 1. Entity IDs are `uint64_t`, 0 = none. Numbers crossing as
