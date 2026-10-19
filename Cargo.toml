@@ -15,7 +15,8 @@ repository = "https://example.invalid/umbra"
 
 [workspace.dependencies]
 anyhow = "1"
-# Compiles C against umbra_plugin_api.h in tests (ADR 0023 item 3); dev-only in umbra-plugin-host.
+# Compiles C against umbra_plugin_api.h (ADR 0023 item 3): dev-only in umbra-plugin-host (tests), and
+# in xtask, which builds the C example plugin for `build-plugins`.
 cc = "1.2"
 hecs = { version = "0.11.2", default-features = false }
 # Opens plugin libraries with explicit load flags (umbra-plugin-host only; ADR 0023 item 1, ASM-133).

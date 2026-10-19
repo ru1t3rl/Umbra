@@ -25,6 +25,12 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 
 Planned crates (section 4) are added in their own milestones; no placeholders (ASM-010).
 
+Not a crate: the C example plugin `examples/plugins/c-circle` (M4 WI-14, M4 acceptance 3, ADR 0023 item 3)
+is one C11 file written against the generated header only (no Rust, no `umbra-sdk`); `cargo xtask
+build-plugins` compiles it with the `cc` crate (an `xtask` dependency since WI-14) into
+`<target dir>/plugins/c-circle/`, and `umbra-plugin-host/tests/c_example.rs` compiles, loads and ticks it.
+Its scenario is `examples/scenarios/plugin_c_circle` (ASM-148).
+
 ## Plugin host (`umbra-plugin-host`, M4)
 Loading follows ADR 0021's lifecycle: `plugin.toml` (ABI checked before the library is opened), image
 table lookup by canonical library path, open (`RTLD_NOW | RTLD_LOCAL`; Windows

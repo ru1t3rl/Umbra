@@ -6,7 +6,8 @@
 //! (ASM-113). The target directory is the one cargo reports (`cargo metadata`), so
 //! `CARGO_TARGET_DIR` and `build.target-dir` are honoured (ASM-125 d). A package directory is
 //! replaced as a whole, so it never holds a stale second library. The C example (`c-circle`) is
-//! packaged from WI-14.
+//! compiled with the `cc` crate against the generated header, with the same strict flags as the host
+//! tests (`-std=c11 -pedantic -Wall -Wextra -Werror`, MSVC `/std:c11 /W4 /WX`; ADR 0023 item 3).
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -29,6 +30,27 @@ pub const RUST_PLUGINS: &[RustPlugin] = &[RustPlugin {
     package: "example-wander",
     source: "examples/plugins/wander",
 }];
+
+/// A C example plugin: one source file compiled against `umbra_plugin_api.h` into a shared library.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CPlugin {
+    /// Package directory name under `<target dir>/plugins/`.
+    pub name: &'static str,
+    /// Library stem: the file is `<DLL_PREFIX><stem>.<DLL_EXTENSION>`.
+    pub stem: &'static str,
+    /// Source directory relative to the workspace root; holds `plugin.c` and the `plugin.toml`.
+    pub source: &'static str,
+}
+
+/// The C example plugins, in package-name order (packaged after [`RUST_PLUGINS`]).
+pub const C_PLUGINS: &[CPlugin] = &[CPlugin {
+    name: "c-circle",
+    stem: "c_circle",
+    source: "examples/plugins/c-circle",
+}];
+
+/// Directory of the generated C header, relative to the workspace root.
+pub const C_HEADER_DIR: &str = "crates/umbra-plugin-api/include";
 
 /// Errors of `build-plugins` (all exit 2).
 #[derive(Debug, thiserror::Error)]
@@ -56,6 +78,24 @@ pub enum PluginsError {
         packages: String,
         /// Exit status.
         status: std::process::ExitStatus,
+    },
+    /// No C compiler was found (a gate prerequisite, ADR 0023 item 3).
+    #[error("no C compiler for {source_file}: {message}")]
+    Compiler {
+        /// The C source that was to be compiled.
+        source_file: PathBuf,
+        /// What `cc` reported.
+        message: String,
+    },
+    /// The C compiler rejected a source (warnings are errors); its output is in `output`.
+    #[error("C compile of {source_file} failed ({status}):\n{output}")]
+    CompileC {
+        /// The C source.
+        source_file: PathBuf,
+        /// Compiler exit status.
+        status: std::process::ExitStatus,
+        /// Compiler stdout and stderr.
+        output: String,
     },
     /// The built library is not where cargo puts it.
     #[error("built library missing: {0}")]
@@ -115,7 +155,8 @@ pub fn target_dir(root: &Path) -> Result<PathBuf, PluginsError> {
         .ok_or_else(|| metadata_error("no `target_directory` in the output".to_owned()))
 }
 
-/// The file name cargo gives the `cdylib` of `package` on this platform.
+/// The file name cargo gives the `cdylib` of `package` on this platform; also the name of a C
+/// plugin library with that stem (`libc_circle.so`, `c_circle.dll`, `libc_circle.dylib`).
 pub fn library_file_name(package: &str) -> String {
     format!(
         "{}{}.{}",
@@ -125,8 +166,9 @@ pub fn library_file_name(package: &str) -> String {
     )
 }
 
-/// Builds every example plugin with `cargo build --locked` (release profile with `release`) and
-/// writes its package. Returns the package directories, in [`RUST_PLUGINS`] order.
+/// Builds every Rust example plugin with `cargo build --locked` (release profile with `release`),
+/// compiles every C example plugin with `cc`, and writes their packages. Returns the package
+/// directories, [`RUST_PLUGINS`] first, then [`C_PLUGINS`].
 ///
 /// # Errors
 /// [`PluginsError`]; a failed build leaves the existing packages untouched.
@@ -156,23 +198,159 @@ pub fn run(root: &Path, release: bool) -> Result<Vec<PathBuf>, PluginsError> {
         });
     }
     let profile = if release { "release" } else { "debug" };
-    RUST_PLUGINS
+    let mut libraries = Vec::new();
+    for plugin in RUST_PLUGINS {
+        let file = library_file_name(plugin.package);
+        let library = target.join(profile).join(&file);
+        if !library.is_file() {
+            return Err(PluginsError::MissingLibrary(library));
+        }
+        libraries.push((plugin.name, library, file, root.join(plugin.source)));
+    }
+    // Every C library is compiled before any package is written, so a failed compile leaves the
+    // existing packages untouched too.
+    for plugin in C_PLUGINS {
+        let file = library_file_name(plugin.stem);
+        let work = target.join(profile).join("c-plugins").join(plugin.name);
+        let source = root.join(plugin.source);
+        let library = compile_c(
+            &source.join("plugin.c"),
+            &root.join(C_HEADER_DIR),
+            &work,
+            &file,
+            release,
+        )?;
+        libraries.push((plugin.name, library, file, source));
+    }
+    libraries
         .iter()
-        .map(|plugin| {
-            let file = library_file_name(plugin.package);
-            let library = target.join(profile).join(&file);
-            if !library.is_file() {
-                return Err(PluginsError::MissingLibrary(library));
-            }
-            let manifest = root.join(plugin.source).join("plugin.toml");
+        .map(|(name, library, file, source)| {
             write_package(
-                &target.join("plugins").join(plugin.name),
-                &library,
-                &file,
-                &manifest,
+                &target.join("plugins").join(name),
+                library,
+                file,
+                &source.join("plugin.toml"),
             )
         })
         .collect()
+}
+
+/// The target triple `cc` should compile for: the platform this xtask runs on (the plugins are
+/// loaded by binaries built for the same host). Outside a build script `cc` cannot read `TARGET`.
+fn c_target_triple() -> String {
+    let arch = std::env::consts::ARCH;
+    if cfg!(target_os = "windows") {
+        if cfg!(target_env = "gnu") {
+            format!("{arch}-pc-windows-gnu")
+        } else {
+            format!("{arch}-pc-windows-msvc")
+        }
+    } else if cfg!(target_os = "macos") {
+        format!("{arch}-apple-darwin")
+    } else if cfg!(target_os = "linux") {
+        format!("{arch}-unknown-linux-gnu")
+    } else {
+        format!("{arch}-unknown-{}", std::env::consts::OS)
+    }
+}
+
+/// Compiles the C plugin `source` against the header in `include` into `<work>/<file>` and returns
+/// that path. Strict C11 with warnings as errors (ADR 0023 item 3): GCC/Clang `-std=c11 -pedantic
+/// -Wall -Wextra -Werror -ffp-contract=off -fvisibility=hidden -shared -fPIC`, MSVC `/std:c11 /W4
+/// /WX /LD` (objects and the import library stay in `work`); `-O2` (MSVC `/O2`) with `release`, else
+/// no optimisation. `-ffp-contract=off` keeps the compiler from fusing a multiply and an add, so the
+/// plugin's floating-point results do not depend on the CPU having FMA (REQ-K-4).
+fn compile_c(
+    source: &Path,
+    include: &Path,
+    work: &Path,
+    file: &str,
+    release: bool,
+) -> Result<PathBuf, PluginsError> {
+    let io = |action: &'static str, path: &Path| {
+        let path = path.to_path_buf();
+        move |source| PluginsError::Io {
+            action,
+            path,
+            source,
+        }
+    };
+    if work.exists() {
+        std::fs::remove_dir_all(work).map_err(io("removing", work))?;
+    }
+    std::fs::create_dir_all(work).map_err(io("creating", work))?;
+    let library = work.join(file);
+    let triple = c_target_triple();
+    let mut build = cc::Build::new();
+    build
+        .cargo_metadata(false)
+        .cargo_warnings(false)
+        .emit_rerun_if_env_changed(false)
+        .target(&triple)
+        .host(&triple)
+        .opt_level(if release { 2 } else { 0 })
+        .debug(false)
+        .out_dir(work)
+        .warnings(true)
+        .extra_warnings(true)
+        .warnings_into_errors(true)
+        .std("c11")
+        .include(include);
+    let compiler_error = |e: cc::Error| PluginsError::Compiler {
+        source_file: source.to_path_buf(),
+        message: e.to_string(),
+    };
+    let msvc = build
+        .try_get_compiler()
+        .map_err(compiler_error)?
+        .is_like_msvc();
+    if !msvc {
+        build
+            .flag("-pedantic")
+            .flag("-ffp-contract=off")
+            .flag("-fvisibility=hidden");
+    }
+    let mut cmd = build
+        .try_get_compiler()
+        .map_err(compiler_error)?
+        .to_command();
+    cmd.current_dir(work);
+    if msvc {
+        // `/Fo` with a trailing separator names the object directory; `/LD` links a DLL whose import
+        // library and export file land next to it, in `work`, never in the package.
+        let mut object_dir = work.as_os_str().to_owned();
+        object_dir.push(std::path::MAIN_SEPARATOR_STR);
+        let mut fo = OsString::from("/Fo");
+        fo.push(&object_dir);
+        let mut fe = OsString::from("/Fe");
+        fe.push(&library);
+        cmd.arg(source).arg(fo).arg(fe).arg("/LD");
+    } else {
+        cmd.arg("-shared")
+            .arg("-fPIC")
+            .arg(source)
+            .arg("-o")
+            .arg(&library);
+    }
+    let out = cmd.output().map_err(|e| PluginsError::Spawn {
+        program: "C compiler".to_owned(),
+        source: e,
+    })?;
+    if !out.status.success() {
+        return Err(PluginsError::CompileC {
+            source_file: source.to_path_buf(),
+            status: out.status,
+            output: format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            ),
+        });
+    }
+    if !library.is_file() {
+        return Err(PluginsError::MissingLibrary(library));
+    }
+    Ok(library)
 }
 
 /// Replaces `dir` by a package holding `library` (as `file`) and a copy of `manifest`.

@@ -1,0 +1,10 @@
+# Driven by the C example plugin: 10 m/s, heading +12 degrees per second (clockwise seen from above),
+# one full circle every 30 s, radius about 48 m. Ticked in a batch with the other circle (REQ-B-4).
+schema_version = 1
+id = "example.c_circle.clockwise"
+extends = "example.c_circle.vehicle"
+description = "Vehicle circling clockwise (C plugin)"
+
+[behavior]
+ref = "example.behavior.c_circle"
+params = { speed_mps = 10.0, turn_rate_dps = 12.0 }

@@ -1,0 +1,10 @@
+# The same plugin behavior with other params: 5 m/s, heading -6 degrees per second
+# (counter-clockwise), one full circle every 60 s, radius about 48 m.
+schema_version = 1
+id = "example.c_circle.counter_clockwise"
+extends = "example.c_circle.vehicle"
+description = "Vehicle circling counter-clockwise (C plugin)"
+
+[behavior]
+ref = "example.behavior.c_circle"
+params = { speed_mps = 5.0, turn_rate_dps = -6.0 }

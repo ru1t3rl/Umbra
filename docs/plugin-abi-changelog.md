@@ -23,3 +23,6 @@ changed, so the host's size-per-minor table (R-B3) can be checked against it.
 - **Provisional** (ADR 0019 R-M10, ASM-117): M4 WI-3..WI-14 may still change this layout, updating the
   plan table, the pins, the header and this entry together. The field-by-field freeze review is part of
   M4 WI-16; after `m4-done` the rules of REQ-P-2 apply in full.
+- **Layout final** (M4 WI-14, 2026-10-19): the C example `examples/plugins/c-circle` compiles against the
+  header with `-std=c11 -pedantic -Wall -Wextra -Werror`, loads and drives entities; no struct, field,
+  constant or header text changed for it. ABI 0.0 layout final, pending the WI-16 freeze review.

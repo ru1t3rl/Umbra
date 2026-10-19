@@ -1039,6 +1039,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cc",
  "serde_json",
  "syn 3.0.9",
  "thiserror",

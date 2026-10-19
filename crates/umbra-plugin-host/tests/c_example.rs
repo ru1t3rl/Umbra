@@ -2,8 +2,8 @@
 //! header and drives an entity (REQ-SDK-2, REQ-P-1, ADR 0023 item 3). Together with AT-2 (`c_header.rs`)
 //! this is the evidence that a plugin can be written in C. Needs a C compiler (a gate prerequisite).
 //!
-//! Step 4 of M4: the example does not exist before WI-14, so every test is ignored with it. Assumptions
-//! the plan leaves open (reported): the manifest is optional here (no version is named for
+//! Written in step 4 of M4, ignored until WI-14 added the example. Assumptions the plan left open
+//! (confirmed by the example, ASM-148): the manifest is optional here (no version is named for
 //! `example.plugin.c_circle`), `turn_rate_dps` is degrees per second and the reported heading is in radians
 //! (`turn_rate_dps * tick / rate_hz`, converted), and the speed is reported as `SetSpeed(speed_mps)` every
 //! tick.
@@ -54,7 +54,6 @@ fn loaded(name: &str) -> (PluginHost, Registry) {
 }
 
 #[test]
-#[ignore = "WI-14"]
 fn c_example_compiles_with_strict_flags() {
     let dir = tmp_dir("c-example-compile");
 
@@ -64,7 +63,6 @@ fn c_example_compiles_with_strict_flags() {
 }
 
 #[test]
-#[ignore = "WI-14"]
 fn c_example_loads_and_registers() {
     let (host, registry) = loaded("c-example-load");
 
@@ -82,7 +80,6 @@ fn c_example_loads_and_registers() {
 }
 
 #[test]
-#[ignore = "WI-14"]
 fn c_example_drives_an_entity_on_a_circle() {
     let (host, registry) = loaded("c-example-circle");
     let b = build_behavior(
@@ -124,7 +121,6 @@ fn c_example_drives_an_entity_on_a_circle() {
 }
 
 #[test]
-#[ignore = "WI-14"]
 fn c_example_without_halt_running_gets_halt() {
     let (host, registry) = loaded("c-example-halt");
     let b = build_behavior(

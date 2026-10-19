@@ -1,0 +1,7 @@
+# Package manifest of the C circle example (ADR 0022). Checked by the host before the library is
+# opened; `id`, `version` and `abi` must equal the descriptor in plugin.c.
+schema_version = 1
+id = "example.plugin.c_circle"
+version = "0.1.0"
+abi = "0.0"
+name = "C circle example"

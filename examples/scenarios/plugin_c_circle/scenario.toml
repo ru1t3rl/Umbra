@@ -1,0 +1,39 @@
+# The C example plugin `examples/plugins/c-circle` (behavior `example.behavior.c_circle`) drives two
+# entities on circles (M4 acceptance 3, WI-14). The plugin's heading is turn_rate_dps * t, so each
+# entity starts heading north (heading_deg = 0) at its configured speed.
+#
+#   circle-cw    10 m/s, +12 deg/s: one circle every 30 s (900 ticks), radius about 48 m
+#   circle-ccw    5 m/s,  -6 deg/s: one circle every 60 s (1800 ticks), radius about 48 m
+#
+# There is no `plugin_paths` here (ASM-113): a build directory is not portable. Run it with
+#   cargo xtask build-plugins
+#   umbra run examples/scenarios/plugin_c_circle/scenario.toml --plugin-path target/plugins
+#
+# Flat terrain. Coordinates: lat = 52 + north / 111267, lon = 4 + east / 68684, rounded to 7 decimals.
+schema_version = 1
+
+[scenario]
+name = "plugin_c_circle"
+seed = 7
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 60.0                 # 1800 ticks: two circles of circle-cw, one of circle-ccw
+template_paths = ["templates"]
+
+[terrain]
+provider = "builtin.terrain.flat"
+params = { height_m = 0.0 }
+
+[[entities]]
+template = "example.c_circle.clockwise"
+name = "circle-cw"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 0.0
+speed_mps = 10.0
+
+[[entities]]
+template = "example.c_circle.counter_clockwise"
+name = "circle-ccw"
+position = { lat_deg = 52.0, lon_deg = 4.0029118 }
+heading_deg = 0.0
+speed_mps = 5.0

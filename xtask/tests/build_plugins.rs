@@ -2,10 +2,10 @@
 //! packages `<target dir>/plugins/{wander,c-circle}/` (library plus `plugin.toml`, ADR 0022).
 //! Requirements: REQ-SDK-3, REQ-P-10, ADR 0022, ADR 0023 item 3 and 4, gate 12.
 //!
-//! Step 4 of M4: written before WI-13 (the `wander` package) and WI-14 (the C package); ignored
-//! with the work item that makes each pass. The tests run the xtask binary from the workspace root
-//! with `CARGO_TARGET_DIR` pointing into `CARGO_TARGET_TMPDIR`, so the real `target/plugins` is never
-//! touched and parallel tests never share a build directory. Assumption the plan leaves open
+//! Step 4 of M4: written before WI-13 (the `wander` package) and WI-14 (the C package); each was
+//! ignored until the work item that made it pass. The tests run the xtask binary from the workspace
+//! root with `CARGO_TARGET_DIR` pointing into `CARGO_TARGET_TMPDIR`, so the real `target/plugins` is
+//! never touched and parallel tests never share a build directory. Assumption the plan leaves open
 //! (reported): "`target/plugins`" means `<cargo target dir>/plugins`, honoring `CARGO_TARGET_DIR`.
 
 #![forbid(unsafe_code)]
@@ -121,7 +121,6 @@ fn build_plugins_release_writes_the_wander_package() {
 /// ADR 0023 item 3, M4 acceptance 3: the C example is compiled with `cc` and packaged as
 /// `c-circle`, with a manifest for `example.plugin.c_circle`.
 #[test]
-#[ignore = "WI-14"]
 fn build_plugins_writes_the_c_circle_package() {
     let target = fresh_target("c-circle");
 
