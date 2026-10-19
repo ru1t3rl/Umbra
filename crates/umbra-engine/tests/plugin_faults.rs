@@ -224,3 +224,62 @@ fn plain_instantiate_with_run_mode_plugin_factories_fails_with_behavior_build() 
         instantiate_with_plugins(&loaded, options(Duration::from_micros(500), None, None)).is_ok()
     );
 }
+
+/// ASM-145 a: every completed tick is observed. Under `abort` the callback sees the faulting tick,
+/// it is the last tick it sees, and the fault is still returned.
+#[test]
+fn on_tick_sees_the_faulting_tick_as_its_last_and_the_fault_is_returned() {
+    let loaded = load(&plugin_support::fault_scenario(
+        "observe-fault",
+        "abort",
+        2.0,
+        &["healthy", "direct"],
+    ));
+
+    let (engine, hashes, result) = run(&loaded);
+
+    assert!(
+        matches!(result, Err(EngineError::PluginFault(_))),
+        "{result:?}"
+    );
+    assert_eq!(
+        hashes.len(),
+        1,
+        "the faulting tick is observed, and is the last"
+    );
+    assert_eq!(hashes.last().copied(), Some(engine.state_hash()));
+}
+
+/// ASM-145 a: a fault under `abort` in stepped mode cancels the pending steps, so a later `run`
+/// runs no ticks.
+#[test]
+fn abort_in_stepped_mode_cancels_pending_steps() {
+    let loaded = load(&plugin_support::fault_scenario(
+        "stepped-abort",
+        "abort",
+        2.0,
+        &["healthy", "direct"],
+    ));
+    let mut engine = instantiate_with_plugins(
+        &loaded,
+        options(
+            Duration::from_micros(500),
+            None,
+            Some(umbra_engine::ClockMode::Stepped),
+        ),
+    )
+    .unwrap_or_else(|e| panic!("instantiate: {e}"))
+    .engine;
+
+    let stepped = engine.step(10, |_| ControlFlow::Continue(()));
+    let later = engine
+        .run(RunUntil::Idle, |_| ControlFlow::Continue(()))
+        .unwrap_or_else(|e| panic!("run: {e}"));
+
+    assert!(
+        matches!(stepped, Err(EngineError::PluginFault(_))),
+        "{stepped:?}"
+    );
+    assert_eq!(engine.now().tick(), 1);
+    assert_eq!(later.ticks_run, 0);
+}

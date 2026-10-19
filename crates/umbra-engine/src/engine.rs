@@ -213,7 +213,7 @@ impl Engine {
     /// # Errors
     /// [`EngineError::Kernel`] if a tick fails (time overflow); [`EngineError::PluginFault`] if an
     /// attached plugin host reports a fault under the `abort` policy after a tick: the run stops
-    /// right after that tick, before `on_tick` sees it (ADR 0021).
+    /// right after that tick, once `on_tick` has seen it (ASM-145 a, ADR 0021).
     pub fn run(
         &mut self,
         until: RunUntil,
@@ -231,14 +231,16 @@ impl Engine {
                 Pace::Tick => {
                     let report = self.kernel.tick()?;
                     ticks_run += 1;
-                    if let Some(fault) = self.plugins.as_ref().and_then(|h| h.take_abort()) {
-                        return Err(EngineError::PluginFault(fault));
-                    }
+                    let fault = self.plugins.as_ref().and_then(|h| h.take_abort());
                     let view = TickView {
                         report: &report,
                         kernel: &self.kernel,
                     };
-                    if on_tick(&view).is_break() {
+                    let flow = on_tick(&view);
+                    if let Some(fault) = fault {
+                        return Err(EngineError::PluginFault(fault));
+                    }
+                    if flow.is_break() {
                         stopped_early = true;
                         break;
                     }
@@ -276,12 +278,11 @@ impl Engine {
         let target = self.kernel.now().tick().saturating_add(n);
         let result = self.run(RunUntil::Ticks(target), on_tick);
         let stopped = !matches!(&result, Ok(s) if !s.stopped_early);
-        let summary = result?;
         if stopped {
             // Steps requested above but not run must not fire in a later `run`.
             self.kernel.clock_mut().cancel_steps();
         }
-        Ok(summary)
+        result
     }
 
     /// Pauses the clock in every mode.

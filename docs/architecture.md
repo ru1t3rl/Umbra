@@ -72,7 +72,7 @@ semver, kinds, metadata against the schema), per-host checks (manifest match, pl
   `false` is `EngineError::PluginHostInUse`) and builds and spawns inside `build_scope()`. Plain
   `instantiate` builds outside any scope, so a run-mode plugin factory fails with `BehaviorBuild`.
   `Engine::run`/`step` call `take_abort()` after every tick; a fault under `abort` ends the run with
-  `EngineError::PluginFault`, before `on_tick` sees the faulting tick.
+  `EngineError::PluginFault`, after `on_tick` has seen the faulting tick (ASM-145 a).
 - **CLI**: `run` and `validate` always use the `*_with_plugins` functions (an empty host without plugins);
   `run` prints one `info:` line per loaded plugin to stderr when `--log-level` is `info` or more verbose, and
   nothing on stdout. `list-plugins` prints the plugins and capabilities as text, or with `--json`:
