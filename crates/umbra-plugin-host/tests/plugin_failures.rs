@@ -662,9 +662,9 @@ fn a_plugin_built_with_panic_abort_aborts_the_process() {
     );
     #[cfg(unix)]
     assert_eq!(
-        status.code(),
-        None,
-        "terminated by a signal (abort), not an exit code"
+        std::os::unix::process::ExitStatusExt::signal(&status),
+        Some(6),
+        "terminated by SIGABRT, not another signal or an exit code: {status:?}"
     );
     #[cfg(windows)]
     assert!(
