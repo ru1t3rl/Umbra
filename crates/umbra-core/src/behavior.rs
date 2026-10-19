@@ -4,6 +4,12 @@
 //! Behaviors read state through [`EntityView`] and write only [`Intent`]s through the append-only
 //! [`IntentBuffer`]; they never mutate entity state (REQ-B-1). Randomness and time come only from
 //! [`BehaviorContext`] (REQ-K-4).
+//!
+//! Batches (REQ-B-4, ADR 0020): [`Behavior::batch`] lets behaviors share a [`BehaviorBatch`] that
+//! ticks many instances in one call. A batch must match per-instance ticking item by item, with
+//! one exception: it is all-or-nothing. If a batch faults, none of its items' effects are kept
+//! (whole-batch discard). The kernel passes one `ctx.now` per call, may pass an empty slice, and
+//! groups behaviors by `Arc::ptr_eq` on the `Arc` returned from [`Behavior::batch`].
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -229,6 +235,10 @@ pub trait Behavior: Send + Sync {
     /// REQ-B-4, ADR 0020: the batch that ticks this behavior's instances together with those of
     /// every behavior returning the same `Arc` (the kernel groups with `Arc::ptr_eq`). Default:
     /// `None`, the instance is ticked through [`BehaviorInstance::tick`] as before.
+    ///
+    /// Every call must return a clone of one `Arc` created once per behavior (or shared by a
+    /// family of behaviors): a fresh `Arc` per call would never group, because grouping is by
+    /// pointer identity, not by value.
     fn batch(&self) -> Option<Arc<dyn BehaviorBatch>> {
         None
     }
@@ -284,9 +294,20 @@ pub trait BehaviorInstance: Send {
 /// Contract: deterministic; every item gets the status, intents and RNG draws its own
 /// `instance.tick(..)` would give for per-instance state; the kernel calls it once per group per
 /// tick. An item whose instance the batch does not recognise is ticked through
-/// [`BehaviorInstance::tick`] (see [`tick_each`]); never a panic.
+/// [`BehaviorInstance::tick`] (see [`tick_each`], [`BatchItem::tick_instance`]); never a panic.
+///
+/// Kernel guarantees: each call carries a single `ctx.now` for all items (the tick's time); the
+/// slice may be empty and the batch must accept that; items are in a deterministic order, which
+/// the batch may rely on but must not reorder observably.
+///
+/// Exception to per-item semantics (ADR 0020): a batch is all-or-nothing. If a batch call faults
+/// (error code, panic, contract breach), the whole batch is discarded: none of its items'
+/// effects (statuses, intents, RNG draws) are kept, not even those of items already written.
 pub trait BehaviorBatch: Send + Sync {
     /// Ticks every item, writing each item's `status` and appending to its `out`.
+    ///
+    /// See the trait docs for the contract, the kernel guarantees (one `ctx.now`, empty slice
+    /// allowed) and the whole-batch-discard rule on a fault.
     fn tick_batch(&self, items: &mut [BatchItem<'_>]);
 }
 
@@ -316,6 +337,15 @@ impl fmt::Debug for BatchItem<'_> {
 }
 
 impl<'a> BatchItem<'a> {
+    /// Ticks this item's own instance with its own context, entity view and intent buffer and
+    /// stores the result in `status`; the per-instance fallback for items a batch does not
+    /// recognise.
+    pub fn tick_instance(&mut self) {
+        self.status = self
+            .instance
+            .tick(&mut self.ctx, &self.entity, &mut self.out);
+    }
+
     /// Creates an item with status [`Status::Failure`].
     pub fn new(
         ctx: BehaviorContext<'a>,
@@ -333,12 +363,11 @@ impl<'a> BatchItem<'a> {
     }
 }
 
-/// The reference semantics of a batch: ticks each item's instance in slice order.
+/// The reference semantics of a batch: ticks each item's instance in slice order (an empty slice
+/// is a no-op).
 pub fn tick_each(items: &mut [BatchItem<'_>]) {
     for item in items {
-        item.status = item
-            .instance
-            .tick(&mut item.ctx, &item.entity, &mut item.out);
+        item.tick_instance();
     }
 }
 

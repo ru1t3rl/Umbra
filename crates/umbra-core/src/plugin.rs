@@ -4,6 +4,7 @@
 ///
 /// The fault state belongs to one engine (ASM-118). Names are the scenario/config spellings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum PluginFaultPolicy {
     /// The tick fails and the run stops (the default).
     #[default]

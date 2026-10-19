@@ -12,7 +12,7 @@ use umbra_core::{
     tick_each,
 };
 
-/// Draws once from the RNG, emits `SetSpeed`-free `Hold`, status from the draw's parity.
+/// Draws once from the RNG, emits `Hold`, status from the draw's parity.
 #[derive(Default)]
 struct Counter {
     ticks: u64,
@@ -86,9 +86,7 @@ impl BehaviorBatch for CounterBatch {
             {
                 item.status = step(c, &mut item.ctx, &mut item.out);
             } else {
-                item.status = item
-                    .instance
-                    .tick(&mut item.ctx, &item.entity, &mut item.out);
+                item.tick_instance();
             }
         }
     }
@@ -220,4 +218,100 @@ fn behavior_batch_default_is_none_and_override_groups_by_arc() {
     let b = Batched(id, Arc::clone(&shared));
     let (ba, bb) = (a.batch(), b.batch());
     assert!(matches!((&ba, &bb), (Some(x), Some(y)) if Arc::ptr_eq(x, y)));
+}
+
+/// `tick_each` equals ticking each instance directly with the same arguments: statuses, intents,
+/// RNG draws and instance state, over several ticks.
+#[test]
+fn tick_each_equals_direct_instance_tick() {
+    let st = state();
+    let mut direct: Vec<Box<dyn BehaviorInstance>> = vec![
+        Box::new(Counter::default()),
+        Box::new(Opaque),
+        Box::new(Counter::default()),
+    ];
+    let mut drngs: Vec<RngStream> = (0..3).map(rng).collect();
+    let mut dbufs: Vec<Vec<Intent>> = vec![Vec::new(); 3];
+    let mut dstatuses: Vec<Vec<Status>> = Vec::new();
+    for tick in 0..4 {
+        let now = SimTime::at_tick(rate(), tick);
+        let mut row = Vec::new();
+        for (i, ((inst, r), b)) in direct
+            .iter_mut()
+            .zip(drngs.iter_mut())
+            .zip(dbufs.iter_mut())
+            .enumerate()
+        {
+            let id = EntityId::new(i as u64 + 1).unwrap_or_else(|| unreachable!());
+            let mut ctx = BehaviorContext::new(now, r);
+            let mut out = IntentBuffer::new(b);
+            row.push(inst.tick(&mut ctx, &EntityView::new(id, &st), &mut out));
+        }
+        dstatuses.push(row);
+    }
+    let (statuses, intents, rngs) = run(&tick_each);
+    assert_eq!(statuses, dstatuses);
+    assert_eq!(intents, dbufs);
+    assert_eq!(rngs, drngs.iter().map(RngStream::state).collect::<Vec<_>>());
+}
+
+/// An empty slice is allowed and a no-op.
+#[test]
+fn empty_slice_is_allowed() {
+    tick_each(&mut []);
+    CounterBatch.tick_batch(&mut []);
+}
+
+/// Items are ticked in slice order, observable through a shared recorder.
+#[test]
+fn items_are_ticked_in_slice_order() {
+    use std::sync::Mutex;
+
+    struct Rec(u64, Arc<Mutex<Vec<u64>>>);
+    impl BehaviorInstance for Rec {
+        fn tick(
+            &mut self,
+            _: &mut BehaviorContext<'_>,
+            _: &EntityView<'_>,
+            _: &mut IntentBuffer<'_>,
+        ) -> Status {
+            if let Ok(mut v) = self.1.lock() {
+                v.push(self.0);
+            }
+            Status::Success
+        }
+        fn halt(&mut self) {}
+        fn output(&self, _: &str) -> Option<BbValue> {
+            None
+        }
+        fn set_input(&mut self, _: &str, _: Option<BbValue>) -> Result<(), BlackboardError> {
+            Ok(())
+        }
+    }
+
+    let st = state();
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let order = [3u64, 0, 4, 1, 2];
+    let mut insts: Vec<Rec> = order.iter().map(|&n| Rec(n, Arc::clone(&log))).collect();
+    let mut rngs: Vec<RngStream> = order.iter().map(|&n| rng(n)).collect();
+    let mut bufs: Vec<Vec<Intent>> = vec![Vec::new(); order.len()];
+    let now = SimTime::start(rate());
+    let mut items: Vec<BatchItem<'_>> = insts
+        .iter_mut()
+        .zip(rngs.iter_mut())
+        .zip(bufs.iter_mut())
+        .enumerate()
+        .map(|(i, ((inst, r), b))| {
+            let id = EntityId::new(i as u64 + 1).unwrap_or_else(|| unreachable!());
+            BatchItem::new(
+                BehaviorContext::new(now, r),
+                EntityView::new(id, &st),
+                inst,
+                IntentBuffer::new(b),
+            )
+        })
+        .collect();
+    tick_each(&mut items);
+    assert!(items.iter().all(|i| i.status == Status::Success));
+    assert_eq!(log.lock().map(|v| v.clone()).unwrap_or_default(), order);
 }
