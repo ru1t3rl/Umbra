@@ -80,3 +80,28 @@ Option 1.
   the examples keep explicit rates; M7 recordings must store the effective rate.
 - Revisit if a second configuration consumer appears outside the CLI (then the reader may move), or if
   users need per-environment overlays.
+
+## Amended 2026-10-19 after the M5 design review (human-approved)
+These rules supersede the Decision above where they differ.
+
+- **New keys** (D-b, m9; all optional):
+  ```toml
+  [server]
+  allowed_hosts = []          # extra Host values (names or addresses, port optional)
+  allowed_origins = []        # extra WebSocket Origins, exact "scheme://host[:port]"
+  shutdown_grace_s = 5.0      # graceful-shutdown deadline
+  [server.stream]
+  max_connections = 64
+  ```
+  - `allowed_hosts`: loopback names and the bound address are always allowed. This key is needed to
+    use a non-loopback bind at all; with a `0.0.0.0` bind, list the names clients use.
+  - `allowed_origins`: by default, origins on loopback hosts with any port are allowed (the Vite proxy
+    of M5b). This key adds more.
+  - Validation: `allowed_origins` entries must parse as origins (`invalid_value` otherwise); the counts
+    and the grace period must be positive.
+- **Implicit config note (m13).** `run`, `validate` and `list-plugins` write one stderr line,
+  `note: using configuration ./umbra.toml`, whenever they use a `./umbra.toml` they discovered rather
+  than one given with `--config`. It is written regardless of `--log-level`, and stdout is unchanged.
+  New CLI tests run in a temporary working directory.
+- **Tauri origins (M8, additive).** `tauri://localhost` and `http://tauri.localhost` are added there,
+  not now.

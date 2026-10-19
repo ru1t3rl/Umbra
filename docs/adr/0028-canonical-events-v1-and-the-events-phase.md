@@ -37,8 +37,9 @@ Option 1.
 - Kernel Events phase: for each **Owned** entity in `EntityId` order, its `Fire` and `Custom` intents of
   this tick, in emission order, become events; `TickReport` (`#[non_exhaustive]`) gains `events:
   Vec<SimEvent>`. Nothing is hashed (state hash stays v2), no state changes, so every golden hash holds.
-- Engine (session, ADR 0024): `EntityCreated` for scenario spawns (in the load's control frame) and API
-  spawns, `EntityRemoved` for API removes (`Kernel::remove`, additive: drops the entity and its behavior
+- Engine (session, ADR 0024): `EntityCreated` for API spawns only *(amended 2026-10-19 after the M5
+  design review, human-approved: no `EntityCreated` for the initial load; the load's control frame lists
+  the entities)*, `EntityRemoved` for API removes (`Kernel::remove`, additive: drops the entity and its behavior
   instance; ids are never reused, REQ-C-2), `SimulationControl` for start, pause, resume, stop and step.
 - `Spawn` and `Despawn` intents: still recorded only (ADR 0016 text "until M5" becomes "until M7");
   `docs/behavior.md` and `docs/architecture.md` updated.
@@ -50,3 +51,10 @@ Option 1.
   documented in `docs/behavior.md` and `docs/plugin-guide.md`.
 - Revisit in M7 (apply `Spawn`/`Despawn` with replay; M3 tests that pin "not applied" then need this ADR's
   successor with a migration plan) and in M6 (`EntityStateUpdate`, `Detonation` for DIS).
+
+## Amended 2026-10-19 after the M5 design review (human-approved)
+- **Initial load (review nit).** The initial load emits no `EntityCreated` events; the load's control
+  frame and `GET /entities` show the initial entities.
+- **Plugin fault (M9).** Events of a tick that faulted under `abort` are kept. `Engine::pump` returns
+  `Pumped::Aborted { report, fault }`, and the faulting tick's frame carries those events (ADR 0024
+  amendment).

@@ -65,3 +65,52 @@ Option 1; the `delta` frame kind is reserved for a later minor version.
   rate; msgpack or deltas may follow after M9 profiling as additive encodings or frame kinds.
 - Revisit when M9 profiling or the M8 GUI shows bandwidth problems, or when M7 recording offers a
   lossless event feed.
+
+## Amended 2026-10-19 after the M5 design review (human-approved)
+These rules supersede the Decision above where they differ.
+
+### Frames
+- **Priming (M1).** A `subscribe` immediately gets one `cause: "control"` frame of the current state, even
+  when nothing ticks: `idle`, `ready`, `paused` or `stopped` (ADR 0024 `Prime`). A late subscriber
+  therefore never waits for a tick to see the map.
+- **Events survive dropped frames (M2).**
+  - Events of frames the bus drops are carried into the next delivered frame. The connection task does
+    the same for frames it skips.
+  - Both are capped at `max_events_per_frame`; beyond the cap the frame sets `events_truncated`.
+  - Test: a `step(100)` that crosses the `Fire` at tick 1130 delivers that event to a subscriber with
+    capacity 4.
+- **Tick stride (M11).** Each connection subscribes with
+  `min_tick_stride = max(1, tick_rate_hz / max_rate_hz)`, using integer division. Below that stride the
+  engine builds no frame for that connection. Control frames, step completions, pause and stop are always
+  delivered.
+
+### Connection (M4, m9)
+- **Generic loop.** The connection loop is written over a generic `Sink<Message>` and
+  `Stream<Item = Result<Message, _>>`, split into a reader half and a writer half.
+  - The reader handles `subscribe`, the size limits and protocol errors.
+  - The writer sends frames. No `select!` ever cancels a send that is in progress.
+- **Limits.**
+
+  | Limit | Value | When exceeded |
+  |---|---|---|
+  | Incoming message size | 64 KiB | close with 1009 |
+  | `entity_ids` per `subscribe` | 10,000 | `error`, connection stays open |
+  | Concurrent stream connections | `[server.stream] max_connections`, default 64 | upgrade refused with `503 too_many_connections` |
+- **Encoding.** Frame JSON is encoded on `tokio::task::spawn_blocking`, so a 2 MB frame never stalls a
+  runtime worker.
+- **No `unsubscribe`.** There is no unsubscribe message; a client that is done closes the socket.
+- **Origin check.** The upgrade checks `Origin` against `[server] allowed_origins` (ADR 0026 amendment).
+
+### Testing the slow client (M4)
+A blocked send is not reachable reliably over loopback, so the slow-client acceptance test drives the
+connection loop directly:
+- the sink is a stub whose `poll_ready` returns `Pending` forever;
+- time runs under `tokio::time::pause`, using tokio's `test-util` feature as a dev-dependency;
+- the test asserts the `too_slow` close after `send_timeout_s`, while the engine keeps ticking.
+
+One real-socket smoke test remains. It uses a generated fixture with 2,000 entities, so kernel socket
+buffers fill quickly.
+
+### Shutdown (M12)
+Each stream task holds a shutdown signal. On server shutdown it closes the socket with 1001; the whole
+graceful shutdown has a deadline (ADR 0026, plan Design).
