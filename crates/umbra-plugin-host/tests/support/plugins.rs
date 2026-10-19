@@ -1,5 +1,6 @@
 //! Build helper of the host tests (R-M8): one helper for all M4 plugin tests, shared by path with the
-//! engine and CLI tests (`umbra-engine/tests/plugin_support/mod.rs`). Builds a variant of
+//! engine and CLI tests (`umbra-engine/tests/plugin_support/mod.rs`, included by `#[path]`: the host
+//! tests therefore depend on the engine test directory layout, not on the engine crate). Builds a variant of
 //! `umbra-test-plugin` with a nested `cargo build --locked --offline` into `CARGO_TARGET_TMPDIR` and
 //! copies the library to a package directory under a unique file name, so a library that may still be
 //! loaded is never overwritten. Libraries that a Rust crate under `forbid(unsafe_code)` cannot be

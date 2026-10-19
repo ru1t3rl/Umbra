@@ -235,7 +235,8 @@ fn load_waits_while_image_is_closing() {
         2,
         "no entry call while the image is closing"
     );
-    assert_eq!(*f.order.lock().expect("order"), ["init"]);
+    // The forged `shutdown` records itself before it blocks on the gate.
+    assert_eq!(*f.order.lock().expect("order"), ["init", "shutdown"]);
 
     f.gate.open();
     closer.join().expect("closer");

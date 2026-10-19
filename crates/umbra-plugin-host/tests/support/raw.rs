@@ -76,29 +76,26 @@ thread_local! {
     pub static KEPT: Cell<Option<(u64, u64)>> = const { Cell::new(None) };
     pub static CODES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
     pub static HOOK: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+    /// Problems found inside `extern "C"` callbacks, which must not panic (a panic would abort the test
+    /// process): recorded here per test thread, returned as `UMBRA_ERR_INTERNAL`, and asserted empty when
+    /// the `Env` drops.
+    static FAILURES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 pub static IN_CALL: AtomicUsize = AtomicUsize::new(0);
 pub static MAX_CONCURRENT: AtomicUsize = AtomicUsize::new(0);
 pub static CALLS: AtomicUsize = AtomicUsize::new(0);
 
-/// Problems found inside `extern "C"` callbacks, which must not panic (a panic would abort the test
-/// process): recorded here, returned as `UMBRA_ERR_INTERNAL`, and asserted empty when the `Env` drops.
-static FAILURES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
-
 fn missing(what: &str) -> UmbraCode {
-    FAILURES
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .push(format!("raw plugin: {what} is not set"));
+    FAILURES.with(|f| {
+        f.borrow_mut()
+            .push(format!("raw plugin: {what} is not set"));
+    });
     UMBRA_ERR_INTERNAL
 }
 
-/// The callback problems recorded so far.
+/// The callback problems recorded so far on this thread.
 pub fn failures() -> Vec<String> {
-    FAILURES
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
+    FAILURES.with(|f| f.borrow().clone())
 }
 
 pub fn events() -> Vec<String> {
@@ -120,6 +117,7 @@ pub fn clear() {
     KEPT.with(|k| k.set(None));
     CODES.with(|e| e.borrow_mut().clear());
     HOOK.with(|h| *h.borrow_mut() = None);
+    FAILURES.with(|f| f.borrow_mut().clear());
 }
 fn event(name: &str) {
     EVENTS.with(|e| e.borrow_mut().push(name.to_owned()));

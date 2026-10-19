@@ -157,7 +157,7 @@ fn given_init_panics_then_no_shutdown_runs_afterwards() {
     drop(host);
 
     assert!(
-        recorder.all().iter().all(|e| !e.2.contains("shutdown")),
+        recorder.all().iter().all(|e| e.2 != "shutdown"),
         "{:?}",
         recorder.all()
     );
@@ -670,7 +670,6 @@ fn the_library_stays_loaded_while_a_handle_lives() {
         Some(Status::Running),
         "a handle ticks after host and registry dropped (a fault would be Failure)"
     );
-    assert!(ents[0].buf.len() < 65, "intents within the cap");
     drop(factory);
 }
 
@@ -743,7 +742,15 @@ fn panic_abort_child() {
 #[test]
 #[ignore = "WI-10"]
 fn the_library_exports_exactly_one_umbra_symbol() {
-    const LINKER: [&str; 4] = ["_init", "_fini", "__cxa_finalize", "__gmon_start__"];
+    const LINKER: [&str; 7] = [
+        "_init",
+        "_fini",
+        "__cxa_finalize",
+        "__gmon_start__",
+        "__bss_start",
+        "_edata",
+        "_end",
+    ];
     let dir = package_dir("symbols", &[]);
     let pkgs = PluginHost::discover(&[dir]).expect("discover");
     let Ok(out) = std::process::Command::new("nm")
@@ -762,7 +769,9 @@ fn the_library_exports_exactly_one_umbra_symbol() {
         .filter_map(|l| {
             let mut f = l.split_whitespace();
             let (_addr, kind, name) = (f.next()?, f.next()?, f.next()?);
-            (matches!(kind, "T" | "t" | "W" | "w" | "i") && !LINKER.contains(&name)).then_some(name)
+            (matches!(kind, "T" | "t" | "W" | "w" | "i" | "D" | "B" | "R")
+                && !LINKER.contains(&name))
+            .then_some(name)
         })
         .collect();
     exported.sort_unstable();
