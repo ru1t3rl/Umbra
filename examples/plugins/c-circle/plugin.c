@@ -60,6 +60,15 @@ _Static_assert(offsetof(UmbraIntent, value) == 40, "UmbraIntent.value offset of 
     ((ptr) != NULL && ABI_MAJOR((ptr)->abi_version) == UMBRA_ABI_VERSION_MAJOR && \
      (ptr)->struct_size >= (uint32_t)sizeof(type))
 
+/* An element of a host-written array is stricter: its `struct_size` must EQUAL our size. We index the
+ * array with our own `sizeof` (`&items[i]`), and the host writes array elements in the plugin's minor,
+ * so the stride is exactly our size (R-B3, as the Rust SDK checks, ASM-128). A larger element would
+ * mean the stride we index with is wrong, so every element after the first would be misread. Used for
+ * every array this plugin indexes (`items`; `statuses` is a plain array of `uint32_t`). */
+#define ELEMENT_OK(ptr, type) \
+    ((ptr) != NULL && ABI_MAJOR((ptr)->abi_version) == UMBRA_ABI_VERSION_MAJOR && \
+     (ptr)->struct_size == (uint32_t)sizeof(type))
+
 /* The host API passed to `umbra_plugin_entry`; valid for the whole process, usable between `init` and
  * `shutdown`. The only global state of this plugin, reset by `init` and `shutdown` because the host may
  * unload and load the library again in one process. */
@@ -410,12 +419,13 @@ static UmbraCode circle_tick_batch(const UmbraBehaviorBatch *batch, const UmbraE
         return fail(err, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_STR("tick_batch: malformed intent sink"));
     }
     for (i = 0; i < batch->count; i++) {
-        /* The host writes the items in this plugin's layout, so the stride is our sizeof. */
+        /* The host writes the items in this plugin's layout, so the stride is our sizeof; checked
+         * per element by ELEMENT_OK before any field beyond the header is read. */
         const UmbraBehaviorItem *item = &batch->items[i];
         const Circle *circle;
         UmbraCode code;
 
-        if (!HOST_STRUCT_OK(item, UmbraBehaviorItem) || item->instance == NULL) {
+        if (!ELEMENT_OK(item, UmbraBehaviorItem) || item->instance == NULL) {
             return fail(err, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_STR("tick_batch: malformed item"));
         }
         circle = (const Circle *)item->instance;

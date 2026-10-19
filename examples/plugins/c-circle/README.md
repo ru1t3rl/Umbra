@@ -27,7 +27,7 @@ cargo run -p umbra-cli -- run examples/scenarios/plugin_c_circle/scenario.toml -
 | Compiler | Flags |
 |---|---|
 | GCC, Clang | `-std=c11 -pedantic -Wall -Wextra -Werror -ffp-contract=off -fvisibility=hidden -shared -fPIC` (`-O2` with `--release`) |
-| MSVC | `/std:c11 /W4 /WX /LD` (`/O2` with `--release`) |
+| MSVC | `/std:c11 /W4 /WX /fp:precise /LD` (`/O2` with `--release`) |
 
 By hand on Linux, from the repository root:
 ```
@@ -49,7 +49,10 @@ The file is in seven numbered sections; read it top to bottom next to this list.
 2. **Helpers.** `HOST_STRUCT_OK` is the reader rule of ADR 0019 for structs the host writes: the major
    in `abi_version` must equal `UMBRA_ABI_VERSION_MAJOR` and `struct_size` must be at least the size
    this file was compiled against. The minor is never compared (a newer host writes the plugin's
-   minor anyway). `fail` reports a message through the call's error sink and returns the error code;
+   minor anyway). `ELEMENT_OK` is the stricter rule for elements of host-written arrays (`items`):
+   `struct_size` must **equal** this file's size, because the plugin indexes the array with its own
+   `sizeof` and the host writes array elements in the plugin's minor (R-B3, the same check the Rust
+   SDK makes, ASM-128). `fail` reports a message through the call's error sink and returns the error code;
    the host copies the message during the call. `g_host` is the only global: the host API pointer,
    set by `init` and cleared by `shutdown`, because one process may unload and load the library again.
 3. **Params.** The host passes the params as compact JSON text: an `UmbraStr` (pointer plus length,
@@ -57,7 +60,10 @@ The file is in seven numbered sections; read it top to bottom next to this list.
    allows (an object with `speed_mps` and `turn_rate_dps`, or `null`) and rejects anything else with
    `UMBRA_ERR_PARAMS`, which the host turns into a build error naming the capability. Numbers are
    checked against the JSON grammar first and then copied into a NUL-terminated buffer for `strtod`,
-   so the parser never reads past `len`. A real plugin would use a JSON library.
+   so the parser never reads past `len`. The parser assumes the "C" numeric locale (`.` as the decimal
+   point, which a Rust host keeps): if an embedder calls `setlocale` with a locale that uses `,`,
+   `strtod` stops early, the end check fails and `configure` returns `UMBRA_ERR_PARAMS` (a build error),
+   so a number is never misread. A real plugin would use a JSON library.
 4. **The circle.** `heading_rad` is a pure function of the params, the tick and the rate. The plugin
    uses no wall clock and no RNG of its own (REQ-K-4); a plugin that needs randomness draws it from the
    entity's stream with `host->rng_next_f64(host->host_ctx, item->rng, &out)`, using the token of the

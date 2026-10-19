@@ -257,7 +257,7 @@ fn c_target_triple() -> String {
 /// Compiles the C plugin `source` against the header in `include` into `<work>/<file>` and returns
 /// that path. Strict C11 with warnings as errors (ADR 0023 item 3): GCC/Clang `-std=c11 -pedantic
 /// -Wall -Wextra -Werror -ffp-contract=off -fvisibility=hidden -shared -fPIC`, MSVC `/std:c11 /W4
-/// /WX /LD` (objects and the import library stay in `work`); `-O2` (MSVC `/O2`) with `release`, else
+/// /WX /fp:precise /LD` (objects and the import library stay in `work`); `-O2` (MSVC `/O2`) with `release`, else
 /// no optimisation. `-ffp-contract=off` keeps the compiler from fusing a multiply and an add, so the
 /// plugin's floating-point results do not depend on the CPU having FMA (REQ-K-4).
 fn compile_c(
@@ -324,7 +324,14 @@ fn compile_c(
         fo.push(&object_dir);
         let mut fe = OsString::from("/Fe");
         fe.push(&library);
-        cmd.arg(source).arg(fo).arg(fe).arg("/LD");
+        // REQ-K-4: `/fp:precise` (MSVC's default, passed explicitly so a `CFLAGS` `/fp:fast` cannot
+        // win silently) keeps IEEE semantics and, since VS 2022, no multiply-add contraction, the
+        // counterpart of `-ffp-contract=off` above. Unverified: no Windows run (ASM-148 f).
+        cmd.arg("/fp:precise")
+            .arg(source)
+            .arg(fo)
+            .arg(fe)
+            .arg("/LD");
     } else {
         cmd.arg("-shared")
             .arg("-fPIC")

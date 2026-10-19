@@ -120,6 +120,56 @@ fn c_example_drives_an_entity_on_a_circle() {
     }
 }
 
+/// The heading wraps into [0, 360) degrees past a full turn, in both directions: two entities of the
+/// same capability (one batch) turn at +30 and -45 degrees per second for 400 ticks (13.3 s, about
+/// 1.1 and 1.7 turns), and every heading is `(turn_rate * tick / rate_hz) mod 360` in radians.
+#[test]
+fn c_example_heading_wraps_past_a_full_turn_in_both_directions() {
+    let (host, registry) = loaded("c-example-wrap");
+    let build = |params: &str| {
+        build_behavior(&host, &registry, "example.behavior.c_circle", params).expect("build")
+    };
+    let cw = build(r#"{"speed_mps":12.0,"turn_rate_dps":30.0}"#);
+    let ccw = build(r#"{"speed_mps":12.0,"turn_rate_dps":-45.0}"#);
+    let mut ents = vec![Ent::new(1, &cw, 1), Ent::new(2, &ccw, 1)];
+    let batch = cw.batch().expect("batch");
+    let mut wrapped = [false, false];
+
+    for tick in 0..400_u32 {
+        tick_batched(&batch, &mut ents, u64::from(tick));
+        for (n, (ent, rate_dps)) in ents.iter().zip([30.0_f64, -45.0]).enumerate() {
+            let heading = ent
+                .buf
+                .iter()
+                .find_map(|i| match i {
+                    Intent::SetHeading(h) => Some(h.0),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("tick {tick}: entity {} has no heading", n + 1));
+            let unwrapped = rate_dps * f64::from(tick) / 30.0;
+            let expected = unwrapped.rem_euclid(360.0).to_radians();
+            assert!(
+                (heading - expected).abs() < 1e-9,
+                "tick {tick}, entity {}: heading {heading}, expected {expected}",
+                n + 1
+            );
+            assert!(
+                (0.0..std::f64::consts::TAU).contains(&heading),
+                "tick {tick}, entity {}: heading {heading} outside [0, 2pi)",
+                n + 1
+            );
+            wrapped[n] |= !(0.0..360.0).contains(&unwrapped);
+        }
+    }
+
+    assert_eq!(host.faults(), Vec::new());
+    assert_eq!(wrapped, [true, true], "both entities went past a full turn");
+}
+
+/// The C example has no `halt_running` entry: a parent halt must reach `halt` without a fault. This
+/// test shows the real C library is accepted and halted cleanly; that the host actually calls `halt`
+/// for a null `halt_running` is proved by AT-5 `bridge.rs` `halt_used_when_halt_running_is_null`
+/// (which counts the calls).
 #[test]
 fn c_example_without_halt_running_gets_halt() {
     let (host, registry) = loaded("c-example-halt");
