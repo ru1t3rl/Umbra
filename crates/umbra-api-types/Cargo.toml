@@ -1,0 +1,19 @@
+[package]
+name = "umbra-api-types"
+description = "Umbra wire types for the control API and the stream (DTOs only)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+utoipa.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

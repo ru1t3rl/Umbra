@@ -811,3 +811,41 @@ fn given_non_path_dep_with_reserved_name_when_checked_then_impostor_dep() {
         }]
     );
 }
+
+// ---------------------------------------------------------------- M5 WI-1 (REQ-X-7, ASM-007, ASM-008)
+
+/// The three edges the M5 plan forbids are each reported with the real rule table, and the allowed
+/// server edges are not. (The same edges were seeded into the real workspace by hand in WI-1:
+/// `check-deps` exited 1 for the first and third; cargo rejects the second as a cycle.)
+#[test]
+fn given_m5_forbidden_edges_when_checked_then_each_is_a_violation() {
+    for (from, to) in [
+        ("umbra-server", "umbra-kernel"),
+        ("umbra-server", "umbra-core"),
+        ("umbra-engine", "umbra-server"),
+        ("umbra-api-types", "umbra-core"),
+        ("umbra-api-types", "umbra-engine"),
+    ] {
+        let g = graph(vec![edge(from, to, DepKind::Normal)]);
+        let v = check(&g, &RULES);
+        assert!(
+            v.iter().any(|x| matches!(
+                x,
+                Violation::ForbiddenWorkspaceDep { from: f, to: t, .. } if f == from && t == to
+            )),
+            "{from} -> {to} not reported: {v:?}"
+        );
+    }
+}
+
+/// The allowed edges of the new crates produce no violation.
+#[test]
+fn given_m5_allowed_edges_when_checked_then_no_violation() {
+    let g = graph(vec![
+        edge("umbra-server", "umbra-engine", DepKind::Normal),
+        edge("umbra-server", "umbra-api-types", DepKind::Normal),
+        edge("umbra-cli", "umbra-server", DepKind::Normal),
+        edge("umbra-cli", "umbra-engine", DepKind::Normal),
+    ]);
+    assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
+}

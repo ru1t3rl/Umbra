@@ -15,19 +15,32 @@ repository = "https://example.invalid/umbra"
 
 [workspace.dependencies]
 anyhow = "1"
+# HTTP router and WebSocket upgrade (umbra-server only; ADR 0025). `matchit` (MIT AND BSD-3-Clause) comes with it.
+axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "query", "ws", "tokio"] }
 # Compiles C against umbra_plugin_api.h (ADR 0023 item 3): dev-only in umbra-plugin-host (tests), and
 # in xtask, which builds the C example plugin for `build-plugins`.
 cc = "1.2"
+# `Sink`/`Stream` for the stream loop (umbra-server; ADR 0025).
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 hecs = { version = "0.11.2", default-features = false }
 # Opens plugin libraries with explicit load flags (umbra-plugin-host only; ADR 0023 item 1, ASM-133).
 libloading = "0.9.0"
 proptest = "1"
 semver = { version = "1", default-features = false, features = ["std"] }
+serde = { version = "1", default-features = false, features = ["derive", "std"] }
 serde_json = "1"
 # xtask only (ASM-024): parse crate roots and manifests instead of scanning text.
 syn = { version = "3.0.9", default-features = false, features = ["full", "parsing"] }
 thiserror = "2"
+# Async runtime, owned by umbra-server (ADR 0025). `test-util` is a dev feature, enabled per crate.
+tokio = { version = "1.53.2", default-features = false, features = ["rt-multi-thread", "net", "sync", "time", "macros", "signal"] }
+# Client side of the stream tests (dev only; ADR 0025). Versions match what axum 0.8.9 uses.
+tokio-tungstenite = { version = "0.29.0", default-features = false, features = ["connect"] }
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"] }
 tracing = { version = "0.1.44", default-features = false }
+# OpenAPI 3.1 from Rust types (D-11). Never enable `preserve_order` (output order must be deterministic).
+utoipa = { version = "5.5.0", default-features = false, features = ["macros"] }
 toml = { version = "1.1.8", default-features = false, features = ["parse", "std"] }
 
 [workspace.lints.rust]
