@@ -13,3 +13,10 @@
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(clippy::undocumented_unsafe_blocks)]
+
+mod api;
+
+pub use api::{
+    CapabilityInfo, HostMode, HostOptions, LogLevel, PluginError, PluginFault, PluginHost,
+    PluginInfo, PluginLog, PluginPackage,
+};

@@ -860,6 +860,7 @@ dependencies = [
  "umbra-core",
  "umbra-kernel",
  "umbra-motion",
+ "umbra-plugin-host",
  "umbra-templates",
 ]
 
@@ -894,6 +895,8 @@ name = "umbra-plugin-host"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "serde_json",
+ "thiserror",
  "umbra-core",
  "umbra-plugin-api",
 ]
@@ -902,6 +905,8 @@ dependencies = [
 name = "umbra-sdk"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+ "thiserror",
  "umbra-plugin-api",
 ]
 

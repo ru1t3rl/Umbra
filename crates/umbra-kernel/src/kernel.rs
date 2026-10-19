@@ -269,6 +269,18 @@ impl Kernel {
     pub fn snapshot(&self) -> Snapshot {
         state::snapshot(self.clock.now(), &self.world)
     }
+
+    /// Total capacity, in elements, of the scratch vectors the grouped Behavior phase keeps in the
+    /// world and reuses between ticks (ADR 0020). Diagnostic probe for the "no growth after warm-up"
+    /// test (M4 AT-6); it never changes behavior or state.
+    ///
+    /// M4 WI-6 stub: WI-6 sums the capacities of the group and item scratch vectors.
+    #[doc(hidden)]
+    #[must_use]
+    #[expect(clippy::todo, reason = "M4 WI-6 stub")]
+    pub fn behavior_scratch_capacity(&self) -> usize {
+        todo!("M4 WI-6")
+    }
 }
 
 /// Runs the systems of one phase. Perception, Behavior and Motion act for `Owned` entities only

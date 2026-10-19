@@ -11,6 +11,8 @@ repository.workspace = true
 [dependencies]
 umbra-core = { path = "../umbra-core" }
 umbra-plugin-api = { path = "../umbra-plugin-api" }
+serde_json.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 # tests/c_header.rs compiles generated layout asserts against the header (ADR 0023 item 3, R-M7).

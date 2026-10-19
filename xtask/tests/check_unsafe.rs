@@ -282,6 +282,7 @@ fn given_real_workspace_when_loading_roots_then_every_target_is_listed() {
         [
             "src/lib.rs",
             "src/main.rs",
+            "tests/build_plugins.rs",
             "tests/check_deps.rs",
             "tests/check_lints.rs",
             "tests/check_rules.rs",

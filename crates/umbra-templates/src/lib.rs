@@ -29,6 +29,7 @@ pub mod template;
 pub mod value;
 
 pub use diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, Location, Note};
+pub use discover::scenario_plugin_paths;
 pub use graph_resolve::GraphSet;
 pub use loader::{Loader, LoaderError, LoaderOptions, ValidationReport};
 pub use resolve::{ComponentRef, ResolvedTemplate, TemplateSet};

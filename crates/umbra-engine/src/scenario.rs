@@ -58,6 +58,9 @@ pub enum ScenarioError {
     /// A registered component schema is broken.
     #[error(transparent)]
     Loader(#[from] LoaderError),
+    /// A plugin could not be discovered, loaded or registered (M4, ADR 0022).
+    #[error(transparent)]
+    Plugin(#[from] umbra_plugin_host::PluginError),
 }
 
 /// Loads a scenario file and its templates.

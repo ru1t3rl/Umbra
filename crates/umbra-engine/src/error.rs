@@ -77,4 +77,11 @@ pub enum EngineError {
     /// Registering the scenario's graphs failed (not expected after validation).
     #[error(transparent)]
     Graphs(#[from] umbra_behavior::GraphRegistrationError),
+    /// A plugin faulted under the `abort` policy; the run stopped after the faulting tick (M4,
+    /// ADR 0021).
+    #[error("plugin {} faulted in {} of {}: {}", .0.plugin, .0.call, .0.capability, .0.message)]
+    PluginFault(umbra_plugin_host::PluginFault),
+    /// The plugin host is already attached to another engine (M4, ADR 0021).
+    #[error("the plugin host is already attached to an engine")]
+    PluginHostInUse,
 }

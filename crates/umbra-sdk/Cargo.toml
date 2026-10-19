@@ -11,6 +11,8 @@ repository.workspace = true
 # REQ-A-3: the only workspace dependency is umbra-plugin-api.
 [dependencies]
 umbra-plugin-api = { path = "../umbra-plugin-api" }
+serde_json.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

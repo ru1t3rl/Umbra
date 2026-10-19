@@ -432,3 +432,13 @@ fn has_syntax_errors(file: &SourceFile) -> bool {
         .iter()
         .any(|d| d.code == DiagnosticCode::Syntax)
 }
+
+/// The plugin directories named by a scenario file, or by every scenario file a `validate_path` walk of a
+/// directory would check; none for other files (leniently: problems are left to the full load, ADR 0022).
+///
+/// M4 WI-11 stub.
+#[must_use]
+#[expect(clippy::todo, reason = "M4 WI-11 stub")]
+pub fn scenario_plugin_paths(_path: &Path) -> Vec<PathBuf> {
+    todo!("M4 WI-11")
+}

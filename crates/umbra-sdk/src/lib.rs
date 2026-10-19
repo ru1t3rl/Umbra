@@ -17,3 +17,15 @@
 /// The raw C ABI types the SDK is built on (`umbra-plugin-api`), re-exported so that code generated
 /// by `export_plugin!` can name them as `$crate::abi::..` without its own dependency.
 pub use umbra_plugin_api as abi;
+
+mod behavior;
+mod error;
+mod export;
+
+pub use behavior::{
+    Behavior, BehaviorFactory, BehaviorInstance, Contact, EntityView, Intent, Intents, Interface,
+    Level, Params, Rng, Route, Status, TickContext, Value, ValueType, log,
+};
+pub use error::Error;
+#[doc(hidden)]
+pub use export::__private;

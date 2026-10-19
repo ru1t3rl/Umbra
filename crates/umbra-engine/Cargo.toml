@@ -13,6 +13,7 @@ umbra-behavior = { path = "../umbra-behavior" }
 umbra-core = { path = "../umbra-core" }
 umbra-kernel = { path = "../umbra-kernel" }
 umbra-motion = { path = "../umbra-motion" }
+umbra-plugin-host = { path = "../umbra-plugin-host" }
 umbra-templates = { path = "../umbra-templates" }
 thiserror.workspace = true
 

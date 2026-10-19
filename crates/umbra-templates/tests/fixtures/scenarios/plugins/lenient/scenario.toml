@@ -1,0 +1,9 @@
+schema_version = 1
+
+[scenario]
+name = "lenient"
+seed = "not a number"
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 1.0
+plugin_paths = ["plugins", "more/plugins"]

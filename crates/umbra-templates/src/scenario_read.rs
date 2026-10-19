@@ -165,6 +165,8 @@ impl Loader<'_> {
             templates: loaded.set.clone(),
             entities: entities?,
             graphs: loaded.graphs.clone(),
+            plugin_paths: Vec::new(),
+            on_plugin_fault: umbra_core::PluginFaultPolicy::default(),
         })
     }
 
