@@ -64,3 +64,16 @@ Option 1:
 - `network.<adapter>` tables are opaque to validation but still cross as JSON: datetimes, `nan`/`inf` and integers outside 64 bits are rejected there (ASM-060).
 - Fractional tick rates would need a new form of `tick_rate_hz` and a version bump (human 2026-10-17).
 - Revisit if users need abstract templates, multiple templates per file, or array merging by key.
+
+## Note (Accepted 2026-10-19, M5 plan `docs/plans/M5.md` WI-2; human decision 2026-10-19)
+`[scenario] tick_rate_hz` becomes **optional**. When it is absent the loader uses a default tick rate,
+60 Hz built in, which the `[simulation] tick_rate_hz` key of the `umbra.toml` configuration file can
+change (ADR 0029). An explicit value in the scenario always wins, and every check on a present value is
+unchanged: `invalid_value` for 0 or a negative number, `wrong_type` for a fraction or a string. The
+key leaves `required` in `scenario.v1.schema.json`. `SCHEMA_VERSION` stays 1: relaxing a required key is
+additive under the versioning rule above, because every existing file stays valid with the same meaning.
+`template.v1.schema.json` is unchanged.
+`Scenario` records where its rate came from (`tick_rate_source`: `scenario` or `default`), so tools can
+report it. A scenario that omits the key is no longer self-contained: its results also depend on the
+default that applied, so that default is reported wherever the run is (ASM-158). The examples keep an
+explicit `tick_rate_hz = 30`, so every golden hash is unchanged.
