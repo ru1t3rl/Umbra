@@ -1,7 +1,7 @@
 //! Reading a scenario file into a [`Scenario`] (ADR 0010, ASM-058, ASM-060).
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use umbra_core::{
     ComponentId, ComponentKind, Force, Meters, MetersPerSecond, Radians, TemplateId, TickRate,
@@ -16,10 +16,10 @@ use crate::scenario::{ClockSetting, Placement, RoutePlan, Scenario};
 use crate::source::SourceFile;
 use crate::template::{RawComponent, Version, check_version, component};
 use crate::value::{LEntry, LKind, LTable, LValue, Origin, parse};
-use umbra_core::Position;
+use umbra_core::{PluginFaultPolicy, Position};
 
 const TOP_KEYS: [&str; 4] = ["schema_version", "scenario", "terrain", "entities"];
-const SCENARIO_KEYS: [&str; 7] = [
+const SCENARIO_KEYS: [&str; 9] = [
     "name",
     "seed",
     "tick_rate_hz",
@@ -27,6 +27,8 @@ const SCENARIO_KEYS: [&str; 7] = [
     "time_scale",
     "duration_s",
     "template_paths",
+    "plugin_paths",
+    "on_plugin_fault",
 ];
 const ENTITY_KEYS: [&str; 9] = [
     "template",
@@ -66,6 +68,28 @@ pub(crate) fn template_paths(file: &SourceFile) -> Vec<(String, Origin)> {
     }
 }
 
+/// The `plugin_paths` strings of a scenario file, leniently, in order (like [`template_paths`]).
+pub(crate) fn plugin_path_strings(file: &SourceFile) -> Vec<String> {
+    let (table, _) = parse(file);
+    let paths = table
+        .as_ref()
+        .and_then(|t| t.get("scenario"))
+        .and_then(|v| match v.kind() {
+            LKind::Table(t) => t.get("plugin_paths"),
+            _ => None,
+        });
+    match paths.map(LValue::kind) {
+        Some(LKind::Array(items)) => items
+            .iter()
+            .filter_map(|v| match v.kind() {
+                LKind::String(s) => Some(s.clone()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// Whether the file has a top-level `scenario` key (ASM-053).
 pub(crate) fn is_scenario(file: &SourceFile) -> bool {
     parse(file).0.is_some_and(|t| t.get("scenario").is_some())
@@ -77,6 +101,8 @@ struct Settings {
     tick_rate: TickRate,
     clock: ClockSetting,
     duration_ticks: u64,
+    plugin_paths: Vec<PathBuf>,
+    on_plugin_fault: PluginFaultPolicy,
 }
 
 impl Loader<'_> {
@@ -154,6 +180,7 @@ impl Loader<'_> {
         let terrain = self.read_terrain(reader, table, fallback);
         let entities = self.read_entities(reader, table, loaded, unread);
         let settings = settings?;
+        let base = file.path().parent().unwrap_or_else(|| Path::new(""));
         Some(Scenario {
             name: settings.name,
             source: file.path().to_path_buf(),
@@ -165,8 +192,8 @@ impl Loader<'_> {
             templates: loaded.set.clone(),
             entities: entities?,
             graphs: loaded.graphs.clone(),
-            plugin_paths: Vec::new(),
-            on_plugin_fault: umbra_core::PluginFaultPolicy::default(),
+            plugin_paths: settings.plugin_paths.iter().map(|p| base.join(p)).collect(),
+            on_plugin_fault: settings.on_plugin_fault,
         })
     }
 
@@ -488,12 +515,16 @@ fn read_settings(reader: &mut Reader<'_>, table: &LTable) -> Option<Settings> {
         _ => None,
     };
     read_template_paths(reader, table);
+    let plugin_paths = read_plugin_paths(reader, table);
+    let on_plugin_fault = read_on_plugin_fault(reader, table);
     Some(Settings {
         name: name?,
         seed: seed?,
         tick_rate: tick_rate?,
         clock: clock?,
         duration_ticks: duration_ticks?,
+        plugin_paths: plugin_paths?,
+        on_plugin_fault: on_plugin_fault?,
     })
 }
 
@@ -628,6 +659,36 @@ fn read_template_paths(reader: &mut Reader<'_>, table: &LTable) {
             let _ = reader.string("template_paths entry", item);
         }
     }
+}
+
+/// `plugin_paths`: the strings as paths, still relative to the scenario file's directory (the caller
+/// joins them, like `template_paths`; ADR 0022). Absent is an empty list.
+fn read_plugin_paths(reader: &mut Reader<'_>, table: &LTable) -> Option<Vec<PathBuf>> {
+    let Some(value) = table.get("plugin_paths") else {
+        return Some(Vec::new());
+    };
+    let items = reader.array("plugin_paths", value)?;
+    let paths: Vec<Option<PathBuf>> = items
+        .iter()
+        .map(|item| reader.string("plugin_paths entry", item).map(PathBuf::from))
+        .collect();
+    paths.into_iter().collect()
+}
+
+/// `on_plugin_fault`: `abort` (default) or `disable_capability` (ADR 0021).
+fn read_on_plugin_fault(reader: &mut Reader<'_>, table: &LTable) -> Option<PluginFaultPolicy> {
+    let Some(value) = table.get("on_plugin_fault") else {
+        return Some(PluginFaultPolicy::default());
+    };
+    let name = reader.string("on_plugin_fault", value)?;
+    let policy = PluginFaultPolicy::from_name(name);
+    if policy.is_none() {
+        let message = format!(
+            "`on_plugin_fault` must be \"abort\" or \"disable_capability\", found \"{name}\""
+        );
+        reader.error(DiagnosticCode::InvalidValue, message, value.origin());
+    }
+    policy
 }
 
 /// `[entities.overrides]`: only `motion` (`model`, `params`) in v1.

@@ -83,9 +83,8 @@ pub struct Scenario {
     /// The behavior graphs of the load (file graphs, ADR 0012).
     pub graphs: GraphSet,
     /// Plugin directories, resolved against the scenario file's directory like `template_paths`
-    /// (`[scenario] plugin_paths`, ADR 0022). M4 WI-11 stub: always empty until the reader fills it.
+    /// (`[scenario] plugin_paths`, ADR 0022).
     pub plugin_paths: Vec<PathBuf>,
-    /// What to do when a plugin faults (`[scenario] on_plugin_fault`, ADR 0021). M4 WI-11 stub: always
-    /// the default until the reader fills it.
+    /// What to do when a plugin faults (`[scenario] on_plugin_fault`, ADR 0021); default `abort`.
     pub on_plugin_fault: umbra_core::PluginFaultPolicy,
 }

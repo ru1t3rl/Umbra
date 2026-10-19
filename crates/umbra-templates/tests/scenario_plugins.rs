@@ -2,9 +2,8 @@
 //! ADR 0021 (fault policy), ADR 0022 (scenario keys; `plugins` stays an unknown key), ADR 0010 rules
 //! (located `wrong_type` / `invalid_value`).
 //!
-//! Step 4 of M4: the reader does not know the keys before WI-11 (`Scenario::plugin_paths` and
-//! `on_plugin_fault` exist as stubs with empty values and `scenario_plugin_paths` is a `todo!()`), so
-//! those tests are ignored with that work item. `plugins_key_is_still_unknown` already holds.
+//! Written in step 4 of M4 against stubs; the reader and `scenario_plugin_paths` are implemented in
+//! WI-11 (ASM-143).
 
 #![forbid(unsafe_code)]
 
@@ -58,7 +57,6 @@ fn failing(text: &str) -> Vec<common::Row> {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn plugin_paths_resolve_relative_to_scenario() {
     let s = ok(load(&with("plugin_paths = [\"plugins\", \"../shared\"]")));
 
@@ -72,7 +70,6 @@ fn plugin_paths_resolve_relative_to_scenario() {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn plugin_paths_default_to_none() {
     let s = ok(load(&base()));
 
@@ -80,7 +77,6 @@ fn plugin_paths_default_to_none() {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn plugin_paths_wrong_type_located() {
     let text = with("plugin_paths = \"plugins\"");
 
@@ -91,7 +87,6 @@ fn plugin_paths_wrong_type_located() {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn plugin_paths_entry_of_the_wrong_type_is_located_at_the_entry() {
     let text = with("plugin_paths = [\"plugins\", 3]");
 
@@ -102,7 +97,6 @@ fn plugin_paths_entry_of_the_wrong_type_is_located_at_the_entry() {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn on_plugin_fault_values() {
     let abort = ok(load(&with("on_plugin_fault = \"abort\"")));
     let disable = ok(load(&with("on_plugin_fault = \"disable_capability\"")));
@@ -115,7 +109,6 @@ fn on_plugin_fault_values() {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn on_plugin_fault_invalid_value_located_lists_both() {
     let text = with("on_plugin_fault = \"ignore\"");
 
@@ -133,7 +126,6 @@ fn on_plugin_fault_invalid_value_located_lists_both() {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn on_plugin_fault_wrong_type_is_located() {
     let text = with("on_plugin_fault = 42");
 
@@ -144,7 +136,6 @@ fn on_plugin_fault_wrong_type_is_located() {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn on_plugin_fault_defaults_to_abort() {
     let s = ok(load(&base()));
 
@@ -152,7 +143,6 @@ fn on_plugin_fault_defaults_to_abort() {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn scenario_plugin_paths_is_lenient() {
     let dir = fixture_path("scenarios/plugins/lenient");
 
@@ -162,7 +152,6 @@ fn scenario_plugin_paths_is_lenient() {
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn scenario_plugin_paths_of_a_directory_is_the_union_over_its_scenario_files_in_walk_order() {
     let dir = fixture_path("scenarios/plugins/walk");
 
@@ -178,7 +167,6 @@ fn scenario_plugin_paths_of_a_directory_is_the_union_over_its_scenario_files_in_
 }
 
 #[test]
-#[ignore = "WI-11"]
 fn scenario_plugin_paths_of_other_files_and_missing_paths_is_empty() {
     let dir = fixture_path("scenarios/plugins/walk");
 

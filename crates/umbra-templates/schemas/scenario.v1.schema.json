@@ -78,7 +78,9 @@
         "clock": { "enum": ["afap", "realtime", "stepped", "scaled"] },
         "time_scale": { "type": "number", "minimum": 0.001, "maximum": 1000000 },
         "duration_s": { "type": "number", "exclusiveMinimum": 0 },
-        "template_paths": { "type": "array", "items": { "type": "string" } }
+        "template_paths": { "type": "array", "items": { "type": "string" } },
+        "plugin_paths": { "type": "array", "items": { "type": "string" } },
+        "on_plugin_fault": { "enum": ["abort", "disable_capability"] }
       },
       "required": ["name", "seed", "tick_rate_hz", "duration_s"],
       "additionalProperties": false

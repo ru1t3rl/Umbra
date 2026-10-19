@@ -115,6 +115,8 @@ template (ASM-053).
 | `clock` | `afap` \| `realtime` \| `stepped` \| `scaled` | default `afap` |
 | `time_scale` | number in [0.001, 1000000] | required with `clock = "scaled"`, an error otherwise |
 | `template_paths` | array of strings | directories relative to the scenario file, searched recursively for `*.toml` (templates and `*.behavior.toml` graphs) |
+| `plugin_paths` | array of strings | plugin directories relative to the scenario file, like `template_paths` (REQ-P-10, ADR 0022); absent is none. Each entry must be a string (`wrong_type`, located at the entry). `plugins` is not a key (`unknown_key`) |
+| `on_plugin_fault` | `abort` \| `disable_capability` | default `abort` (REQ-P-7, ADR 0021); another string is `invalid_value` naming both values, a non-string `wrong_type` (ASM-143) |
 | `[terrain]` | table | `provider` (default `builtin.terrain.flat`), `params` (default `{ height_m = 0.0 }` for the default provider) |
 | `[[entities]]` | array of tables | spawned in file order |
 

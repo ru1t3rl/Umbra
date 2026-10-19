@@ -12,7 +12,7 @@ use crate::graph_read::is_graph_path;
 use crate::loader::{Loader, ValidationReport};
 use crate::resolve::LoadedTemplates;
 use crate::scenario::Scenario;
-use crate::scenario_read::{is_scenario, template_paths};
+use crate::scenario_read::{is_scenario, plugin_path_strings, template_paths};
 use crate::source::SourceFile;
 
 /// Directories nested deeper than this are not searched (a guard, reported as a diagnostic).
@@ -436,9 +436,30 @@ fn has_syntax_errors(file: &SourceFile) -> bool {
 /// The plugin directories named by a scenario file, or by every scenario file a `validate_path` walk of a
 /// directory would check; none for other files (leniently: problems are left to the full load, ADR 0022).
 ///
-/// M4 WI-11 stub.
+/// Each entry is resolved against its scenario file's directory. For a directory the scenario files are
+/// taken in sorted path order and the result is their union, first occurrence kept.
 #[must_use]
-#[expect(clippy::todo, reason = "M4 WI-11 stub")]
-pub fn scenario_plugin_paths(_path: &Path) -> Vec<PathBuf> {
-    todo!("M4 WI-11")
+pub fn scenario_plugin_paths(path: &Path) -> Vec<PathBuf> {
+    let files = match fs::metadata(path) {
+        Ok(meta) if meta.is_dir() => toml_files(path, &mut Vec::new()),
+        Ok(_) => vec![path.to_path_buf()],
+        Err(_) => Vec::new(),
+    };
+    let mut out: Vec<PathBuf> = Vec::new();
+    for file in files {
+        let Ok(source) = read_source(&file) else {
+            continue;
+        };
+        if !is_scenario_source(&source) {
+            continue;
+        }
+        let base = file.parent().unwrap_or_else(|| Path::new(""));
+        for entry in plugin_path_strings(&source) {
+            let resolved = base.join(entry);
+            if !out.contains(&resolved) {
+                out.push(resolved);
+            }
+        }
+    }
+    out
 }
