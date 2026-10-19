@@ -6,7 +6,9 @@
 //!
 //! The Perception phase runs sensors and the Behavior phase ticks instantiated behaviors (M3,
 //! ADR 0013, ADR 0015); entities without a behavior keep the M1 route-following stand-in
-//! (ASM-029). The Motion phase runs each entity's motion model. All three run on `Owned`
+//! (ASM-029). A behavior that offers a batch (M4, ADR 0020) is ticked with its group: one
+//! `tick_batch` call per group per tick, groups ordered by their first entity id, members in id
+//! order; the group buffers live in the world and are reused. The Motion phase runs each entity's motion model. All three run on `Owned`
 //! entities only (REQ-K-5). The kernel owns the
 //! master `SimRng` and gives each entity its own stream. `Kernel::snapshot` is synchronous and
 //! sorted by entity id (ASM-039); the observer buffer arrives in M5.

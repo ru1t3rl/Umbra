@@ -31,7 +31,7 @@ Every tick runs the six phases of `Phase::ALL` in this order. Perception, Behavi
 |---|---|
 | Ingest | Network and command input (empty until the adapters and the server exist) |
 | Perception | For each Owned entity with sensors, in `EntityId` order: run its sensors against every other entity (Owned and Remote) as it was before the tick; merge contacts per target (first sensor wins), sort by id (ADR 0015) |
-| Behavior | For each Owned entity, in `EntityId` order: clear its intents; tick its behavior instance with its own state, route view and contacts (it can only append intents), then expand the first `FollowRoute` into the route stand-in's intents; an entity without a behavior runs the M1 route stand-in unchanged (ASM-082) |
+| Behavior | For each Owned entity, in `EntityId` order: clear its intents; tick its behavior instance with its own state, route view and contacts (it can only append intents), then expand the first `FollowRoute` into the route stand-in's intents; an entity without a behavior runs the M1 route stand-in unchanged (ASM-082); M4: an entity whose behavior returns a batch from `Behavior::batch()` is not ticked in that walk but grouped (by `Arc::ptr_eq`, groups ordered by their first entity id); each group is then ticked with one `tick_batch` call over its members in id order, and the batched entities get the `FollowRoute` expansion afterwards in id order (ADR 0020, ASM-126) |
 | Motion | Motion models turn intents into new kinematic state (ASM-030, ASM-094) |
 | Events | Event dispatch, empty so far: `Fire`, `Spawn`, `Despawn` and `Custom` intents are recorded in the snapshot, not applied, until M5 (ADR 0016) |
 | Publish | Output to observers, empty so far (the server and adapters come later) |

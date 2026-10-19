@@ -166,6 +166,7 @@ impl Kernel {
                     b.instantiate(rate).map(|instance| BehaviorSlot {
                         id: b.id().clone(),
                         instance,
+                        batch: b.batch(),
                         last: None,
                     })
                 })
@@ -273,13 +274,10 @@ impl Kernel {
     /// Total capacity, in elements, of the scratch vectors the grouped Behavior phase keeps in the
     /// world and reuses between ticks (ADR 0020). Diagnostic probe for the "no growth after warm-up"
     /// test (M4 AT-6); it never changes behavior or state.
-    ///
-    /// M4 WI-6 stub: WI-6 sums the capacities of the group and item scratch vectors.
     #[doc(hidden)]
     #[must_use]
-    #[expect(clippy::todo, reason = "M4 WI-6 stub")]
     pub fn behavior_scratch_capacity(&self) -> usize {
-        todo!("M4 WI-6")
+        self.world.batch.capacity()
     }
 }
 
@@ -288,7 +286,7 @@ impl Kernel {
 fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>) {
     match phase {
         Phase::Perception => perception::run(world, ctx),
-        Phase::Behavior => world.for_each_mut(|e| behavior::run(e, ctx)),
+        Phase::Behavior => behavior::run_phase(world, ctx),
         Phase::Motion => world.for_each_mut(|e| {
             if e.ownership.is_owned() {
                 motion::step(e.motion, e.state, &e.intents.0, ctx);

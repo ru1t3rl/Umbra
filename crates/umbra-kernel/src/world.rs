@@ -8,13 +8,17 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use umbra_core::{
-    BehaviorId, BehaviorInstance, Contact, Ecef, EntityId, Force, Intent, KinematicState,
-    MotionModel, Ownership, RngStream, Sensor, SimRng, Status, StreamKey,
+    BehaviorBatch, BehaviorId, BehaviorInstance, Contact, Ecef, EntityId, Force, Intent,
+    KinematicState, MotionModel, Ownership, RngStream, Sensor, SimRng, Status, StreamKey,
 };
 
 use crate::error::{KernelError, RouteParam};
 use crate::kernel::{EntityInit, RouteInit};
 use crate::systems::perception::Scratch;
+
+mod batch;
+
+pub(crate) use batch::BatchScratch;
 
 /// The motion model instance of an entity (REQ-M-4).
 pub(crate) struct MotionRef(pub(crate) Arc<dyn MotionModel>);
@@ -47,6 +51,8 @@ pub(crate) struct Contacts(pub(crate) Vec<Contact>);
 pub(crate) struct BehaviorSlot {
     pub(crate) id: BehaviorId,
     pub(crate) instance: Box<dyn BehaviorInstance>,
+    /// The batch this behavior is ticked by, if any (ADR 0020); from `Behavior::batch()` at spawn.
+    pub(crate) batch: Option<Arc<dyn BehaviorBatch>>,
     pub(crate) last: Option<Status>,
 }
 
@@ -131,6 +137,8 @@ pub(crate) struct World {
     next_id: Option<EntityId>,
     /// Perception buffers reused across ticks (ASM-093 (f)); taken out while the phase runs.
     pub(crate) perception: Scratch,
+    /// Grouped Behavior phase buffers reused across ticks (ADR 0020); taken out while it runs.
+    pub(crate) batch: BatchScratch,
 }
 
 fn is_finite(v: umbra_core::Vec3) -> bool {
@@ -181,6 +189,7 @@ impl World {
             sensor_owners: 0,
             next_id: EntityId::new(1),
             perception: Scratch::default(),
+            batch: BatchScratch::default(),
         }
     }
 

@@ -176,7 +176,6 @@ fn batched_equals_unbatched_tick_by_tick() {
 
 /// ADR 0020, REQ-B-4: one `tick_batch` call per group per tick, members in entity id order.
 #[test]
-#[ignore = "WI-6"]
 fn one_tick_batch_per_group_per_tick_members_in_id_order() {
     let log = new_log();
     let batch = recording(1, &log);
@@ -199,7 +198,6 @@ fn one_tick_batch_per_group_per_tick_members_in_id_order() {
 
 /// ADR 0020: groups are ordered by their first entity id, never by address or creation order.
 #[test]
-#[ignore = "WI-6"]
 fn groups_ordered_by_first_entity_id() {
     let log = new_log();
     // The batch created first is used by the entities that come later: creation order and address
@@ -227,7 +225,6 @@ fn groups_ordered_by_first_entity_id() {
 
 /// ADR 0020: the group order follows the first id even when the first group's tag sorts last.
 #[test]
-#[ignore = "WI-6"]
 fn group_order_does_not_follow_spawn_of_the_batch_object() {
     let log = new_log();
     let first_created = recording(1, &log);
@@ -246,7 +243,6 @@ fn group_order_does_not_follow_spawn_of_the_batch_object() {
 
 /// REQ-K-5, ADR 0020: a Remote entity never reaches a batch; its Owned twin does.
 #[test]
-#[ignore = "WI-6"]
 fn remote_entities_never_batched() {
     let log = new_log();
     let batch = recording(1, &log);
@@ -279,7 +275,6 @@ fn remote_entities_never_batched() {
 /// ADR 0020, ADR 0013: batched and unbatched entities side by side give the same world as an
 /// all-unbatched run; the batch sees only its own members.
 #[test]
-#[ignore = "WI-6"]
 fn mixed_batched_and_unbatched() {
     let log = new_log();
     let batch = recording(1, &log);
@@ -307,7 +302,6 @@ fn mixed_batched_and_unbatched() {
 /// ADR 0016, ADR 0020: `FollowRoute` is expanded for batched entities after the group ticked, and
 /// gives the route progress of an unbatched entity.
 #[test]
-#[ignore = "WI-6"]
 fn follow_route_expanded_for_batched_entities() {
     let model = Stub::new(
         "test.model.drift",
@@ -361,7 +355,6 @@ fn follow_route_expanded_for_batched_entities() {
 /// not asserted (`BatchItem<'a>` is invariant in `'a`, so a stable address would be an accident of
 /// std's allocation reuse, not a guarantee).
 #[test]
-#[ignore = "WI-6"]
 fn no_allocation_growth_after_warm_up() {
     let log = new_log();
     let batch = recording(1, &log);
