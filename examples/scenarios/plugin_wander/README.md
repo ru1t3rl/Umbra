@@ -16,12 +16,13 @@ is required; without it validation reports `unknown_id` for `example.behavior.wa
 | Entity | Template | Behavior | Notes |
 |---|---|---|---|
 | wander-direct | `example.wander.direct` | `example.behavior.wander` (plugin) | defaults: 5 m/s, a new heading every 10 s (every 300 ticks at 30 Hz); ticked in a batch (REQ-B-4) |
-| wander-graph | `example.wander.graph` | `example.behavior.wander_graph` (file) | calls the plugin as a `subgraph`: `speed_mps` bound to the graph's `speed` key (12 m/s), `turn_every_s = 5`, output `turns` copied to the key `turns`, inside a 45 s `timeout` |
+| wander-graph | `example.wander.graph` | `example.behavior.wander_graph` (file) | calls the plugin as a `subgraph`: `speed_mps` bound to the graph's `speed` key (12 m/s), `turn_every_s = 5`, output `turns` copied to the key `turns`, inside a 20 s `timeout` (at tick 601 the timeout halts the plugin child, `halt_running`, and the graph fails for that one tick; at tick 602 a fresh walk starts with a new heading) |
 | patrol-builtin | `example.wander.patrol` | `builtin.fsm.patrol_and_engage` (built-in) | drives its route east at 10 m/s (no sensor, so it never engages) |
 
 Swapping a behavior is a template change: replace the `ref` in `templates/patrol.toml` by
 `example.behavior.wander` and patrol-builtin wanders too (no scenario or code change).
 
 Flat terrain; every entity stays within about 1 km of its start for the 60 s run. Seed 7, 30 Hz,
-1800 ticks: the final line is `state_hash=3109c928b9d8de94` (Linux, ADR 0003). `umbra run --seed N`
-gives another walk. The determinism gate (gate 4, `plugin_determinism`) runs this scenario.
+1800 ticks: the final line is `state_hash=88954c5dc6b52b48` (Linux, ADR 0003); `umbra run --seed 8`
+gives another walk (`0dbd8be4ed32dc90`). The determinism gate (gate 4, `plugin_determinism`, 900 ticks)
+and the four-process CLI test run this scenario past the first timeout.

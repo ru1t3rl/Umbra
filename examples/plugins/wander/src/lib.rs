@@ -9,7 +9,11 @@
 //!   (REQ-K-4: no private RNG, no wall clock; time is the tick count of the instance);
 //! - every tick it emits `SetSpeed(speed)` and `SetHeading(heading)` and returns Running (forever);
 //! - `speed_mps` is bindable (`param_types`), so a graph calling it as a `subgraph` may bind it to a
-//!   blackboard key (`{ key = .. }`); unsetting the binding falls back to the configured speed;
+//!   blackboard key (`{ key = .. }`); unsetting the binding falls back to the configured speed. A bound
+//!   value that is not a positive number makes `set_input` fail, which the host records as a **plugin
+//!   fault** of this capability (ASM-140): under `on_plugin_fault = "abort"` (the default) the run stops
+//!   with that fault, under `"disable_capability"` the capability is disabled. Non-finite numbers are
+//!   refused by the host before the call (they are never valid blackboard values);
 //! - output `turns` (integer): how many headings it has drawn since it was created or last halted;
 //! - `halt` resets the instance (timer and `turns`), is idempotent and safe before the first tick;
 //!   `halt_running` keeps the SDK default (the same full reset), so a `timeout` that halts it starts a
@@ -195,11 +199,9 @@ impl BehaviorInstance for WanderInstance {
         self.bound_speed_mps = match value {
             None => None,
             Some(Value::Number(n)) if n.is_finite() && n > 0.0 => Some(n),
-            #[expect(
-                clippy::cast_precision_loss,
-                reason = "integer keys feed number params with `i as f64` (ASM-088)"
-            )]
-            Some(Value::Integer(i)) if i > 0 => Some(i as f64),
+            // A non-positive speed is refused: the host records the error as a fault of this
+            // capability (ASM-140). Other types and non-finite numbers never get here (the host
+            // checks the declared type and finiteness first); the arm keeps the match total.
             Some(other) => {
                 return Err(Error::new(format!(
                     "speed_mps must be a number > 0, got {other:?}"

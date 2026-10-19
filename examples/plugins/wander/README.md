@@ -14,6 +14,12 @@ emits `SetSpeed(speed)` and `SetHeading(heading)`. It never uses its own RNG or 
 headings drawn since the instance was created or halted; `halt` (and the default `halt_running`)
 reset the walk. A bound `speed_mps` overrides the configured speed until the binding is unset.
 
+A bound `speed_mps` must be a positive number. A non-positive value makes `set_input` fail, and the
+host records that as a **plugin fault** of `example.behavior.wander` (ASM-140): under
+`on_plugin_fault = "abort"` (the default) the run stops with the fault (exit 1 from `umbra run`),
+under `"disable_capability"` the capability is disabled and its entities get no more intents from
+it. Non-finite numbers never reach the plugin: the host refuses them before the call.
+
 ## Build and run
 ```
 cargo xtask build-plugins            # or --release; writes target/plugins/wander/

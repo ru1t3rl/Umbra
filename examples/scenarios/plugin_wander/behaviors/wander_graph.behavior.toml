@@ -1,11 +1,11 @@
 # Wander through the plugin behavior, called as a subgraph (REQ-B-9): its `speed_mps` is bound to
 # this graph's `speed` key before every tick, its output `turns` is copied into the key `turns`
-# after every tick, and a `timeout` ends each walk after 45 s (the plugin is halted and starts a
+# after every tick, and a `timeout` ends each walk after 20 s (the plugin is halted and starts a
 # fresh walk on the next tick).
 schema_version = 1
 id = "example.behavior.wander_graph"
 version = "1.0.0"
-description = "Wander at `speed` through the wander plugin, a fresh walk every 45 s"
+description = "Wander at `speed` through the wander plugin, a fresh walk every 20 s"
 root = "walk"
 
 [interface]
@@ -18,7 +18,7 @@ turns = "integer"
 
 [nodes.walk]
 type = "timeout"
-duration_s = 45.0
+duration_s = 20.0
 child = "wander"
 
 [nodes.wander]

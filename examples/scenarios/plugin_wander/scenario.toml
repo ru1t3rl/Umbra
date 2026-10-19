@@ -3,14 +3,14 @@
 #
 #   wander-direct   template ref = "example.behavior.wander" (5 m/s, new heading every 10 s)  [batched]
 #   wander-graph    file graph calling the plugin as a `subgraph`: speed bound from the graph's
-#                   `speed` key (12 m/s), output `turns` bound to a key, inside a `timeout`
+#                   `speed` key (12 m/s), output `turns` bound to a key, inside a 20 s `timeout`
 #   patrol-builtin  `builtin.fsm.patrol_and_engage` along a route east                      [unbatched]
 #
 # There is no `plugin_paths` here (ASM-113): a build directory is not portable. Run it with
 #   cargo xtask build-plugins
 #   umbra run examples/scenarios/plugin_wander/scenario.toml --plugin-path target/plugins
 #
-# Flat terrain; the walks stay within a few hundred meters of their starts (at most 12 m/s for 60 s).
+# Flat terrain; the walks stay within about a kilometer of their starts (at most 12 m/s for 60 s).
 # Coordinates: lat = 52 + north / 111267, lon = 4 + east / 68684, rounded to 7 decimals (1 cm).
 schema_version = 1
 
