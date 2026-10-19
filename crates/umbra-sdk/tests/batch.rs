@@ -10,7 +10,6 @@ use umbra_sdk::abi::{
 
 /// R-B2: after a clean call no status is left `UNSET`; the numbering matches the ABI.
 #[test]
-#[ignore = "WI-7"]
 fn statuses_written_for_every_item() {
     reset();
     let mut rig = Rig::new(&[(1, 11), (2, 22), (3, 33)], "{}");
@@ -41,7 +40,6 @@ fn per_item(all: &[Pushed], items: usize) -> Vec<Vec<(u32, u64)>> {
 /// ADR 0020: one call over N items equals N calls over one item each (statuses, intents per item,
 /// draws per token).
 #[test]
-#[ignore = "WI-7"]
 fn tick_batch_equals_single_ticks() {
     let members = [(1_u64, 11_u64), (2, 22), (3, 33), (4, 44)];
 
@@ -87,7 +85,6 @@ fn tick_batch_equals_single_ticks() {
 /// R-B4, REQ-K-4: the plugin draws only through the host API, with the token of the item it is ticking
 /// and the image's host context.
 #[test]
-#[ignore = "WI-7"]
 fn rng_only_through_host_api_with_own_token() {
     reset();
     let mut rig = Rig::new(&[(1, 11), (2, 22)], "{}");
@@ -114,7 +111,6 @@ fn rng_only_through_host_api_with_own_token() {
 /// R-M1: a fault in one item's tick makes the whole call report the code (the host then discards the
 /// batch, ADR 0020); the SDK does not continue past a panic.
 #[test]
-#[ignore = "WI-7"]
 fn panic_in_one_item_is_reported_for_the_call() {
     reset();
     let mut rig = Rig::new(&[(1, 11)], "{\"panic\":\"tick\"}");

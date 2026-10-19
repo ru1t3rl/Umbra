@@ -43,7 +43,6 @@ export_plugin! {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn export_macro_compiles_under_forbid_unsafe_code() {
     let host = UmbraHostApi {
         abi_version: UMBRA_ABI_VERSION,

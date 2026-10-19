@@ -25,7 +25,6 @@ fn params(mode: &str) -> String {
 /// REQ-P-7: a panic in each export is `UMBRA_ERR_PANIC`, with the panic message in the error sink where
 /// the export has one.
 #[test]
-#[ignore = "WI-7"]
 fn panic_in_each_export_is_err_panic_with_message() {
     reset();
     let (code, _, msg) = configure(&params("configure"));
@@ -80,7 +79,6 @@ fn panic_in_each_export_is_err_panic_with_message() {
 /// R-M1: a panic payload whose `Drop` panics again is dropped inside a nested guard; the call still
 /// returns an error code and the next call works.
 #[test]
-#[ignore = "WI-7"]
 fn panicking_payload_drop_does_not_escape() {
     reset();
     let mut rig = Rig::new(&[(1, 11)], &params("drop_payload"));
@@ -94,7 +92,6 @@ fn panicking_payload_drop_does_not_escape() {
 
 /// R-M1: `destroy_*` cannot report; a panic in either is swallowed (an escape would abort the process).
 #[test]
-#[ignore = "WI-7"]
 fn destroy_panics_are_swallowed() {
     let (_, b, _) = configure(&params("destroy_instance"));
     let (_, i, _) = instantiate(b);
@@ -110,7 +107,6 @@ fn destroy_panics_are_swallowed() {
 /// REQ-P-6: an `Error::params` returned by `configure` is `UMBRA_ERR_PARAMS` with its message, and no
 /// handle; so is the error of `Params::value` on text that is not JSON (the SDK maps the error's code).
 #[test]
-#[ignore = "WI-7"]
 fn bad_params_json_is_err_params() {
     let (code, handle, msg) = configure("{not json");
 
@@ -147,7 +143,6 @@ fn assert_rejected(name: &str, forge: impl FnOnce(&mut Rig, &mut UmbraBehaviorBa
 
 /// R-M2: every malformed-batch row is rejected before the trait is called.
 #[test]
-#[ignore = "WI-7"]
 fn malformed_batch_rejected_before_trait_call() {
     assert_rejected("null items", |_, b| b.items = std::ptr::null());
     assert_rejected("null statuses", |_, b| b.statuses = std::ptr::null_mut());
@@ -194,7 +189,6 @@ fn malformed_batch_rejected_before_trait_call() {
 /// is refused before the trait is called: invalid-argument code and no handle (there is no sink to
 /// write a message to).
 #[test]
-#[ignore = "WI-7"]
 fn malformed_error_sink_rejected_before_trait_call() {
     type Forge<T> = fn(&mut T);
     let forged: [(&str, Forge<umbra_sdk::abi::UmbraErrorSink>); 3] = [
@@ -224,7 +218,6 @@ fn malformed_error_sink_rejected_before_trait_call() {
 /// R-M2: the same for the value sink handed to `output`: refused before the trait is called, and
 /// nothing is written to the sink.
 #[test]
-#[ignore = "WI-7"]
 fn malformed_value_sink_rejected_before_trait_call() {
     type Forge<T> = fn(&mut T);
     let forged: [(&str, Forge<UmbraValueSink>); 3] = [
@@ -253,7 +246,6 @@ fn malformed_value_sink_rejected_before_trait_call() {
 
 /// REQ-P-6: a header with the plugin's own major is accepted (control for the rows above).
 #[test]
-#[ignore = "WI-7"]
 fn well_formed_batch_is_accepted() {
     reset();
     let mut rig = Rig::new(&[(1, 11)], "{}");
@@ -262,4 +254,251 @@ fn well_formed_batch_is_accepted() {
     let (code, _) = rig.tick(0);
 
     assert_eq!(code, UMBRA_OK);
+}
+
+/// R-M2 (WI-7): malformed arrays and flags inside an entity view are refused before any trait call.
+#[test]
+fn malformed_view_arrays_rejected_before_trait_call() {
+    static ROUTE: [umbra_sdk::abi::UmbraVec3; 1] = [umbra_sdk::abi::UmbraVec3 {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    }];
+    assert_rejected("null route with a length", |r, _| {
+        r.views[0].has_route = 1;
+        r.views[0].route_len = 2;
+    });
+    assert_rejected("misaligned route", |r, _| {
+        r.views[0].has_route = 1;
+        // SAFETY: only the address is computed; a correct SDK rejects it without reading.
+        r.views[0].route = unsafe { ROUTE.as_ptr().cast::<u8>().add(4) }.cast();
+        r.views[0].route_len = 1;
+    });
+    assert_rejected("route length overflows", |r, _| {
+        r.views[0].has_route = 1;
+        r.views[0].route = ROUTE.as_ptr();
+        r.views[0].route_len = usize::MAX / 8;
+    });
+    assert_rejected("has_route 2", |r, _| r.views[0].has_route = 2);
+    assert_rejected("route_complete 7", |r, _| r.views[1].route_complete = 7);
+    assert_rejected("null contacts with a count", |r, _| {
+        r.views[1].contact_count = 1;
+    });
+    assert_rejected("short contact struct_size", |r, _| {
+        let mut c = contact_of(3);
+        c.struct_size = 16;
+        r.views[0].contacts = Box::leak(Box::new([c])).as_ptr();
+        r.views[0].contact_count = 1;
+    });
+    assert_rejected("contact of another major", |r, _| {
+        let mut c = contact_of(3);
+        c.abi_version = (1 << 16) | UMBRA_ABI_VERSION;
+        r.views[0].contacts = Box::leak(Box::new([c])).as_ptr();
+        r.views[0].contact_count = 1;
+    });
+    assert_rejected("invalid UTF-8 in a contact force", |r, _| {
+        static BAD: [u8; 1] = [0xC0];
+        let mut c = contact_of(3);
+        c.force = UmbraStr {
+            ptr: BAD.as_ptr(),
+            len: 1,
+        };
+        r.views[1].contacts = Box::leak(Box::new([c])).as_ptr();
+        r.views[1].contact_count = 1;
+    });
+    assert_rejected("short view struct_size", |r, _| r.views[1].struct_size = 8);
+    assert_rejected("null intent push", |_, b| {
+        let mut sink = support::intent_sink();
+        sink.push = None;
+        b.intents = Box::leak(Box::new(sink));
+    });
+    assert_rejected("misaligned statuses", |r, b| {
+        // SAFETY: only the address is computed; a correct SDK rejects it without writing.
+        b.statuses = unsafe { r.statuses.as_mut_ptr().cast::<u8>().add(1) }.cast();
+    });
+    assert_rejected("null batch instance", |r, _| {
+        r.items[1].instance = std::ptr::null_mut();
+    });
+    assert_rejected("a behavior handle passed as an instance", |r, _| {
+        r.items[1].instance = r.items[1].behavior.cast();
+    });
+}
+
+fn contact_of(entity: u64) -> umbra_sdk::abi::UmbraContact {
+    umbra_sdk::abi::UmbraContact {
+        abi_version: UMBRA_ABI_VERSION,
+        struct_size: size_of::<umbra_sdk::abi::UmbraContact>() as u32,
+        entity,
+        position: umbra_sdk::abi::UmbraVec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        velocity: umbra_sdk::abi::UmbraVec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        force: s(""),
+        range_m: 1.0,
+    }
+}
+
+/// R-M2 (WI-7): a null batch, a null error sink and a sink without `set` are refused; with no
+/// usable sink there is no message.
+#[test]
+fn null_batch_and_unusable_error_sinks_are_invalid_argument() {
+    reset();
+    let f = vtable().tick_batch.expect("tick_batch");
+    let err = err_sink();
+    // SAFETY: a null batch is refused before reading.
+    assert_eq!(
+        unsafe { f(std::ptr::null(), &err) },
+        UMBRA_ERR_INVALID_ARGUMENT
+    );
+    assert!(support::take_err().is_some(), "message for a null batch");
+
+    let mut rig = Rig::new(&[(1, 11)], "{}");
+    let b = rig.batch(0);
+    // SAFETY: a valid batch; the null sink is refused before anything else.
+    assert_eq!(
+        unsafe { f(&b, std::ptr::null()) },
+        UMBRA_ERR_INVALID_ARGUMENT
+    );
+    let mut no_set = err_sink();
+    no_set.set = None;
+    // SAFETY: as above, with a sink that has no `set`.
+    assert_eq!(unsafe { f(&b, &no_set) }, UMBRA_ERR_INVALID_ARGUMENT);
+    assert!(draws().is_empty() && pushed().is_empty(), "no trait call");
+}
+
+/// ADR 0020 (WI-7): `configure` and `instantiate` refuse a null out-pointer; `instantiate`,
+/// `halt`, `halt_running`, `set_input` and `output` refuse a handle that is null or belongs to
+/// another capability or kind (the SDK tags every handle).
+#[test]
+fn null_out_and_foreign_handles_are_invalid_argument() {
+    reset();
+    let vt = vtable();
+    let err = err_sink();
+    // SAFETY: valid params and sink; the null out-pointer is refused before writing.
+    let code = unsafe { vt.configure.expect("configure")(s("{}"), std::ptr::null_mut(), &err) };
+    assert_eq!(code, UMBRA_ERR_INVALID_ARGUMENT);
+    let (_, b, _) = configure("{}");
+    // SAFETY: a live behavior; the null out-pointer is refused before writing.
+    let code = unsafe { vt.instantiate.expect("instantiate")(b, 30, std::ptr::null_mut(), &err) };
+    assert_eq!(code, UMBRA_ERR_INVALID_ARGUMENT);
+    let (_, i, _) = instantiate(b);
+
+    // An instance passed as a behavior, and a behavior passed as an instance.
+    let mut out: *mut umbra_sdk::abi::UmbraInstance = std::ptr::null_mut();
+    // SAFETY: `i` is a live SDK handle of another kind; refused after reading its tag only.
+    let code = unsafe { vt.instantiate.expect("instantiate")(i.cast(), 30, &mut out, &err) };
+    assert_eq!(code, UMBRA_ERR_INVALID_ARGUMENT);
+    assert!(out.is_null());
+    // SAFETY: as above.
+    assert_eq!(
+        unsafe { vt.halt.expect("halt")(b.cast()) },
+        UMBRA_ERR_INVALID_ARGUMENT
+    );
+    // SAFETY: a null handle is refused before reading.
+    assert_eq!(
+        unsafe { vt.halt_running.expect("halt_running")(std::ptr::null_mut()) },
+        UMBRA_ERR_INVALID_ARGUMENT
+    );
+
+    // An instance of capability 1 (`sdk_second`) passed to capability 0.
+    // SAFETY: capability 1 is a behavior capability whose vtable is a static.
+    let second = unsafe {
+        &*(support::capability(1)
+            .vtable
+            .cast::<umbra_sdk::abi::UmbraBehaviorVTable>())
+    };
+    let mut b2: *mut umbra_sdk::abi::UmbraBehavior = std::ptr::null_mut();
+    // SAFETY: valid params, out and sink.
+    assert_eq!(
+        unsafe { second.configure.expect("configure")(s("{}"), &mut b2, &err) },
+        UMBRA_OK
+    );
+    let mut i2: *mut umbra_sdk::abi::UmbraInstance = std::ptr::null_mut();
+    // SAFETY: a live behavior of capability 1.
+    assert_eq!(
+        unsafe { second.instantiate.expect("instantiate")(b2, 30, &mut i2, &err) },
+        UMBRA_OK
+    );
+    // SAFETY: a live SDK handle of another capability; refused after reading its tag only.
+    assert_eq!(
+        unsafe { vt.halt.expect("halt")(i2) },
+        UMBRA_ERR_INVALID_ARGUMENT
+    );
+    // SAFETY: as above.
+    let code = unsafe { vt.set_input.expect("set_input")(i2, s("echo"), std::ptr::null(), &err) };
+    assert_eq!(code, UMBRA_ERR_INVALID_ARGUMENT);
+    let sink = support::value_sink();
+    // SAFETY: as above.
+    assert_eq!(
+        unsafe { vt.output.expect("output")(i2, s("turns"), &sink) },
+        UMBRA_ERR_INVALID_ARGUMENT
+    );
+    assert_eq!(support::values(), Vec::new());
+
+    // Destroying a foreign handle through the wrong capability leaves it alone (logged); the right
+    // capability then destroys each handle once.
+    // SAFETY: live handles; the foreign destroy is refused after reading the tag.
+    unsafe {
+        vt.destroy_instance.expect("destroy_instance")(i2);
+        second.destroy_instance.expect("destroy_instance")(i2);
+        second.destroy_behavior.expect("destroy_behavior")(b2);
+        vt.destroy_instance.expect("destroy_instance")(i);
+        vt.destroy_behavior.expect("destroy_behavior")(b);
+        vt.destroy_instance.expect("destroy_instance")(std::ptr::null_mut());
+    }
+}
+
+/// ASM-096 (c), ADR 0020 (WI-7): `halt` and `halt_running` succeed, are idempotent and work on an
+/// instance that never ticked.
+#[test]
+fn halt_and_halt_running_are_idempotent() {
+    reset();
+    let (_, b, _) = configure("{}");
+    let (_, i, _) = instantiate(b);
+    let vt = vtable();
+    // SAFETY: a live instance, halted repeatedly before and after a tick.
+    unsafe {
+        assert_eq!(vt.halt.expect("halt")(i), UMBRA_OK);
+        assert_eq!(vt.halt.expect("halt")(i), UMBRA_OK);
+        assert_eq!(vt.halt_running.expect("halt_running")(i), UMBRA_OK);
+        assert_eq!(vt.halt_running.expect("halt_running")(i), UMBRA_OK);
+    }
+}
+
+/// REQ-P-6 (WI-7): params that are not UTF-8 and a trait error from `set_input` both reach the error
+/// sink with their codes.
+#[test]
+fn non_utf8_params_and_set_input_errors_are_reported() {
+    static BAD: [u8; 2] = [b'{', 0xFF];
+    reset();
+    let err = err_sink();
+    let mut out: *mut umbra_sdk::abi::UmbraBehavior = std::ptr::null_mut();
+    let bad = UmbraStr {
+        ptr: BAD.as_ptr(),
+        len: 2,
+    };
+    // SAFETY: a live 2-byte array, out and sink.
+    let code = unsafe { vtable().configure.expect("configure")(bad, &mut out, &err) };
+    assert_eq!(code, UMBRA_ERR_INVALID_ARGUMENT);
+    assert!(out.is_null());
+    assert!(support::take_err().is_some_and(|m| m.contains("UTF-8")));
+
+    let rig = Rig::new(&[(1, 11)], "{}");
+    // SAFETY: a live instance; valid strings and sink.
+    let code = unsafe {
+        vtable().set_input.expect("set_input")(
+            rig.items[0].instance,
+            s("nope"),
+            std::ptr::null(),
+            &err,
+        )
+    };
+    assert_eq!(code, umbra_sdk::abi::UMBRA_ERR_INTERNAL);
+    assert!(support::take_err().is_some_and(|m| m.contains("undeclared input nope")));
 }

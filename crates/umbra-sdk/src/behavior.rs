@@ -1,11 +1,19 @@
 //! The safe behavior traits and value types (REQ-SDK-1, ADR 0020).
 //!
-//! M4 step 4 stub: signatures exactly as in the M4 plan, bodies `todo!()` where they carry logic.
-//! WI-7 replaces the bodies.
+//! A plugin implements [`BehaviorFactory`] (params to a configured behavior), [`Behavior`] (one
+//! instance per entity) and [`BehaviorInstance`] (tick, halt, ports). The views and outputs a tick sees
+//! ([`TickContext`], [`EntityView`], [`Intents`]) are built by the SDK from the host's batch and are
+//! valid only during that tick (REQ-P-11). Randomness comes only from [`TickContext::rng`], which draws
+//! the entity's own stream through the host API (REQ-K-4); time is [`TickContext::tick`] and
+//! [`TickContext::rate_hz`]. A plugin must not use its own RNG or the wall clock.
 
-use core::marker::PhantomData;
+use std::cell::Cell;
+use std::fmt;
 
+use crate::abi::{UMBRA_ERR_STATE, UMBRA_OK, UmbraCode, UmbraToken, UmbraVec3};
+use crate::convert::{IntentSink, ViewIn};
 use crate::error::Error;
+use crate::host::HostCopy;
 
 /// Result of one behavior tick (ADR 0013); the host maps it to `UMBRA_STATUS_*`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -98,6 +106,55 @@ impl Interface {
         self.result = Some(text.to_owned());
         self
     }
+
+    /// Whether any bindable param is declared (the vtable then carries `set_input`, ADR 0020).
+    pub(crate) fn has_params(&self) -> bool {
+        !self.params.is_empty()
+    }
+
+    /// Whether any output is declared (the vtable then carries `output`, ADR 0020).
+    pub(crate) fn has_outputs(&self) -> bool {
+        !self.outputs.is_empty()
+    }
+
+    /// The capability metadata JSON of ADR 0020 (`param_types`, `outputs`, `result`, each only when
+    /// declared); empty text when nothing is declared. A name declared twice keeps its last type.
+    pub(crate) fn metadata(&self) -> String {
+        let ports = |list: &[(String, ValueType)]| {
+            list.iter()
+                .map(|(name, ty)| (name.clone(), serde_json::Value::from(ty.name())))
+                .collect::<serde_json::Map<_, _>>()
+        };
+        let mut meta = serde_json::Map::new();
+        if self.has_params() {
+            meta.insert("param_types".into(), ports(&self.params).into());
+        }
+        if self.has_outputs() {
+            meta.insert("outputs".into(), ports(&self.outputs).into());
+        }
+        if let Some(text) = &self.result {
+            meta.insert("result".into(), text.clone().into());
+        }
+        if meta.is_empty() {
+            String::new()
+        } else {
+            serde_json::Value::Object(meta).to_string()
+        }
+    }
+}
+
+impl ValueType {
+    /// The type's name in the capability metadata (`BbType` names, ADR 0014).
+    fn name(self) -> &'static str {
+        match self {
+            Self::Bool => "bool",
+            Self::Number => "number",
+            Self::Integer => "integer",
+            Self::String => "string",
+            Self::Entity => "entity",
+            Self::Position => "position",
+        }
+    }
 }
 
 /// The configure params as JSON text.
@@ -117,9 +174,16 @@ impl Params<'_> {
     ///
     /// # Errors
     /// `Error::params` when the text is not JSON.
-    #[expect(clippy::todo, reason = "M4 WI-7 stub")]
     pub fn value(&self) -> Result<serde_json::Value, Error> {
-        todo!("M4 WI-7")
+        serde_json::from_str(self.json)
+            .map_err(|e| Error::params(format!("params are not JSON: {e}")))
+    }
+}
+
+impl<'a> Params<'a> {
+    /// Params over the JSON text of a `configure` call.
+    pub(crate) fn new(json: &'a str) -> Self {
+        Self { json }
     }
 }
 
@@ -138,10 +202,69 @@ pub struct Contact<'a> {
     pub range_m: f64,
 }
 
-/// The entity's route as the plugin sees it (fields are defined by WI-7; the plan names only the type).
-#[derive(Debug, Clone, Copy)]
+/// The entity's route as the plugin sees it: its ECEF waypoints, the index of the next one and whether
+/// the last one was reached (`RouteView` in core).
+#[derive(Clone, Copy)]
 pub struct Route<'a> {
-    marker: PhantomData<&'a ()>,
+    waypoints: &'a [UmbraVec3],
+    next: usize,
+    complete: bool,
+}
+
+impl<'a> Route<'a> {
+    /// A route over host-written waypoints, valid for the tick.
+    pub(crate) fn new(waypoints: &'a [UmbraVec3], next: usize, complete: bool) -> Self {
+        Self {
+            waypoints,
+            next,
+            complete,
+        }
+    }
+
+    /// Number of waypoints.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.waypoints.len()
+    }
+
+    /// Whether the route has no waypoints.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.waypoints.is_empty()
+    }
+
+    /// Waypoint `index` (ECEF, m), if it exists.
+    #[must_use]
+    pub fn waypoint(&self, index: usize) -> Option<[f64; 3]> {
+        self.waypoints.get(index).map(|w| [w.x, w.y, w.z])
+    }
+
+    /// The waypoints in order (ECEF, m).
+    pub fn waypoints(&self) -> impl Iterator<Item = [f64; 3]> + 'a {
+        self.waypoints.iter().map(|w| [w.x, w.y, w.z])
+    }
+
+    /// Index of the next waypoint.
+    #[must_use]
+    pub fn next_index(&self) -> usize {
+        self.next
+    }
+
+    /// Whether the last waypoint has been reached.
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        self.complete
+    }
+}
+
+impl fmt::Debug for Route<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Route")
+            .field("waypoints", &self.waypoints().collect::<Vec<_>>())
+            .field("next", &self.next)
+            .field("complete", &self.complete)
+            .finish()
+    }
 }
 
 /// Read-only view of the entity being ticked.
@@ -159,14 +282,28 @@ pub struct EntityView<'a> {
     pub force: Option<&'a str>,
     /// Route, if any.
     pub route: Option<Route<'a>>,
+    /// Read through [`EntityView::contacts`].
+    contacts: &'a [Contact<'a>],
 }
 
 impl<'a> EntityView<'a> {
     /// The contacts of the last Perception phase, sorted by id.
     #[must_use]
-    #[expect(clippy::todo, reason = "M4 WI-7 stub")]
     pub fn contacts(&self) -> &[Contact<'a>] {
-        todo!("M4 WI-7")
+        self.contacts
+    }
+
+    /// The view of a validated host view, with its contacts already converted.
+    pub(crate) fn new(view: &ViewIn<'a>, contacts: &'a [Contact<'a>]) -> Self {
+        Self {
+            id: view.id,
+            position: view.position,
+            velocity: view.velocity,
+            orientation: view.orientation,
+            force: view.force,
+            route: view.route,
+            contacts,
+        }
     }
 }
 
@@ -211,75 +348,149 @@ pub enum Intent<'a> {
     },
 }
 
+/// The first host refusal (RNG draw or intent) of one tick: the SDK ends the call with its code.
+#[derive(Debug, Default)]
+pub(crate) struct Fault(Cell<Option<(UmbraCode, &'static str)>>);
+
+impl Fault {
+    /// Records `code` from `call` unless a fault is already recorded.
+    fn record(&self, code: UmbraCode, call: &'static str) {
+        if self.0.get().is_none() {
+            self.0.set(Some((code, call)));
+        }
+    }
+
+    /// The recorded fault, if any.
+    pub(crate) fn get(&self) -> Option<(UmbraCode, &'static str)> {
+        self.0.get()
+    }
+}
+
 /// Append-only intent output of one batch item.
 #[derive(Debug)]
 pub struct Intents<'a> {
-    marker: PhantomData<&'a mut ()>,
+    sink: IntentSink,
+    item: usize,
+    fault: &'a Fault,
+}
+
+impl<'a> Intents<'a> {
+    /// The intents of batch item `item`.
+    pub(crate) fn new(sink: IntentSink, item: usize, fault: &'a Fault) -> Self {
+        Self { sink, item, fault }
+    }
 }
 
 impl Intents<'_> {
     /// Pushes an intent.
     ///
     /// # Errors
-    /// The host refused it (the capability is then faulted).
-    #[expect(clippy::todo, reason = "M4 WI-7 stub")]
-    pub fn push(&mut self, _intent: Intent<'_>) -> Result<(), Error> {
-        todo!("M4 WI-7")
+    /// The host refused it (the capability is then faulted, and this call of `tick_batch` returns the
+    /// host's code whether or not the behavior looks at the error).
+    pub fn push(&mut self, intent: Intent<'_>) -> Result<(), Error> {
+        let code = self.sink.push(self.item, &intent);
+        if code == UMBRA_OK {
+            Ok(())
+        } else {
+            self.fault.record(code, "intent push");
+            Err(Error::with_code(
+                code,
+                format!("the host refused an intent (code {code})"),
+            ))
+        }
     }
 }
 
 /// Time and randomness of one tick call.
 #[derive(Debug)]
 pub struct TickContext<'a> {
-    marker: PhantomData<&'a mut ()>,
+    tick: u64,
+    rate_hz: u32,
+    host: Option<HostCopy>,
+    rng: UmbraToken,
+    fault: &'a Fault,
+}
+
+impl<'a> TickContext<'a> {
+    /// The context of one batch item.
+    pub(crate) fn new(
+        tick: u64,
+        rate_hz: u32,
+        host: Option<HostCopy>,
+        rng: UmbraToken,
+        fault: &'a Fault,
+    ) -> Self {
+        Self {
+            tick,
+            rate_hz,
+            host,
+            rng,
+            fault,
+        }
+    }
 }
 
 impl TickContext<'_> {
     /// Simulation tick number.
     #[must_use]
-    #[expect(clippy::todo, reason = "M4 WI-7 stub")]
     pub fn tick(&self) -> u64 {
-        todo!("M4 WI-7")
+        self.tick
     }
 
     /// Tick rate in Hz.
     #[must_use]
-    #[expect(clippy::todo, reason = "M4 WI-7 stub")]
     pub fn rate_hz(&self) -> u32 {
-        todo!("M4 WI-7")
+        self.rate_hz
     }
 
     /// The entity's own RNG stream, through the host API.
-    #[expect(clippy::todo, reason = "M4 WI-7 stub")]
     pub fn rng(&mut self) -> Rng<'_> {
-        todo!("M4 WI-7")
+        Rng {
+            host: self.host,
+            token: self.rng,
+            fault: self.fault,
+        }
     }
 }
 
 /// Draws through the host API with this item's token; a refused draw makes the call report a fault.
 #[derive(Debug)]
 pub struct Rng<'a> {
-    marker: PhantomData<&'a mut ()>,
+    host: Option<HostCopy>,
+    token: UmbraToken,
+    fault: &'a Fault,
 }
 
 impl Rng<'_> {
-    /// Next `u64`.
-    #[expect(clippy::todo, reason = "M4 WI-7 stub")]
+    /// Next `u64`. A refused draw returns 0 and makes this `tick_batch` call return the host's code.
     pub fn next_u64(&mut self) -> u64 {
-        todo!("M4 WI-7")
+        let drawn = self
+            .host
+            .ok_or(UMBRA_ERR_STATE)
+            .and_then(|h| h.next_u64(self.token));
+        drawn.unwrap_or_else(|code| {
+            self.fault.record(code, "rng_next_u64");
+            0
+        })
     }
 
-    /// Next `f64` in `[0, 1)`.
-    #[expect(clippy::todo, reason = "M4 WI-7 stub")]
+    /// Next `f64` in `[0, 1)`. A refused draw returns 0.0 and makes this `tick_batch` call return the
+    /// host's code.
     pub fn next_f64(&mut self) -> f64 {
-        todo!("M4 WI-7")
+        let drawn = self
+            .host
+            .ok_or(UMBRA_ERR_STATE)
+            .and_then(|h| h.next_f64(self.token));
+        drawn.unwrap_or_else(|code| {
+            self.fault.record(code, "rng_next_f64");
+            0.0
+        })
     }
 }
 
-/// Logs through the host API stored at entry; a no-op before entry.
-#[expect(clippy::todo, reason = "M4 WI-7 stub")]
-pub fn log(_level: Level, _message: &str) {
-    todo!("M4 WI-7")
+/// Logs through the host API stored at entry; a no-op before entry and after `shutdown`.
+pub fn log(level: Level, message: &str) {
+    crate::host::log(level, message);
 }
 
 /// Builds behaviors of one capability from JSON params.

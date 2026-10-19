@@ -13,7 +13,6 @@ use umbra_sdk::abi::{
 };
 
 #[test]
-#[ignore = "WI-7"]
 fn descriptor_lists_capabilities_with_schema_and_metadata() {
     let d = descriptor();
     assert_eq!(text(d.id), "test.plugin.sdk");
@@ -42,7 +41,6 @@ fn descriptor_lists_capabilities_with_schema_and_metadata() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn vtable_has_every_required_entry_and_halt_running() {
     // SAFETY: the vtable is a static of the descriptor.
     let vt = unsafe { &*(capability(0).vtable.cast::<UmbraBehaviorVTable>()) };
@@ -57,7 +55,6 @@ fn vtable_has_every_required_entry_and_halt_running() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn entry_returns_the_same_pointer_twice() {
     let host = host_api();
     let a = umbra_plugin_entry(&raw const host);
@@ -70,7 +67,6 @@ fn entry_returns_the_same_pointer_twice() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn sdk_writes_its_own_minor() {
     let d = descriptor();
     assert_eq!(d.abi_version, UMBRA_ABI_VERSION);

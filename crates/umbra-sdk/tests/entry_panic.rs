@@ -46,7 +46,6 @@ export_plugin! {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn entry_panic_returns_null() {
     let host = UmbraHostApi {
         abi_version: UMBRA_ABI_VERSION,

@@ -25,7 +25,6 @@ use umbra_sdk::abi::{
 
 /// ADR 0016 table: each SDK `Intent` variant becomes the ABI kind and fields the table names.
 #[test]
-#[ignore = "WI-7"]
 fn every_intent_variant_converts() {
     reset();
     let mut rig = Rig::new(&[(1, 11)], "{}");
@@ -110,7 +109,6 @@ fn output(rig: &Rig) -> i32 {
 
 /// REQ-P-6: every value type goes in through `set_input` and comes out of `output` unchanged.
 #[test]
-#[ignore = "WI-7"]
 fn values_round_trip() {
     reset();
     let rig = Rig::new(&[(1, 11)], "{}");
@@ -152,7 +150,6 @@ fn values_round_trip() {
 
 /// ADR 0019: a null value unsets the input; `output` then calls the sink once with null.
 #[test]
-#[ignore = "WI-7"]
 fn null_value_unsets_and_output_reports_unset_once() {
     reset();
     let rig = Rig::new(&[(1, 11)], "{}");
@@ -168,7 +165,6 @@ fn null_value_unsets_and_output_reports_unset_once() {
 
 /// ADR 0019 value checks: a value that breaks the `BbValue` invariants is refused before the trait.
 #[test]
-#[ignore = "WI-7"]
 fn invalid_values_are_rejected_before_the_trait() {
     reset();
     let rig = Rig::new(&[(1, 11)], "{}");
@@ -204,4 +200,108 @@ fn invalid_values_are_rejected_before_the_trait() {
     }
     assert_eq!(output(&rig), UMBRA_OK);
     assert_eq!(values(), [Out::Unset], "nothing was stored");
+}
+
+fn contact(entity: u64, force: &'static str, range_m: f64) -> umbra_sdk::abi::UmbraContact {
+    umbra_sdk::abi::UmbraContact {
+        abi_version: UMBRA_ABI_VERSION,
+        struct_size: size_of::<umbra_sdk::abi::UmbraContact>() as u32,
+        entity,
+        position: UmbraVec3 {
+            x: 10.0,
+            y: 20.0,
+            z: 30.0,
+        },
+        velocity: UmbraVec3 {
+            x: 1.0,
+            y: 0.0,
+            z: -1.0,
+        },
+        force: s(force),
+        range_m,
+    }
+}
+
+/// REQ-P-6 (WI-7): the entity view a tick sees equals the host's view: kinematics, force, route
+/// (waypoints, next index, complete) and contacts in order; empty forces are `None`.
+#[test]
+fn entity_view_converts_route_and_contacts() {
+    reset();
+    let mut rig = Rig::new(&[(5, 55)], "{}");
+    let route = [
+        UmbraVec3 {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        },
+        UmbraVec3 {
+            x: 4.0,
+            y: 5.0,
+            z: 6.0,
+        },
+    ];
+    let contacts = [contact(8, "red", 120.5), contact(9, "", 300.0)];
+    let v = &mut rig.views[0];
+    v.force = s("blue");
+    v.velocity = UmbraVec3 {
+        x: 0.5,
+        y: 0.25,
+        z: 0.0,
+    };
+    v.orientation = umbra_sdk::abi::UmbraQuat {
+        w: 0.5,
+        x: 0.5,
+        y: -0.5,
+        z: 0.5,
+    };
+    v.has_route = 1;
+    v.route_complete = 0;
+    v.route_next = 1;
+    v.route = route.as_ptr();
+    v.route_len = route.len();
+    v.contacts = contacts.as_ptr();
+    v.contact_count = contacts.len();
+
+    let (code, _) = rig.tick(0);
+
+    assert_eq!(code, UMBRA_OK);
+    let got = support::seen();
+    assert_eq!(got.len(), 1);
+    let seen = &got[0];
+    assert_eq!(seen.id, 5);
+    assert_eq!(seen.position, [1.0, 2.0, 3.0]);
+    assert_eq!(seen.velocity, [0.5, 0.25, 0.0]);
+    assert_eq!(seen.orientation, [0.5, 0.5, -0.5, 0.5]);
+    assert_eq!(seen.force.as_deref(), Some("blue"));
+    assert_eq!(
+        seen.route,
+        Some((vec![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], 1, false))
+    );
+    assert_eq!(
+        seen.contacts,
+        [
+            (
+                8,
+                [10.0, 20.0, 30.0],
+                [1.0, 0.0, -1.0],
+                Some("red".to_owned()),
+                120.5
+            ),
+            (9, [10.0, 20.0, 30.0], [1.0, 0.0, -1.0], None, 300.0),
+        ]
+    );
+}
+
+/// REQ-P-6 (WI-7): `has_route == 0` is "no route", whatever the arrays say; no force is `None`.
+#[test]
+fn entity_without_route_or_force_has_none() {
+    reset();
+    let mut rig = Rig::new(&[(4, 44)], "{}");
+
+    let (code, _) = rig.tick(0);
+
+    assert_eq!(code, UMBRA_OK);
+    let seen = &support::seen()[0];
+    assert_eq!((seen.force.clone(), seen.route.clone()), (None, None));
+    assert_eq!(seen.contacts, Vec::new());
 }

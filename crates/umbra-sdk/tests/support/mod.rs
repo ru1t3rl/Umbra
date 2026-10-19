@@ -140,6 +140,7 @@ impl BehaviorInstance for OkInstance {
             Mode::DropPayload => std::panic::panic_any(DropBomb),
             _ => {}
         }
+        record_view(entity);
         let draw = ctx.rng().next_u64();
         if self.ticks == 0 {
             // Every intent variant once, in ABI kind order (AT-3 `every_intent_variant_converts`).
@@ -271,7 +272,51 @@ pub enum Out {
     Position([f64; 3]),
 }
 
+/// One contact as a tick saw it: `(entity, position, velocity, force, range)`.
+pub type SeenContact = (u64, [f64; 3], [f64; 3], Option<String>, f64);
+
+/// What a tick saw of its entity view (WI-7 view conversion checks).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Seen {
+    pub id: u64,
+    pub position: [f64; 3],
+    pub velocity: [f64; 3],
+    pub orientation: [f64; 4],
+    pub force: Option<String>,
+    /// `(waypoints, next index, complete)`.
+    pub route: Option<(Vec<[f64; 3]>, usize, bool)>,
+    pub contacts: Vec<SeenContact>,
+}
+
+fn record_view(entity: &EntityView<'_>) {
+    let seen = Seen {
+        id: entity.id,
+        position: entity.position,
+        velocity: entity.velocity,
+        orientation: entity.orientation,
+        force: entity.force.map(str::to_owned),
+        route: entity
+            .route
+            .map(|r| (r.waypoints().collect(), r.next_index(), r.is_complete())),
+        contacts: entity
+            .contacts()
+            .iter()
+            .map(|c| {
+                (
+                    c.entity,
+                    c.position,
+                    c.velocity,
+                    c.force.map(str::to_owned),
+                    c.range_m,
+                )
+            })
+            .collect(),
+    };
+    SEEN.with(|s| s.borrow_mut().push(seen));
+}
+
 thread_local! {
+    static SEEN: RefCell<Vec<Seen>> = const { RefCell::new(Vec::new()) };
     static DRAWS: RefCell<Vec<Draw>> = const { RefCell::new(Vec::new()) };
     static PUSHED: RefCell<Vec<Pushed>> = const { RefCell::new(Vec::new()) };
     static ERR: RefCell<Option<String>> = const { RefCell::new(None) };
@@ -280,11 +325,15 @@ thread_local! {
 }
 
 pub fn reset() {
+    SEEN.with(|d| d.borrow_mut().clear());
     DRAWS.with(|d| d.borrow_mut().clear());
     PUSHED.with(|d| d.borrow_mut().clear());
     ERR.with(|d| *d.borrow_mut() = None);
     VALUES.with(|d| d.borrow_mut().clear());
     LOGS.with(|d| d.borrow_mut().clear());
+}
+pub fn seen() -> Vec<Seen> {
+    SEEN.with(|d| d.borrow().clone())
 }
 pub fn draws() -> Vec<Draw> {
     DRAWS.with(|d| d.borrow().clone())

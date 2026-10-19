@@ -34,3 +34,23 @@ impl Error {
         self.code
     }
 }
+
+impl Error {
+    /// An error with an explicit boundary code (host refusals, malformed input).
+    pub(crate) fn with_code(code: UmbraCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// A malformed-input error (`UMBRA_ERR_INVALID_ARGUMENT` at the boundary, ADR 0019).
+    pub(crate) fn invalid(message: impl Into<String>) -> Self {
+        Self::with_code(crate::abi::UMBRA_ERR_INVALID_ARGUMENT, message)
+    }
+
+    /// The message written to the host's error sink.
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
+}
