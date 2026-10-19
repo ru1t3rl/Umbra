@@ -13,7 +13,7 @@ Run in that order and stop at the first failure; fix the cause, never weaken a g
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
-cargo test -p umbra-engine --test determinism --test behavior_determinism --locked  # determinism gate (from M1; skipped in M0, ASM-019; behavior_determinism from M3, ASM-087)
+cargo test -p umbra-engine --test determinism --test behavior_determinism --test plugin_determinism --locked  # determinism gate (from M1; skipped in M0, ASM-019; behavior_determinism from M3, ASM-087; plugin_determinism from M4 WI-13, ASM-115)
 cargo xtask check-deps                                       # REQ-A-1..3 dependency rules + NFR-2 (REQ-A-4 is the GUI check, from M8)
 cargo deny check                                             # licenses, bans, sources, advisories
 cargo audit                                                  # vulnerabilities in Cargo.lock
@@ -21,7 +21,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --locked
 cargo xtask gen-api --check                                  # OpenAPI/schema drift (from M5)
 cargo xtask gen-header --check                               # umbra_plugin_api.h drift (from M4)
 cargo build --workspace --release --locked
-cargo xtask build-plugins --release                          # examples/plugins/* (from M4)
+cargo xtask build-plugins --release                          # examples/plugins/* (from M4, active from WI-13)
 cargo test -p umbra-plugin-host --test plugin_failures         # plugin failure matrix (from M4)
 cargo bench -p umbra-kernel --bench tick --no-run --locked                         # benches compile; full runs are manual
 # GUI (from M8; details in the verify-frontend skill)
