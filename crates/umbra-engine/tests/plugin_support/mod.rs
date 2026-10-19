@@ -16,8 +16,9 @@
 //! - `test.behavior.ok`: ticks Running forever, no fault, no intents that need params;
 //! - `test.behavior.draw_speed`: each tick draws `next_u64() % 100` from the entity stream, emits
 //!   `SetSpeed(draw as f64)` and returns Running (twin of the Rust stub in `plugin_example.rs`);
-//! - `test.behavior.needs_target`: schema `{"type":"object","properties":{"target":{"type":"integer"}}}`
-//!   plus metadata `param_types = { target = "entity" }` (binding-only, REQ-B-10); ticks Running;
+//! - `test.behavior.needs_target`: metadata `param_types = { target = "entity" }` (binding-only,
+//!   REQ-B-10) and a schema WITHOUT a `target` property (ADR 0020: `entity` params are binding-only
+//!   and absent from the schema; the host refuses otherwise, ASM-135, ASM-142); ticks Running;
 //! - `test.behavior.cross_param`: params `lo` and `hi` (numbers); `configure` fails when `lo > hi`.
 //!
 //! The fault-mode capabilities are only those a plugin built with `umbra-sdk` can produce (human

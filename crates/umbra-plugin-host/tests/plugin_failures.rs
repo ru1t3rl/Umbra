@@ -118,7 +118,6 @@ fn given_a_null_entry_symbol_then_missing_entry() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn given_an_entry_that_panics_then_null_descriptor() {
     let err = load_error("entry-panics", &["entry_panics"]);
 
@@ -130,7 +129,6 @@ fn given_an_entry_that_panics_then_null_descriptor() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn given_init_returns_an_error_then_init_error() {
     let err = load_error("init-fails", &["init_fails"]);
 
@@ -141,7 +139,6 @@ fn given_init_returns_an_error_then_init_error() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn given_init_panics_then_init_error_with_the_panic_message() {
     let err = load_error("init-panics", &["init_panics"]);
 
@@ -154,7 +151,6 @@ fn given_init_panics_then_init_error_with_the_panic_message() {
 
 /// ADR 0021: `shutdown` runs only after a successful `init`. The fixture's `shutdown` logs `shutdown`.
 #[test]
-#[ignore = "WI-10"]
 fn given_init_panics_then_no_shutdown_runs_afterwards() {
     let (mut host, recorder) = logging_host();
     let pkgs = PluginHost::discover(&[package_dir("init-panics-quiet", &["init_panics"])])
@@ -171,7 +167,6 @@ fn given_init_panics_then_no_shutdown_runs_afterwards() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn given_shutdown_panics_then_dropping_the_host_swallows_and_logs_it() {
     let (host, registry, recorder) = fixture("shutdown-panics", &["shutdown_panics"]);
 
@@ -190,7 +185,6 @@ fn given_shutdown_panics_then_dropping_the_host_swallows_and_logs_it() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn given_a_manifest_whose_id_differs_from_the_descriptor_then_manifest_mismatch() {
     let dir = package_dir("manifest-id", &[]);
     let pkgs = PluginHost::discover(&[dir]).expect("discover");
@@ -219,7 +213,6 @@ fn given_a_manifest_whose_id_differs_from_the_descriptor_then_manifest_mismatch(
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn given_a_manifest_whose_version_differs_from_the_descriptor_then_manifest_mismatch() {
     let dir = package_dir("manifest-version", &[]);
     let pkgs = PluginHost::discover(&[dir]).expect("discover");
@@ -247,7 +240,6 @@ fn given_a_manifest_whose_version_differs_from_the_descriptor_then_manifest_mism
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn given_a_manifest_with_another_abi_then_rejected_without_opening_the_library() {
     let dir = package_dir("manifest-abi", &[]);
     let pkgs = PluginHost::discover(&[dir]).expect("discover");
@@ -269,7 +261,6 @@ fn given_a_manifest_with_another_abi_then_rejected_without_opening_the_library()
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn given_the_same_plugin_id_from_two_images_then_duplicate() {
     let first = PluginHost::discover(&[package_dir("twin-a", &[])]).expect("discover a");
     let second = PluginHost::discover(&[package_dir("twin-b", &[])]).expect("discover b");
@@ -290,7 +281,6 @@ fn given_the_same_plugin_id_from_two_images_then_duplicate() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "WI-10"]
 fn given_the_same_file_reached_through_a_symlink_then_duplicate_in_one_host() {
     let dir = package_dir("symlink-twice", &[]);
     let alias_root = tmp_dir("symlink-alias");
@@ -340,7 +330,6 @@ fn the_same_file_reached_twice_is_found_before_a_second_entry_call() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn two_hosts_load_the_same_library_concurrently() {
     let dir = package_dir("two-hosts", &[]);
     let handles: Vec<_> = (0..2)
@@ -365,7 +354,6 @@ fn two_hosts_load_the_same_library_concurrently() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn reload_after_release() {
     let dir = package_dir("reload", &[]);
     for round in 0..3 {
@@ -383,7 +371,6 @@ fn reload_after_release() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn reload_with_keep_loaded() {
     let dir = package_dir("reload-kept", &[]);
     for round in 0..3 {
@@ -426,7 +413,6 @@ fn keep_loaded_skips_the_close() {
 /// RR-M1 on a real library: loads racing with last releases never fail or crash. The deterministic
 /// version of the closing wait is `image.rs::load_waits_while_image_is_closing` (gated `shutdown`).
 #[test]
-#[ignore = "WI-10"]
 fn concurrent_load_and_release_never_fails() {
     let dir = package_dir("churn", &[]);
     let handles: Vec<_> = (0..4)
@@ -451,7 +437,6 @@ fn concurrent_load_and_release_never_fails() {
 // ------------------------------------------------------------------------------------ call rows
 
 #[test]
-#[ignore = "WI-10"]
 fn panic_in_configure_is_a_build_error() {
     let (host, registry, _) = fixture("calls", &[]);
 
@@ -463,7 +448,6 @@ fn panic_in_configure_is_a_build_error() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn panic_in_instantiate_is_an_instantiate_error() {
     let (host, registry, _) = fixture("calls", &[]);
     let b = build(&host, &registry, "panic_instantiate");
@@ -476,7 +460,6 @@ fn panic_in_instantiate_is_an_instantiate_error() {
 macro_rules! tick_fault {
     ($name:ident, $capability:expr, $needle:expr) => {
         #[test]
-        #[ignore = "WI-10"]
         fn $name() {
             let (host, registry, _) = fixture("calls", &[]);
             let b = build(&host, &registry, $capability);
@@ -513,7 +496,6 @@ tick_fault!(more_than_64_intents_is_a_fault, "intent_flood", "64");
 macro_rules! method_fault {
     ($name:ident, $capability:expr, $call:expr, $act:expr) => {
         #[test]
-        #[ignore = "WI-10"]
         fn $name() {
             let (host, registry, _) = fixture("calls", &[]);
             let b = build(&host, &registry, $capability);
@@ -559,7 +541,6 @@ method_fault!(
 );
 
 #[test]
-#[ignore = "WI-10"]
 fn panic_in_destroy_is_swallowed_and_logged() {
     let (host, registry, recorder) = fixture("calls", &[]);
     let b = build(&host, &registry, "panic_destroy");
@@ -579,7 +560,6 @@ fn panic_in_destroy_is_swallowed_and_logged() {
 // ------------------------------------------------------------------------------------ lifecycle rows
 
 #[test]
-#[ignore = "WI-10"]
 fn unload_ordering_is_instances_then_behaviors_then_shutdown() {
     let (host, registry, recorder) = fixture("lifecycle", &[]);
     let b = build(&host, &registry, "lifecycle");
@@ -603,7 +583,6 @@ fn unload_ordering_is_instances_then_behaviors_then_shutdown() {
 }
 
 #[test]
-#[ignore = "WI-10"]
 fn the_library_stays_loaded_while_a_handle_lives() {
     let (host, registry, _) = fixture("handle-lives", &[]);
     let b = build(&host, &registry, "ok");
@@ -628,12 +607,41 @@ fn the_library_stays_loaded_while_a_handle_lives() {
     drop(factory);
 }
 
+/// ADR 0021 (step-4 re-review, deferred to WI-10): a registry clone alone keeps the library mapped.
+/// The behavior, the host and the original registry are gone; only the clone's factory holds the
+/// image. When the clone goes too, the last release runs `shutdown` and closes the library, and it is
+/// unmapped (the SDK registers no thread-local destructor, ASM-127). Linux only: `/proc/self/maps`.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_registry_clone_alone_keeps_the_library_mapped() {
+    let mapped = |marker: &str| {
+        std::fs::read_to_string("/proc/self/maps")
+            .expect("maps")
+            .contains(marker)
+    };
+    let variant = "clone-keeps-mapped";
+    let marker = format!("lib{variant}-");
+    let (host, registry, _) = fixture(variant, &[]);
+    let b = build(&host, &registry, "ok");
+    let clone = registry.clone();
+
+    drop(b);
+    drop(registry);
+    drop(host);
+
+    assert!(
+        mapped(&marker),
+        "the registry clone keeps the library mapped"
+    );
+    drop(clone);
+    assert!(!mapped(&marker), "the last release closes the library");
+}
+
 // ------------------------------------------------------------------------------------ optional rows
 
 /// A plugin built with `panic = "abort"` aborts the process on a panic (documented in the plugin guide):
 /// run as a subprocess of this test binary so the abort does not take the test run down.
 #[test]
-#[ignore = "WI-10"]
 fn a_plugin_built_with_panic_abort_aborts_the_process() {
     let exe = std::env::current_exe().expect("exe");
 
@@ -695,7 +703,6 @@ fn panic_abort_child() {
 /// ignored; everything else the library defines in its dynamic symbol table must be the entry.
 #[cfg(unix)]
 #[test]
-#[ignore = "WI-10"]
 fn the_library_exports_exactly_one_umbra_symbol() {
     const LINKER: [&str; 7] = [
         "_init",

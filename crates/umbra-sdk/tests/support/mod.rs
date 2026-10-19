@@ -79,6 +79,7 @@ impl BehaviorFactory for OkFactory {
             .result("sdk done")
     }
     fn configure(params: &Params<'_>) -> Result<OkBehavior, Error> {
+        CONFIGURED.with(|c| c.set(c.get() + 1));
         let value = params.value()?;
         let mode = match value.get("panic").and_then(|v| v.as_str()) {
             None => Mode::None,
@@ -322,6 +323,9 @@ thread_local! {
     static ERR: RefCell<Option<String>> = const { RefCell::new(None) };
     static VALUES: RefCell<Vec<Out>> = const { RefCell::new(Vec::new()) };
     static LOGS: RefCell<Vec<(u32, String)>> = const { RefCell::new(Vec::new()) };
+    /// How often `OkFactory::configure` (the trait method) ran on this thread (M4 WI-10, deferred
+    /// step-4 item: direct evidence that refused calls never reach the trait).
+    static CONFIGURED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 pub fn reset() {
@@ -331,6 +335,12 @@ pub fn reset() {
     ERR.with(|d| *d.borrow_mut() = None);
     VALUES.with(|d| d.borrow_mut().clear());
     LOGS.with(|d| d.borrow_mut().clear());
+    CONFIGURED.with(|c| c.set(0));
+}
+
+/// How often the trait's `configure` ran on this thread since `reset`.
+pub fn configured() -> usize {
+    CONFIGURED.with(std::cell::Cell::get)
 }
 pub fn seen() -> Vec<Seen> {
     SEEN.with(|d| d.borrow().clone())

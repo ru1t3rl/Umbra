@@ -1,0 +1,27 @@
+[package]
+name = "umbra-test-plugin"
+description = "Test fixture plugin for the Umbra plugin host: one capability per fault an SDK plugin can produce, plus plugin-level fault features (M4 WI-10, ADR 0023 item 4, ASM-132)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+# Plugin-level faults (one library per feature set, built by the test helper; ASM-125 b).
+entry_panics = []
+init_fails = []
+init_panics = []
+shutdown_panics = []
+# Adds `test.behavior.bad_schema`, whose param schema is outside the ADR 0009 subset (`anyOf`).
+bad_schema = []
+
+[dependencies]
+umbra-sdk = { path = "../umbra-sdk" }
+
+[lints]
+workspace = true

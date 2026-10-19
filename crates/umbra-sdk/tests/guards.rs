@@ -12,7 +12,7 @@ mod support;
 
 use std::mem::size_of;
 
-use support::{Rig, configure, draws, err_sink, instantiate, pushed, reset, s, vtable};
+use support::{Rig, configure, configured, draws, err_sink, instantiate, pushed, reset, s, vtable};
 use umbra_sdk::abi::{
     UMBRA_ABI_VERSION, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_PANIC, UMBRA_ERR_PARAMS, UMBRA_OK,
     UMBRA_STATUS_UNSET, UmbraBehaviorBatch, UmbraBehaviorItem, UmbraStr, UmbraValueSink,
@@ -212,7 +212,17 @@ fn malformed_error_sink_rejected_before_trait_call() {
 
         assert_eq!(code, UMBRA_ERR_INVALID_ARGUMENT, "{name}");
         assert!(out.is_null(), "{name}: no handle");
+        assert_eq!(
+            configured(),
+            0,
+            "{name}: the trait's configure is never reached"
+        );
     }
+    // Control: the recorder sees a call that does reach the trait.
+    reset();
+    let (code, _, _) = configure("{}");
+    assert_eq!(code, UMBRA_OK);
+    assert_eq!(configured(), 1, "the recorder counts trait calls");
 }
 
 /// R-M2: the same for the value sink handed to `output`: refused before the trait is called, and
