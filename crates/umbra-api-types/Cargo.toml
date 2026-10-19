@@ -12,6 +12,7 @@ repository.workspace = true
 serde.workspace = true
 utoipa.workspace = true
 
+# Used from WI-11 (DTO serde round-trip tests); unused by the WI-1 scaffold.
 [dev-dependencies]
 serde_json.workspace = true
 

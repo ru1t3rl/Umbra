@@ -814,7 +814,7 @@ fn given_non_path_dep_with_reserved_name_when_checked_then_impostor_dep() {
 
 // ---------------------------------------------------------------- M5 WI-1 (REQ-X-7, ASM-007, ASM-008)
 
-/// The three edges the M5 plan forbids are each reported with the real rule table, and the allowed
+/// The edges the M5 plan forbids (and two more for ASM-008) are each reported with the real rule table, and the allowed
 /// server edges are not. (The same edges were seeded into the real workspace by hand in WI-1:
 /// `check-deps` exited 1 for the first and third; cargo rejects the second as a cycle.)
 #[test]

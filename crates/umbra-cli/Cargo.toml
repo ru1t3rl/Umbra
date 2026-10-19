@@ -17,7 +17,7 @@ serde_json.workspace = true
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt", "std"] }
 
 [features]
-# `umbra serve` (M5 WI-17). Off: engine-only CLI, no tokio/axum in the build (REQ-S-1, REQ-G-1, D-1).
+# `umbra serve` (M5 WI-17). Off: engine-only CLI, no tokio/axum in the build (REQ-S-1, REQ-G-1, D-1, D-10).
 default = ["server"]
 server = ["dep:umbra-server"]
 

@@ -1,7 +1,7 @@
 # cargo-deny configuration (NFR-4, NFR-6, ADR 0001, ASM-020).
 # Copyleft is denied by omission: anything not on the allow-list fails (not on the allow-list = denied).
 # Minimal list: only licenses the current tree uses (ASM-020). Candidates to add when a dependency needs
-# them: Apache-2.0 WITH LLVM-exception, BSD-2-Clause, BSD-3-Clause, Zlib.
+# them: Apache-2.0 WITH LLVM-exception, BSD-2-Clause.
 # Add a license only in the PR that adds a dependency needing it, with a note.
 
 [graph]
@@ -20,8 +20,8 @@ allow = [
     # libloading 0.9.0 (umbra-plugin-host: opens plugin libraries with explicit load flags), ADR 0023 item 1,
     # ASM-133. OSI approved, permissive (MIT-equivalent).
     "ISC",
-    # matchit 0.8.4 (axum's router, via umbra-server) is MIT AND BSD-3-Clause; part of the BSD-3-Clause text
-    # comes from the Go standard library. OSI approved, permissive. M5 WI-1, ADR 0025, ASM-020.
+    # matchit 0.8.4 (axum's router, via umbra-server) is MIT AND BSD-3-Clause; the BSD-3-Clause part derives
+    # from julienschmidt/httprouter (LICENSE.httprouter in the matchit source). OSI approved, permissive. M5 WI-1, ADR 0025, ASM-020.
     "BSD-3-Clause",
 ]
 confidence-threshold = 0.9

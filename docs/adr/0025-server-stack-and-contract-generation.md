@@ -1,7 +1,6 @@
 # ADR 0025: Server stack and contract generation
 
-- **Status**: Accepted by the human 2026-10-19 (proposed by the architect, M5 plan `docs/plans/M5.md`; awaiting the human project owner; needs one
-  online `cargo fetch`)
+- **Status**: Accepted by the human 2026-10-19 (proposed by the architect, M5 plan `docs/plans/M5.md`)
 - **Requirement IDs**: REQ-X-4, REQ-X-6, REQ-X-7, REQ-A-1..4, D-10, D-11, D-12, NFR-4, NFR-6, ASM-002, ASM-008, ASM-020
 - **Affected**: `umbra-api-types`, `umbra-server`, `umbra-cli`, `xtask`, `deny.toml`, `Cargo.lock`,
   `api/`, skill `update-openapi`
@@ -39,6 +38,10 @@ Option 1.
   `cargo deny check` and `cargo audit` must pass. Expected licences: MIT, Apache-2.0, `MIT OR
   Apache-2.0`, and **BSD-3-Clause** (`matchit`, the axum router, is `MIT AND BSD-3-Clause`), which is
   added to `deny.toml` with a note (ASM-020). Anything else stops WI-1 for a decision.
+  - *Note 2026-10-19 (human decision):* the contract is generated with **utoipa 6.x** (6.0.0 at WI-1; OpenAPI
+    3.1.0 is its default output). This follows the policy above ("current releases at fetch time") and is
+    chosen before any contract file exists. A later utoipa major is a contract-drift review (regenerate,
+    diff `api/*.json`, check the TypeScript client), not a routine bump. Other pins follow ASM-166.
 - **Runtime.** `umbra-server` owns the tokio runtime (`umbra_server::run(config, handle, shutdown)` is
   blocking and builds a multi-thread runtime with 2 workers), so `umbra-cli` needs no tokio dependency.
   Wall time in the server (rate limiting, send timeouts) uses `tokio::time` and never reaches the

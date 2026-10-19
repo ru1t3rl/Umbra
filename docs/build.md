@@ -68,18 +68,19 @@ More `cargo xtask` subcommands will be documented here as they are added.
 - Licenses: `LICENSE-MIT` and `LICENSE-APACHE` at the root; every crate inherits `license = "MIT OR Apache-2.0"` from `[workspace.package]`.
 - `deny.toml`: license allow-list limited to what the current tree uses (MIT, Apache-2.0, Unicode-3.0, Zlib for `foldhash` (ADR 0005), ISC for `libloading` (ADR 0023 item 1, ASM-133), BSD-3-Clause for `matchit`, axum's router (M5 WI-1, ADR 0025); ASM-020), copyleft denied; `cbindgen` (MPL-2.0) is an installed tool and never enters `Cargo.lock`; wildcards denied (path wildcards allowed); unknown registries and git sources denied; yanked crates denied; duplicate versions warn. Run `cargo deny check` and `cargo audit` locally before done; a new advisory can fail them with no code change: triage it, never silence it.
 - Adding a dependency: run `cargo deny check`; if it brings a new license, add it to `deny.toml` in the same PR with a note (ASM-020).
-- Server dependencies (M5 WI-1, ADR 0025, ASM-166), used only by `umbra-api-types` and `umbra-server` (dev entries in `umbra-server`; the engine crates gain none). Direct dependencies and the versions in `Cargo.lock` on 2026-10-19:
+- Server dependencies (M5 WI-1, ADR 0025, ASM-166), used only by `umbra-api-types` and `umbra-server` (dev entries in `umbra-server`; the engine crates gain none). Direct dependencies and the versions in `Cargo.lock` on 2026-10-19 (`tokio` 1.53.2, `hyper` 1.11.1 and `smallvec` 1.16.2 were pinned one release back at fetch time; there is no age rule, ASM-166):
 
   | Crate | Version | Used by | Licence |
   |---|---|---|---|
   | `axum` (features `http1`, `json`, `query`, `ws`, `tokio`) | 0.8.9 | `umbra-server` | MIT |
   | `tokio` (`rt-multi-thread`, `net`, `sync`, `time`, `macros`, `signal`; dev `test-util`) | 1.53.2 | `umbra-server` | MIT |
-  | `utoipa` (`macros` only; never `preserve_order`) | 5.5.0 | `umbra-api-types`, `umbra-server` | MIT OR Apache-2.0 |
+  | `utoipa` (`macros` only; never `preserve_order`) | 6.0.0 (`utoipa-gen` 6.0.1) | `umbra-api-types`, `umbra-server` | MIT OR Apache-2.0 |
   | `serde` (derive) | 1.0.229 | `umbra-api-types`, `umbra-server` | MIT OR Apache-2.0 |
   | `futures-util` | 0.3.34 | `umbra-server` | MIT OR Apache-2.0 |
   | `tower` (`util`), `tokio-tungstenite` (`connect`) | 0.5.3, 0.29.0 | dev, `umbra-server` | MIT |
   | `tungstenite` (`handshake`) | 0.29.0 | pulled by `tokio-tungstenite` (also the planned sync test client of `umbra-cli`) | MIT OR Apache-2.0 |
   | `matchit` (via axum) | 0.8.4 | `umbra-server` | MIT AND BSD-3-Clause |
 
-  New in `Cargo.lock`: 57 external packages (direct and transitive) plus the two new workspace crates. Every one can be used under MIT or Apache-2.0 (some are offered as `... OR BSL-1.0`, `... OR LGPL-2.1-or-later` or `... WITH LLVM-exception`, and cargo-deny takes the allowed alternative) except `matchit` (`MIT AND BSD-3-Clause`); `cargo deny list` is the full inventory. `cargo deny check` and `cargo audit` pass with the new tree (`syn` 2 and 3 appear as a duplicate warning, as before). `umbra-cli --no-default-features` builds without the server stack.
+  New in `Cargo.lock`: 57 external packages (direct and transitive) plus the two new workspace crates. Every one can be used under MIT or Apache-2.0 (some are offered as `... OR BSL-1.0`, `... OR LGPL-2.1-or-later` or `... WITH LLVM-exception`, and cargo-deny takes the allowed alternative) except `matchit` (`MIT AND BSD-3-Clause`); `cargo deny list` is the full inventory. New duplicate versions in `Cargo.lock` (warnings only): `rand` 0.9/0.10 with `rand_core`, `getrandom` 0.3/0.4, `cpufeatures` 0.2/0.3 (via `tungstenite`'s `rand` 0.9), alongside the existing `syn` 2/3. `cargo deny check` and `cargo audit` pass with the new tree (`syn` 2 and 3 appear as a duplicate warning, as before). The default `umbra-cli` build (feature `server`) compiles the whole server stack; `umbra-cli --no-default-features` builds without it. Workspace `tungstenite` is unused until the stream WI (WI-16/17 test clients).
+- Release packaging must ship third-party licence notices for the shipped dependency tree, including `matchit`'s BSD-3-Clause text (derived from julienschmidt/httprouter) (NFR-4).
 - Dev-dependency licenses are checked too (`include-dev = true` in `[licenses]`); the WI-4 mutation check showed that without it a GPL `[dev-dependencies]` entry passes.

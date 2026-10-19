@@ -40,7 +40,7 @@ tower = { version = "0.5.3", default-features = false, features = ["util"] }
 tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"] }
 tracing = { version = "0.1.44", default-features = false }
 # OpenAPI 3.1 from Rust types (D-11). Never enable `preserve_order` (output order must be deterministic).
-utoipa = { version = "5.5.0", default-features = false, features = ["macros"] }
+utoipa = { version = "6.0.0", default-features = false, features = ["macros"] }
 toml = { version = "1.1.8", default-features = false, features = ["parse", "std"] }
 
 [workspace.lints.rust]
