@@ -5,6 +5,14 @@
 //! The rows that need no real library (forged descriptors, raw-ABI misbehavior, image lifecycle states)
 //! are in `descriptor.rs`, `manifest.rs`, `image.rs`, `faults.rs`, `tokens.rs`, `contention.rs`.
 //!
+//! Gate 13 covers only what a plugin built with `umbra-sdk` can produce (human decision 2026-10-19
+//! after the WI-7 review, ASM-132): panics in every call, `intent_flood`, `bad_intent`, `bad_value`,
+//! `init` and `shutdown` failures, plus the load and lifecycle rows. Misbehavior the safe SDK makes
+//! impossible is covered only by the in-process raw-ABI tests: status left unset and status out of
+//! range, intent item index `>= count`, `configure` OK with a null handle, `halt` returning an error
+//! code, the output sink called twice (`faults.rs`), and a stale token and another item's RNG token
+//! (`tokens.rs`).
+//!
 //! Step 4 of M4. Everything is ignored with WI-10: the fixture crate and the build helper do not exist.
 //! The fixture contract the tests assume beyond the plan's capability list (plan gaps, reported; see
 //! also `umbra-engine/tests/plugin_support/mod.rs`, the one build helper): cargo features
@@ -502,16 +510,8 @@ macro_rules! tick_fault {
 }
 
 tick_fault!(panic_in_tick_batch_is_a_fault, "panic_tick", "panic");
-tick_fault!(status_left_unset_is_a_fault, "no_status", "unset");
-tick_fault!(status_out_of_range_is_a_fault, "bad_status", "status");
 tick_fault!(invalid_intent_is_a_fault, "bad_intent", "intent");
 tick_fault!(more_than_64_intents_is_a_fault, "intent_flood", "64");
-tick_fault!(intent_index_at_count_is_a_fault, "bad_index", "index");
-tick_fault!(
-    rng_with_another_calls_token_is_a_fault,
-    "stale_token",
-    "token"
-);
 
 macro_rules! method_fault {
     ($name:ident, $capability:expr, $call:expr, $act:expr) => {
@@ -553,26 +553,12 @@ method_fault!(panic_in_output_is_a_fault, "panic_output", "output", |i| {
     let _ = i.output("turns");
 });
 method_fault!(
-    output_sink_called_twice_is_a_fault,
-    "output_twice",
-    "output",
-    |i| {
-        let _ = i.output("turns");
-    }
-);
-method_fault!(
     invalid_output_value_is_a_fault,
     "bad_value",
     "output",
     |i| {
         let _ = i.output("turns");
     }
-);
-method_fault!(
-    halt_returning_an_error_code_is_a_fault,
-    "halt_error",
-    "halt",
-    |i| i.halt()
 );
 
 #[test]
@@ -591,34 +577,6 @@ fn panic_in_destroy_is_swallowed_and_logged() {
         .filter(|e| e.1 == LogLevel::Error)
         .collect();
     assert!(errors.iter().any(|e| e.2.contains("destroy")), "{errors:?}");
-}
-
-#[test]
-#[ignore = "WI-10"]
-fn configure_ok_with_a_null_handle_is_a_build_error() {
-    let (host, registry, _) = fixture("calls", &[]);
-
-    let err = build_behavior(&host, &registry, "test.behavior.null_handle", "{}")
-        .err()
-        .expect("build error");
-
-    assert!(err.message.contains("null"), "{err}");
-}
-
-#[test]
-#[ignore = "WI-10"]
-fn rng_with_another_items_token_draws_that_items_stream_and_does_not_fault() {
-    let (host, registry, _) = fixture("calls", &[]);
-    let b = build(&host, &registry, "foreign_rng");
-    let mut ents = vec![Ent::new(1, &b, 1), Ent::new(2, &b, 1)];
-
-    tick_batched(&b.batch().expect("batch"), &mut ents, 0);
-
-    assert_eq!(
-        host.faults(),
-        Vec::new(),
-        "a documented contract breach, defined behavior"
-    );
 }
 
 // ------------------------------------------------------------------------------------ lifecycle rows

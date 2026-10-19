@@ -57,8 +57,13 @@ fn vtable_has_every_required_entry_and_halt_running() {
 #[test]
 fn entry_returns_the_same_pointer_twice() {
     let host = host_api();
-    let a = umbra_plugin_entry(&raw const host);
-    let b = umbra_plugin_entry(&raw const host);
+    // SAFETY: `host` is a live, well-formed host API for both calls (the SDK copies what it keeps).
+    let (a, b) = unsafe {
+        (
+            umbra_plugin_entry(&raw const host),
+            umbra_plugin_entry(&raw const host),
+        )
+    };
     assert!(!a.is_null());
     assert_eq!(
         a, b,

@@ -1,8 +1,10 @@
 //! `export_plugin!` and the machinery behind it (REQ-P-1, REQ-P-3, REQ-P-6, REQ-P-7, REQ-SDK-1,
 //! ADR 0019, ADR 0020, ADR 0021).
 //!
-//! The macro emits one item, `umbra_plugin_entry`, with a safe body that calls [`__private::entry`]
-//! (ASM-116). Everything that needs `unsafe` lives here: the static descriptor and its capabilities and
+//! The macro emits one item, `pub unsafe extern "C" fn umbra_plugin_entry`, whose body is one
+//! `unsafe` block calling the `unsafe fn` [`__private::entry`]; because both come from this crate's
+//! macro, plugin crates keep `#![forbid(unsafe_code)]` (ASM-116, amended 2026-10-19 after the WI-7
+//! review). Everything that needs `unsafe` lives here: the static descriptor and its capabilities and
 //! vtables, and the generic `extern "C"` trampolines that turn each vtable call into a call of the safe
 //! traits. Every trampoline runs its body under a panic guard (`guard::catch`), validates every input
 //! before any trait call, and writes the SDK's own minor into every struct it produces.
@@ -17,7 +19,7 @@
 
 use std::any::TypeId;
 use std::marker::PhantomData;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock, PoisonError};
 
 use crate::abi::{
     UMBRA_ABI_VERSION, UMBRA_CAPABILITY_BEHAVIOR, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_PANIC,
@@ -26,8 +28,8 @@ use crate::abi::{
     UmbraValueSink,
 };
 use crate::behavior::{
-    Behavior, BehaviorFactory, BehaviorInstance, EntityView, Fault, Intents, Level, Params,
-    TickContext,
+    Behavior, BehaviorFactory, BehaviorInstance, Contact, EntityView, Fault, Intents, Level,
+    Params, TickContext,
 };
 use crate::convert::{batch_in, size_of_u32, str_from, umbra_str, value_in, value_sink, view_in};
 use crate::error::Error;
@@ -81,22 +83,19 @@ pub mod __private {
 
     /// The body of the generated `umbra_plugin_entry` (REQ-P-1): validates the host API and stores it
     /// if this is the first entry call of a lifecycle, builds the static descriptor on the first call
-    /// and returns it; every call returns the same pointer. Null when `host` is malformed, when building the descriptor panics (R-M1), or when
-    /// another `Plugin` already built this binary's descriptor.
+    /// and returns it; every call returns the same pointer. Null when `host` is malformed, when
+    /// building the descriptor panics (R-M1), or when another `Plugin` already built this binary's
+    /// descriptor.
     ///
-    /// Safe to call by the C contract of the entry: `host` is null or points at a readable
-    /// `UmbraHostApi` (ADR 0021). It is a safe function only so that plugin crates keep
-    /// `#![forbid(unsafe_code)]` (ASM-116); nothing but the host should call it.
+    /// # Safety
+    /// `host` is null or points at memory readable for at least 8 bytes and, if its header passes
+    /// the ADR 0019 checks, for `struct_size` bytes: the C contract of `umbra_plugin_entry`
+    /// (ADR 0021, the host's process-lifetime `UmbraHostApi`). Only the host should call it.
     #[must_use]
-    #[expect(
-        clippy::not_unsafe_ptr_arg_deref,
-        reason = "ASM-116: the generated entry must be a safe fn so plugin crates keep \
-                  forbid(unsafe_code); the pointer contract is the C ABI's (ADR 0021)"
-    )]
-    pub fn entry<P: Plugin>(host: *const UmbraHostApi) -> *const UmbraPluginDescriptor {
+    pub unsafe fn entry<P: Plugin>(host: *const UmbraHostApi) -> *const UmbraPluginDescriptor {
         let found = catch(|| {
-            // SAFETY: the entry contract (ADR 0021): `host` is null or a readable host API, which the
-            // host keeps alive for the process; `read` checks null, alignment and the header.
+            // SAFETY: forwarded from this function's contract; `read` checks null, alignment and
+            // the header before reading the rest.
             let copy = unsafe { crate::host::read(host) }?;
             let built = DESCRIPTOR.get_or_init(Built::new::<P>);
             if built.plugin != TypeId::of::<P>() {
@@ -299,8 +298,9 @@ unsafe fn handle<'a, Tag: 'static, T>(p: *mut Handle<T>) -> Option<&'a mut Handl
         return None;
     }
     // SAFETY: the tag proves `p` was made by `new_handle::<Tag, T>`, so it points at a live, aligned
-    // `Handle<T>`; the host never calls one plugin concurrently and passes each handle to one call
-    // at a time, so this is the only reference for the duration of the call.
+    // `Handle<T>`. The host serialises every call into one image with its blocking per-image call
+    // lock (ADR 0019, RR-B1) and passes each handle to one call at a time, and the SDK makes at most
+    // one reference per handle per call, so this is the only reference while it lives.
     Some(unsafe { &mut *p })
 }
 
@@ -445,7 +445,7 @@ unsafe extern "C" fn tick_batch<F: BehaviorFactory>(
             }
         }
         let host = crate::host::current();
-        let mut contacts = Vec::new();
+        let mut contacts = take_contacts();
         for (i, item) in b.items.iter().enumerate() {
             // SAFETY: the view was validated in pass 1 and stays valid for the call.
             let view = unsafe { view_in(item.entity) }?;
@@ -466,10 +466,42 @@ unsafe extern "C" fn tick_batch<F: BehaviorFactory>(
             }
             b.set_status(i, status);
         }
+        put_contacts(contacts);
         Ok(())
     };
     // SAFETY: the vtable contract: `err` is null or a sink valid for this call.
     unsafe { with_error_sink(err, body) }
+}
+
+/// The contacts scratch buffer, kept between `tick_batch` calls so a warm plugin does not allocate
+/// per call (review of WI-7). A `static`, not a thread-local: a thread-local with a destructor in a
+/// plugin `cdylib` is the `dlclose` risk the M4 plan lists. Uncontended, because the host serialises
+/// calls into one image (RR-B1), and never locked while plugin code runs. Stored typed `'static` and
+/// always empty; [`relife`] re-types it for one call. A call that ends early (fault or panic) drops
+/// its buffer and the next call starts a new one.
+static CONTACTS: Mutex<Vec<Contact<'static>>> = Mutex::new(Vec::new());
+
+fn take_contacts<'a>() -> Vec<Contact<'a>> {
+    relife(std::mem::take(
+        &mut *CONTACTS.lock().unwrap_or_else(PoisonError::into_inner),
+    ))
+}
+
+fn put_contacts(contacts: Vec<Contact<'_>>) {
+    *CONTACTS.lock().unwrap_or_else(PoisonError::into_inner) = relife(contacts);
+}
+
+/// Empties `v` and changes the lifetime of its element type. `Contact<'a>` and `Contact<'b>` have one
+/// layout, so the in-place `collect` keeps the allocation (current std behavior, not a documented
+/// guarantee: the same precedent and the same kind of guard test as the kernel's `relife`, ASM-126 b).
+/// If std ever stops doing this, the buffer is just reallocated: correctness does not depend on it.
+#[expect(
+    clippy::unnecessary_filter_map,
+    reason = "dropping every element is the point: the in-place collect re-types the empty buffer"
+)]
+fn relife<'b>(mut v: Vec<Contact<'_>>) -> Vec<Contact<'b>> {
+    v.clear();
+    v.into_iter().filter_map(|_| None).collect()
 }
 
 unsafe extern "C" fn halt<F: BehaviorFactory>(instance: *mut UmbraInstance) -> UmbraCode {
@@ -543,10 +575,12 @@ unsafe extern "C" fn output<F: BehaviorFactory>(
 
 // ---------------------------------------------------------------- the macro
 
-/// Exports a plugin (REQ-P-1): generates exactly one item, `#[unsafe(no_mangle)] pub extern "C" fn
-/// umbra_plugin_entry`, with a safe body and no lint attribute, so the plugin crate keeps
-/// `#![forbid(unsafe_code)]` (ASM-116). A private marker type inside the function lists the
-/// factories; the descriptor, the vtables and every `unsafe` stay in the SDK.
+/// Exports a plugin (REQ-P-1): generates exactly one item, `#[unsafe(no_mangle)] pub unsafe extern
+/// "C" fn umbra_plugin_entry`, whose body is one `unsafe` block calling the SDK, and no lint
+/// attribute. The `unsafe` comes from this external macro, so the plugin crate keeps
+/// `#![forbid(unsafe_code)]` (ASM-116, amended 2026-10-19 after the WI-7 review; pinned by
+/// `xtask/tests/lint_facts.rs`). A private marker type inside the function lists the factories;
+/// the descriptor, the vtables and every other `unsafe` stay in the SDK.
 ///
 /// `init` (optional) is a `fn() -> Result<(), umbra_sdk::Error>` run once per lifecycle after the SDK
 /// stored the host API; reset any global state there (ADR 0021). `shutdown` (optional) is a `fn()`
@@ -572,8 +606,11 @@ macro_rules! export_plugin {
         $(, init: $init:path)? $(, shutdown: $shutdown:path)? $(,)?
     ) => {
         /// The plugin entry point (REQ-P-1), generated by `umbra_sdk::export_plugin!`.
+        ///
+        /// # Safety
+        /// Called by the Umbra host only: `host` is null or points at its `UmbraHostApi` (ADR 0021).
         #[unsafe(no_mangle)]
-        pub extern "C" fn umbra_plugin_entry(
+        pub unsafe extern "C" fn umbra_plugin_entry(
             host: *const $crate::abi::UmbraHostApi,
         ) -> *const $crate::abi::UmbraPluginDescriptor {
             struct __UmbraPlugin;
@@ -591,7 +628,45 @@ macro_rules! export_plugin {
                     $shutdown()
                 })?
             }
-            $crate::__private::entry::<__UmbraPlugin>(host)
+            // SAFETY: `host` is passed on unchanged under this function's own contract, which is
+            // `__private::entry`'s.
+            unsafe { $crate::__private::entry::<__UmbraPlugin>(host) }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{put_contacts, relife, take_contacts};
+    use crate::behavior::Contact;
+
+    fn contact(force: &str) -> Contact<'_> {
+        Contact {
+            entity: 1,
+            position: [0.0; 3],
+            velocity: [0.0; 3],
+            force: Some(force),
+            range_m: 1.0,
+        }
+    }
+
+    /// The guard of the contacts scratch buffer (review of WI-7): `relife` empties the vector and keeps
+    /// its allocation, and the buffer survives a `take`/`put` round.
+    #[test]
+    fn relife_keeps_the_allocation_and_the_scratch_is_reused() {
+        let text = String::from("blue");
+        let mut v = Vec::with_capacity(16);
+        v.push(contact(&text));
+        let (ptr, cap) = (v.as_ptr().cast::<u8>(), v.capacity());
+
+        let back: Vec<Contact<'static>> = relife(v);
+
+        assert_eq!(back.len(), 0);
+        assert_eq!((back.as_ptr().cast::<u8>(), back.capacity()), (ptr, cap));
+
+        put_contacts(back);
+        let again = take_contacts();
+        assert_eq!((again.as_ptr().cast::<u8>(), again.capacity()), (ptr, cap));
+        put_contacts(again);
+    }
 }

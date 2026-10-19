@@ -80,15 +80,21 @@ They prove the binary exits 1 for each of these checks on its own.
 
 ## lint facts (M4 WI-2, R-M5, ASM-116; `xtask/tests/lint_facts.rs`)
 Not `check-deps` fixtures: `lint_facts.rs` builds them with `cargo build --offline --locked` and
-`RUSTFLAGS="-D warnings"`, each in its own target directory under `CARGO_TARGET_TMPDIR`. Both are
+`RUSTFLAGS="-D warnings"`, each in its own target directory under `CARGO_TARGET_TMPDIR`. All are
 two-crate workspaces (path dependency only, committed `Cargo.lock`, workspace `unsafe_code = "deny"` as
 in the real repo): `entry_macro` stands in for `umbra-sdk`, `plugin` (a `cdylib` with
 `#![forbid(unsafe_code)]`) for a plugin crate that invokes `entry_macro::export_entry!()`.
 - `forbid_external_no_mangle`: the macro emits only `#[unsafe(no_mangle)] pub extern "C" fn` with a safe
-  body (the `export_plugin!` shape). Expected: builds cleanly.
+  body (the `export_plugin!` shape until the WI-7 review). Expected: builds cleanly.
 - `forbid_external_expect`: the macro also emits `#[expect(unsafe_code, reason = ..)]`. Expected: error
   E0453 (an inner `allow`/`expect` cannot override `forbid`), which is why `export_plugin!` emits no lint
   attribute.
+- `forbid_external_unsafe_entry` (added after the WI-7 review, human decision 2026-10-19): the macro
+  emits `#[unsafe(no_mangle)] pub unsafe extern "C" fn` whose body is an `unsafe` block calling an
+  `unsafe fn` of the macro crate (the current `export_plugin!` shape); the plugin crate has
+  `#![forbid(unsafe_code)]` and `#![deny(warnings)]`. Expected: builds cleanly.
+- `forbid_direct_unsafe_entry` (control): the plugin crate writes that entry itself. Expected: three
+  `unsafe_code` errors (the `unsafe fn`, the `unsafe` block, the `no_mangle` attribute).
 
 ## gen_header (M4 WI-4, AT-2; `xtask/tests/gen_header.rs`)
 Not a `check-deps` fixture: a one-struct crate (own `[workspace]`, no dependencies, committed `Cargo.lock`)

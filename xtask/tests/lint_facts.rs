@@ -1,10 +1,11 @@
 //! Lint facts the plugin design relies on (M4 WI-2, R-M5, ASM-116, NFR-2).
 //!
-//! `export_plugin!` (umbra-sdk) expands to one `#[unsafe(no_mangle)]` item with a safe body and no
-//! lint attribute, so plugin crates keep `#![forbid(unsafe_code)]`. These tests build two fixture
-//! workspaces (`tests/fixtures/forbid_external_*`, see the README there) with the pinned toolchain
-//! and `-D warnings`, offline: if a future rustc starts to fire `unsafe_code` for such an expansion,
-//! the first test fails before any plugin crate breaks.
+//! `export_plugin!` (umbra-sdk) expands to one `#[unsafe(no_mangle)] pub unsafe extern "C" fn` whose
+//! body is an `unsafe` block, and no lint attribute, so plugin crates keep `#![forbid(unsafe_code)]`
+//! (amended 2026-10-19, human decision after the WI-7 review: the entry is an `unsafe fn`). These
+//! tests build fixture workspaces (`tests/fixtures/forbid_*`, see the README there) with the pinned
+//! toolchain and `-D warnings`, offline: if a future rustc starts to fire `unsafe_code` for such an
+//! expansion, a test here fails before any plugin crate breaks.
 
 #![forbid(unsafe_code)]
 
@@ -65,4 +66,39 @@ fn macro_emitting_expect_unsafe_code_is_e0453_under_forbid() {
         stderr.contains("error[E0453]"),
         "expected E0453, got:\n{stderr}"
     );
+}
+
+/// ASM-116 (amended after the WI-7 review): `#![forbid(unsafe_code)]` plus `#![deny(warnings)]` and an
+/// external `macro_rules!` that emits `#[unsafe(no_mangle)] pub unsafe extern "C" fn` with an `unsafe`
+/// block calling the macro crate's `unsafe fn` compiles cleanly (the `export_plugin!` shape).
+#[test]
+fn forbid_plus_external_unsafe_entry_macro_compiles() {
+    let out = build_fixture("forbid_external_unsafe_entry");
+
+    assert!(
+        out.status.success(),
+        "fixture failed to build:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// Control for the test above: the same entry written directly in the `forbid(unsafe_code)` crate is
+/// rejected by `unsafe_code` (the `unsafe fn`, the `unsafe` block and the `no_mangle` attribute), so
+/// the exemption really comes from the external macro.
+#[test]
+fn direct_unsafe_entry_is_rejected_under_forbid() {
+    let out = build_fixture("forbid_direct_unsafe_entry");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+
+    assert!(!out.status.success(), "fixture unexpectedly built");
+    for expected in [
+        "declaration of an `unsafe` function",
+        "usage of an `unsafe` block",
+        "usage of the unsafe `no_mangle` attribute",
+    ] {
+        assert!(
+            stderr.contains(expected),
+            "expected {expected:?}, got:\n{stderr}"
+        );
+    }
 }

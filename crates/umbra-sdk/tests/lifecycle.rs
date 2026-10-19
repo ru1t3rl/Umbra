@@ -134,6 +134,13 @@ fn init(d: &UmbraPluginDescriptor, h: *const UmbraHostApi) -> UmbraCode {
     unsafe { d.init.expect("the SDK always fills init")(h, &raw const err) }
 }
 
+/// The generated entry with `host` (null, forged or live), as an address.
+fn entry(host: *const UmbraHostApi) -> usize {
+    // SAFETY: `host` is null or a leaked, readable host API (the forged ones are refused after their
+    // 8-byte header, which is readable too).
+    unsafe { umbra_plugin_entry(host) as usize }
+}
+
 fn shutdown(d: &UmbraPluginDescriptor) {
     // SAFETY: the SDK's shutdown.
     unsafe { d.shutdown.expect("the SDK always fills shutdown")() };
@@ -146,27 +153,25 @@ fn lifecycle_stores_replaces_and_forgets_the_host_api() {
     assert_eq!(logs(), Vec::new());
 
     // A null or malformed host makes the entry return null and stores nothing.
-    assert!(umbra_plugin_entry(std::ptr::null()).is_null());
+    assert_eq!(entry(std::ptr::null()), 0);
     let other_major = Box::leak(Box::new(UmbraHostApi {
         abi_version: 1 << 16,
         ..*host(1)
     }));
-    assert!(umbra_plugin_entry(other_major).is_null());
+    assert_eq!(entry(other_major), 0);
     let short = Box::leak(Box::new(UmbraHostApi {
         struct_size: 16,
         ..*host(1)
     }));
-    assert!(umbra_plugin_entry(short).is_null());
+    assert_eq!(entry(short), 0);
     log(Level::Info, "still too early");
     assert_eq!(logs(), Vec::new());
 
     // Lifecycle 1: the entry from several threads returns one descriptor.
     let h1 = host(101);
-    let first = umbra_plugin_entry(h1) as usize;
+    let first = entry(h1);
     let others: Vec<usize> = std::thread::scope(|s| {
-        let handles: Vec<_> = (0..4)
-            .map(|_| s.spawn(|| umbra_plugin_entry(h1) as usize))
-            .collect();
+        let handles: Vec<_> = (0..4).map(|_| s.spawn(|| entry(h1))).collect();
         handles
             .into_iter()
             .map(|h| h.join().expect("thread"))
@@ -191,7 +196,7 @@ fn lifecycle_stores_replaces_and_forgets_the_host_api() {
 
     // Lifecycle 2: a new entry with a new host API replaces the stored one; same descriptor.
     let h2 = host(202);
-    assert_eq!(umbra_plugin_entry(h2) as usize, first);
+    assert_eq!(entry(h2), first);
     log(Level::Info, "second");
     assert_eq!(logs(), [(202, UMBRA_LOG_INFO, "second".to_owned())]);
 

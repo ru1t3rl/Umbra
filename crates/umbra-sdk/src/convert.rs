@@ -201,9 +201,11 @@ impl BatchIn<'_> {
     /// Writes the status of item `index`.
     pub(crate) fn set_status(&self, index: usize, status: Status) {
         if index < self.items.len() {
-            // SAFETY: `statuses` was checked non-null and aligned with `count == items.len()`
-            // elements (count * 4 bytes below `isize::MAX`) in `batch_in`; it is host-owned, written
-            // only by the plugin during this call (R-B2), and `index < count`.
+            // SAFETY: `batch_in` checked `statuses` non-null and aligned for `count == items.len()`
+            // elements. Its byte size `count * 4` is below `isize::MAX` because `items` already passed
+            // `count * size_of::<UmbraBehaviorItem>() <= isize::MAX` and an item (40 bytes) is larger
+            // than a status (4 bytes). The array is host-owned and writable during this call, written
+            // only by the plugin (R-B2), and `index < count`.
             unsafe { self.statuses.add(index).write(status_code(status)) };
         }
     }

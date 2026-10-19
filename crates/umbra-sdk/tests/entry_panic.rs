@@ -1,7 +1,8 @@
 //! AT-3 `entry_panic_returns_null` (R-M1): a panic while the entry builds the descriptor (here in
 //! `interface()`) must not unwind across the FFI boundary; the entry returns null. Own binary because a
-//! plugin that panics in its entry has no usable descriptor.
-#![forbid(unsafe_code)]
+//! plugin that panics in its entry has no usable descriptor. The entry is an `unsafe extern "C" fn`
+//! (amended 2026-10-19 after the WI-7 review), so this file plays the host with `unsafe`.
+#![expect(unsafe_code, reason = "calls the generated entry like the host does")]
 
 use std::mem::size_of;
 
@@ -55,5 +56,7 @@ fn entry_panic_returns_null() {
         rng_next_u64: None,
         rng_next_f64: None,
     };
-    assert!(umbra_plugin_entry(&raw const host).is_null());
+    // SAFETY: `host` is a live, well-formed host API for the duration of the call.
+    let descriptor = unsafe { umbra_plugin_entry(&raw const host) };
+    assert!(descriptor.is_null());
 }

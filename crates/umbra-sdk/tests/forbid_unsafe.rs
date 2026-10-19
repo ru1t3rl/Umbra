@@ -1,11 +1,13 @@
 //! AT-3 `export_macro_compiles_under_forbid_unsafe_code` (ASM-116, R-M5): a plugin crate root with
 //! `#![forbid(unsafe_code)]` invokes `export_plugin!`. The test is that this file compiles. Own file
 //! because `forbid` is crate-wide and the other AT-3 files play the host with `unsafe`.
+//!
+//! Amended 2026-10-19 (human decision after the WI-7 review): the generated entry is an
+//! `unsafe extern "C" fn`, so this crate cannot call it; it only checks that the symbol has the ABI's
+//! entry type. The calls are made by the other AT-3 files, which are allowed `unsafe`.
 #![forbid(unsafe_code)]
 
-use std::mem::size_of;
-
-use umbra_sdk::abi::{UMBRA_ABI_VERSION, UmbraHostApi};
+use umbra_sdk::abi::UmbraPluginEntry;
 use umbra_sdk::{
     Behavior, BehaviorFactory, BehaviorInstance, EntityView, Error, Intents, Params, Status,
     TickContext, export_plugin,
@@ -44,13 +46,7 @@ export_plugin! {
 
 #[test]
 fn export_macro_compiles_under_forbid_unsafe_code() {
-    let host = UmbraHostApi {
-        abi_version: UMBRA_ABI_VERSION,
-        struct_size: u32::try_from(size_of::<UmbraHostApi>()).expect("small"),
-        host_ctx: 1,
-        log: None,
-        rng_next_u64: None,
-        rng_next_f64: None,
-    };
-    assert!(!umbra_plugin_entry(&raw const host).is_null());
+    // REQ-P-1: the generated symbol has exactly the ABI's entry type (an `unsafe extern "C" fn`).
+    let entry: UmbraPluginEntry = umbra_plugin_entry;
+    let _ = entry;
 }

@@ -71,6 +71,10 @@ cleanly; the same macro emitting `#[allow(unsafe_code)]` or `#[expect(unsafe_cod
    `umbra-sdk`. Plugin crates keep `#![forbid(unsafe_code)]` (checked by `check-deps` as today). No xtask
    plugin-crate class and no token scan. A regression fixture in `xtask` keeps the lint fact true:
    `forbid(unsafe_code)` plus an external macro that emits `#[unsafe(no_mangle)]` must compile.
+   *(Amended 2026-10-19, human decision after the WI-7 review, ADR 0019)* The generated entry is now
+   `pub unsafe extern "C" fn` whose body is `unsafe { $crate::__private::entry::<..>(host) }` (`entry` is a
+   `pub unsafe fn`); the `unsafe` comes from the external macro, so the conclusion above holds, pinned by
+   two more fixtures (the macro shape compiles; the same entry written directly is rejected).
 
 ## Consequences
 - Easier: offline, scripted gates on both OSes; the header and the C example prove the ABI from C with

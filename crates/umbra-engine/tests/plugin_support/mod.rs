@@ -20,6 +20,15 @@
 //!   plus metadata `param_types = { target = "entity" }` (binding-only, REQ-B-10); ticks Running;
 //! - `test.behavior.cross_param`: params `lo` and `hi` (numbers); `configure` fails when `lo > hi`.
 //!
+//! The fault-mode capabilities are only those a plugin built with `umbra-sdk` can produce (human
+//! decision 2026-10-19 after the WI-7 review, ASM-132): `lifecycle` (logs its calls), `panic_configure`,
+//! `panic_instantiate`, `panic_tick`, `panic_halt`, `panic_halt_running`, `panic_set_input`,
+//! `panic_output`, `panic_destroy`, `bad_intent` (an intent the host refuses), `intent_flood` (65
+//! intents for one item) and `bad_value` (an output value that breaks the `BbValue` invariants), all
+//! `test.behavior.*`. There is no `no_status`, `bad_status`, `bad_index`, `foreign_rng`, `stale_token`,
+//! `null_handle`, `halt_error` or `output_twice`: the safe SDK cannot express them, and the
+//! in-process raw-ABI host tests (`faults.rs`, `tokens.rs`) cover those rows.
+//!
 //! The cargo feature `bad_schema` adds `test.behavior.bad_schema`, whose param schema is outside the
 //! ADR 0009 subset (an `anyOf`; `oneOf` IS in the subset). The plugin-level fault features are
 //! `entry_panics`, `init_fails`, `init_panics` and `shutdown_panics`. A library without the entry symbol,

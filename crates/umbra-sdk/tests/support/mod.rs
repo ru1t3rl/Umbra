@@ -495,7 +495,8 @@ pub fn value_sink() -> UmbraValueSink {
 /// The descriptor after the entry call with the fake host.
 pub fn descriptor() -> &'static UmbraPluginDescriptor {
     let host = Box::leak(Box::new(host_api()));
-    let ptr = umbra_plugin_entry(host);
+    // SAFETY: `host` is a leaked, well-formed host API (process lifetime).
+    let ptr = unsafe { umbra_plugin_entry(host) };
     assert!(!ptr.is_null(), "entry returned null");
     // SAFETY: the SDK's descriptor is a process-lifetime static.
     unsafe { &*ptr }
