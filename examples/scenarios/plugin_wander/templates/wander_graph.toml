@@ -1,0 +1,9 @@
+# A file graph that calls the plugin behavior as a subgraph (behaviors/wander_graph.behavior.toml).
+schema_version = 1
+id = "example.wander.graph"
+extends = "example.wander.vehicle"
+description = "Vehicle driven by a graph that calls the wander plugin"
+
+[behavior]
+ref = "example.behavior.wander_graph"
+params = { speed = 12.0 }

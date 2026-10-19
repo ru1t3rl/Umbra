@@ -92,7 +92,6 @@ fn headings(trace: &common::Trace, id: umbra_core::EntityId) -> Vec<String> {
 
 /// M4 acceptance 1, REQ-T-6: the example directory validates when the plugin directory is given.
 #[test]
-#[ignore = "WI-13"]
 fn example_validates_with_plugin_path() {
     let report =
         validate_path_with_plugins(&standard(), &example_dir(), std::slice::from_ref(&*WANDER))
@@ -105,7 +104,6 @@ fn example_validates_with_plugin_path() {
 /// REQ-T-3: without the plugin directory the same files fail with `unknown_id` naming the plugin
 /// behavior, not with a load error: the registry is the only source of components.
 #[test]
-#[ignore = "WI-13"]
 fn example_fails_validation_without_plugin_path_with_unknown_id() {
     let report = validate_path(&standard(), &example_dir()).expect("validate runs");
 
@@ -121,7 +119,6 @@ fn example_fails_validation_without_plugin_path_with_unknown_id() {
 /// The plugin's own logic is visible in the run: the heading changes exactly every
 /// `ceil(turn_every_s * hz)` ticks (default 10 s), at least three times in 1000 ticks.
 #[test]
-#[ignore = "WI-13"]
 fn wander_entity_changes_heading_every_turn_period() {
     let loaded = load(&example_dir());
     let period = usize::try_from(10 * loaded.scenario.tick_rate.hz()).expect("fits");
@@ -142,7 +139,6 @@ fn wander_entity_changes_heading_every_turn_period() {
 /// REQ-K-4, REQ-B-1: the plugin's intents are the entity's intents in the snapshot (speed and
 /// heading), like any built-in behavior's.
 #[test]
-#[ignore = "WI-13"]
 fn plugin_intents_visible_in_snapshot() {
     let (trace, ents) = run_example(&example_dir(), 3);
 
@@ -161,7 +157,6 @@ fn plugin_intents_visible_in_snapshot() {
 /// REQ-B-13, REQ-B-17: the catalog lists the plugin behavior as `Plugin` and read-only, with the
 /// plugin's version, the schema's description, and the interface from the metadata.
 #[test]
-#[ignore = "WI-13"]
 fn catalog_lists_wander_as_plugin_read_only_with_version_and_schema() {
     let loaded = load(&example_dir());
 
@@ -187,7 +182,6 @@ fn catalog_lists_wander_as_plugin_read_only_with_version_and_schema() {
 /// `speed_mps` from the blackboard (12 m/s, not the plugin's 5 m/s default), while the plugin keeps
 /// emitting its heading.
 #[test]
-#[ignore = "WI-13"]
 fn graph_calls_plugin_as_subgraph_with_bound_input_and_output() {
     let (trace, ents) = run_example(&example_dir(), 10);
 
@@ -206,7 +200,6 @@ fn graph_calls_plugin_as_subgraph_with_bound_input_and_output() {
 /// M4 acceptance 1, REQ-T-1: moving an entity from the built-in behavior to the plugin behavior is
 /// one `ref` in one template; no scenario change and no code change.
 #[test]
-#[ignore = "WI-13"]
 fn swapping_builtin_for_plugin_behavior_is_a_template_change() {
     let copy = plugin_support::scratch_copy(&example_dir(), "swap");
     let mut changed = Vec::new();

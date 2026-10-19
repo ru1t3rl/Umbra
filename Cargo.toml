@@ -1,6 +1,7 @@
 [workspace]
-# xtask (WI-3) and its tests.
-members = ["crates/*", "xtask"]
+# xtask (WI-3) and its tests; the example plugin is listed explicitly (ADR 0023 item 4), so a
+# C example directory without a Cargo.toml is never a member.
+members = ["crates/*", "examples/plugins/wander", "xtask"]
 resolver = "3"
 
 [workspace.package]

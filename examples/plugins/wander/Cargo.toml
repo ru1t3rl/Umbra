@@ -1,0 +1,18 @@
+[package]
+name = "example-wander"
+description = "Example Umbra plugin: behavior `example.behavior.wander`, a random walk driven by the host RNG (M4 WI-13, REQ-SDK-3, REQ-SDK-4)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+umbra-sdk = { path = "../../../crates/umbra-sdk" }
+
+[lints]
+workspace = true

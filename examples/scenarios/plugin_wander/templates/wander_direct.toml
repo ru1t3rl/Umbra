@@ -1,0 +1,9 @@
+# The plugin behavior used directly as the template behavior, with its defaults (5 m/s, a new
+# heading every 10 s). Top-level plugin behaviors are ticked in batches (REQ-B-4).
+schema_version = 1
+id = "example.wander.direct"
+extends = "example.wander.vehicle"
+description = "Vehicle driven by the wander plugin"
+
+[behavior]
+ref = "example.behavior.wander"

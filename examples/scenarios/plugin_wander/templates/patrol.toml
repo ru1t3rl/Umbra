@@ -1,0 +1,9 @@
+# A built-in behavior next to the plugin ones (mixed batched and unbatched entities). Swapping this
+# entity to the plugin is one change of `ref` below (M4 acceptance 1, REQ-T-1).
+schema_version = 1
+id = "example.wander.patrol"
+extends = "example.wander.vehicle"
+description = "Vehicle on the built-in patrol-and-engage graph"
+
+[behavior]
+ref = "builtin.fsm.patrol_and_engage"

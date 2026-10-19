@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Repository tooling: cargo xtask check-deps (REQ-A-1..3, NFR-2)."
+description = "Repository tooling: cargo xtask check-deps (REQ-A-1..3, NFR-2), gen-header (REQ-SDK-2), build-plugins (gate 12)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

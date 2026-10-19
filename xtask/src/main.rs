@@ -3,7 +3,9 @@
 //! CLI contract (exit 0 clean, 1 on violations or drift, 2 on load, tool or usage error):
 //! - `cargo xtask check-deps [--manifest-path <path>]` (REQ-A-1..3, NFR-2);
 //! - `cargo xtask gen-header [--check] [--crate-dir <dir>]` (REQ-SDK-2, gate 11); the crate directory
-//!   defaults to `crates/umbra-plugin-api`.
+//!   defaults to `crates/umbra-plugin-api`;
+//! - `cargo xtask build-plugins [--release]` (gate 12, ADR 0022): writes the example plugin packages to
+//!   `<cargo target dir>/plugins/<name>/`; exit 0 built, 2 on a usage, build or I/O error.
 
 #![forbid(unsafe_code)]
 #![expect(
@@ -19,6 +21,7 @@ use std::process::ExitCode;
 use anyhow::{Context, Result, bail};
 use xtask::deps::{RULES, ResolvedGraph, Violation, Workspace, check_workspace};
 use xtask::header::{self, Outcome};
+use xtask::plugins;
 
 fn main() -> ExitCode {
     match run() {
@@ -36,17 +39,42 @@ fn run() -> Result<bool> {
     let mut args = std::env::args_os().skip(1);
     let Some(sub) = args.next() else {
         bail!(
-            "usage: cargo xtask check-deps [--manifest-path <path>] | gen-header [--check] [--crate-dir <dir>]"
+            "usage: cargo xtask check-deps [--manifest-path <path>] | gen-header [--check] [--crate-dir <dir>] | build-plugins [--release]"
         );
     };
     match sub.to_str() {
         Some("check-deps") => check_deps(args),
         Some("gen-header") => gen_header(args),
+        Some("build-plugins") => build_plugins(args),
         _ => bail!(
-            "unknown subcommand `{}`; available: check-deps, gen-header",
+            "unknown subcommand `{}`; available: check-deps, gen-header, build-plugins",
             sub.to_string_lossy()
         ),
     }
+}
+
+/// The workspace root: the parent of the xtask package.
+fn workspace_root() -> PathBuf {
+    let xtask_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    xtask_dir.parent().unwrap_or(xtask_dir).to_path_buf()
+}
+
+fn build_plugins(args: impl Iterator<Item = OsString>) -> Result<bool> {
+    // Every argument is checked before anything is built or written.
+    let mut release = false;
+    for arg in args {
+        match arg.to_str() {
+            Some("--release") => release = true,
+            _ => bail!(
+                "unknown argument `{}`; usage: cargo xtask build-plugins [--release]",
+                arg.to_string_lossy()
+            ),
+        }
+    }
+    for dir in plugins::run(&workspace_root(), release)? {
+        println!("build-plugins: wrote {}", dir.display());
+    }
+    Ok(true)
 }
 
 fn gen_header(mut args: impl Iterator<Item = OsString>) -> Result<bool> {
@@ -64,13 +92,7 @@ fn gen_header(mut args: impl Iterator<Item = OsString>) -> Result<bool> {
             _ => bail!("unknown argument `{}`", arg.to_string_lossy()),
         }
     }
-    let crate_dir = crate_dir.unwrap_or_else(|| {
-        let xtask_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        xtask_dir
-            .parent()
-            .unwrap_or(xtask_dir)
-            .join("crates/umbra-plugin-api")
-    });
+    let crate_dir = crate_dir.unwrap_or_else(|| workspace_root().join("crates/umbra-plugin-api"));
     match header::run(&crate_dir, check)? {
         Outcome::Current => {
             println!(

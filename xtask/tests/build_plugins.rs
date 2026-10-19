@@ -74,7 +74,6 @@ fn is_library(name: &str) -> bool {
 /// Gate 12, M4 acceptance 1: the wander package is one library plus a `plugin.toml` naming the
 /// plugin, its version and the ABI the host was built for.
 #[test]
-#[ignore = "WI-13"]
 fn build_plugins_writes_the_wander_package() {
     let target = fresh_target("wander");
 
@@ -101,7 +100,6 @@ fn build_plugins_writes_the_wander_package() {
 
 /// Gate 12 with `--release`: the same package from the release profile.
 #[test]
-#[ignore = "WI-13"]
 fn build_plugins_release_writes_the_wander_package() {
     let target = fresh_target("wander-release");
 
@@ -146,7 +144,6 @@ fn build_plugins_writes_the_c_circle_package() {
 
 /// An unknown flag is a usage error: exit 2 (the xtask convention), and nothing is written.
 #[test]
-#[ignore = "WI-13"]
 fn build_plugins_unknown_flag_is_exit_2() {
     let target = fresh_target("bad-flag");
 

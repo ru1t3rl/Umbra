@@ -1,0 +1,8 @@
+# Generic ground vehicle with the spec section 7.1 kinematic limits (base of the three templates).
+schema_version = 1
+id = "example.wander.vehicle"
+description = "Generic ground vehicle"
+
+[motion]
+model = "builtin.ground.kinematic"
+params = { max_speed_mps = 18.0, max_turn_rate_dps = 40.0, max_accel_mps2 = 2.5 }

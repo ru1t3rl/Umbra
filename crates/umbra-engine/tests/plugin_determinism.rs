@@ -119,7 +119,6 @@ fn stepped(chunks: &[u64], pause: bool) -> Trace {
 /// REQ-K-4: two as-fast-as-possible runs, each with its own load and host, agree on every tick
 /// although the wall-time scripts differ; and the plugin really ran (the heading changed).
 #[test]
-#[ignore = "WI-13"]
 fn given_plugin_wander_when_run_twice_with_different_wall_scripts_then_per_tick_hashes_and_intents_identical()
  {
     let first = traced(Duration::from_micros(500), None, None, false);
@@ -137,7 +136,6 @@ fn given_plugin_wander_when_run_twice_with_different_wall_scripts_then_per_tick_
 /// REQ-K-3, REQ-K-4, D-5: stepped (several chunkings), scaled and real-time runs, each with and
 /// without a pause/resume at tick 100, give exactly the as-fast-as-possible hashes and intents.
 #[test]
-#[ignore = "WI-13"]
 fn given_plugin_wander_when_run_in_each_clock_mode_then_matches_afap() {
     let want = &*BASELINE;
     let ones = vec![1_u64; 900];
@@ -177,7 +175,6 @@ fn given_plugin_wander_when_run_in_each_clock_mode_then_matches_afap() {
 /// (a private unhashed stream in the plugin would make them equal, AT-14 mutation), and the same
 /// seed repeats.
 #[test]
-#[ignore = "WI-13"]
 fn given_different_seeds_then_headings_and_hashes_differ() {
     let seeds = [1_u64, 2, 3, 4];
     let runs: Vec<Trace> = seeds
@@ -205,7 +202,6 @@ fn given_different_seeds_then_headings_and_hashes_differ() {
 /// ADR 0022, REQ-K-4: the plugin load order follows the package names, never the order the directory
 /// lists them (here: created in opposite orders), so registries, hosts and runs are the same.
 #[test]
-#[ignore = "WI-13"]
 fn plugin_load_order_is_independent_of_directory_listing_order() {
     let wander = plugin_support::library("example-wander", &[]);
     let fixture = plugin_support::library("umbra-test-plugin", &[]);

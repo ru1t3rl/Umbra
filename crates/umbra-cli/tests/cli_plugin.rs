@@ -59,7 +59,6 @@ fn strings(value: &serde_json::Value, out: &mut Vec<String>) {
 /// and the state hash after every tick, 900 ticks (three wander periods). Separate processes have
 /// different hasher seeds and address-space layouts and load the library afresh each time.
 #[test]
-#[ignore = "WI-13"]
 fn plugin_wander_in_four_processes_is_byte_identical() {
     let args = [
         "--json",
@@ -90,7 +89,6 @@ fn plugin_wander_in_four_processes_is_byte_identical() {
 /// M4 acceptance 1, REQ-S-1: `run` with `--plugin-path` prints the state lines of all three entities
 /// and a 16-digit final state hash; the plugin line (id, version, ABI) goes to stderr at info level.
 #[test]
-#[ignore = "WI-13"]
 fn run_example_with_plugin_path() {
     let out = run_example(&["--ticks", "300", "--log-level", "info"]);
 
@@ -120,7 +118,6 @@ fn run_example_with_plugin_path() {
 
 /// REQ-T-6: the example directory validates with `--plugin-path`.
 #[test]
-#[ignore = "WI-13"]
 fn validate_example_with_plugin_path_ok() {
     let (dir, plugins) = (s(&plugin_support::wander_example_dir()), s(&WANDER));
 
@@ -138,7 +135,6 @@ fn validate_example_with_plugin_path_ok() {
 /// REQ-X-2, decision 7: `list-plugins` prints the plugins with their capabilities, versions and kinds,
 /// as text and as one JSON document.
 #[test]
-#[ignore = "WI-13"]
 fn list_plugins_text_and_json() {
     let plugins = s(&WANDER);
 
@@ -174,17 +170,17 @@ fn list_plugins_text_and_json() {
 /// ASM-114 (REQ-T-3): without `--plugin-path` the example fails validation naming the plugin
 /// behavior as an unknown id, exit 1.
 #[test]
-#[ignore = "WI-13"]
 fn validate_example_without_plugin_path_reports_unknown_id() {
     let dir = s(&plugin_support::wander_example_dir());
 
     let out = cli(&["validate", dir.as_str()]);
 
     assert_eq!(out.status.code(), Some(1));
-    let err = stderr(&out);
+    // `validate` reports diagnostics on stdout (the M2 contract pinned by `cli_validate.rs`).
+    let text = stdout(&out);
     assert!(
-        err.contains("unknown_id") && err.contains("example.behavior.wander"),
-        "{err}"
+        text.contains("unknown_id") && text.contains("example.behavior.wander"),
+        "{text}"
     );
 }
 
