@@ -2,7 +2,9 @@
 
 use std::path::PathBuf;
 
-use umbra_engine::{Config, ServerConfig, TickRate};
+use umbra_engine::builtins::{StandardRegistryError, standard_registry};
+use umbra_engine::handle::HandleConfig;
+use umbra_engine::{Config, Confinement, ServerConfig, TickRate};
 
 /// The settings of one server run: the `[server]` table plus the values of other tables it uses.
 ///
@@ -29,4 +31,44 @@ impl ServerSettings {
             default_tick_rate: config.tick_rate.unwrap_or_default(),
         }
     }
+
+    /// The confinement of served loads (D-b, ADR 0026): the scenario root plus the configured plugin
+    /// directories, canonicalised.
+    ///
+    /// # Errors
+    /// The `io` error of a root or plugin directory that cannot be canonicalised.
+    pub fn confinement(&self) -> std::io::Result<Confinement> {
+        Confinement::new(&self.server.scenario_root, &self.plugin_paths)
+    }
+
+    /// The engine handle configuration `umbra serve` runs with (ASM-180, ASM-197): the standard
+    /// registry, loads confined to the scenario root, the configured plugin paths, default tick rate
+    /// and command queue. The wall clock and the other knobs keep the handle defaults; a caller may
+    /// change the public fields afterwards.
+    ///
+    /// # Errors
+    /// [`SetupError`] if the confinement directories do not exist or the registry cannot be built.
+    pub fn handle_config(&self) -> Result<HandleConfig, SetupError> {
+        let mut config = HandleConfig::new(standard_registry()?);
+        config.load.default_tick_rate = self.default_tick_rate;
+        config
+            .load
+            .extra_plugin_paths
+            .clone_from(&self.plugin_paths);
+        config.load.confinement = Some(self.confinement()?);
+        config.command_capacity = self.server.command_queue;
+        Ok(config)
+    }
+}
+
+/// Why the engine could not be configured from the settings.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum SetupError {
+    /// The scenario root or a plugin directory cannot be resolved.
+    #[error("cannot resolve the scenario root or a plugin directory: {0}")]
+    Directory(#[from] std::io::Error),
+    /// The built-in registry could not be built (not expected).
+    #[error(transparent)]
+    Registry(#[from] StandardRegistryError),
 }

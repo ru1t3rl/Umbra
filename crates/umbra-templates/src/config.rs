@@ -456,12 +456,30 @@ fn read_paths(reader: &mut Reader<'_>, value: &LValue) -> Option<Vec<String>> {
 fn read_hosts(reader: &mut Reader<'_>, value: &LValue) -> Option<Vec<String>> {
     let expected = "a host name or address with an optional port";
     string_entries(reader, "allowed_hosts", value, expected, |t| {
-        if t.is_empty() || t.contains(|c: char| c.is_whitespace() || c == '/') {
-            Err("empty, or has whitespace or `/`".into())
-        } else {
-            Ok(())
-        }
+        check_host(t).map_err(String::from)
     })
+}
+
+/// Checks `host`, `host:port`, `[v6]` or `[v6]:port` (ASM-169 d, ASM-198). The server's `Host`
+/// policy (`umbra-server/src/layers/host.rs`) parses the same grammar, a little more leniently
+/// (it lower-cases and does not reject every odd character): the two are kept in step by hand.
+fn check_host(text: &str) -> Result<(), &'static str> {
+    let (host, port) = split_host_port(text)?;
+    if let Some(inner) = host.strip_prefix('[').and_then(|h| h.strip_suffix(']')) {
+        if inner.parse::<Ipv6Addr>().is_err() {
+            return Err("the text in brackets is not an IPv6 address");
+        }
+    } else if host.is_empty()
+        || host.contains(|c: char| c.is_whitespace() || "/?#@\\[]:".contains(c))
+    {
+        return Err("the host is empty or has a scheme, path, query, fragment or user info");
+    }
+    if let Some(port) = port
+        && !(port.bytes().all(|b| b.is_ascii_digit()) && port.parse::<u16>().is_ok())
+    {
+        return Err("the port is not a number from 0 to 65535");
+    }
+    Ok(())
 }
 
 fn read_origins(reader: &mut Reader<'_>, value: &LValue) -> Option<Vec<String>> {

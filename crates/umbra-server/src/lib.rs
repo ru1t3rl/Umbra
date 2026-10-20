@@ -1,10 +1,10 @@
 //! `umbra-server`: the REST API and WebSocket stream over the engine handle.
 //!
 //! Responsibility: expose `umbra-engine` over HTTP under [`API_BASE`] and stream frames to clients,
-//! without changing what is simulated (REQ-X-4..9, REQ-X-7, D-10, D-11, ADR 0025). M5 WI-1 only
-//! scaffolds the crate and WI-6 declares its surface (settings, shutdown signal, wire mapping and
-//! problem types are real; the router, handlers and stream loop are `todo!` signatures that
-//! WI-11 onward implement).
+//! without changing what is simulated (REQ-X-4..9, REQ-X-7, D-10, D-11, ADR 0025). The router, the
+//! `Host` layer, the extractors, problem mapping, status, scenario and run control and the served
+//! `OpenAPI` document are real (WI-11); the entity, template, catalog and plugin routes (WI-13,
+//! WI-14) and the stream (WI-15, WI-16) are not yet.
 //!
 //! Dependency rule (REQ-A-1..4, REQ-X-7): depends on `umbra-engine` and `umbra-api-types` only
 //! among workspace crates, never on `umbra-kernel` or `umbra-core` directly. It contains no
@@ -13,13 +13,18 @@
 #![forbid(unsafe_code)]
 
 pub mod config;
+pub mod extract;
+mod handlers;
+mod layers;
 pub mod map;
+pub mod openapi;
 pub mod problem;
 pub mod routes;
 pub mod shutdown;
+mod state;
 pub mod stream;
 
-pub use config::ServerSettings;
+pub use config::{ServerSettings, SetupError};
 pub use problem::ApiError;
 pub use routes::Server;
 pub use shutdown::Shutdown;

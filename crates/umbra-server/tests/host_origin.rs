@@ -2,9 +2,10 @@
 //! REQ-X-8, NFR-4, ADR 0026 (amended, D-b), ADR 0029 (`allowed_hosts`, `allowed_origins`).
 //!
 //! The `Host` rows go through `Server::router()` (WI-11); the `Origin` rows upgrade a real WebSocket
-//! (WI-15). Every test is ignored until then.
+//! (WI-15); the `Origin` tests are ignored until WI-15.
 
 #![forbid(unsafe_code)]
+#![expect(clippy::expect_used, reason = "tests construct known-valid values")]
 
 mod common;
 
@@ -24,7 +25,6 @@ async fn status_with_host(h: &Harness, host: &str) -> common::Reply {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn loopback_hosts_on_any_port_allowed() {
     let h = Harness::start("host-loopback");
     for host in [
@@ -41,7 +41,6 @@ async fn loopback_hosts_on_any_port_allowed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn bound_address_allowed() {
     let h = Harness::with("host-bound", |config| {
         config.server.bind = "192.0.2.7:7878".parse().expect("address");
@@ -53,7 +52,6 @@ async fn bound_address_allowed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn foreign_host_is_403_host_not_allowed() {
     let h = Harness::start("host-foreign");
     for host in [
@@ -87,8 +85,38 @@ async fn foreign_host_is_403_host_not_allowed() {
     post.assert_problem(ProblemCode::HostNotAllowed);
 }
 
+/// One raw HTTP/1.1 request with this request line target and `Host`; the whole response as text.
+async fn raw_request(addr: std::net::SocketAddr, target: &str, host: &str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::TcpStream::connect(addr).await.expect("connect");
+    let request = format!("GET {target} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).await.expect("write");
+    let mut text = String::new();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        stream.read_to_string(&mut text),
+    )
+    .await
+    .expect("hang guard")
+    .expect("read");
+    text
+}
+
 #[tokio::test]
-#[ignore = "WI-11"]
+async fn absolute_form_authority_must_be_allowed_too() {
+    let h = Harness::start("host-absolute-form");
+    let addr = h.serve_on_loopback().await;
+    // A loopback `Host` does not excuse a foreign authority in the request target.
+    let refused = raw_request(addr, "http://evil.example/api/v1/status", "localhost").await;
+    assert!(refused.starts_with("HTTP/1.1 403"), "{refused}");
+    assert!(refused.contains("host_not_allowed"), "{refused}");
+    // Control: the same shape with an allowed authority is served.
+    let target = format!("http://{addr}/api/v1/status");
+    let served = raw_request(addr, &target, "localhost").await;
+    assert!(served.starts_with("HTTP/1.1 200"), "{served}");
+}
+
+#[tokio::test]
 async fn configured_allowed_hosts_accepted() {
     let h = Harness::with("host-configured", |config| {
         config.server.allowed_hosts = vec!["umbra.example".to_string()];

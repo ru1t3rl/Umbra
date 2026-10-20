@@ -1,18 +1,25 @@
 //! The edge between domain types and wire types (D-12): only this crate knows both.
 //!
-//! The clock mappings are real. The mappings that need the handle's answers are signatures until the
-//! work item that serves them (`todo!` names it).
+//! The clock, run status, scenario, step and diagnostic mappings are real (WI-11). The entity
+//! mappings are signatures until the work item that serves them (`todo!` names it).
 
 #![expect(
     clippy::todo,
     unused_variables,
-    reason = "WI-6 signature stubs; the bodies arrive in WI-11 and WI-13"
+    reason = "WI-6 signature stubs; the bodies arrive in WI-13"
 )]
 
+mod run;
+mod status;
+
 use umbra_api_types as api;
-use umbra_engine::bus::RunStatus;
-use umbra_engine::handle::{EntityState, SessionInfo};
+use umbra_engine::handle::EntityState;
 use umbra_engine::{ClockMode, TimeScale};
+
+pub use run::step_result;
+pub use status::{
+    diagnostic, engine_status, plugin_fault, run_state_name, run_status, scenario_info,
+};
 
 /// A wire value the engine cannot take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -47,18 +54,6 @@ pub fn clock_setting(mode: ClockMode) -> api::ClockSetting {
         ClockMode::Stepped => api::ClockSetting::Stepped,
         ClockMode::Scaled(scale) => api::ClockSetting::Scaled { scale: scale.get() },
     }
-}
-
-/// The wire run status (WI-11).
-#[must_use]
-pub fn run_status(status: &RunStatus) -> api::RunStatus {
-    todo!("WI-11")
-}
-
-/// The wire scenario info; the path is shown relative to the scenario root (WI-11).
-#[must_use]
-pub fn scenario_info(info: &SessionInfo) -> api::ScenarioInfo {
-    todo!("WI-11")
 }
 
 /// The wire summary of an entity (WI-13); the stream uses the same mapping (WI-15).

@@ -462,3 +462,44 @@ fn confined_load_takes_plugin_dirs_from_the_checked_inputs() {
     }
     assert_eq!(log.messages(), Vec::<String>::new());
 }
+
+fn copy_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).expect("create dir");
+    for entry in fs::read_dir(from).expect("read dir") {
+        let entry = entry.expect("entry");
+        let target = to.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).expect("copy");
+        }
+    }
+}
+
+/// `Session::load` with a confinement resolves a relative path against the scenario root (not the
+/// working directory) and reports the resolved path; a path outside the root is refused.
+#[test]
+fn session_load_resolves_a_relative_path_against_the_root() {
+    let sb = sandbox("session-relative");
+    copy_tree(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/scenarios/walking_skeleton"),
+        &sb.root().join("ws"),
+    );
+    let registry = standard_registry().expect("registry");
+    let confinement = sb.confinement(&[]);
+    let mut options = SessionOptions::new(Box::new(ManualWallClock::new()));
+    options.load.confinement = Some(confinement.clone());
+    let session = match Session::load(&registry, Path::new("./ws/../ws/scenario.toml"), options) {
+        Ok(session) => session,
+        Err(error) => panic!("a relative path inside the root must load: {error}"),
+    };
+    assert_eq!(session.path(), confinement.root.join("ws/scenario.toml"));
+
+    let mut options = SessionOptions::new(Box::new(ManualWallClock::new()));
+    options.load.confinement = Some(confinement);
+    match Session::load(&registry, Path::new("../outside/secret.toml"), options) {
+        Err(SessionError::Confine(ConfineError::PathNotAllowed { .. })) => {}
+        Err(other) => panic!("expected path_not_allowed, got {other}"),
+        Ok(_) => panic!("loaded outside the root"),
+    }
+}

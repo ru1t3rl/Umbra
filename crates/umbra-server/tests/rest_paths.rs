@@ -1,7 +1,8 @@
 //! AT-19 (server rows, WI-11): path confinement as the API shows it. Requirements: REQ-X-8, NFR-4,
 //! ADR 0026 (amended, D-b). The engine side is in `umbra-engine/tests/confine.rs`.
 //!
-//! Every test is ignored until the router (WI-11) exists.
+//! `no_response_contains_an_absolute_path_outside_the_root` stays ignored until the routes its
+//! walkthrough touches exist (WI-13, WI-14); the others run.
 
 #![forbid(unsafe_code)]
 
@@ -12,7 +13,6 @@ use serde_json::json;
 use umbra_api_types::ProblemCode;
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn missing_path_outside_root_is_403_not_404() {
     let h = Harness::start("paths-missing-outside");
     for path in [
@@ -27,7 +27,6 @@ async fn missing_path_outside_root_is_403_not_404() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn missing_path_inside_root_is_422_scenario_invalid() {
     let h = Harness::start("paths-missing-inside");
     let problem = h
@@ -41,7 +40,6 @@ async fn missing_path_inside_root_is_422_scenario_invalid() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn absolute_path_inside_root_accepted() {
     let h = Harness::start("paths-absolute-inside");
     let absolute = h.root.join("walking_skeleton/scenario.toml");
@@ -56,7 +54,6 @@ async fn absolute_path_inside_root_accepted() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn directory_is_422_validation_failed() {
     let h = Harness::start("paths-directory");
     h.load_body(&json!({"path": "walking_skeleton"}))
@@ -65,7 +62,6 @@ async fn directory_is_422_validation_failed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn template_dir_outside_root_is_403_path_not_allowed() {
     // Extra: the confinement covers what the scenario reads, not only the request path.
     let h = Harness::start("paths-template-outside");
@@ -88,7 +84,6 @@ async fn template_dir_outside_root_is_403_path_not_allowed() {
 
 #[cfg(unix)]
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn symlink_out_of_root_is_403_path_not_allowed() {
     // Extra: a symlink inside the root that leads out of it.
     let h = Harness::start("paths-symlink");
@@ -105,7 +100,7 @@ async fn symlink_out_of_root_is_403_path_not_allowed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
+#[ignore = "WI-14"]
 async fn no_response_contains_an_absolute_path_outside_the_root() {
     let h = Harness::start("paths-no-leak");
     let replies = walkthrough(&h).await;

@@ -21,9 +21,8 @@ use axum::http::{Method, Request};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 use umbra_api_types::{Problem, ProblemCode};
-use umbra_engine::builtins::standard_registry;
-use umbra_engine::handle::{EngineHandle, EngineThread, HandleConfig};
-use umbra_engine::{Config, Confinement, ManualWallClock, WallClock};
+use umbra_engine::handle::{EngineHandle, EngineThread};
+use umbra_engine::{Config, ManualWallClock, WallClock};
 use umbra_server::{Server, ServerSettings, Shutdown};
 
 /// The scenario directory of the repository's examples.
@@ -145,9 +144,8 @@ impl Harness {
 
     /// A server whose `Config` is adjusted by `configure` after the scenario root is set.
     ///
-    /// The handle is configured as `umbra serve` must: confinement to the scenario root and the
-    /// configured plugin paths, the configured default tick rate and command queue, and a
-    /// `ManualWallClock` per session (ASM-180).
+    /// The handle is configured by `ServerSettings::handle_config`, as `umbra serve` does
+    /// (ASM-180, ASM-197), with a `ManualWallClock` per session.
     pub fn with(tag: &str, configure: impl FnOnce(&mut Config)) -> Self {
         let root = fresh_dir(tag);
         copy_example(&root, "walking_skeleton");
@@ -156,17 +154,7 @@ impl Harness {
         config.server.scenario_root.clone_from(&root);
         configure(&mut config);
         let settings = ServerSettings::from_config(&config);
-        let mut handle_config = HandleConfig::new(standard_registry().expect("standard registry"));
-        handle_config.load.default_tick_rate = settings.default_tick_rate;
-        handle_config
-            .load
-            .extra_plugin_paths
-            .clone_from(&settings.plugin_paths);
-        handle_config.load.confinement = Some(
-            Confinement::new(&settings.server.scenario_root, &settings.plugin_paths)
-                .expect("confinement"),
-        );
-        handle_config.command_capacity = settings.server.command_queue;
+        let mut handle_config = settings.handle_config().expect("handle configuration");
         handle_config.wall =
             Arc::new(|| -> Box<dyn WallClock> { Box::new(ManualWallClock::new()) });
         let (handle, thread) = EngineHandle::spawn(handle_config).expect("spawn the engine");

@@ -1,7 +1,7 @@
 //! AT-6 (WI-11): scenario loading and run control over REST. Requirements: REQ-X-4, REQ-X-5,
 //! REQ-X-9, ADR 0026 (amended: D-a, D-c, M10, m3). In-process through `Server::router()`.
 //!
-//! Every test is ignored until WI-11 implements the router (its `todo!` names the work item).
+//! `unload_then_entities_is_409_no_scenario` stays ignored until the entity listing exists (WI-13).
 
 #![forbid(unsafe_code)]
 
@@ -15,7 +15,6 @@ use umbra_api_types::{API_VERSION, ProblemCode};
 const WS_PATH: &str = "walking_skeleton/scenario.toml";
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn status_when_idle() {
     let h = Harness::start("run-status-idle");
     let reply = h.get("/api/v1/status").await;
@@ -27,7 +26,6 @@ async fn status_when_idle() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn load_returns_201_and_ready_with_tick_rate_source_and_seed_string() {
     let h = Harness::start("run-load");
     let body = h
@@ -51,7 +49,6 @@ async fn load_returns_201_and_ready_with_tick_rate_source_and_seed_string() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn seed_accepts_string_and_safe_integer() {
     let h = Harness::start("run-seed");
     // (request value, seed in the response)
@@ -71,7 +68,6 @@ async fn seed_accepts_string_and_safe_integer() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn seed_integer_above_2_pow_53_minus_1_is_422_validation_failed() {
     let h = Harness::start("run-seed-big");
     let reply = h
@@ -81,7 +77,6 @@ async fn seed_integer_above_2_pow_53_minus_1_is_422_validation_failed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn load_relative_path_resolves_against_the_root() {
     let h = Harness::start("run-relative");
     // The process working directory is the crate directory, which has a `Cargo.toml`; a relative
@@ -100,7 +95,6 @@ async fn load_relative_path_resolves_against_the_root() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn load_invalid_scenario_is_422_scenario_invalid_with_root_relative_paths() {
     let h = Harness::start("run-invalid");
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -127,7 +121,6 @@ async fn load_invalid_scenario_is_422_scenario_invalid_with_root_relative_paths(
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn load_missing_plugin_dir_is_422_scenario_load_failed() {
     let h = Harness::start("run-missing-plugins");
     let path = write_scenario_variant(
@@ -142,7 +135,6 @@ async fn load_missing_plugin_dir_is_422_scenario_load_failed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn load_failure_leaves_idle_and_old_session_gone() {
     let h = Harness::start("run-load-failure");
     let first = h.load_skeleton("stepped").await;
@@ -159,7 +151,6 @@ async fn load_failure_leaves_idle_and_old_session_gone() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn load_request_with_tick_rate_field_is_422_validation_failed() {
     let h = Harness::start("run-tick-rate-field");
     h.load_body(&json!({"path": WS_PATH, "tick_rate_hz": 10}))
@@ -211,7 +202,6 @@ async fn apply(h: &Harness, command: &str) -> common::Reply {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn run_control_follows_the_matrix() {
     // The ADR 0026 command x state table (the REST-reachable commands).
     let matrix: [(&str, [(&str, Expect); 6]); 5] = [
@@ -293,7 +283,6 @@ async fn run_control_follows_the_matrix() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn run_commands_report_the_new_state() {
     // Extra: the success bodies are `RunStatus` and show the transition.
     let h = Harness::start("run-states");
@@ -310,7 +299,6 @@ async fn run_commands_report_the_new_state() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn step_without_stepped_clock_is_409_not_stepped() {
     let h = Harness::start("run-not-stepped");
     // With the manual wall clock a real-time run never advances, so the state stays `running`.
@@ -320,7 +308,6 @@ async fn step_without_stepped_clock_is_409_not_stepped() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn step_returns_requested_completed_reached_hash() {
     let h = Harness::start("run-step");
     h.load_skeleton("stepped").await;
@@ -345,7 +332,6 @@ async fn step_returns_requested_completed_reached_hash() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn step_count_out_of_range_is_422_validation_failed() {
     // Extra: the bounds of `StepRequest`.
     let h = Harness::start("run-step-range");
@@ -359,7 +345,6 @@ async fn step_count_out_of_range_is_422_validation_failed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn second_step_is_409_step_in_progress() {
     let h = Harness::start("run-step-in-progress");
     let path = write_long_scenario(&h.root);
@@ -392,7 +377,6 @@ async fn second_step_is_409_step_in_progress() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn set_clock_scaled_out_of_range_is_422() {
     let h = Harness::start("run-clock-range");
     h.load_skeleton("stepped").await;
@@ -417,7 +401,7 @@ async fn set_clock_scaled_out_of_range_is_422() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
+#[ignore = "WI-13"]
 async fn unload_then_entities_is_409_no_scenario() {
     let h = Harness::start("run-unload");
     h.load_skeleton("stepped").await;
@@ -432,7 +416,6 @@ async fn unload_then_entities_is_409_no_scenario() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn engine_thread_dead_is_503_engine_unavailable() {
     let mut h = Harness::start("run-engine-dead");
     h.load_skeleton("stepped").await;

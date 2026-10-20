@@ -20,6 +20,8 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "json
 # Compiles C against umbra_plugin_api.h (ADR 0023 item 3): dev-only in umbra-plugin-host (tests), and
 # in xtask, which builds the C example plugin for `build-plugins`.
 cc = "1.2"
+# Query-string parsing for repeated and comma-separated array parameters (umbra-server; ADR 0026, m5).
+form_urlencoded = "1.2.2"
 # `Sink`/`Stream` for the stream loop (umbra-server; ADR 0025).
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 hecs = { version = "0.11.2", default-features = false }

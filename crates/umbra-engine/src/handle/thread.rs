@@ -260,12 +260,18 @@ impl Worker {
     fn after_abort(&mut self, report: TickReport, fault: &PluginFault) {
         trace_tick(&report);
         self.publish_tick(report, true);
-        let ending = self.stop_with(StopReason::PluginFault(fault.clone()), StepEnd::Cancel);
+        let ending = self.stop_with(
+            self.shown_stop_reason(StopReason::PluginFault(fault.clone())),
+            StepEnd::Cancel,
+        );
         self.publish_control_then(Vec::new(), ending);
     }
 
     fn after_error(&mut self, error: &EngineError) {
-        let ending = self.stop_with(StopReason::Error(error.to_string()), StepEnd::Cancel);
+        let ending = self.stop_with(
+            self.shown_stop_reason(StopReason::Error(error.to_string())),
+            StepEnd::Cancel,
+        );
         self.publish_control_then(Vec::new(), ending);
     }
 

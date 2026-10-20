@@ -1,8 +1,7 @@
 //! AT-6 (`problems.rs`): the error model of ADR 0026 (m7): one status per code, problem details
 //! for every non-2xx response, and the mapping of axum's rejections. Requirements: REQ-X-9.
 //!
-//! The first three tests use the real `ProblemCode` and `ApiError` and run now; the router tests are
-//! ignored until WI-11.
+//! The first two tests use `ProblemCode` and `ApiError` directly; the others go through the router.
 
 #![forbid(unsafe_code)]
 
@@ -80,7 +79,6 @@ fn api_error_becomes_a_problem_with_type_status_and_code() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn every_error_is_problem_json_with_a_documented_code() {
     let h = Harness::start("problems-all");
     let requests = [
@@ -120,7 +118,6 @@ async fn every_error_is_problem_json_with_a_documented_code() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn unknown_route_is_404_not_found() {
     let h = Harness::start("problems-404");
     for uri in ["/api/v1/nope", "/nope", "/api/v2/status"] {
@@ -129,7 +126,6 @@ async fn unknown_route_is_404_not_found() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn wrong_method_is_405_with_problem_body() {
     let h = Harness::start("problems-405");
     for (method, uri) in [
@@ -142,7 +138,6 @@ async fn wrong_method_is_405_with_problem_body() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn missing_content_type_is_415() {
     let h = Harness::start("problems-415");
     let body = json!({"path": "walking_skeleton/scenario.toml"}).to_string();
@@ -167,7 +162,6 @@ async fn missing_content_type_is_415() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn malformed_json_is_400_invalid_body() {
     let h = Harness::start("problems-400-body");
     for text in ["{\"path\": ", "not json", ""] {
@@ -184,7 +178,6 @@ async fn malformed_json_is_400_invalid_body() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn unknown_field_or_wrong_type_is_422_validation_failed() {
     let h = Harness::start("problems-422");
     for body in [
@@ -200,7 +193,6 @@ async fn unknown_field_or_wrong_type_is_422_validation_failed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn bad_path_or_query_param_is_400_bad_request() {
     let h = Harness::start("problems-400-param");
     h.load_skeleton("stepped").await;
@@ -215,7 +207,6 @@ async fn bad_path_or_query_param_is_400_bad_request() {
 }
 
 #[tokio::test]
-#[ignore = "WI-11"]
 async fn body_over_the_configured_limit_is_413() {
     let h = Harness::with("problems-413", |config| {
         config.server.body_limit_bytes = 1024;

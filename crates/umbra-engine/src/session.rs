@@ -5,7 +5,7 @@
 //! `EngineHandle` (from WI-8) drives one; an embedder can drive one directly with [`Engine::pump`].
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use umbra_core::{
@@ -136,6 +136,8 @@ pub struct Session {
     /// API spawns so far; with the scenario's placements it numbers build errors.
     spawns: usize,
     plugins: Arc<PluginHost>,
+    /// The scenario file as loaded: resolved against the scenario root when confined.
+    path: PathBuf,
 }
 
 impl Session {
@@ -163,24 +165,30 @@ impl Session {
             load,
             plugin_log,
         } = options;
-        let paths = match &load.confinement {
+        // With a confinement the request is resolved first: a relative path is taken against the
+        // scenario root, one outside it is refused without touching the disk, a directory is not a
+        // file (ADR 0026, D-b). Everything after this uses the resolved path.
+        let resolved;
+        let (path, paths) = match &load.confinement {
             Some(confinement) => {
+                resolved = confinement.resolve_request(path)?;
+                let path = resolved.as_path();
                 let inputs = scenario_inputs(path);
                 confinement.check_inputs(&inputs)?;
-                if path.is_dir() {
-                    return Err(ConfineError::NotAFile {
-                        shown: confinement.display(path),
-                    }
-                    .into());
-                }
-                dedup_plugin_paths(
-                    load.extra_plugin_paths
-                        .iter()
-                        .cloned()
-                        .chain(inputs.plugin_dirs),
+                (
+                    path,
+                    dedup_plugin_paths(
+                        load.extra_plugin_paths
+                            .iter()
+                            .cloned()
+                            .chain(inputs.plugin_dirs),
+                    ),
                 )
             }
-            None => resolve_plugin_paths(&load.extra_plugin_paths, Some(path)),
+            None => (
+                path,
+                resolve_plugin_paths(&load.extra_plugin_paths, Some(path)),
+            ),
         };
         let mut host_options = HostOptions::default();
         if let Some(log) = plugin_log {
@@ -206,7 +214,15 @@ impl Session {
             duration_ticks: run.duration_ticks,
             spawns: 0,
             plugins,
+            path: path.to_path_buf(),
         })
+    }
+
+    /// The scenario file as loaded: with a confinement, the request resolved against the scenario
+    /// root; without one, as given.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     /// The engine.

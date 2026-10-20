@@ -110,8 +110,9 @@ fn unknown_key_at_every_level_is_located() {
 }
 
 #[test]
+#[expect(clippy::too_many_lines, reason = "one table of rows")]
 fn wrong_type_and_invalid_value_rows() {
-    let rows: [(&str, DiagnosticCode); 29] = [
+    let rows: [(&str, DiagnosticCode); 34] = [
         (
             "[simulation]\ntick_rate_hz = \"60\"",
             DiagnosticCode::WrongType,
@@ -202,6 +203,26 @@ fn wrong_type_and_invalid_value_rows() {
         ),
         (
             "[server]\nallowed_origins = [\"http://[::1\"]",
+            DiagnosticCode::InvalidValue,
+        ),
+        (
+            "[server]\nallowed_hosts = [\"http://ops.example\"]",
+            DiagnosticCode::InvalidValue,
+        ),
+        (
+            "[server]\nallowed_hosts = [\"ops.example:abc\"]",
+            DiagnosticCode::InvalidValue,
+        ),
+        (
+            "[server]\nallowed_hosts = [\"ops.example:99999\"]",
+            DiagnosticCode::InvalidValue,
+        ),
+        (
+            "[server]\nallowed_hosts = [\"[nope]\"]",
+            DiagnosticCode::InvalidValue,
+        ),
+        (
+            "[server]\nallowed_hosts = [\"a@ops.example\"]",
             DiagnosticCode::InvalidValue,
         ),
     ];

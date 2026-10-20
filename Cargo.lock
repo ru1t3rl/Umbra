@@ -1454,6 +1454,7 @@ name = "umbra-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "form_urlencoded",
  "futures-util",
  "serde",
  "serde_json",

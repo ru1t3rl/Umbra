@@ -173,9 +173,8 @@ impl Worker {
         options.clock = clock;
         options.load = self.settings.load.clone();
         options.plugin_log.clone_from(&self.settings.plugin_log);
-        let loaded = Session::load(&self.settings.base, path, options);
-        let result = match loaded {
-            Ok(session) => Ok(self.install(session, path, seed)),
+        let result = match Session::load(&self.settings.base, path, options) {
+            Ok(session) => Ok(self.install(session, seed)),
             Err(error) => Err(HandleError::Session(self.shown_session_error(error))),
         };
         self.publish_control(Vec::new());
@@ -183,12 +182,9 @@ impl Worker {
     }
 
     /// Makes `session` the current run, `ready`, and describes it.
-    fn install(&mut self, session: Session, path: &Path, seed: Option<u64>) -> SessionInfo {
+    fn install(&mut self, session: Session, seed: Option<u64>) -> SessionInfo {
         let scenario = session.scenario();
-        let shown = match &self.settings.load.confinement {
-            Some(confinement) => confinement.display(path),
-            None => path.display().to_string(),
-        };
+        let shown = self.shown_path(session.path());
         let info = SessionInfo {
             session: self.sessions,
             name: scenario.name.clone(),
