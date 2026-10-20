@@ -32,7 +32,7 @@ pub enum CommonProblems {
 
 /// The query of `GET /api/v1/entities`, for the document only: the server parses the raw query
 /// itself ([`ApiQuery`](crate::extract::ApiQuery)) so that array parameters may be repeated or
-/// comma-separated (ADR 0026, m5). WI-13 reuses this type for the same operation.
+/// comma-separated (ADR 0026, m5).
 #[derive(IntoParams, Deserialize)]
 #[into_params(parameter_in = Query)]
 #[expect(dead_code, reason = "documents the query; ApiQuery reads it")]
@@ -86,9 +86,13 @@ pub struct ComponentListParams {
     handlers::run::stop_run,
     handlers::run::step_run,
     handlers::run::set_clock,
-    handlers::pending::list_entities,
-    handlers::pending::get_entity,
-    handlers::pending::list_components,
+    handlers::entities::list_entities,
+    handlers::entities::get_entity,
+    handlers::entities::spawn_entity,
+    handlers::entities::remove_entity,
+    handlers::templates::list_templates,
+    handlers::templates::get_template,
+    handlers::components::list_components,
     get_openapi,
 ))]
 struct Routes;

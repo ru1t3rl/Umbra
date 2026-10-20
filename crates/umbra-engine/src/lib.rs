@@ -39,11 +39,13 @@ pub use plugins::{
 };
 pub use scenario::{EntityInfo, LoadSettings, ScenarioError};
 pub use session::{Session, SessionError, SessionOptions, TemplateSpawn};
+/// The result of ticking a behavior (REQ-B-8), as an entity snapshot reports it.
+pub use umbra_core::Status as BehaviorStatus;
 pub use umbra_core::{
     Catalog, CatalogEntry, CatalogKind, ComponentId, ComponentKind, ControlAction, EntityId,
-    FlatTerrain, Force, Geodetic, Meters, Ownership, ParamSchema, ParamValue, Position, Provenance,
-    Radians, Registry, SimEvent, SimTime, StateHash, TemplateId, TerrainProvider, TickRate,
-    TimeError, Version,
+    FlatTerrain, Force, Geodetic, Meters, MetersPerSecond, Ownership, ParamSchema, ParamValue,
+    Position, Provenance, Radians, Registry, SimEvent, SimTime, StateHash, TemplateId,
+    TerrainProvider, TickRate, TimeError, Version,
 };
 pub use umbra_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, StdWallClock, TickReport,

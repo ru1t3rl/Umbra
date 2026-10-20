@@ -1,33 +1,53 @@
 //! The edge between domain types and wire types (D-12): only this crate knows both.
 //!
-//! The clock, run status, scenario, step and diagnostic mappings are real (WI-11). The entity
-//! mappings are signatures until the work item that serves them (`todo!` names it).
+//! The clock, run status, scenario, step and diagnostic mappings (WI-11), and the entity, template
+//! and component mappings with the entity query (WI-13).
 
-#![expect(
-    clippy::todo,
-    unused_variables,
-    reason = "WI-6 signature stubs; the bodies arrive in WI-13"
-)]
-
+mod components;
+mod entities;
+mod query;
 mod run;
 mod status;
+mod templates;
 
 use umbra_api_types as api;
-use umbra_engine::handle::EntityState;
 use umbra_engine::{ClockMode, TimeScale};
 
+pub use components::{component_entry, component_kind_filter, component_kind_query};
+pub use entities::{entity_detail, entity_page, entity_summary, spawn_spec};
+pub use query::entity_query;
 pub use run::step_result;
 pub use status::{
     diagnostic, engine_status, plugin_fault, run_state_name, run_status, scenario_info,
 };
+pub use templates::{template_detail, template_summary};
 
 /// A wire value the engine cannot take.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
 pub enum MapError {
     /// `scale` is not finite or outside `[0.001, 1000000]`.
     #[error("clock scale must be finite and within [0.001, 1000000]")]
     InvalidScale,
+    /// A spawn request names an id that is not valid (`template`, `force`).
+    #[error("{0}")]
+    InvalidId(String),
+    /// A spawn request position the engine cannot place (a coordinate that is not finite or a
+    /// latitude outside [-90, 90]).
+    #[error("{0}")]
+    InvalidSpawn(String),
+}
+
+impl MapError {
+    /// The problem code this failure answers with (`422` for all of them).
+    #[must_use]
+    pub fn code(&self) -> api::ProblemCode {
+        match self {
+            Self::InvalidScale => api::ProblemCode::ValidationFailed,
+            Self::InvalidId(_) => api::ProblemCode::InvalidId,
+            Self::InvalidSpawn(_) => api::ProblemCode::InvalidSpawn,
+        }
+    }
 }
 
 /// The engine clock for a wire clock setting.
@@ -54,16 +74,4 @@ pub fn clock_setting(mode: ClockMode) -> api::ClockSetting {
         ClockMode::Stepped => api::ClockSetting::Stepped,
         ClockMode::Scaled(scale) => api::ClockSetting::Scaled { scale: scale.get() },
     }
-}
-
-/// The wire summary of an entity (WI-13); the stream uses the same mapping (WI-15).
-#[must_use]
-pub fn entity_summary(entity: &EntityState) -> api::EntitySummary {
-    todo!("WI-13")
-}
-
-/// The wire detail of an entity (WI-13).
-#[must_use]
-pub fn entity_detail(entity: &EntityState) -> api::EntityDetail {
-    todo!("WI-13")
 }

@@ -1,7 +1,5 @@
 //! AT-6 (WI-11): scenario loading and run control over REST. Requirements: REQ-X-4, REQ-X-5,
 //! REQ-X-9, ADR 0026 (amended: D-a, D-c, M10, m3). In-process through `Server::router()`.
-//!
-//! `unload_then_entities_is_409_no_scenario` stays ignored until the entity listing exists (WI-13).
 
 #![forbid(unsafe_code)]
 
@@ -401,7 +399,6 @@ async fn set_clock_scaled_out_of_range_is_422() {
 }
 
 #[tokio::test]
-#[ignore = "WI-13"]
 async fn unload_then_entities_is_409_no_scenario() {
     let h = Harness::start("run-unload");
     h.load_skeleton("stepped").await;

@@ -66,6 +66,7 @@ pub fn copy_example(root: &Path, name: &str) -> PathBuf {
 pub struct Reply {
     pub status: u16,
     pub content_type: Option<String>,
+    pub location: Option<String>,
     pub body: Vec<u8>,
 }
 
@@ -313,6 +314,11 @@ async fn dispatch(
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("read the body")
@@ -320,6 +326,7 @@ async fn dispatch(
     Reply {
         status,
         content_type,
+        location,
         body,
     }
 }
@@ -652,6 +659,7 @@ async fn raw_upgrade(addr: std::net::SocketAddr, query: &str, headers: &[(&str, 
     Reply {
         status,
         content_type,
+        location: None,
         body: raw[head_end..head_end + length].to_vec(),
     }
 }

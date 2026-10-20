@@ -14,7 +14,7 @@ use umbra_api_types::ProblemCode;
 use umbra_engine::handle::EngineHandle;
 
 use crate::config::ServerSettings;
-use crate::handlers::{pending, run, scenario, status};
+use crate::handlers::{components, entities, run, scenario, status, templates};
 use crate::layers::{host, mutating};
 use crate::openapi;
 use crate::problem::ApiError;
@@ -49,14 +49,18 @@ impl Server {
         let readers = Router::new()
             .route("/api/v1/status", get(status::get_status))
             .route("/api/v1/scenario", get(scenario::get_scenario))
-            .route("/api/v1/entities", get(pending::list_entities))
-            .route("/api/v1/entities/{id}", get(pending::get_entity))
-            .route("/api/v1/components", get(pending::list_components))
+            .route("/api/v1/entities", get(entities::list_entities))
+            .route("/api/v1/entities/{id}", get(entities::get_entity))
+            .route("/api/v1/templates", get(templates::list_templates))
+            .route("/api/v1/templates/{id}", get(templates::get_template))
+            .route("/api/v1/components", get(components::list_components))
             .route("/api/v1/openapi.json", get(openapi::get_openapi));
         let writers = mutating::guard(
             Router::new()
                 .route("/api/v1/scenario", post(scenario::load_scenario))
                 .route("/api/v1/scenario", delete(scenario::unload_scenario))
+                .route("/api/v1/entities", post(entities::spawn_entity))
+                .route("/api/v1/entities/{id}", delete(entities::remove_entity))
                 .route("/api/v1/run/start", post(run::start_run))
                 .route("/api/v1/run/pause", post(run::pause_run))
                 .route("/api/v1/run/resume", post(run::resume_run))

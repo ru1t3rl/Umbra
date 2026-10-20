@@ -1792,7 +1792,7 @@
                 }
               }
             },
-            "description": "Registered components (served from WI-14)"
+            "description": "Registered components"
           },
           "400": {
             "content": {
@@ -1845,7 +1845,7 @@
             "description": "`engine_busy`, `engine_unavailable`."
           }
         },
-        "summary": "`GET /api/v1/components`: the `kind` parameter only (WI-14 serves the list).",
+        "summary": "The registered components, optionally of one kind. With a scenario the list includes the\nplugins' components and the scenario's behavior graphs; without one, the engine's own.",
         "tags": [
           "components"
         ]
@@ -1989,7 +1989,7 @@
                 }
               }
             },
-            "description": "A page of entities (served from WI-13)"
+            "description": "A page of entities"
           },
           "400": {
             "content": {
@@ -2062,13 +2062,235 @@
             "description": "`engine_busy`, `engine_unavailable`."
           }
         },
-        "summary": "`GET /api/v1/entities`: parameters and engine errors only (WI-13 serves the page).",
+        "summary": "A page of entities, ascending by id, optionally filtered.",
+        "tags": [
+          "entities"
+        ]
+      },
+      "post": {
+        "operationId": "spawnEntity",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpawnRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityDetail"
+                }
+              }
+            },
+            "description": "Spawned",
+            "headers": {
+              "Location": {
+                "description": "The new entity: `/api/v1/entities/{id}`",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "invalid_body"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`host_not_allowed`."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "template_not_found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`method_not_allowed`."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "no_scenario, invalid_state, duplicate_name"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "unsupported_media_type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "validation_failed, invalid_id, invalid_spawn"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`internal`."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`engine_busy`, `engine_unavailable`."
+          }
+        },
+        "summary": "Spawns an entity from a template of the loaded scenario. Valid in `ready`, `running` and\n`paused`.",
         "tags": [
           "entities"
         ]
       }
     },
     "/api/v1/entities/{id}": {
+      "delete": {
+        "operationId": "removeEntity",
+        "parameters": [
+          {
+            "description": "The entity id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "bad_request"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`host_not_allowed`."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "entity_not_found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`method_not_allowed`."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "no_scenario, invalid_state"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`internal`."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`engine_busy`, `engine_unavailable`."
+          }
+        },
+        "summary": "Removes an entity. Its id is never reused. Valid in `ready`, `running` and `paused`.",
+        "tags": [
+          "entities"
+        ]
+      },
       "get": {
         "operationId": "getEntity",
         "parameters": [
@@ -2093,7 +2315,7 @@
                 }
               }
             },
-            "description": "The entity (served from WI-13)"
+            "description": "The entity"
           },
           "400": {
             "content": {
@@ -2166,7 +2388,7 @@
             "description": "`engine_busy`, `engine_unavailable`."
           }
         },
-        "summary": "`GET /api/v1/entities/{id}`: the id and engine errors only (WI-13 serves the entity).",
+        "summary": "One entity.",
         "tags": [
           "entities"
         ]
@@ -3025,6 +3247,172 @@
         "summary": "The engine status: the contract version, the run status and the loaded scenario, if any.",
         "tags": [
           "status"
+        ]
+      }
+    },
+    "/api/v1/templates": {
+      "get": {
+        "operationId": "listTemplates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TemplateSummary"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "The templates"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`host_not_allowed`."
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`method_not_allowed`."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "no_scenario"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`internal`."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`engine_busy`, `engine_unavailable`."
+          }
+        },
+        "summary": "The templates of the loaded scenario, by id.",
+        "tags": [
+          "templates"
+        ]
+      }
+    },
+    "/api/v1/templates/{id}": {
+      "get": {
+        "operationId": "getTemplate",
+        "parameters": [
+          {
+            "description": "The template id",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateDetail"
+                }
+              }
+            },
+            "description": "The template"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`host_not_allowed`."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "template_not_found"
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`method_not_allowed`."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "no_scenario"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`internal`."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`engine_busy`, `engine_unavailable`."
+          }
+        },
+        "summary": "One template with its inheritance applied.",
+        "tags": [
+          "templates"
         ]
       }
     }

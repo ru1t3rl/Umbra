@@ -67,13 +67,9 @@ const EXTRA_PROBLEMS: [(&str, &[&str]); 16] = [
 ];
 
 /// Routes of `ROUTES` that a later work item adds: the router does not serve them and the document
-/// does not list them yet. Each work item removes its lines (WI-13: entities, WI-14: templates,
-/// plugins, catalog and validation, WI-15: the stream).
-const NOT_YET: [(&str, &str); 8] = [
-    ("post", "/api/v1/entities"),
-    ("delete", "/api/v1/entities/{id}"),
-    ("get", "/api/v1/templates"),
-    ("get", "/api/v1/templates/{id}"),
+/// does not list them yet. Each work item removes its lines (WI-14: plugins, catalog and
+/// validation, WI-15: the stream).
+const NOT_YET: [(&str, &str); 4] = [
     ("get", "/api/v1/plugins"),
     ("get", "/api/v1/catalog/behavior"),
     ("post", "/api/v1/behaviors/validate"),
