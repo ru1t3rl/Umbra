@@ -10,6 +10,12 @@ find an entry with `grep -rn 'ASM-123 ' docs/assumptions/`.
 with the same header for a new milestone, e.g. `M5b.md`), take the next free number across all files (`grep -rho 'ASM-[0-9]*' docs/assumptions/ | sort -V | tail -1`),
 and update that file's range in the table below. Do not add entries to this index.
 
+**Parallel tracks (M5b and M6, from 2026-10-20).** M5b and M6 run at the same time on separate branches, so each takes
+numbers from its own reserved block instead of the next free number:
+- M6: ASM-224..ASM-299, ADR 0030..0039, decision rows D-49..D-55;
+- M5b: ASM-300..ASM-379, ADR 0040..0049, decision rows D-56..D-62.
+Gaps left in a block stay unused. After both close, numbering continues after the highest number used.
+
 | Milestone | File | IDs | Entries |
 |---|---|---|---|
 | M0 | [`docs/assumptions/M0.md`](assumptions/M0.md) | ASM-001..ASM-025 | 25 |
