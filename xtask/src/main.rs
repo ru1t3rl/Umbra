@@ -2,6 +2,8 @@
 //!
 //! CLI contract (exit 0 clean, 1 on violations or drift, 2 on load, tool or usage error):
 //! - `cargo xtask check-deps [--manifest-path <path>]` (REQ-A-1..3, NFR-2);
+//! - `cargo xtask gen-api [--check] [--api-dir <dir>]` (REQ-X-4, gate 10): the contract documents
+//!   `api/openapi.json`, `api/stream.schema.json`, `api/asyncapi.json`; `--api-dir` defaults to `api`;
 //! - `cargo xtask gen-header [--check] [--crate-dir <dir>]` (REQ-SDK-2, gate 11); the crate directory
 //!   defaults to `crates/umbra-plugin-api`;
 //! - `cargo xtask build-plugins [--release]` (gate 12, ADR 0022): writes the example plugin packages to
@@ -19,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
+use xtask::api;
 use xtask::deps::{RULES, ResolvedGraph, Violation, Workspace, check_workspace};
 use xtask::header::{self, Outcome};
 use xtask::plugins;
@@ -39,15 +42,16 @@ fn run() -> Result<bool> {
     let mut args = std::env::args_os().skip(1);
     let Some(sub) = args.next() else {
         bail!(
-            "usage: cargo xtask check-deps [--manifest-path <path>] | gen-header [--check] [--crate-dir <dir>] | build-plugins [--release]"
+            "usage: cargo xtask check-deps [--manifest-path <path>] | gen-api [--check] [--api-dir <dir>] | gen-header [--check] [--crate-dir <dir>] | build-plugins [--release]"
         );
     };
     match sub.to_str() {
         Some("check-deps") => check_deps(args),
+        Some("gen-api") => gen_api(args),
         Some("gen-header") => gen_header(args),
         Some("build-plugins") => build_plugins(args),
         _ => bail!(
-            "unknown subcommand `{}`; available: check-deps, gen-header, build-plugins",
+            "unknown subcommand `{}`; available: check-deps, gen-api, gen-header, build-plugins",
             sub.to_string_lossy()
         ),
     }
@@ -75,6 +79,53 @@ fn build_plugins(args: impl Iterator<Item = OsString>) -> Result<bool> {
         println!("build-plugins: wrote {}", dir.display());
     }
     Ok(true)
+}
+
+fn gen_api(mut args: impl Iterator<Item = OsString>) -> Result<bool> {
+    let mut check = false;
+    let mut api_dir: Option<PathBuf> = None;
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--check") => check = true,
+            Some("--api-dir") => {
+                let dir = args.next().context("--api-dir needs a value")?;
+                if api_dir.replace(dir.into()).is_some() {
+                    bail!("--api-dir given more than once");
+                }
+            }
+            _ => bail!("unknown argument `{}`", arg.to_string_lossy()),
+        }
+    }
+    let root = workspace_root();
+    let api_dir = api_dir.unwrap_or_else(|| root.join(api::API_DIR));
+    match api::run(&root, &api_dir, check)? {
+        api::Outcome::Current => {
+            println!("gen-api: ok ({} is current)", api_dir.display());
+            Ok(true)
+        }
+        api::Outcome::Drift(files) => {
+            for (name, kind) in files {
+                let path = api_dir.join(name).display().to_string();
+                match kind {
+                    api::Drift::Missing => println!("gen-api: {path} is missing"),
+                    api::Drift::Differs(line) => println!(
+                        "gen-api: {path} differs from the generated document from line {line}"
+                    ),
+                    api::Drift::Unexpected => {
+                        println!("gen-api: {path} is not a generated document; delete it");
+                    }
+                }
+            }
+            println!("gen-api: run `cargo xtask gen-api` and commit api/");
+            Ok(false)
+        }
+        api::Outcome::Written(paths) => {
+            for path in paths {
+                println!("gen-api: wrote {}", path.display());
+            }
+            Ok(true)
+        }
+    }
 }
 
 fn gen_header(mut args: impl Iterator<Item = OsString>) -> Result<bool> {

@@ -3,8 +3,7 @@
 //!
 //! The tests run the built `xtask` binary as a process; `gen-api` itself runs the `gen_api` example
 //! of `umbra-server` through nested `cargo` (offline). Mutated copies of the committed `api/`
-//! directory live under `CARGO_TARGET_TMPDIR`. Every test is ignored until WI-12 adds the command
-//! and the contract files.
+//! directory live under `CARGO_TARGET_TMPDIR`.
 
 #![forbid(unsafe_code)]
 
@@ -62,7 +61,6 @@ fn dir_arg(dir: &Path) -> &str {
 }
 
 #[test]
-#[ignore = "WI-12"]
 fn committed_contract_is_current() {
     let out = gen_api(&["--check"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
@@ -75,7 +73,6 @@ fn committed_contract_is_current() {
 }
 
 #[test]
-#[ignore = "WI-12"]
 fn edited_committed_file_is_drift_exit_1() {
     let dir = api_copy("edited");
     // The unedited copy is current, so the failure below is caused by the edit.
@@ -102,7 +99,6 @@ fn edited_committed_file_is_drift_exit_1() {
 }
 
 #[test]
-#[ignore = "WI-12"]
 fn crlf_is_not_drift() {
     let dir = api_copy("crlf");
     for file in FILES {
@@ -116,7 +112,6 @@ fn crlf_is_not_drift() {
 }
 
 #[test]
-#[ignore = "WI-12"]
 fn unknown_argument_is_exit_2() {
     for args in [
         vec!["--bogus"],
@@ -130,7 +125,6 @@ fn unknown_argument_is_exit_2() {
 }
 
 #[test]
-#[ignore = "WI-12"]
 fn documents_are_stable_across_two_generations() {
     // Extra (WI-12 lists it): two generations into empty directories are byte-identical, and equal
     // the committed files.
@@ -156,4 +150,22 @@ fn documents_are_stable_across_two_generations() {
             "{file} differs from the committed file"
         );
     }
+}
+
+#[test]
+fn unexpected_json_file_is_drift_exit_1() {
+    let dir = api_copy("extra");
+    write(&dir.join("old.json"), "{}\n");
+    let out = gen_api(&["--check", "--api-dir", dir_arg(&dir)]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(
+        text(&out).contains("old.json"),
+        "names the file: {}",
+        text(&out)
+    );
+    // A file that is not JSON is not a contract file.
+    std::fs::remove_file(dir.join("old.json")).unwrap_or_else(|e| panic!("remove: {e}"));
+    write(&dir.join("notes.txt"), "x\n");
+    let clean = gen_api(&["--check", "--api-dir", dir_arg(&dir)]);
+    assert_eq!(clean.status.code(), Some(0), "{}", text(&clean));
 }

@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 pub mod config;
+pub mod contract;
 pub mod extract;
 mod handlers;
 mod layers;

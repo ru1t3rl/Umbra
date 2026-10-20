@@ -1,15 +1,16 @@
 //! The served `OpenAPI` document (REQ-X-4, ADR 0025). WI-11 documents the routes it registers and
-//! merges the schemas of `umbra-api-types`; WI-12 completes the document, generates the committed
-//! files and the drift check.
+//! merges the schemas of `umbra-api-types`; `contract` renders it and the stream schema into the committed
+//! files `api/*.json`, which gate 10 compares (WI-12).
 
 use axum::Json;
 use serde::Deserialize;
 use utoipa::openapi::OpenApi as Document;
 use utoipa::{IntoParams, IntoResponses, OpenApi};
 
-use umbra_api_types::{API_VERSION, ApiSchemas, ComponentKind, Ownership, Problem};
+use umbra_api_types::{API_VERSION, ApiSchemas, ComponentKind, Ownership, Problem, ProblemCode};
 
 use crate::handlers;
+use crate::problem::ApiError;
 
 /// The problem responses every route documents (ADR 0026): `403 host_not_allowed`,
 /// `405 method_not_allowed`, `500 internal`, and `503 engine_busy` / `engine_unavailable`.
@@ -17,16 +18,16 @@ use crate::handlers;
 pub enum CommonProblems {
     /// `host_not_allowed`.
     #[response(status = 403, content_type = "application/problem+json")]
-    HostNotAllowed(#[to_schema] Problem),
+    HostNotAllowed(Problem),
     /// `method_not_allowed`.
     #[response(status = 405, content_type = "application/problem+json")]
-    MethodNotAllowed(#[to_schema] Problem),
+    MethodNotAllowed(Problem),
     /// `internal`.
     #[response(status = 500, content_type = "application/problem+json")]
-    Internal(#[to_schema] Problem),
+    Internal(Problem),
     /// `engine_busy`, `engine_unavailable`.
     #[response(status = 503, content_type = "application/problem+json")]
-    Unavailable(#[to_schema] Problem),
+    Unavailable(Problem),
 }
 
 /// The query of `GET /api/v1/entities`, for the document only: the server parses the raw query
@@ -110,6 +111,8 @@ pub fn document() -> Document {
     tag = "status",
     responses((status = 200, description = "This document", content_type = "application/json"), CommonProblems),
 )]
-pub(crate) async fn get_openapi() -> Json<Document> {
-    Json(document())
+pub(crate) async fn get_openapi() -> Result<Json<serde_json::Value>, ApiError> {
+    crate::contract::openapi_value()
+        .map(Json)
+        .map_err(|e| ApiError::new(ProblemCode::Internal, e.to_string()))
 }

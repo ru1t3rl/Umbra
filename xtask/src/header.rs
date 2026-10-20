@@ -156,8 +156,7 @@ fn scratch_dir() -> PathBuf {
 /// per-process file under [`scratch_dir`]; returns its path.
 fn write_metadata(crate_dir: &Path) -> Result<PathBuf, HeaderError> {
     let manifest = crate_dir.join("Cargo.toml");
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"));
-    let out = Command::new(cargo)
+    let out = Command::new(crate::cargo_program())
         .args([
             "metadata",
             "--locked",

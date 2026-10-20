@@ -1,0 +1,847 @@
+{
+  "$defs": {
+    "ClientMessage": {
+      "description": "Client -> server messages. There is no unsubscribe: a client that is done closes the socket.",
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Subscription",
+              "description": "Starts or replaces the subscription."
+            },
+            {
+              "properties": {
+                "type": {
+                  "enum": [
+                    "subscribe"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Starts or replaces the subscription."
+        }
+      ]
+    },
+    "ClockSetting": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "As fast as possible",
+          "properties": {
+            "mode": {
+              "enum": [
+                "afap"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Real time",
+          "properties": {
+            "mode": {
+              "enum": [
+                "realtime"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Tick only when stepped",
+          "properties": {
+            "mode": {
+              "enum": [
+                "stepped"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Real time multiplied by `scale`",
+          "properties": {
+            "mode": {
+              "enum": [
+                "scaled"
+              ],
+              "type": "string"
+            },
+            "scale": {
+              "maximum": 1000000,
+              "minimum": 0.001,
+              "type": "number"
+            }
+          },
+          "required": [
+            "mode",
+            "scale"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "EntitySummary": {
+      "description": "An entity as listed by `GET /entities` and carried in stream frames.",
+      "properties": {
+        "alt_m": {
+          "description": "Altitude above the ellipsoid, metres.",
+          "format": "double",
+          "type": "number"
+        },
+        "behavior": {
+          "description": "The behavior id, if it has one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "force": {
+          "description": "Its force.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "group": {
+          "description": "Its group.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "heading_deg": {
+          "description": "Heading, degrees clockwise from north.",
+          "format": "double",
+          "type": "number"
+        },
+        "id": {
+          "description": "The entity id; never reused.",
+          "format": "int64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "lat_deg": {
+          "description": "Latitude, degrees (WGS-84).",
+          "format": "double",
+          "type": "number"
+        },
+        "lon_deg": {
+          "description": "Longitude, degrees.",
+          "format": "double",
+          "type": "number"
+        },
+        "name": {
+          "description": "Its unique name, if it has one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ownership": {
+          "$ref": "#/$defs/Ownership",
+          "description": "Owned or remote."
+        },
+        "route": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RouteProgress",
+              "description": "Route progress, if it has a route."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "speed_mps": {
+          "description": "Ground speed, metres per second.",
+          "format": "double",
+          "type": "number"
+        },
+        "status": {
+          "description": "The behavior's status in the last tick.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "template": {
+          "description": "Its template.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "ownership",
+        "lat_deg",
+        "lon_deg",
+        "alt_m",
+        "heading_deg",
+        "speed_mps"
+      ],
+      "type": "object"
+    },
+    "EventDto": {
+      "description": "An event on the stream (best-effort; `dropped` and `events_truncated` make loss visible).",
+      "properties": {
+        "detail": {
+          "description": "The payload of a `custom` event, or the action of a `simulation_control`.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "entity_id": {
+          "description": "The main entity: created, removed, shooter or source.",
+          "format": "int64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "The kind: `entity_created`, `entity_removed`, `fire`, `custom` or `simulation_control`.",
+          "type": "string"
+        },
+        "target_id": {
+          "description": "The target of a `fire`.",
+          "format": "int64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "template": {
+          "description": "The template of an `entity_created`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tick": {
+          "description": "The tick it happened in.",
+          "format": "int64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "weapon": {
+          "description": "The weapon of a `fire`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "tick",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "Frame": {
+      "description": "One frame: the newest state of the subscription.",
+      "properties": {
+        "cause": {
+          "$ref": "#/$defs/FrameCause",
+          "description": "What caused it."
+        },
+        "dropped": {
+          "description": "Frames the connection never sent since the previous frame.",
+          "format": "int64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "entities": {
+          "description": "The filtered entities, ascending by id.",
+          "items": {
+            "$ref": "#/$defs/EntitySummary"
+          },
+          "type": "array"
+        },
+        "events": {
+          "description": "The events since the previous frame, in order.",
+          "items": {
+            "$ref": "#/$defs/EventDto"
+          },
+          "type": "array"
+        },
+        "events_truncated": {
+          "description": "Whether events were lost beyond the per-frame cap.",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/FrameKind",
+          "description": "[`FrameKind::Snapshot`]."
+        },
+        "run": {
+          "$ref": "#/$defs/RunStatus",
+          "description": "The run status."
+        },
+        "seq": {
+          "description": "The engine's frame counter; increases, with gaps where frames were dropped.",
+          "format": "int64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "session": {
+          "description": "The session number.",
+          "format": "int64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "state_hash": {
+          "description": "The state hash (16 lower-case hex digits), when the subscription asked for it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tick": {
+          "description": "The tick of the snapshot.",
+          "format": "int64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "time_s": {
+          "description": "Simulation time in seconds.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "cause",
+        "session",
+        "seq",
+        "tick",
+        "time_s",
+        "run",
+        "dropped",
+        "entities",
+        "events",
+        "events_truncated"
+      ],
+      "type": "object"
+    },
+    "FrameCause": {
+      "description": "What made the engine publish a frame.",
+      "enum": [
+        "tick",
+        "control"
+      ],
+      "type": "string"
+    },
+    "FrameKind": {
+      "description": "The kind of a frame. Only full snapshots exist in v1; `delta` is reserved.",
+      "enum": [
+        "snapshot"
+      ],
+      "type": "string"
+    },
+    "GeoBox": {
+      "additionalProperties": false,
+      "description": "A bounding box in degrees. `min_lon_deg > max_lon_deg` crosses the antimeridian.",
+      "properties": {
+        "max_lat_deg": {
+          "description": "Northern edge.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_lon_deg": {
+          "description": "Eastern edge.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_lat_deg": {
+          "description": "Southern edge.",
+          "format": "double",
+          "type": "number"
+        },
+        "min_lon_deg": {
+          "description": "Western edge.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_lat_deg",
+        "min_lon_deg",
+        "max_lat_deg",
+        "max_lon_deg"
+      ],
+      "type": "object"
+    },
+    "Hello": {
+      "description": "The first message of a connection.",
+      "properties": {
+        "api_version": {
+          "description": "The contract version.",
+          "type": "string"
+        },
+        "encoding": {
+          "description": "The negotiated encoding (`json`).",
+          "type": "string"
+        },
+        "protocol": {
+          "description": "[`STREAM_PROTOCOL`].",
+          "type": "string"
+        },
+        "settings": {
+          "$ref": "#/$defs/StreamSettings",
+          "description": "The settings in force."
+        }
+      },
+      "required": [
+        "protocol",
+        "api_version",
+        "encoding",
+        "settings"
+      ],
+      "type": "object"
+    },
+    "Ownership": {
+      "description": "Who simulates an entity.",
+      "enum": [
+        "owned",
+        "remote"
+      ],
+      "type": "string"
+    },
+    "PluginFaultDto": {
+      "description": "A runtime plugin fault (ADR 0021).",
+      "properties": {
+        "call": {
+          "description": "The call that faulted.",
+          "type": "string"
+        },
+        "capability": {
+          "description": "The faulted capability id.",
+          "type": "string"
+        },
+        "message": {
+          "description": "The message.",
+          "type": "string"
+        },
+        "plugin": {
+          "description": "The plugin id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plugin",
+        "capability",
+        "call",
+        "message"
+      ],
+      "type": "object"
+    },
+    "RouteProgress": {
+      "description": "How far along its route an entity is.",
+      "properties": {
+        "len": {
+          "description": "Number of waypoints.",
+          "format": "int32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "next": {
+          "description": "Index of the next waypoint.",
+          "format": "int32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "next",
+        "len"
+      ],
+      "type": "object"
+    },
+    "RunState": {
+      "description": "The run lifecycle state (ADR 0026): `idle` -> `ready` -> `running` <-> `paused`, any loaded state\n-> `stopped`.",
+      "enum": [
+        "idle",
+        "ready",
+        "running",
+        "paused",
+        "stopped"
+      ],
+      "type": "string"
+    },
+    "RunStatus": {
+      "description": "The run status reported by `GET /status`, run control and every stream frame.",
+      "properties": {
+        "clock": {
+          "$ref": "#/$defs/ClockSetting",
+          "description": "The current clock."
+        },
+        "fault": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PluginFaultDto",
+              "description": "The plugin fault behind `stop_reason = plugin_fault`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "session": {
+          "description": "The session number; it changes with every load (0 before the first).",
+          "format": "int64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/$defs/RunState",
+          "description": "The lifecycle state."
+        },
+        "step_pending": {
+          "description": "Whether a `step` request is waiting for its ticks.",
+          "type": "boolean"
+        },
+        "stop_reason": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StopReason",
+              "description": "Why the run stopped; only when `state` is `stopped`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tick": {
+          "description": "The current tick; only when a scenario is loaded. Exact below 2^53.",
+          "format": "int64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tick_rate_hz": {
+          "description": "The tick rate of the loaded scenario.",
+          "format": "int32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tick_rate_source": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TickRateSource",
+              "description": "Where the tick rate came from."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "time_s": {
+          "description": "The simulation time in seconds; only when a scenario is loaded.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "clock",
+        "session",
+        "step_pending"
+      ],
+      "type": "object"
+    },
+    "ServerMessage": {
+      "description": "Server -> client messages.",
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Hello",
+              "description": "The first message."
+            },
+            {
+              "properties": {
+                "type": {
+                  "enum": [
+                    "hello"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "The first message."
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Frame",
+              "description": "A frame."
+            },
+            {
+              "properties": {
+                "type": {
+                  "enum": [
+                    "frame"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "A frame."
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/StreamError",
+              "description": "A problem with a client message."
+            },
+            {
+              "properties": {
+                "type": {
+                  "enum": [
+                    "error"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "A problem with a client message."
+        }
+      ]
+    },
+    "StopReason": {
+      "description": "Why a run is `stopped`.",
+      "enum": [
+        "command",
+        "duration",
+        "plugin_fault",
+        "error"
+      ],
+      "type": "string"
+    },
+    "StreamError": {
+      "description": "A problem with a client message; the connection stays open.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/StreamErrorCode",
+          "description": "The stable code."
+        },
+        "message": {
+          "description": "A message for a person.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "StreamErrorCode": {
+      "description": "Stable codes of stream `error` messages.",
+      "enum": [
+        "invalid_message",
+        "unknown_message_type",
+        "invalid_subscription"
+      ],
+      "type": "string"
+    },
+    "StreamFilter": {
+      "additionalProperties": false,
+      "description": "What a client may ask the stream for.",
+      "properties": {
+        "bbox": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/GeoBox",
+              "description": "Only entities inside the box (and events of them)."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entity_ids": {
+          "description": "Only these entities, at most 10,000.",
+          "items": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "event_kinds": {
+          "description": "Only events of these kinds.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "StreamSettings": {
+      "description": "The stream settings in force, reported by `hello`.",
+      "properties": {
+        "default_rate_hz": {
+          "description": "The rate used when `subscribe` gives none.",
+          "format": "double",
+          "type": "number"
+        },
+        "max_entity_ids": {
+          "description": "The most `entity_ids` in one subscription.",
+          "format": "int32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_events_per_frame": {
+          "description": "Events per frame before `events_truncated` is set.",
+          "format": "int32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_message_bytes": {
+          "description": "The longest accepted client message (1009 beyond it).",
+          "format": "int32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_rate_hz": {
+          "description": "The highest rate a subscription may ask for.",
+          "format": "double",
+          "type": "number"
+        },
+        "queue_frames": {
+          "description": "Frames queued per connection before the oldest is dropped.",
+          "format": "int32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "send_timeout_s": {
+          "description": "A send that takes longer closes the connection (1008 `too_slow`).",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": [
+        "default_rate_hz",
+        "max_rate_hz",
+        "queue_frames",
+        "max_events_per_frame",
+        "send_timeout_s",
+        "max_message_bytes",
+        "max_entity_ids"
+      ],
+      "type": "object"
+    },
+    "Subscription": {
+      "additionalProperties": false,
+      "description": "The body of a `subscribe` message; a new one replaces the previous one.",
+      "properties": {
+        "filter": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/StreamFilter",
+              "description": "The filter; default: everything."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_rate_hz": {
+          "description": "The most frames per second, in `(0, 60]`; default 30.",
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "state_hash": {
+          "description": "Whether frames carry `state_hash`; default false.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "TickRateSource": {
+      "description": "Where the tick rate came from (ADR 0010 note, ADR 0026).",
+      "enum": [
+        "scenario",
+        "default"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:umbra:schema:stream:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Any stream message; the root of `api/stream.schema.json`.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ClientMessage",
+      "description": "A client message."
+    },
+    {
+      "$ref": "#/$defs/ServerMessage",
+      "description": "A server message."
+    }
+  ],
+  "title": "StreamMessage"
+}

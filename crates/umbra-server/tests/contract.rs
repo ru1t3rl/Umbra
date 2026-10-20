@@ -3,8 +3,8 @@
 //!
 //! `responses_conform_to_their_openapi_schemas` walks real responses against the served document
 //! with `common::schema_walk`, which fails closed on keywords it does not support. The committed
-//! files are `api/openapi.json` and `api/stream.schema.json` (created by `cargo xtask gen-api`,
-//! WI-12). Every test is ignored until then.
+//! files are `api/openapi.json` and `api/stream.schema.json` (written by `cargo xtask gen-api`).
+//! That test is ignored until WI-14. Routes of later work items are listed in `NOT_YET`.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -66,6 +66,20 @@ const EXTRA_PROBLEMS: [(&str, &[&str]); 16] = [
     ("stopRun", &["409"]),
 ];
 
+/// Routes of `ROUTES` that a later work item adds: the router does not serve them and the document
+/// does not list them yet. Each work item removes its lines (WI-13: entities, WI-14: templates,
+/// plugins, catalog and validation, WI-15: the stream).
+const NOT_YET: [(&str, &str); 8] = [
+    ("post", "/api/v1/entities"),
+    ("delete", "/api/v1/entities/{id}"),
+    ("get", "/api/v1/templates"),
+    ("get", "/api/v1/templates/{id}"),
+    ("get", "/api/v1/plugins"),
+    ("get", "/api/v1/catalog/behavior"),
+    ("post", "/api/v1/behaviors/validate"),
+    ("get", "/api/v1/stream"),
+];
+
 const TAGS: [&str; 9] = [
     "status",
     "scenario",
@@ -81,6 +95,7 @@ const TAGS: [&str; 9] = [
 fn expected_routes() -> BTreeSet<(String, String)> {
     ROUTES
         .iter()
+        .filter(|(m, p, _)| !NOT_YET.contains(&(*m, *p)))
         .map(|(m, p, _)| ((*m).to_string(), normalise(p)))
         .collect()
 }
@@ -124,7 +139,6 @@ fn operations(doc: &Value) -> Vec<(String, String, &Value)> {
 }
 
 #[tokio::test]
-#[ignore = "WI-12"]
 async fn openapi_lists_every_route_of_the_router() {
     let h = Harness::start("contract-routes");
     let doc = served(&h).await;
@@ -154,10 +168,27 @@ async fn openapi_lists_every_route_of_the_router() {
             assert_ne!(code, json!("not_found"), "{method} {uri} is not routed");
         }
     }
+    // A `NOT_YET` line is stale as soon as its route is served: the router answers it with the
+    // route-not-found problem (404 `not_found`) or, when another method shares the path, 405.
+    for (method, path) in NOT_YET {
+        let uri = path.replace("{id}", "1");
+        let reply = h
+            .send(
+                Method::from_bytes(method.to_uppercase().as_bytes()).expect("method"),
+                &uri,
+            )
+            .await;
+        let unrouted = reply.status == 405
+            || (reply.status == 404 && reply.json()["code"] == json!("not_found"));
+        assert!(
+            unrouted,
+            "{method} {path} is served (status {}): remove it from NOT_YET",
+            reply.status
+        );
+    }
 }
 
 #[tokio::test]
-#[ignore = "WI-12"]
 async fn every_operation_has_operation_id_and_one_tag() {
     let h = Harness::start("contract-ids");
     let doc = served(&h).await;
@@ -186,7 +217,6 @@ async fn every_operation_has_operation_id_and_one_tag() {
 }
 
 #[tokio::test]
-#[ignore = "WI-12"]
 async fn every_operation_documents_problem_responses() {
     let h = Harness::start("contract-problems");
     let doc = served(&h).await;
@@ -371,7 +401,6 @@ async fn responses_conform_to_their_openapi_schemas() {
 }
 
 #[tokio::test]
-#[ignore = "WI-12"]
 async fn served_openapi_equals_committed_file() {
     let h = Harness::start("contract-served");
     let doc = served(&h).await;
@@ -398,7 +427,6 @@ fn refs(value: &Value, out: &mut BTreeSet<String>) {
 }
 
 #[test]
-#[ignore = "WI-12"]
 fn stream_schema_root_references_every_message_type() {
     let schema = committed("stream.schema.json");
     // Follow the `$ref`s from the root.
@@ -437,7 +465,6 @@ fn stream_schema_root_references_every_message_type() {
 }
 
 #[tokio::test]
-#[ignore = "WI-12"]
 async fn every_dto_is_in_components() {
     let h = Harness::start("contract-components");
     let doc = served(&h).await;
@@ -463,7 +490,6 @@ async fn every_dto_is_in_components() {
 }
 
 #[tokio::test]
-#[ignore = "WI-12"]
 async fn api_version_matches_info_version() {
     let h = Harness::start("contract-version");
     let doc = served(&h).await;

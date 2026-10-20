@@ -1,0 +1,64 @@
+{
+  "asyncapi": "3.0.0",
+  "channels": {
+    "stream": {
+      "address": "/api/v1/stream",
+      "messages": {
+        "ClientMessage": {
+          "contentType": "application/json",
+          "name": "ClientMessage",
+          "payload": {
+            "$ref": "stream.schema.json#/$defs/ClientMessage"
+          },
+          "summary": "Client to server: subscription changes."
+        },
+        "ServerMessage": {
+          "contentType": "application/json",
+          "name": "ServerMessage",
+          "payload": {
+            "$ref": "stream.schema.json#/$defs/ServerMessage"
+          },
+          "summary": "Server to client: hello, frames and errors."
+        }
+      }
+    }
+  },
+  "info": {
+    "description": "The WebSocket stream of the Umbra control API. JSON text frames; the connection parameters (rate, encoding, filters) are the query of the upgrade request and `subscribe` messages (ADR 0027). No authentication in v1: the server binds to localhost by default.",
+    "title": "Umbra control stream",
+    "version": "1.0.0"
+  },
+  "operations": {
+    "receiveServerMessage": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/stream"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/stream/messages/ServerMessage"
+        }
+      ],
+      "summary": "The server sends hello, frames and errors."
+    },
+    "sendClientMessage": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/stream"
+      },
+      "messages": [
+        {
+          "$ref": "#/channels/stream/messages/ClientMessage"
+        }
+      ],
+      "summary": "The server receives client messages."
+    }
+  },
+  "servers": {
+    "local": {
+      "description": "The default bind address; the port is the `[server]` setting.",
+      "host": "127.0.0.1",
+      "protocol": "ws"
+    }
+  }
+}

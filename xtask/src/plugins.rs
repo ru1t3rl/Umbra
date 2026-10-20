@@ -112,17 +112,12 @@ pub enum PluginsError {
     },
 }
 
-/// The cargo program: `CARGO` (set by cargo for `cargo xtask` and tests), else `cargo` on `PATH`.
-fn cargo() -> OsString {
-    std::env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo"))
-}
-
 /// The cargo target directory of the workspace at `root` (honours `CARGO_TARGET_DIR`).
 ///
 /// # Errors
 /// [`PluginsError::Spawn`] or [`PluginsError::Metadata`].
 pub fn target_dir(root: &Path) -> Result<PathBuf, PluginsError> {
-    let program = cargo();
+    let program = crate::cargo_program();
     let out = Command::new(&program)
         .current_dir(root)
         .args([
@@ -174,7 +169,7 @@ pub fn library_file_name(package: &str) -> String {
 /// [`PluginsError`]; a failed build leaves the existing packages untouched.
 pub fn run(root: &Path, release: bool) -> Result<Vec<PathBuf>, PluginsError> {
     let target = target_dir(root)?;
-    let program = cargo();
+    let program = crate::cargo_program();
     let mut build = Command::new(&program);
     build.current_dir(root).args(["build", "--locked"]);
     if release {
