@@ -27,4 +27,4 @@ Golden-packet encode/decode, round-trip property tests, loopback integration, tw
 Use the `add-network-adapter` skill when creating adapters.
 
 ## Before reporting
-Apply `docs/implementer-checklist.md` (mutation checks, no vacuous asserts, reuse, `scripts/gates.sh`, report format). When the prompt carries a work-item brief, work from it instead of reading the whole plan, spec or `docs/assumptions.md`.
+Apply `docs/implementer-checklist.md` (mutation checks, no vacuous asserts, reuse, `scripts/gates.sh`, report format). When the prompt carries a work-item brief, work from it instead of reading the whole plan, spec or `docs/assumptions/`.

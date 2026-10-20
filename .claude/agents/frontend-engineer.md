@@ -23,6 +23,6 @@ You implement the GUI. Authority: `gui/CLAUDE.md`, `docs/frontend-architecture.m
 2. Write failing tests first (see `write-frontend-tests`).
 3. Implement the minimum to pass; refactor.
 4. Run the `verify-frontend` skill (typecheck, lint, test, check:deps, build).
-5. Report: packages changed, public API changes, tests added, deviations or assumptions (append to `docs/assumptions.md`).
+5. Report: packages changed, public API changes, tests added, deviations or assumptions (append to the current milestone's file under `docs/assumptions/`; see `docs/assumptions.md`).
 
 If the API contract is missing something, ask `api-engineer` rather than hand-writing types. If the structure rules block you, escalate to `frontend-architect`.

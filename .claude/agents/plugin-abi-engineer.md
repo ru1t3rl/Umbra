@@ -28,4 +28,4 @@ Trait in SDK, vtable in `umbra-plugin-api`, host bridge to the core trait, examp
 Use the `add-plugin-kind` skill for new kinds. Report ABI-affecting changes explicitly so the architect can bump versions deliberately.
 
 ## Before reporting
-Apply `docs/implementer-checklist.md` (mutation checks, no vacuous asserts, reuse, `scripts/gates.sh`, report format). When the prompt carries a work-item brief, work from it instead of reading the whole plan, spec or `docs/assumptions.md`.
+Apply `docs/implementer-checklist.md` (mutation checks, no vacuous asserts, reuse, `scripts/gates.sh`, report format). When the prompt carries a work-item brief, work from it instead of reading the whole plan, spec or `docs/assumptions/`.

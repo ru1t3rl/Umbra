@@ -15,7 +15,7 @@ Input: milestone id (e.g. `M2`). If none is given, read `docs/milestones.md` and
 5. **Implement** work items in order using the matching specialist (`rust-engineer`, `plugin-abi-engineer`, `network-engineer`, `api-engineer`, `frontend-engineer`). One item at a time: failing test, code, green, commit with REQ-IDs.
 6. **Review** each item with `code-reviewer` (skill `review-change`). Fix Blockers and Majors before moving on.
 7. **Verify** with `build-engineer` (skill `verify-and-build`).
-8. **Close out**: tick the acceptance criteria in `docs/milestones.md` with evidence (test names, command output summary), update docs and `docs/assumptions.md`, tag `mN-done`.
+8. **Close out**: tick the acceptance criteria in `docs/milestones.md` with evidence (test names, command output summary), update docs and the milestone's file under `docs/assumptions/`, tag `mN-done`.
 
 ## Rules
 - Never skip step 4 or 6. Never start the next milestone in the same run unless asked.

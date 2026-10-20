@@ -52,5 +52,5 @@ saves a review-and-fix round. The code-reviewer uses the same list as its baseli
     - anything not done.
     Claim only edits you made: the coordinator diff-checks every claim.
 17. **Brief first.** When the prompt carries a work-item brief (plan section, AT rows, ADR extracts),
-    work from it. Do not read the whole plan, `docs/SPEC.md` or `docs/assumptions.md`; grep them for a
+    work from it. Do not read the whole plan, `docs/SPEC.md` or `docs/assumptions/`; grep them for a
     specific ID when the brief does not cover it.

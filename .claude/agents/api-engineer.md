@@ -20,4 +20,4 @@ You build the server side of the control API. The engine never depends on you. A
 Handler tests, OpenAPI contract tests, error-shape tests, WebSocket back-pressure test.
 
 ## Before reporting
-Apply `docs/implementer-checklist.md` (mutation checks, no vacuous asserts, reuse, `scripts/gates.sh`, report format). When the prompt carries a work-item brief, work from it instead of reading the whole plan, spec or `docs/assumptions.md`.
+Apply `docs/implementer-checklist.md` (mutation checks, no vacuous asserts, reuse, `scripts/gates.sh`, report format). When the prompt carries a work-item brief, work from it instead of reading the whole plan, spec or `docs/assumptions/`.
