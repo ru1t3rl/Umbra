@@ -817,10 +817,12 @@ stand-in's intents for that tick (`SetSpeed` + `MoveTo` toward the next waypoint
 later `FollowRoute`s in the same tick are dropped, and without a route it is dropped. `SetHeading` is
 steered to by `builtin.ground.kinematic` (no built-in action emits it yet).
 
-**`Fire`, `Spawn`, `Despawn` and `Custom` are recorded, not applied, until M5** (human decision
-2026-10-17): they appear in `EntitySnapshot::intents` for that tick and nowhere else. `Fire` does not
-damage, destroy or even notify its target, produces no event and changes no state; `Spawn` creates no
-entity; `Despawn` removes nothing; `Custom` reaches no consumer. They are not part of the state hash.
+**`Spawn` and `Despawn` are recorded, not applied, until M7; `Fire` and `Custom` become events** (human
+decision 2026-10-17, amended by ADR 0028): all four appear in `EntitySnapshot::intents` for that tick. In the
+Events phase an Owned entity's `Fire` and `Custom` intents become `SimEvent::Fire` and `SimEvent::Custom`
+in `TickReport::events` (entity id order, then emission order); events change no state and are not part
+of the state hash. `Fire` does not damage, destroy or even notify its target; `Spawn` creates no entity;
+`Despawn` removes nothing. Nothing else consumes `Custom` yet.
 `umbra run` does not print intents; embedders read them from the snapshot. An entity whose behavior
 emits no intent in a tick gets none (it slows to a stop); an Owned entity without a behavior follows its
 route exactly as in M2.

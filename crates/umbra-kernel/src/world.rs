@@ -244,6 +244,34 @@ impl World {
         Ok(id)
     }
 
+    /// Removes an entity and its behavior slot, keeping `index`, `behaviors` and `sensor_owners`
+    /// in step. The id is not recycled: `next_id` only moves forward (REQ-C-2). The id is also
+    /// scrubbed from every entity's contacts, and the batch group list is emptied when the
+    /// removed entity was batched, so the kernel stops holding the group (ASM-170).
+    pub(crate) fn remove(&mut self, id: EntityId) -> Result<(), KernelError> {
+        let entity = self
+            .index
+            .remove(&id)
+            .ok_or(KernelError::UnknownEntity(id))?;
+        if self.ecs.satisfies::<&Sensors>(entity) {
+            debug_assert!(self.sensor_owners > 0, "a sensor owner was counted");
+            self.sensor_owners = self.sensor_owners.saturating_sub(1);
+        }
+        let despawned = self.ecs.despawn(entity);
+        debug_assert!(despawned.is_ok(), "an indexed entity is in the ECS");
+        if self
+            .behaviors
+            .remove(&id)
+            .is_some_and(|slot| slot.batch.is_some())
+        {
+            self.batch.begin_tick();
+        }
+        for contacts in self.ecs.query_mut::<&mut Contacts>() {
+            contacts.0.retain(|c| c.entity != id);
+        }
+        Ok(())
+    }
+
     /// Visits every entity mutably, in ascending id order.
     pub(crate) fn for_each_mut(&mut self, mut f: impl FnMut(EntityMut<'_>)) {
         debug_assert!(

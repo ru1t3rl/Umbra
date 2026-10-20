@@ -24,6 +24,7 @@
 //!   [`TerrainProvider`], [`KinematicState`] and the [`MotionModel`] trait (REQ-B-2, REQ-K-5,
 //!   REQ-C-6, REQ-M-1).
 //! - [`plugin`]: [`PluginFaultPolicy`] (REQ-P-7, ADR 0021).
+//! - [`event`]: the canonical [`SimEvent`] and [`ControlAction`] (REQ-C-5, ADR 0028).
 //!
 //! Dependency rule (REQ-A-1): this crate depends on no other workspace crate.
 //! It contains no `unsafe` code and never reads the wall clock (REQ-K-4).
@@ -33,6 +34,7 @@
 pub mod behavior;
 pub mod catalog;
 pub mod coords;
+pub mod event;
 pub mod geo;
 pub mod graph;
 pub mod hash;
@@ -60,6 +62,7 @@ pub use catalog::{
     Provenance,
 };
 pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
+pub use event::{ControlAction, SimEvent};
 pub use geo::{Euler, Quaternion, Vec3};
 pub use graph::{
     Composite, DEFAULT_MAX_SUBGRAPH_DEPTH, Decorator, ExitDef, FsmDef, GraphDef, Interface,

@@ -158,6 +158,11 @@ impl Clock {
         self.pending_steps = self.pending_steps.saturating_add(n);
     }
 
+    /// The steps requested with [`request_steps`](Self::request_steps) and not yet run (ADR 0024).
+    pub fn pending_steps(&self) -> u64 {
+        self.pending_steps
+    }
+
     /// Drops the steps that were requested but not yet run.
     pub fn cancel_steps(&mut self) {
         self.pending_steps = 0;

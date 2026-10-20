@@ -31,14 +31,15 @@ pub enum Intent {
     /// `SetSpeed`, otherwise the entity slows to a stop and, with no pivot turns (ASM-049), turns
     /// only while still moving.
     SetHeading(Radians),
-    /// Fire `weapon` at `target`. Recorded only until events land (ADR 0016).
+    /// Fire `weapon` at `target`. Becomes a `SimEvent::Fire` in the Events phase; applies no effect
+    /// (ADR 0028).
     Fire {
         /// The entity fired at.
         target: EntityId,
         /// The weapon used.
         weapon: WeaponId,
     },
-    /// Spawn an entity from `template`. Recorded only until the spawn path lands (ADR 0016).
+    /// Spawn an entity from `template`. Recorded only until M7 (ADR 0016, ADR 0028).
     Spawn {
         /// Template of the new entity.
         template: TemplateId,
@@ -47,9 +48,9 @@ pub enum Intent {
         /// Initial true heading.
         heading: Radians,
     },
-    /// Remove this entity. Recorded only until the spawn path lands (ADR 0016).
+    /// Remove this entity. Recorded only until M7 (ADR 0016, ADR 0028).
     Despawn,
-    /// A component-defined intent. Recorded only (ADR 0016).
+    /// A component-defined intent. Becomes a `SimEvent::Custom` (ADR 0028).
     Custom {
         /// The component kind that understands the payload.
         kind: ComponentId,

@@ -44,4 +44,7 @@ pub enum KernelError {
     /// The behavior could not be instantiated at the tick rate (ADR 0013 amendment).
     #[error(transparent)]
     Instantiate(#[from] umbra_core::InstantiateError),
+    /// No entity with this id exists (never spawned, or already removed; ADR 0028).
+    #[error("unknown entity {0}")]
+    UnknownEntity(umbra_core::EntityId),
 }

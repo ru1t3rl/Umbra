@@ -6,15 +6,15 @@ use std::sync::Arc;
 
 use umbra_core::{
     Behavior, BehaviorId, Contact, Ecef, EntityId, Force, Intent, KinematicState, Meters,
-    MetersPerSecond, MotionModel, MotionModelId, Ownership, Sensor, SimRng, SimTime, StateHash,
-    Status, TerrainProvider, TickRate,
+    MetersPerSecond, MotionModel, MotionModelId, Ownership, Sensor, SimEvent, SimRng, SimTime,
+    StateHash, Status, TerrainProvider, TickRate,
 };
 
 use crate::clock::{Clock, ClockMode, WallClock};
 use crate::error::KernelError;
 use crate::pipeline::{PHASE_COUNT, Phase, TickContext, TickReport};
 use crate::state;
-use crate::systems::{behavior, motion, perception};
+use crate::systems::{behavior, events, motion, perception};
 use crate::world::{BehaviorSlot, World};
 
 /// Kernel construction parameters.
@@ -198,11 +198,12 @@ impl Kernel {
             terrain: self.terrain.as_ref(),
         };
         let mut phase_wall = [Duration::ZERO; PHASE_COUNT];
+        let mut sim_events = Vec::new();
         let tick_started = self.clock.wall_now();
         for (slot, phase) in phase_wall.iter_mut().zip(Phase::ALL) {
             let _span = tracing::trace_span!("phase", phase = phase.name()).entered();
             let started = self.clock.wall_now();
-            run_phase(phase, &mut self.world, &ctx);
+            run_phase(phase, &mut self.world, &ctx, &mut sim_events);
             *slot = self.clock.wall_now().saturating_sub(started);
         }
         let took = self.clock.wall_now().saturating_sub(tick_started);
@@ -213,6 +214,7 @@ impl Kernel {
             phase_wall,
             overrun,
             lag: self.clock.behind(),
+            events: sim_events,
         })
     }
 
@@ -234,6 +236,17 @@ impl Kernel {
             "tick exceeded its time budget"
         );
         Some(over)
+    }
+
+    /// Removes an entity between ticks (ADR 0028). Its behavior instance is dropped, so a plugin
+    /// instance is destroyed here, outside any tick, and it leaves its batch group (the next
+    /// grouped Behavior phase builds its groups from the live entities). Ids are never reused
+    /// (REQ-C-2); every other entity is unaffected.
+    ///
+    /// # Errors
+    /// [`KernelError::UnknownEntity`] when no such entity exists. The kernel is unchanged then.
+    pub fn remove(&mut self, id: EntityId) -> Result<(), KernelError> {
+        self.world.remove(id)
     }
 
     /// The clock.
@@ -282,8 +295,9 @@ impl Kernel {
 }
 
 /// Runs the systems of one phase. Perception, Behavior and Motion act for `Owned` entities only
-/// (REQ-K-5); Ingest, Events and Publish have no systems yet.
-fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>) {
+/// (REQ-K-5), and so does Events, which turns `Fire` and `Custom` intents into `events` (ADR 0028);
+/// Ingest and Publish have no systems yet.
+fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>, events: &mut Vec<SimEvent>) {
     match phase {
         Phase::Perception => perception::run(world, ctx),
         Phase::Behavior => behavior::run_phase(world, ctx),
@@ -292,7 +306,8 @@ fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>) {
                 motion::step(e.motion, e.state, &e.intents.0, ctx);
             }
         }),
-        Phase::Ingest | Phase::Events | Phase::Publish => {}
+        Phase::Events => events::run(world, events),
+        Phase::Ingest | Phase::Publish => {}
     }
 }
 

@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use umbra_core::{Seconds, SimTime, TerrainProvider};
+use umbra_core::{Seconds, SimEvent, SimTime, TerrainProvider};
 
 /// The number of tick phases.
 pub const PHASE_COUNT: usize = 6;
@@ -19,7 +19,7 @@ pub enum Phase {
     Behavior,
     /// Motion models turn intents into new kinematic state.
     Motion,
-    /// Event dispatch (empty in M1).
+    /// Fire and Custom intents of this tick become canonical events; no state changes (ADR 0028).
     Events,
     /// Output to observers (empty in M1).
     Publish,
@@ -74,4 +74,7 @@ pub struct TickReport {
     /// when that exceeds one period (`Clock::behind`). Catch-up ticks after a stall report lag
     /// but, unless they are slow themselves, no overrun.
     pub lag: Option<Duration>,
+    /// The canonical events of this tick: Owned entities in id order, each entity's `Fire` and
+    /// `Custom` intents in emission order (REQ-C-5, ADR 0028). Never hashed.
+    pub events: Vec<SimEvent>,
 }
