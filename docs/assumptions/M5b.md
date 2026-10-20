@@ -1,0 +1,32 @@
+# Assumptions: M5b
+
+Part of the assumptions log; the index and the rules are in `docs/assumptions.md`.
+
+## M5b Live map, the first GUI slice (recorded 2026-10-20 by frontend-architect, plan `docs/plans/M5b.md`; reserved block ASM-300..ASM-379)
+
+Proposed with the plan; they become final when the human accepts the plan and are revised at WI-17 close-out.
+
+| ID | Assumption | Reason | Revisit when |
+|---|---|---|---|
+| ASM-300 | Stream frames are full snapshots: the GUI store replaces the entity set per frame (no merge); within one animation frame only the newest frame is applied; a new `session` drops the old frame; stream events are not stored in M5b (ADR 0045). | Matches stream v1 (docs/api.md); bounded work per paint; KISS | M8 log view needs events; replay (M7/M8) |
+| ASM-301 | The theme preference is `dark` (Ops) by default, `light` (Day) or `system` (opt-in), persisted in `localStorage` key `umbra.theme`; `data-theme` on `<html>` is the resolved theme. | A-003: "app starts in Ops"; UMBRA-IMPLEMENTATION deviation 4 | M8 settings |
+| ASM-302 | Packages with CSS declare one extra export `./styles.css`; the app imports each once in `main.tsx`; components never import CSS. | bun test has no CSS loader; one explicit public entry instead of a deep import (ADR 0043) | Bun gains a CSS loader for tests |
+| ASM-303 | `@umbra/data` re-exports the whole orval output, plain request functions included; those are used only by `gui/e2e/` and scripts, and an architecture test fails if `features/` or `feature-shells/` import them. | orval emits hooks and functions in one module; e2e must call `step(n)` through the generated client outside React (ADR 0045) | orval can split hooks and functions |
+| ASM-304 | Runtime config `/config.json` is `{ "engineUrl": string, "basemap"?: { "styleUrl": string } }`; an empty `engineUrl` means same origin (Vite proxy in dev and preview); the stream URL is derived from it. | Engine URL at runtime, not baked in (frontend-architecture section 6); no CORS change on the server (A-002) | M8 settings and Tauri |
+| ASM-305 | Force to affiliation (case-insensitive): `blue`, `friend`, `friendly` -> friend; `red`, `hostile`, `opfor` -> hostile; `green`, `neutral`, `white` -> neutral; null or anything else -> unknown. No runtime override in M5b. | The contract carries `force` as free text and no own-force notion; matches the example scenarios (ADR 0042) | M8 settings; a contract affiliation field |
+| ASM-306 | Selection, the label pill, stale and destroyed styling are not in M5b. | No selection UI before M8; the contract has no stale threshold or damage state | M8 |
+| ASM-307 | The camera fits the bounds of the first frame of each session (padding `space-16`, max zoom 15) and never moves by itself afterwards. | Shows every entity without a configured view; the user keeps control | M8 camera controls |
+| ASM-308 | The scenario clock is elapsed simulation time from `time_s`, shown as `T+hh:mm:ss`; the Zulu rule does not apply because the contract has no scenario epoch. | Content rules allow "unless the scenario clock says otherwise" | The contract gains an epoch |
+| ASM-309 | The e2e build (`vite build --mode e2e`, `VITE_UMBRA_E2E=1`) exposes a read-only `window.__UMBRA_E2E__.map` inspection; the production build contains none (tested). | WebGL markers are not DOM; the test must read the layer without shipping a hook | Never (test-only) |
+| ASM-310 | e2e tolerances: source positions within 1e-9 degrees of the engine list; rendered positions within 2.0 m (haversine) at zoom 12; after `step(600)` every entity moved at least 50 m and at least 2 px. | MapLibre tile quantization at z12 is about 0.75 m at 52 N; walking_skeleton moves about 250 m in 20 s | Zoom or scenario changes |
+| ASM-311 | `test:e2e` uses the release `umbra` binary (`UMBRA_BIN`, default `target/release/umbra`) and never builds it; gate 15 runs after gate 9. | Keeps the GUI gate free of cargo builds; the binary already exists in the gate order | M8 Tauri sidecar |
+| ASM-312 | The showcase is a shell `@umbra/shell-showcase` at `/showcase`, shipped code-split, not in a navigation menu. | UMBRA-IMPLEMENTATION allows a dev-only shell; shipping it is cheaper than a second build | M8 settings links it |
+| ASM-313 | Screenshot tests mask every map canvas; headless WebGL uses SwiftShader launch flags. | Software WebGL output is not pixel-stable | Never |
+| ASM-314 | No text on the map canvas in M5b (no `glyphs` URL). | MapLibre text needs glyph PBFs, which would be network or an asset ADR (ADR 0041) | M8 labels |
+| ASM-315 | The stream subscription is `{ max_rate_hz: 30 }` (no filter, no state hash); reconnect backoff 0.5, 1, 2, 4, 8 s (capped), reset on `hello`. | Server default rate; bounded retry without hammering a stopped engine | M8 viewport filter |
+| ASM-316 | `@umbra/scenario-control` starts in M5b as a read-only slice (`RunStatusBar`, `ConnectionAlert`); M8 adds the controls. | Run-state formatting is logic, which a shell may not hold; extends a planned feature instead of a new one | M8 |
+| ASM-317 | Bun is pinned with `packageManager`; Node.js LTS runs the node-launched CLIs (Playwright, orval, dependency-cruiser); `bun test` and `gui/scripts/*.mjs` run on Bun. | Playwright supports only Node | Playwright supports Bun |
+| ASM-318 | `tsc -b` uses composite projects with `emitDeclarationOnly` into an ignored `.tsbuild/` per package. | Project references need declarations; `noEmit` is not allowed with composite | TS changes the rule |
+| ASM-319 | Run-state Badge words and tones: Idle (neutral), Ready (info), Running (success), Paused (warning), Stopped (neutral; danger when `stop_reason` is `plugin_fault` or `error`). | Content rules: one capitalised status word; colour never the only signal | M8 |
+| ASM-320 | Component screenshot tests land together in WI-8 (the showcase), not per component WI; component WIs have bun tests only. | The showcase route is the screenshot surface and exists only from WI-8 | Never |
+| ASM-321 | The favicon is served and emitted by a small Vite plugin from the repository-root `umbra_icon.svg`; no copy is committed. | Byte-identical by construction; "copied by the build, never redrawn" | M8 Tauri icons |
