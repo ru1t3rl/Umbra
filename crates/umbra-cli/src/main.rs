@@ -1,17 +1,20 @@
 //! `umbra-cli`: the command-line front end of Umbra.
 //!
 //! Responsibility: `run <scenario.toml>` (headless run printing entity state and the state hash,
-//! REQ-S-1, REQ-X-2), `validate <path>...` (REQ-T-6) and `schema` (D-14). Exit code 0 on success,
+//! REQ-S-1, REQ-X-2), `validate <path>...` (REQ-T-6), `schema` (D-14) and `serve` (feature
+//! `server`). Exit code 0 on success,
 //! 1 on invalid input or a runtime error, 2 on a usage error (clap).
 //!
-//! Dependency rule (REQ-A-2): depends on `umbra-engine` only in M2; it may also depend on
-//! `umbra-server` from M5. It contains no `unsafe` code.
+//! Dependency rule (REQ-A-2): depends on `umbra-engine`, and on `umbra-server` behind the default
+//! feature `server` (M5). It contains no `unsafe` code.
 
 #![forbid(unsafe_code)]
 
 mod args;
 mod config;
 mod output;
+#[cfg(feature = "server")]
+mod serve;
 
 use std::io::{self, Write};
 use std::ops::ControlFlow;
@@ -71,6 +74,8 @@ fn command(cli: Cli) -> ExitCode {
         Command::Validate(args) => validate(&args, config),
         Command::Schema(args) => schema(&args, config),
         Command::ListPlugins(args) => list_plugins(&args, config),
+        #[cfg(feature = "server")]
+        Command::Serve(args) => serve::serve(&args, config),
     };
     match result {
         Ok(code) => code,
@@ -82,7 +87,7 @@ fn command(cli: Cli) -> ExitCode {
     }
 }
 
-fn init_logging(level: LevelFilter) -> Result<()> {
+pub(crate) fn init_logging(level: LevelFilter) -> Result<()> {
     tracing_subscriber::fmt()
         .with_max_level(level)
         .with_writer(io::stderr)
@@ -92,7 +97,7 @@ fn init_logging(level: LevelFilter) -> Result<()> {
 }
 
 /// Prints every diagnostic to stderr; exit code 1.
-fn report_invalid(diagnostics: &[Diagnostic]) -> ExitCode {
+pub(crate) fn report_invalid(diagnostics: &[Diagnostic]) -> ExitCode {
     let mut err = io::stderr().lock();
     for d in diagnostics {
         // Nothing sensible remains to do if stderr is gone.

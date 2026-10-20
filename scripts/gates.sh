@@ -92,6 +92,8 @@ gate 11-header cargo xtask gen-header --check
 gate 12-plugins cargo xtask build-plugins --release
 gate 13-plugin-fail cargo test -p umbra-plugin-host --test plugin_failures --locked --offline
 gate 14-bench cargo bench -p umbra-kernel --bench tick --no-run --locked --offline
+gate 16-engine-only sh -c 'cargo build -p umbra-cli --no-default-features --locked --offline &&
+    cargo clippy -p umbra-cli --no-default-features --all-targets --locked --offline -- -D warnings'
 if [ "${1:-}" = --gui ]; then
     gate 15-gui sh -c 'cd gui && bun install --frozen-lockfile && bun run gen:api --check &&
         bun run typecheck && bun run lint && bun run check:deps && bun test && bun run build'

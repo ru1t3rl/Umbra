@@ -5,7 +5,8 @@
 //! `Host` layer, the extractors, problem mapping, status, scenario and run control and the served
 //! `OpenAPI` document are real (WI-11), and so are the entity, template and component routes
 //! (WI-13); the catalog and plugin routes (WI-14), the stream protocol (WI-15) and the slow-client
-//! policy with the stream probes (WI-16) are real too.
+//! policy with the stream probes (WI-16) are real too. [`run`] owns the runtime and the OS signals
+//! (WI-17).
 //!
 //! Dependency rule (REQ-A-1..4, REQ-X-7): depends on `umbra-engine` and `umbra-api-types` only
 //! among workspace crates, never on `umbra-kernel` or `umbra-core` directly. It contains no
@@ -22,6 +23,7 @@ pub mod map;
 pub mod openapi;
 pub mod problem;
 pub mod routes;
+mod run;
 pub mod shutdown;
 mod state;
 pub mod stream;
@@ -29,6 +31,7 @@ pub mod stream;
 pub use config::{ServerSettings, SetupError};
 pub use problem::ApiError;
 pub use routes::Server;
+pub use run::{ServerError, ShutdownMode, run};
 pub use shutdown::Shutdown;
 pub use stream::{
     CloseReason, ConnectionParams, ConnectionStats, Encoding, ReadFailure, run_connection,

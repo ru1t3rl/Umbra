@@ -2,7 +2,7 @@
 //! file. Requirements: REQ-X-2, REQ-T-2, REQ-P-10, ADR 0029, ASM-159, ASM-160, ASM-168.
 //!
 //! Every test runs in its own working directory under `CARGO_TARGET_TMPDIR`, never in the system
-//! temporary directory. The serve rows belong to WI-17.
+//! temporary directory. The serve rows (WI-17) are at the end of the file.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -479,7 +479,6 @@ fn serve_with_config(dir: &Path, extra: &[&str]) -> serve_support::Served {
 
 #[cfg(feature = "server")]
 #[test]
-#[ignore = "WI-17"]
 fn bind_flag_beats_config_beats_default() {
     // Config beats the default (127.0.0.1:7878): the file names another loopback address.
     let dir = serve_dir("serve-bind-config", "[server]\nbind = \"127.0.0.2:0\"\n");
@@ -506,7 +505,6 @@ fn bind_flag_beats_config_beats_default() {
 
 #[cfg(feature = "server")]
 #[test]
-#[ignore = "WI-17"]
 fn config_non_loopback_bind_warns() {
     let dir = serve_dir("serve-bind-warn", "[server]\nbind = \"0.0.0.0:0\"\n");
     let mut served = serve_with_config(&dir, &[]);
@@ -520,7 +518,6 @@ fn config_non_loopback_bind_warns() {
 
 #[cfg(feature = "server")]
 #[test]
-#[ignore = "WI-17"]
 fn config_scenario_root_confines_loads() {
     // `scenario_root` is relative to the config file's directory.
     let dir = workdir("serve-root");
@@ -552,7 +549,6 @@ fn config_scenario_root_confines_loads() {
 
 #[cfg(feature = "server")]
 #[test]
-#[ignore = "WI-17"]
 fn config_stream_settings_reach_hello() {
     let dir = serve_dir(
         "serve-stream",
@@ -574,7 +570,6 @@ fn config_stream_settings_reach_hello() {
 
 #[cfg(feature = "server")]
 #[test]
-#[ignore = "WI-17"]
 fn config_body_limit_applies() {
     let dir = serve_dir(
         "serve-body-limit",
@@ -595,7 +590,6 @@ fn config_body_limit_applies() {
 
 #[cfg(feature = "server")]
 #[test]
-#[ignore = "WI-17"]
 fn config_allowed_origins_extend_the_default() {
     let dir = serve_dir(
         "serve-origins",

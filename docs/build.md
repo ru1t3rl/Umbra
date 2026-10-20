@@ -46,6 +46,7 @@ There is no CI gate: this list, run in this order, is the definition of done (CL
 | 13 | Plugin failure matrix (REQ-P-7..9) | `cargo test -p umbra-plugin-host --test plugin_failures --locked` | from M4 (active from WI-10); builds the `umbra-test-plugin` variants and two C fixtures |
 | 14 | Benchmarks compile | `cargo bench -p umbra-kernel --bench tick --no-run --locked` | from M1 |
 | 15 | GUI | `(cd gui && bun install --frozen-lockfile && bun run gen:api --check && bun run typecheck && bun run lint && bun run check:deps && bun test && bun run build)`, then `bun run tauri build` on Windows | from M8 (see the `verify-frontend` skill) |
+| 16 | Engine-only CLI (REQ-S-1, REQ-G-1, D-1, D-10) | `cargo build -p umbra-cli --no-default-features --locked` and `cargo clippy -p umbra-cli --no-default-features --all-targets --locked -- -D warnings` | from M5 (WI-17, ASM-218) |
 
 Rows marked "from Mn" are skipped, and reported as skipped, before that milestone exists. `--locked` is used on every cargo command that supports it (`cargo deny` and `cargo audit` read the lockfile as is; the `cargo xtask` alias builds with `--locked`, and `check-deps` runs `cargo metadata --locked`). Any non-zero exit fails the gate; in particular exit 2 from `cargo xtask check-deps` (load error, for example no resolved graph) fails it and is not a skip. `--locked` requires `Cargo.lock` to be committed and current. Text files use LF (`.gitattributes`, ASM-014).
 

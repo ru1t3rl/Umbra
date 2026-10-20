@@ -4,7 +4,7 @@
 //! example scenario copied into it. The server binds `127.0.0.1:0`; the test reads the
 //! `listening on http://<addr>` line.
 //!
-//! Every serve test is ignored until `serve` exists (WI-17); `existing_commands_unchanged` runs now.
+//! `existing_commands_unchanged` pins the M2-M4 commands next to `serve`.
 
 #![cfg(feature = "server")]
 #![forbid(unsafe_code)]
@@ -25,7 +25,6 @@ fn skeleton_dir(tag: &str) -> std::path::PathBuf {
 }
 
 #[test]
-#[ignore = "WI-17"]
 fn serve_prints_listening_address_and_answers_status() {
     let dir = skeleton_dir("listening");
     let mut served = Served::start(&dir, &[]);
@@ -49,7 +48,6 @@ fn serve_prints_listening_address_and_answers_status() {
 }
 
 #[test]
-#[ignore = "WI-17"]
 fn serve_binds_loopback_by_default() {
     // The default address is documented by the help text, and a flag-less start with a port-0 bind
     // from the config is loopback. (A real start on the default port 7878 would collide with other
@@ -65,7 +63,6 @@ fn serve_binds_loopback_by_default() {
 }
 
 #[test]
-#[ignore = "WI-17"]
 fn serve_with_scenario_is_ready_and_with_start_is_running() {
     let dir = skeleton_dir("preload");
     let mut ready = Served::start(
@@ -91,7 +88,6 @@ fn serve_with_scenario_is_ready_and_with_start_is_running() {
 }
 
 #[test]
-#[ignore = "WI-17"]
 fn serve_preload_outside_root_is_exit_1() {
     let dir = skeleton_dir("preload-outside");
     let outside =
@@ -109,7 +105,6 @@ fn serve_preload_outside_root_is_exit_1() {
 }
 
 #[test]
-#[ignore = "WI-17"]
 fn serve_preload_failure_is_exit_1() {
     let dir = skeleton_dir("preload-failure");
     let bad = serve_support::repo_root().join("crates/umbra-engine/tests/fixtures/bad_scenario");
@@ -125,7 +120,6 @@ fn serve_preload_failure_is_exit_1() {
 }
 
 #[test]
-#[ignore = "WI-17"]
 fn non_loopback_bind_logs_a_warning() {
     let dir = skeleton_dir("non-loopback");
     let mut open = Served::start_raw(&dir, &["serve", "--bind", "0.0.0.0:0"]);
@@ -148,7 +142,6 @@ fn non_loopback_bind_logs_a_warning() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "WI-17"]
 fn sigterm_shuts_down_cleanly_exit_0() {
     let dir = skeleton_dir("sigterm");
     let mut served = Served::start(&dir, &["--scenario", SKELETON, "--start"]);
@@ -158,7 +151,6 @@ fn sigterm_shuts_down_cleanly_exit_0() {
 
 #[cfg(unix)]
 #[test]
-#[ignore = "WI-17"]
 fn sigterm_with_open_stream_and_pending_step_exits_0() {
     let dir = workdir("sigterm-busy");
     let long = write_long_scenario(&dir);

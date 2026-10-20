@@ -96,7 +96,8 @@ impl Server {
     }
 
     /// Serves on `listener` until the shutdown signal fires, then waits for open requests up to the
-    /// grace period `[server] shutdown_grace_s` (WI-17 adds signal handling to the CLI).
+    /// grace period `[server] shutdown_grace_s`. [`run`](crate::run) wraps it with the runtime, the OS
+    /// signals and the engine shutdown.
     ///
     /// # Errors
     /// The listener's I/O error.

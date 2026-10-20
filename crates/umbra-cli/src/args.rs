@@ -30,6 +30,42 @@ pub enum Command {
     Schema(SchemaArgs),
     /// List the plugins found in the plugin directories and their capabilities.
     ListPlugins(ListPluginsArgs),
+    /// Serve the REST API and the WebSocket stream (not built with `--no-default-features`).
+    #[cfg(feature = "server")]
+    Serve(ServeArgs),
+}
+
+/// Options of `serve`.
+#[cfg(feature = "server")]
+#[derive(Debug, clap::Args)]
+pub struct ServeArgs {
+    /// Address to listen on (default: `[server] bind` of the configuration, else 127.0.0.1:7878).
+    /// A non-loopback address exposes an API without authentication.
+    #[arg(long, value_name = "ADDR")]
+    pub bind: Option<std::net::SocketAddr>,
+    /// A scenario to load at startup, relative to the scenario root.
+    #[arg(long, value_name = "PATH")]
+    pub scenario: Option<PathBuf>,
+    /// Replaces the preloaded scenario's clock: afap, realtime, stepped or `scaled=FACTOR`.
+    #[arg(long, value_parser = parse_clock, requires = "scenario")]
+    pub clock: Option<ClockMode>,
+    /// Replaces the preloaded scenario's seed.
+    #[arg(long, requires = "scenario")]
+    pub seed: Option<u64>,
+    /// Start the preloaded scenario.
+    #[arg(long, requires = "scenario")]
+    pub start: bool,
+    /// Loads are confined to this directory (default: `[server] scenario_root`, else the working
+    /// directory).
+    #[arg(long, value_name = "DIR")]
+    pub scenario_root: Option<PathBuf>,
+    /// A directory of plugin packages to load (repeatable); replaces `[plugins] paths`.
+    #[arg(long = "plugin-path", value_name = "DIR")]
+    pub plugin_path: Vec<PathBuf>,
+    /// Log level: off, error, warn, info, debug or trace (default: `[log] level` of the
+    /// configuration, else warn).
+    #[arg(long, value_parser = parse_level)]
+    pub log_level: Option<LevelFilter>,
 }
 
 /// Options of `run`.
