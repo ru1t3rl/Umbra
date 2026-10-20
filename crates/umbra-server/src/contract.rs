@@ -142,6 +142,23 @@ fn rewrite_refs(value: &mut Value) {
     }
 }
 
+/// A client message is `allOf [<body>, {type}]`; the body schema cannot say `additionalProperties:
+/// false` because that would forbid `type` (ASM-208), so each wrapper says `unevaluatedProperties:
+/// false` instead: no property but those of the body and the tag. The server refuses them too.
+fn forbid_extra_client_properties(defs: &mut Map<String, Value>) {
+    let wrappers = defs
+        .get_mut("ClientMessage")
+        .and_then(|message| message.get_mut("oneOf"))
+        .and_then(Value::as_array_mut);
+    for wrapper in wrappers.into_iter().flatten() {
+        if let Some(wrapper) = wrapper.as_object_mut()
+            && wrapper.contains_key("allOf")
+        {
+            wrapper.insert("unevaluatedProperties".to_string(), json!(false));
+        }
+    }
+}
+
 /// The stream JSON Schema (2020-12): the root is the `StreamMessage` component and `$defs` holds
 /// every component it reaches, with the references rewritten from `#/components/schemas/` to
 /// `#/$defs/`. The schemas come from the same `utoipa` output as the `OpenAPI` document, so the two
@@ -175,6 +192,7 @@ pub fn stream_schema(openapi: &Value) -> Result<Value, ContractError> {
             defs.insert(name.clone(), schema.clone());
         }
     }
+    forbid_extra_client_properties(&mut defs);
     let mut root = components
         .get(STREAM_ROOT)
         .cloned()
@@ -285,6 +303,18 @@ mod tests {
         }
         assert!(!defs.iter().any(|d| d == "CatalogEntry"), "{defs:?}");
         assert!(!render(&schema).expect("render").contains("#/components/"));
+    }
+
+    #[test]
+    fn every_client_message_wrapper_forbids_unevaluated_properties() {
+        let schema = stream_schema(&openapi_value().expect("document")).expect("schema");
+        let wrappers = schema["$defs"]["ClientMessage"]["oneOf"]
+            .as_array()
+            .expect("oneOf");
+        assert_eq!(wrappers.len(), 1, "the one client message");
+        for wrapper in wrappers {
+            assert_eq!(wrapper["unevaluatedProperties"], json!(false), "{wrapper}");
+        }
     }
 
     #[test]

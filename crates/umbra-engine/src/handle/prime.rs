@@ -8,7 +8,7 @@ impl Worker {
     /// Publishes a control frame of the current state to each subscription marked for priming.
     pub(super) fn serve_primes(&mut self) {
         for slot in self.shared.take_primes() {
-            let frame = self.frame(FrameCause::Control, Vec::new(), false);
+            let frame = self.frame(FrameCause::Control, Vec::new(), None, false);
             self.bus.publish(frame, Some(slot));
         }
     }

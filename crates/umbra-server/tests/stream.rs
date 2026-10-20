@@ -2,8 +2,6 @@
 //! ADR 0027 (M1, M2, M11, m9, M12). Clients are `tokio-tungstenite`; the server serves on
 //! `127.0.0.1:0`. Engines run stepped with a `ManualWallClock`, so ticks happen only when a test
 //! steps; waits are bounded by a hang guard, never asserted.
-//!
-//! Every test is ignored until the router and `serve` (WI-11) and the stream (WI-15) exist.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -71,7 +69,6 @@ fn fire_ticks(events: &[Value]) -> Vec<u64> {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn hello_reports_settings() {
     let h = Harness::start("stream-hello");
     let addr = h.serve_on_loopback().await;
@@ -95,7 +92,6 @@ async fn hello_reports_settings() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn subscribe_gets_a_primed_control_frame_at_once() {
     let (h, mut ws) = connected("stream-primed", SKELETON).await;
     h.run_command("pause").await.assert_json(200);
@@ -109,7 +105,6 @@ async fn subscribe_gets_a_primed_control_frame_at_once() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn subscribe_while_idle_gets_an_idle_frame() {
     let h = Harness::start("stream-idle");
     let addr = h.serve_on_loopback().await;
@@ -123,7 +118,6 @@ async fn subscribe_while_idle_gets_an_idle_frame() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn control_frame_after_load_lists_all_entities_without_entity_created_events() {
     let h = Harness::start("stream-load");
     let addr = h.serve_on_loopback().await;
@@ -142,7 +136,6 @@ async fn control_frame_after_load_lists_all_entities_without_entity_created_even
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn frame_after_step_has_that_tick() {
     let (h, mut ws) = connected("stream-step", SKELETON).await;
     ws.subscribe(json!({})).await;
@@ -157,7 +150,6 @@ async fn frame_after_step_has_that_tick() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn filters_bbox_ids_event_kinds() {
     let (h, mut ws) = connected("stream-filters", SKELETON).await;
     // Entity ids.
@@ -200,7 +192,6 @@ async fn filters_bbox_ids_event_kinds() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn fire_events_reach_a_subscriber() {
     let (h, mut ws) = connected("stream-fire", PATROL).await;
     ws.subscribe(json!({})).await;
@@ -217,7 +208,6 @@ async fn fire_events_reach_a_subscriber() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn events_of_skipped_frames_are_carried() {
     // A queue of one frame and a single step of 1200 ticks without reading force drops.
     let (h, mut ws) = connected_with("stream-carried", PATROL, |c| {
@@ -243,7 +233,6 @@ async fn events_of_skipped_frames_are_carried() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn new_subscribe_replaces_the_old() {
     let (h, mut ws) = connected("stream-replace", SKELETON).await;
     ws.subscribe(json!({"filter": {"entity_ids": [1]}})).await;
@@ -261,7 +250,6 @@ async fn new_subscribe_replaces_the_old() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn rate_above_configured_max_is_an_error() {
     let (h, mut ws) = connected("stream-rate-max", SKELETON).await;
     ws.subscribe(json!({"max_rate_hz": 61.0})).await;
@@ -296,7 +284,6 @@ async fn builds_during_300_ticks(
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn missing_rate_uses_configured_default() {
     // 30 Hz ticks and a configured default of 10 Hz: stride 3, so about 100 tick frames in 300 ticks
     // (a few control or step frames may come on top).
@@ -313,7 +300,6 @@ async fn missing_rate_uses_configured_default() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn stride_follows_tick_rate_and_rate() {
     // Stride = max(1, tick_rate_hz / max_rate_hz) with integer division (30 Hz ticks).
     let cases = [(15.0, 150..=155_u64), (30.0, 300..=305), (60.0, 300..=305)];
@@ -332,7 +318,6 @@ async fn stride_follows_tick_rate_and_rate() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn oversized_message_closes_1009() {
     let (_h, mut ws) = connected("stream-1009", SKELETON).await;
     ws.send_text(format!(
@@ -353,7 +338,6 @@ async fn oversized_message_closes_1009() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn too_many_entity_ids_is_an_error() {
     let (_h, mut ws) = connected("stream-ids", SKELETON).await;
     let ids: Vec<u64> = (1..=10_001).collect();
@@ -370,7 +354,6 @@ async fn too_many_entity_ids_is_an_error() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn connection_limit_is_503_too_many_connections() {
     let h = Harness::with("stream-limit", |config| {
         config.server.stream.max_connections = 1;
@@ -388,7 +371,6 @@ async fn connection_limit_is_503_too_many_connections() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn malformed_client_message_gets_error_and_connection_stays() {
     let (_h, mut ws) = connected("stream-malformed", SKELETON).await;
     ws.send_text("this is not json".to_string()).await;
@@ -404,7 +386,6 @@ async fn malformed_client_message_gets_error_and_connection_stays() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn msgpack_is_400_unsupported_encoding() {
     let h = Harness::start("stream-msgpack");
     let addr = h.serve_on_loopback().await;
@@ -419,7 +400,6 @@ async fn msgpack_is_400_unsupported_encoding() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn frames_validate_against_stream_schema() {
     // The committed `api/stream.schema.json` (WI-12) is the contract (REQ-A-4).
     let path =
@@ -449,12 +429,17 @@ async fn frames_validate_against_stream_schema() {
     let subscribe =
         json!({"type": "subscribe", "max_rate_hz": 10.0, "filter": {"entity_ids": [1]}});
     schema_walk::validate(&schema, &schema, &subscribe).expect("subscribe conforms");
+    // The schema is as strict as the server: an unknown property of `subscribe` is refused.
+    let extra = json!({"type": "subscribe", "extra": 1});
+    assert!(
+        schema_walk::validate(&schema, &schema, &extra).is_err(),
+        "subscribe with an unknown property must not conform"
+    );
     // The schema is not vacuous: a frame without its required fields does not conform.
     assert!(schema_walk::validate(&schema, &schema, &json!({"type": "frame"})).is_err());
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn seq_increases_and_dropped_is_reported() {
     // A queue of one frame and 20 steps without reading force drops.
     let (h, mut ws) = connected_with("stream-seq", SKELETON, |c| {
@@ -486,13 +471,11 @@ async fn seq_increases_and_dropped_is_reported() {
         }
     }
     assert!(total > 0, "something was dropped");
-    let stats = h.server.stream_stats();
-    assert_eq!(stats.len(), 1);
-    assert_eq!(total, stats[0].bus_dropped + stats[0].skipped);
+    // The cross-check against `Server::stream_stats()` (bus drops plus skipped frames) belongs to
+    // WI-16, which implements that probe; WI-15 pins the per-frame identity above.
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn server_shutdown_closes_streams_1001() {
     let (h, mut ws) = connected("stream-shutdown", SKELETON).await;
     ws.subscribe(json!({})).await;
@@ -508,4 +491,188 @@ async fn server_shutdown_closes_streams_1001() {
             Incoming::Ended => panic!("the connection ended without a 1001 close"),
         }
     }
+}
+
+#[tokio::test]
+async fn a_quiet_stream_closes_1011_when_the_engine_is_gone() {
+    // ASM-187 h: with no frames coming, the connection finds the dead engine by asking it.
+    let (mut h, mut ws) = connected("stream-engine-gone", SKELETON).await;
+    ws.subscribe(json!({})).await;
+    ws.next_frame().await;
+    h.stop_engine();
+    loop {
+        match ws.recv().await {
+            Incoming::Close(code, reason) => {
+                assert_eq!((code, reason.as_str()), (1011, "engine_unavailable"));
+                break;
+            }
+            Incoming::Json(_) => {}
+            Incoming::Ended => panic!("the connection ended without a 1011 close"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn frames_are_paced_at_the_subscribed_rate() {
+    // 5 Hz: two frames are at least 200 ms apart on the server; the client sees at least 150 ms.
+    let (h, mut ws) = connected("stream-pacing", SKELETON).await;
+    ws.subscribe(json!({"max_rate_hz": 5.0})).await;
+    ws.next_frame().await;
+    let sent_first = tokio::time::Instant::now();
+    h.step(1).await.assert_json(200);
+    let second = ws.frame_until(|f| f["tick"] == 1).await;
+    assert_eq!(second["tick"], 1);
+    assert!(
+        sent_first.elapsed() >= std::time::Duration::from_millis(150),
+        "the second frame came after {:?}",
+        sent_first.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn state_hash_is_in_frames_only_when_asked_and_equals_the_step_hash() {
+    let (h, mut ws) = connected("stream-hash", SKELETON).await;
+    ws.subscribe(json!({})).await;
+    ws.next_frame().await;
+    h.step(3).await.assert_json(200);
+    let plain = ws.frame_until(|f| f["tick"] == 3).await;
+    assert!(plain.get("state_hash").is_none(), "not asked: {plain}");
+    ws.subscribe(json!({"state_hash": true})).await;
+    ws.frame_until(|f| f["cause"] == "control").await;
+    let step = h.step(4).await.assert_json(200);
+    let hashed = ws.frame_until(|f| f["tick"] == 7).await;
+    assert_eq!(
+        hashed["state_hash"], step["state_hash"],
+        "the frame of tick 7 carries the hash the step reported for tick 7"
+    );
+    assert!(hashed["state_hash"].as_str().is_some_and(|h| h.len() == 16));
+}
+
+#[tokio::test]
+async fn a_message_over_128_kib_closes_1009() {
+    // Above the library's read cap (twice the limit): the connection still ends with 1009.
+    let (_h, mut ws) = connected("stream-1009-huge", SKELETON).await;
+    ws.send_text(format!(
+        "{{\"type\":\"subscribe\",\"pad\":\"{}\"}}",
+        "x".repeat(200_000)
+    ))
+    .await;
+    loop {
+        match ws.recv().await {
+            Incoming::Close(code, reason) => {
+                assert_eq!((code, reason.as_str()), (1009, "message_too_big"));
+                break;
+            }
+            Incoming::Json(_) => {}
+            Incoming::Ended => panic!("the connection ended without a 1009 close"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn frames_keep_coming_while_an_afap_run_rings_the_bell_all_the_time() {
+    // The engine runs flat out and rings the connection after every tick: the writer must still
+    // reach its pacing timer. Bounded only by the hang guard, never by an assertion on time.
+    let h = Harness::start("stream-afap");
+    let scenario = common::write_long_scenario(&h.root);
+    h.load_body(&json!({"path": scenario, "clock": {"mode": "afap"}}))
+        .await
+        .assert_json(201);
+    let addr = h.serve_on_loopback().await;
+    let mut ws = WsClient::connect(addr).await;
+    ws.hello().await;
+    ws.subscribe(json!({"max_rate_hz": 60.0})).await;
+    ws.next_frame().await;
+    h.run_command("start").await.assert_json(200);
+    let running = ws
+        .frame_until(|f| f["run"]["state"] == "running" && f["tick"].as_u64() > Some(0))
+        .await;
+    assert_eq!(running["cause"], "tick");
+    let later = ws
+        .frame_until(|f| f["tick"].as_u64() > running["tick"].as_u64())
+        .await;
+    assert_eq!(later["run"]["state"], "running", "still running: {later}");
+    h.run_command("stop").await.assert_json(200);
+}
+
+/// A stream of the given client messages, and a sink that holds back everything it is given until
+/// `gate` is opened, then forwards it to `out`: the writer is blocked on its first send meanwhile.
+fn gated_connection(
+    gate: &tokio::sync::watch::Sender<bool>,
+) -> (
+    tokio::sync::mpsc::UnboundedSender<axum::extract::ws::Message>,
+    tokio::sync::mpsc::UnboundedReceiver<axum::extract::ws::Message>,
+    impl futures_util::Stream<Item = Result<axum::extract::ws::Message, String>> + Unpin + Send + use<>,
+    impl futures_util::Sink<axum::extract::ws::Message, Error = String> + Unpin + Send + use<>,
+) {
+    let (client_tx, client_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (out_tx, out_rx) = tokio::sync::mpsc::unbounded_channel();
+    let stream = Box::pin(futures_util::stream::unfold(
+        client_rx,
+        |mut rx| async move { rx.recv().await.map(|message| (Ok(message), rx)) },
+    ));
+    let gate_rx = gate.subscribe();
+    let sink = Box::pin(futures_util::sink::unfold(out_tx, move |out, message| {
+        let mut gate_rx = gate_rx.clone();
+        async move {
+            gate_rx
+                .wait_for(|open| *open)
+                .await
+                .map_err(|e| e.to_string())?;
+            out.send(message).map_err(|e| e.to_string())?;
+            Ok::<_, String>(out)
+        }
+    }));
+    (client_tx, out_rx, stream, sink)
+}
+
+#[tokio::test]
+async fn pipelined_subscribes_leave_one_live_subscription_and_the_newest_wins() {
+    let h = Harness::start("stream-mailbox");
+    h.load_skeleton("stepped").await;
+    h.run_command("start").await.assert_json(200);
+    let (gate, _keep) = tokio::sync::watch::channel(false);
+    let (client, mut out, stream, sink) = gated_connection(&gate);
+    let params = umbra_server::ConnectionParams::new(
+        h.handle.clone(),
+        h.settings.server.stream.clone(),
+        h.shutdown.clone(),
+        umbra_server::Encoding::Json,
+    );
+    let builds_before = h.handle.snapshot_builds();
+    let connection = tokio::spawn(umbra_server::run_connection(sink, stream, params));
+    // The writer is stuck sending `hello`; the reader takes every subscribe meanwhile.
+    for id in 1..=3_u64 {
+        for _ in 0..4 {
+            let message = json!({"type": "subscribe", "filter": {"entity_ids": [id]}});
+            client
+                .send(axum::extract::ws::Message::Text(message.to_string().into()))
+                .expect("send");
+        }
+    }
+    // Everything is read (and answered with a status question to the engine) within a moment.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    gate.send_replace(true);
+    let mut frames = Vec::new();
+    while frames.is_empty() {
+        let message = tokio::time::timeout(std::time::Duration::from_secs(30), out.recv())
+            .await
+            .expect("hang guard")
+            .expect("the connection is open");
+        if let axum::extract::ws::Message::Text(text) = message {
+            let value: Value = serde_json::from_str(text.as_str()).expect("json");
+            if value["type"] == "frame" {
+                frames.push(value);
+            }
+        }
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    assert_eq!(entity_ids(&frames[0]), [3], "the newest subscribe won");
+    assert_eq!(
+        h.handle.snapshot_builds() - builds_before,
+        1,
+        "twelve subscribes, one live subscription: one priming frame was built"
+    );
+    h.shutdown.trigger();
+    connection.await.expect("the connection ends");
 }

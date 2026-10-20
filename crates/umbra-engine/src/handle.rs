@@ -584,6 +584,14 @@ impl EngineHandle {
         subscription
     }
 
+    /// Whether the engine thread has ended (shut down, every handle dropped, or a panic): every
+    /// command is then `Closed`. Reads a flag; it never uses the command queue and never blocks. The
+    /// thread rings every subscription's `notify` as it ends, so a waiting subscriber can look here.
+    #[must_use]
+    pub fn is_closed(&self) -> bool {
+        self.shared.is_closed()
+    }
+
     /// How many tick and control frames the thread has built (probe for the stride test, AT-10).
     /// Every frame counts once, whoever receives it; a priming frame counts as one build.
     #[doc(hidden)]

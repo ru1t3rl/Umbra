@@ -24,7 +24,8 @@
               "type": "object"
             }
           ],
-          "description": "Starts or replaces the subscription."
+          "description": "Starts or replaces the subscription.",
+          "unevaluatedProperties": false
         }
       ]
     },
@@ -209,7 +210,7 @@
       "description": "An event on the stream (best-effort; `dropped` and `events_truncated` make loss visible).",
       "properties": {
         "detail": {
-          "description": "The payload of a `custom` event, or the action of a `simulation_control`.",
+          "description": "A `custom` event: `{\"kind\": <component id>, \"payload\": <the payload>}`. A\n`simulation_control`: `{\"action\": \"start\" | \"pause\" | \"resume\" | \"stop\" | \"step\"}`, with\n`\"count\"` for `step`.",
           "type": [
             "object",
             "null"
@@ -304,7 +305,7 @@
           "description": "The run status."
         },
         "seq": {
-          "description": "The engine's frame counter; increases, with gaps where frames were dropped.",
+          "description": "The number of the frame in its subscription, from 0 at the priming frame. Between two sent\nframes it grows by `dropped + 1`, so a gap is a drop.",
           "format": "int64",
           "minimum": 0,
           "type": "integer"
@@ -789,8 +790,7 @@
       "type": "object"
     },
     "Subscription": {
-      "additionalProperties": false,
-      "description": "The body of a `subscribe` message; a new one replaces the previous one.",
+      "description": "The body of a `subscribe` message; a new one replaces the previous one. Unknown fields are\nrefused.",
       "properties": {
         "filter": {
           "oneOf": [

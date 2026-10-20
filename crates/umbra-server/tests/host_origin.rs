@@ -2,7 +2,7 @@
 //! REQ-X-8, NFR-4, ADR 0026 (amended, D-b), ADR 0029 (`allowed_hosts`, `allowed_origins`).
 //!
 //! The `Host` rows go through `Server::router()` (WI-11); the `Origin` rows upgrade a real WebSocket
-//! (WI-15); the `Origin` tests are ignored until WI-15.
+//! (WI-15).
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -130,7 +130,6 @@ async fn configured_allowed_hosts_accepted() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn ws_origin_loopback_any_port_allowed() {
     let h = Harness::start("origin-loopback");
     let addr = h.serve_on_loopback().await;
@@ -148,7 +147,6 @@ async fn ws_origin_loopback_any_port_allowed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn ws_without_origin_allowed() {
     let h = Harness::start("origin-none");
     let addr = h.serve_on_loopback().await;
@@ -157,7 +155,6 @@ async fn ws_without_origin_allowed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn ws_foreign_origin_is_403_origin_not_allowed() {
     let h = Harness::start("origin-foreign");
     let addr = h.serve_on_loopback().await;
@@ -172,7 +169,6 @@ async fn ws_foreign_origin_is_403_origin_not_allowed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn ws_configured_origin_allowed() {
     let h = Harness::with("origin-configured", |config| {
         config.server.allowed_origins = vec!["https://ops.example".to_string()];

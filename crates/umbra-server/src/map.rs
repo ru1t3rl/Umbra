@@ -2,12 +2,13 @@
 //!
 //! The clock, run status, scenario, step and diagnostic mappings (WI-11), and the entity, template
 //! and component mappings with the entity query (WI-13), and the catalog, validation and plugin
-//! mappings (WI-14).
+//! mappings (WI-14), and the event mapping of the stream (WI-15).
 
 mod catalog;
 mod components;
 mod diagnostics;
 mod entities;
+mod events;
 mod plugins;
 mod query;
 mod run;
@@ -20,7 +21,8 @@ use umbra_engine::{ClockMode, TimeScale};
 pub use catalog::{behavior_catalog, catalog_entry};
 pub use components::{component_entry, component_kind_filter, component_kind_query};
 pub use diagnostics::validation_result;
-pub use entities::{entity_detail, entity_page, entity_summary, spawn_spec};
+pub use entities::{entity_detail, entity_page, entity_summary, spawn_spec, summary_of};
+pub use events::{event_dto, event_entities};
 pub use plugins::{plugin, plugin_report};
 pub use query::entity_query;
 pub use run::step_result;

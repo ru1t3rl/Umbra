@@ -2,8 +2,6 @@
 //! REQ-X-1, REQ-X-5, REQ-T-3, REQ-K-5, ADR 0026 (m4, m5). The scenario is `walking_skeleton`: three
 //! entities with ids 1 (`base-1`, template `ground_vehicle.base`, group `alpha`), 2 (`tank-1`,
 //! `tank.mbt_generic`, `alpha`) and 3 (`truck-1`, `truck.cargo`, `bravo`), near 52 N 4 E.
-//!
-//! The two tests that read the stream stay ignored until WI-15.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -194,7 +192,6 @@ async fn unknown_entity_is_404() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn spawn_is_201_and_visible_in_list_and_stream() {
     let h = loaded("ent-spawn").await;
     let addr = h.serve_on_loopback().await;
@@ -356,7 +353,6 @@ async fn components_list_with_param_schemas_and_kind_filter() {
 }
 
 #[tokio::test]
-#[ignore = "WI-15"]
 async fn rest_and_snapshot_values_are_bit_identical() {
     // The stream's frame entities and `GET /entities` are the same DTO from the same tick; every
     // number must have the same bits (REQ-K-5, ADR 0027).

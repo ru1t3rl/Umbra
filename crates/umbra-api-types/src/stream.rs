@@ -26,9 +26,14 @@ pub struct StreamFilter {
     pub event_kinds: Option<Vec<String>>,
 }
 
-/// The body of a `subscribe` message; a new one replaces the previous one.
+/// The body of a `subscribe` message; a new one replaces the previous one. Unknown fields are
+/// refused.
+// Reading goes through the private strict mirror `SubscriptionWire`, so the derived schema carries
+// no `additionalProperties: false`: that would forbid the `type` tag next to it, and no message
+// would satisfy it. `umbra_server::contract` adds `unevaluatedProperties: false` to the tagged
+// wrapper instead (ASM-208).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
+#[serde(from = "SubscriptionWire", into = "SubscriptionWire")]
 pub struct Subscription {
     /// The filter; default: everything.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -39,6 +44,38 @@ pub struct Subscription {
     /// Whether frames carry `state_hash`; default false.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state_hash: Option<bool>,
+}
+
+/// The serde form of [`Subscription`]: the same fields, strict.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SubscriptionWire {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    filter: Option<StreamFilter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_rate_hz: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    state_hash: Option<bool>,
+}
+
+impl From<SubscriptionWire> for Subscription {
+    fn from(wire: SubscriptionWire) -> Self {
+        Self {
+            filter: wire.filter,
+            max_rate_hz: wire.max_rate_hz,
+            state_hash: wire.state_hash,
+        }
+    }
+}
+
+impl From<Subscription> for SubscriptionWire {
+    fn from(subscription: Subscription) -> Self {
+        Self {
+            filter: subscription.filter,
+            max_rate_hz: subscription.max_rate_hz,
+            state_hash: subscription.state_hash,
+        }
+    }
 }
 
 /// Client -> server messages. There is no unsubscribe: a client that is done closes the socket.
@@ -118,7 +155,9 @@ pub struct EventDto {
     /// The weapon of a `fire`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weapon: Option<String>,
-    /// The payload of a `custom` event, or the action of a `simulation_control`.
+    /// A `custom` event: `{"kind": <component id>, "payload": <the payload>}`. A
+    /// `simulation_control`: `{"action": "start" | "pause" | "resume" | "stop" | "step"}`, with
+    /// `"count"` for `step`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<Object>)]
     pub detail: Option<Value>,
@@ -133,7 +172,8 @@ pub struct Frame {
     pub cause: FrameCause,
     /// The session number.
     pub session: u64,
-    /// The engine's frame counter; increases, with gaps where frames were dropped.
+    /// The number of the frame in its subscription, from 0 at the priming frame. Between two sent
+    /// frames it grows by `dropped + 1`, so a gap is a drop.
     pub seq: u64,
     /// The tick of the snapshot.
     pub tick: u64,

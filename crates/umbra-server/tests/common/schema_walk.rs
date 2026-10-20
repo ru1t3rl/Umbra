@@ -4,7 +4,9 @@
 //! - checked: `type` (a name or an array such as `["integer", "null"]`), `properties`, `required`,
 //!   `items`, `$ref` (a JSON pointer into the document, `#/components/schemas/X` or `#/$defs/X`),
 //!   `enum`, `const`, `oneOf` (exactly one branch matches), `allOf`, `additionalProperties`
-//!   (`false` or a schema), `propertyNames` (a schema every key must satisfy), `minimum` and `maximum`;
+//!   (`false` or a schema), `propertyNames` (a schema every key must satisfy), `minimum`, `maximum`
+//!   and `unevaluatedProperties: false` (a key must be named in `properties` of the schema or of
+//!   an `allOf` branch, followed through `$ref`);
 //! - ignored annotations: `description`, `title`, `example`, `examples`, `default`, `deprecated`,
 //!   `format`, `pattern`, `readOnly`, `writeOnly`, `$schema`, `$id`, `$defs`, `definitions`,
 //!   `externalDocs` and `discriminator` (a hint; `oneOf` decides).
@@ -33,7 +35,7 @@ const ANNOTATIONS: [&str; 16] = [
     "discriminator",
 ];
 
-const CHECKED: [&str; 13] = [
+const CHECKED: [&str; 14] = [
     "type",
     "properties",
     "required",
@@ -45,6 +47,7 @@ const CHECKED: [&str; 13] = [
     "allOf",
     "additionalProperties",
     "propertyNames",
+    "unevaluatedProperties",
     "minimum",
     "maximum",
 ];
@@ -131,6 +134,7 @@ fn walk(
             walk(root, branch, instance, path, depth + 1)?;
         }
     }
+    check_unevaluated(root, object, instance, path)?;
     if let Some(branches) = object.get("oneOf") {
         let list = branches
             .as_array()
@@ -148,6 +152,34 @@ fn walk(
                 "{path}: {matched} of {} oneOf branches match (needs exactly one): {}",
                 list.len(),
                 failures.join(" | ")
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// `unevaluatedProperties: false`: every key of an object instance is named by the schema or by one
+/// of its `allOf` branches.
+fn check_unevaluated(
+    root: &Value,
+    schema: &serde_json::Map<String, Value>,
+    instance: &Value,
+    path: &str,
+) -> Result<(), String> {
+    let Some(rule) = schema.get("unevaluatedProperties") else {
+        return Ok(());
+    };
+    if rule != &Value::Bool(false) {
+        return Err(format!(
+            "{path}: only `unevaluatedProperties: false` is supported"
+        ));
+    }
+    if let Some(map) = instance.as_object() {
+        let mut known = Vec::new();
+        evaluated_names(root, schema, &mut known);
+        if let Some(extra) = map.keys().find(|key| !known.contains(key)) {
+            return Err(format!(
+                "{path}.{extra}: property is not evaluated by the schema"
             ));
         }
     }
@@ -259,6 +291,33 @@ fn check_object(
     Ok(())
 }
 
+/// The property names `schema` evaluates: its own `properties`, those of its `allOf` branches and
+/// of whatever they `$ref`.
+fn evaluated_names(root: &Value, schema: &serde_json::Map<String, Value>, out: &mut Vec<String>) {
+    if let Some(properties) = schema.get("properties").and_then(Value::as_object) {
+        out.extend(properties.keys().cloned());
+    }
+    if let Some(target) = schema
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|reference| reference.strip_prefix('#'))
+        .and_then(|pointer| root.pointer(pointer))
+        .and_then(Value::as_object)
+    {
+        evaluated_names(root, target, out);
+    }
+    for branch in schema
+        .get("allOf")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(branch) = branch.as_object() {
+            evaluated_names(root, branch, out);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -295,6 +354,16 @@ mod tests {
         assert!(
             validate(&root, &json!({"not": {}}), &json!(1)).is_err(),
             "unknown keyword fails closed"
+        );
+        let wrapped = json!({
+            "allOf": [{"$ref": "#/components/schemas/Body"}, {"properties": {"type": {}}}],
+            "unevaluatedProperties": false
+        });
+        let root = json!({"components": {"schemas": {"Body": {"properties": {"x": {}}}}}});
+        assert!(validate(&root, &wrapped, &json!({"type": "t", "x": 1})).is_ok());
+        assert!(
+            validate(&root, &wrapped, &json!({"type": "t", "y": 1})).is_err(),
+            "a property no branch names"
         );
         let one_of = json!({"oneOf": [{"type": "integer"}, {"type": "number"}]});
         assert!(

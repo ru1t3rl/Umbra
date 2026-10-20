@@ -52,6 +52,12 @@ impl HostPort {
     fn ip(&self) -> Option<IpAddr> {
         self.host.parse().ok()
     }
+
+    /// `localhost` or a loopback address.
+    fn is_loopback(&self) -> bool {
+        self.ip()
+            .map_or(self.host == "localhost", |ip| ip.is_loopback())
+    }
 }
 
 /// What `Host` values the server answers to.
@@ -78,11 +84,7 @@ impl HostPolicy {
         let Some(requested) = HostPort::parse(value) else {
             return false;
         };
-        if let Some(ip) = requested.ip() {
-            if ip.is_loopback() || ip == self.bound {
-                return true;
-            }
-        } else if requested.host == "localhost" {
+        if requested.is_loopback() || requested.ip() == Some(self.bound) {
             return true;
         }
         // A configured entry without a port allows any port; with one, exactly that port.
@@ -94,6 +96,39 @@ impl HostPolicy {
             };
             same_host && entry.port.is_none_or(|port| requested.port == Some(port))
         })
+    }
+}
+
+/// What `Origin` values a WebSocket upgrade may carry (ADR 0026 amended): `http` and `https`
+/// origins on a loopback host with any port, and the exact origins of `[server] allowed_origins`.
+/// A request without `Origin` is not checked (a non-browser client).
+#[derive(Debug, Clone)]
+pub(crate) struct OriginPolicy {
+    allowed: Vec<String>,
+}
+
+impl OriginPolicy {
+    pub(crate) fn new(config: &ServerConfig) -> Self {
+        Self {
+            allowed: config
+                .allowed_origins
+                .iter()
+                .map(|entry| entry.trim_end_matches('/').to_ascii_lowercase())
+                .collect(),
+        }
+    }
+
+    /// Whether `origin`, an `Origin` header value, is allowed.
+    pub(crate) fn allows(&self, origin: &str) -> bool {
+        let origin = origin.to_ascii_lowercase();
+        if self.allowed.contains(&origin) {
+            return true;
+        }
+        origin
+            .split_once("://")
+            .filter(|(scheme, _)| matches!(*scheme, "http" | "https"))
+            .and_then(|(_, authority)| HostPort::parse(authority))
+            .is_some_and(|host| host.is_loopback())
     }
 }
 
@@ -160,6 +195,33 @@ mod tests {
             "localhost:99999",
             "a@b",
             "[::1",
+        ] {
+            assert!(!p.allows(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn origins_are_loopback_any_port_or_exactly_configured() {
+        let mut config = ServerConfig::default();
+        config.allowed_origins = vec!["https://Ops.example/".to_owned()];
+        let p = OriginPolicy::new(&config);
+        for ok in [
+            "http://localhost:5173",
+            "https://127.0.0.1",
+            "http://[::1]:8080",
+            "https://ops.example",
+        ] {
+            assert!(p.allows(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "null",
+            "https://evil.example",
+            "http://localhost.evil.example:3000",
+            "https://ops.example:8443",
+            "ftp://localhost",
+            "http://localhost/path",
+            "localhost",
         ] {
             assert!(!p.allows(bad), "{bad}");
         }

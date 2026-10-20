@@ -1463,6 +1463,7 @@ dependencies = [
  "tokio-tungstenite",
  "tower",
  "tracing",
+ "tungstenite",
  "umbra-api-types",
  "umbra-engine",
  "utoipa",

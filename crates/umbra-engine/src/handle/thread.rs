@@ -73,6 +73,8 @@ pub(super) struct Run {
     /// Events of ticks that built no frame, in order, for the next frame that is built (at most
     /// [`HELD_EVENTS_CAP`]; later ones are dropped).
     pub(super) held: Vec<SimEvent>,
+    /// The tick of each of `held` (ASM-205).
+    pub(super) held_ticks: Vec<u64>,
 }
 
 /// The most events kept for a frame that is not built yet.
@@ -106,19 +108,28 @@ pub(super) struct Worker {
 }
 
 /// Logs a panic of the engine thread: the thread is not restarted, every later command is `Closed`.
-struct PanicLog;
+struct PanicLog {
+    bus: Arc<Bus>,
+    shared: Arc<Shared>,
+}
 
 impl Drop for PanicLog {
     fn drop(&mut self) {
         if std::thread::panicking() {
             tracing::error!("the engine thread panicked; every command now fails with Closed");
         }
+        // However the thread ended: say so, then wake the subscribers to look (ASM-206).
+        self.shared.mark_closed();
+        self.bus.wake_all();
     }
 }
 
 /// The body of the engine thread.
 pub(super) fn run(config: HandleConfig, rx: Receiver<Command>, bus: Arc<Bus>, shared: Arc<Shared>) {
-    let _log = PanicLog;
+    let _log = PanicLog {
+        bus: Arc::clone(&bus),
+        shared: Arc::clone(&shared),
+    };
     let HandleConfig {
         base_registry,
         load,
@@ -295,15 +306,23 @@ impl Worker {
             } else {
                 FrameCause::Control
             };
-            let held = self.run.as_mut().map(|r| std::mem::take(&mut r.held));
-            let mut events = held.unwrap_or_default();
+            let held = self.run.as_mut().map(|r| {
+                (
+                    std::mem::take(&mut r.held),
+                    std::mem::take(&mut r.held_ticks),
+                )
+            });
+            let (mut events, mut ticks) = held.unwrap_or_default();
+            ticks.extend(std::iter::repeat_n(tick, report.events.len()));
             events.extend(report.events);
-            let frame = self.frame(cause, events, hash);
+            let frame = self.frame(cause, events, Some(ticks), hash);
             self.bus.publish(frame, None);
         } else if let Some(run) = self.run.as_mut().filter(|_| self.bus.interest().0) {
             // Nobody is due a frame, but somebody is waiting for the events of this tick: they
             // join the next frame that is built.
             let room = HELD_EVENTS_CAP.saturating_sub(run.held.len());
+            let kept = report.events.len().min(room);
+            run.held_ticks.extend(std::iter::repeat_n(tick, kept));
             run.held.extend(report.events.into_iter().take(room));
         }
     }

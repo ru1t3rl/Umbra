@@ -4,7 +4,6 @@
 //! `responses_conform_to_their_openapi_schemas` walks real responses against the served document
 //! with `common::schema_walk`, which fails closed on keywords it does not support. The committed
 //! files are `api/openapi.json` and `api/stream.schema.json` (written by `cargo xtask gen-api`).
-//! Routes of later work items are listed in `NOT_YET`.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -66,10 +65,6 @@ const EXTRA_PROBLEMS: [(&str, &[&str]); 16] = [
     ("stopRun", &["409"]),
 ];
 
-/// Routes of `ROUTES` that a later work item adds: the router does not serve them and the document
-/// does not list them yet. WI-15 removes the stream line.
-const NOT_YET: [(&str, &str); 1] = [("get", "/api/v1/stream")];
-
 const TAGS: [&str; 9] = [
     "status",
     "scenario",
@@ -85,7 +80,6 @@ const TAGS: [&str; 9] = [
 fn expected_routes() -> BTreeSet<(String, String)> {
     ROUTES
         .iter()
-        .filter(|(m, p, _)| !NOT_YET.contains(&(*m, *p)))
         .map(|(m, p, _)| ((*m).to_string(), normalise(p)))
         .collect()
 }
@@ -157,24 +151,6 @@ async fn openapi_lists_every_route_of_the_router() {
             let code = reply.json()["code"].clone();
             assert_ne!(code, json!("not_found"), "{method} {uri} is not routed");
         }
-    }
-    // A `NOT_YET` line is stale as soon as its route is served: the router answers it with the
-    // route-not-found problem (404 `not_found`) or, when another method shares the path, 405.
-    for (method, path) in NOT_YET {
-        let uri = path.replace("{id}", "1");
-        let reply = h
-            .send(
-                Method::from_bytes(method.to_uppercase().as_bytes()).expect("method"),
-                &uri,
-            )
-            .await;
-        let unrouted = reply.status == 405
-            || (reply.status == 404 && reply.json()["code"] == json!("not_found"));
-        assert!(
-            unrouted,
-            "{method} {path} is served (status {}): remove it from NOT_YET",
-            reply.status
-        );
     }
 }
 

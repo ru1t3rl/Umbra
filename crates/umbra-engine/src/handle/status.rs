@@ -37,6 +37,7 @@ impl Worker {
         &mut self,
         cause: FrameCause,
         events: Vec<SimEvent>,
+        ticks: Option<Vec<u64>>,
         with_hash: bool,
     ) -> Frame {
         let seq = self.seq;
@@ -49,6 +50,13 @@ impl Worker {
             frame.directory = std::sync::Arc::clone(&run.directory);
             frame.state_hash = with_hash.then(|| engine.state_hash());
         }
+        // Without ticks given, the events are those of a command, which happened between ticks, at
+        // the tick now.
+        frame.event_ticks = ticks.unwrap_or_else(|| {
+            let now = frame.snapshot.as_ref().map_or(0, |s| s.time.tick());
+            vec![now; events.len()]
+        });
+        debug_assert_eq!(events.len(), frame.event_ticks.len(), "a tick per event");
         frame.events = events;
         frame
     }
@@ -57,7 +65,7 @@ impl Worker {
     /// caused it), to every subscription, if there are any.
     pub(super) fn publish_control(&mut self, events: Vec<SimEvent>) {
         if self.bus.interest().0 {
-            let frame = self.frame(FrameCause::Control, events, false);
+            let frame = self.frame(FrameCause::Control, events, None, false);
             self.bus.publish(frame, None);
         }
     }

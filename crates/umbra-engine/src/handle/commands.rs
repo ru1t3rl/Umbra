@@ -203,6 +203,7 @@ impl Worker {
             stop_reason: None,
             step: None,
             held: Vec::new(),
+            held_ticks: Vec::new(),
         });
         info
     }

@@ -14,6 +14,8 @@ pub(super) struct Shared {
     pub(super) shutdown: AtomicBool,
     /// Frames the thread has built (`EngineHandle::snapshot_builds`).
     pub(super) builds: AtomicU64,
+    /// Set when the engine thread has ended, however it ended (`EngineHandle::is_closed`).
+    closed: AtomicBool,
     /// Whether `primes` may be non-empty; lets the loop skip the lock on almost every turn.
     needs_prime: AtomicBool,
     /// Subscriptions waiting for their priming frame.
@@ -25,9 +27,18 @@ impl Shared {
         Self {
             shutdown: AtomicBool::new(false),
             builds: AtomicU64::new(0),
+            closed: AtomicBool::new(false),
             needs_prime: AtomicBool::new(false),
             primes: Mutex::new(Vec::new()),
         }
+    }
+
+    pub(super) fn mark_closed(&self) {
+        self.closed.store(true, Ordering::Release);
+    }
+
+    pub(super) fn is_closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
     }
 
     pub(super) fn is_shutting_down(&self) -> bool {

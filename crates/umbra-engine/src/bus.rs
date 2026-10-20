@@ -115,6 +115,9 @@ pub struct Frame {
     pub directory: Arc<BTreeMap<EntityId, EntityInfo>>,
     /// The events of the tick(s) since the previous built frame (none for a pure command frame).
     pub events: Vec<SimEvent>,
+    /// The tick each of `events` happened in, same order (ASM-205). May be shorter than `events`
+    /// for a frame built by hand; an event without an entry is taken to be of the frame's tick.
+    pub event_ticks: Vec<u64>,
     /// The state hash, computed only when a due subscription asked for it.
     pub state_hash: Option<StateHash>,
 }
@@ -130,6 +133,7 @@ impl Frame {
             snapshot: None,
             directory: Arc::new(BTreeMap::new()),
             events: Vec::new(),
+            event_ticks: Vec::new(),
             state_hash: None,
         }
     }
@@ -192,6 +196,8 @@ pub struct Drained {
     pub dropped: u64,
     /// Events of dropped frames, to be delivered before the events of `frames`.
     pub carried_events: Vec<SimEvent>,
+    /// The tick of each of `carried_events`, same order and length (ASM-205).
+    pub carried_ticks: Vec<u64>,
     /// Whether `carried_events` hit `max_carry_events` and lost events.
     pub events_truncated: bool,
 }
@@ -213,6 +219,7 @@ pub struct SubscriptionStats {
 struct SlotState {
     queue: VecDeque<Arc<Frame>>,
     carry: Vec<SimEvent>,
+    carry_ticks: Vec<u64>,
     truncated: bool,
     dropped: u64,
     stats: SubscriptionStats,
@@ -261,8 +268,18 @@ impl Slot {
     }
 
     fn carry_events(&self, state: &mut SlotState, old: &Frame) {
+        debug_assert!(
+            old.event_ticks.len() <= old.events.len(),
+            "no tick without an event"
+        );
         let room = self.max_carry.saturating_sub(state.carry.len());
         state.carry.extend(old.events.iter().take(room).cloned());
+        let at = old.snapshot.as_ref().map_or(0, |s| s.time.tick());
+        for index in 0..old.events.len().min(room) {
+            state
+                .carry_ticks
+                .push(old.event_ticks.get(index).copied().unwrap_or(at));
+        }
         if old.events.len() > room {
             state.truncated = true;
         }
@@ -275,6 +292,7 @@ impl SlotState {
             frames: self.queue.drain(..).collect(),
             dropped: std::mem::take(&mut self.dropped),
             carried_events: std::mem::take(&mut self.carry),
+            carried_ticks: std::mem::take(&mut self.carry_ticks),
             events_truncated: std::mem::take(&mut self.truncated),
         }
     }
@@ -423,9 +441,25 @@ impl Bus {
         })
     }
 
+    /// Rings every subscription's `notify` and wakes every `wait`, without pushing a frame: the
+    /// publisher is gone and subscribers should look at why. Like a push, no lock is held while the
+    /// callbacks run.
+    pub fn wake_all(&self) {
+        for slot in self.live() {
+            slot.ready.notify_all();
+            if let Some(notify) = &slot.notify {
+                notify();
+            }
+        }
+    }
+
     /// Pushes `frame` to every subscription, or only to `only` (priming). Never waits for space: a
     /// full queue drops its oldest frame and counts it; the dropped frame's events are carried.
     pub fn publish(&self, frame: Frame, only: Option<SlotId>) {
+        debug_assert!(
+            frame.event_ticks.len() <= frame.events.len(),
+            "no tick without an event"
+        );
         let frame = Arc::new(frame);
         for slot in self.live() {
             if only.is_none_or(|id| id == slot.id) {

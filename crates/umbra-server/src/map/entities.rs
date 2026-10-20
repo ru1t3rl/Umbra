@@ -1,12 +1,12 @@
 //! Entities: engine state to wire summaries and details, and a spawn request to a spawn (WI-13).
-//! The stream maps its frame entities with [`entity_summary`] too (WI-15), so a listing and a
+//! The stream maps its frame entities with [`summary_of`] too (WI-15), so a listing and a
 //! frame agree bit for bit (REQ-K-5).
 
 use umbra_api_types as api;
 use umbra_engine::handle::{EntityPage, EntityState};
 use umbra_engine::{
-    BehaviorStatus, EntityDisplay, EntityId, Force, Geodetic, MetersPerSecond, Ownership, Position,
-    Radians, TemplateId, TemplateSpawn,
+    BehaviorStatus, EntityDisplay, EntityId, EntityInfo, EntitySnapshot, Force, Geodetic,
+    MetersPerSecond, Ownership, Position, Radians, TemplateId, TemplateSpawn,
 };
 
 use super::MapError;
@@ -30,13 +30,19 @@ fn behavior_status(status: BehaviorStatus) -> &'static str {
 /// The wire summary of an entity.
 #[must_use]
 pub fn entity_summary(entity: &EntityState) -> api::EntitySummary {
-    let snapshot = &entity.snapshot;
+    summary_of(&entity.info, &entity.snapshot)
+}
+
+/// The wire summary of an entity from its directory entry and its snapshot: the one mapping behind
+/// the listing and the stream frames.
+#[must_use]
+pub fn summary_of(info: &EntityInfo, snapshot: &EntitySnapshot) -> api::EntitySummary {
     let shown = EntityDisplay::from_snapshot(snapshot);
     api::EntitySummary {
         id: shown.id.get(),
-        name: entity.info.name.clone(),
-        template: Some(entity.info.template.as_str().to_owned()),
-        group: entity.info.group.clone(),
+        name: info.name.clone(),
+        template: Some(info.template.as_str().to_owned()),
+        group: info.group.clone(),
         force: snapshot.force.as_ref().map(|f| f.as_str().to_owned()),
         ownership: ownership(&snapshot.ownership),
         lat_deg: shown.lat_deg,

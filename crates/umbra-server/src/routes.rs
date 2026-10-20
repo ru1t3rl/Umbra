@@ -22,7 +22,7 @@ use crate::openapi;
 use crate::problem::ApiError;
 use crate::shutdown::Shutdown;
 use crate::state::AppState;
-use crate::stream::ConnectionStats;
+use crate::stream::{self, ConnectionStats};
 
 /// The REST API and stream over one engine handle. It talks only to the handle (REQ-X-7).
 ///
@@ -46,7 +46,7 @@ impl Server {
     /// `tower::ServiceExt::oneshot`.
     ///
     /// Layers, outermost first: the `Host` allow-list, the body limit, the mutating-route seam, the
-    /// handlers. The stream route (`/api/v1/stream`) is added by WI-15.
+    /// handlers. The stream route (`/api/v1/stream`) upgrades to a WebSocket (WI-15).
     pub fn router(&self) -> Router {
         let readers = Router::new()
             .route("/api/v1/status", get(status::get_status))
@@ -66,6 +66,7 @@ impl Server {
                 "/api/v1/behaviors/validate",
                 post(validate::validate_behavior),
             )
+            .route("/api/v1/stream", get(stream::upgrade::open_stream))
             .route("/api/v1/openapi.json", get(openapi::get_openapi));
         let writers = mutating::guard(
             Router::new()

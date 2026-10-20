@@ -1,11 +1,14 @@
 //! The state every handler shares, and the one way a handler talks to the engine (REQ-X-7).
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use tokio::sync::oneshot;
 use umbra_engine::Confinement;
 use umbra_engine::handle::{Command, EngineHandle, HandleError, Reply};
 
 use crate::config::ServerSettings;
-use crate::layers::host::HostPolicy;
+use crate::layers::host::{HostPolicy, OriginPolicy};
 use crate::problem::ApiError;
 use crate::shutdown::Shutdown;
 
@@ -15,6 +18,9 @@ pub(crate) struct AppState {
     pub(crate) settings: ServerSettings,
     pub(crate) shutdown: Shutdown,
     pub(crate) hosts: HostPolicy,
+    pub(crate) origins: OriginPolicy,
+    /// Open stream connections (WI-15), for `[server.stream] max_connections`.
+    pub(crate) connections: AtomicUsize,
     /// For scrubbing the text of library errors (ASM-194). `None` only if the configured
     /// directories cannot be resolved; the engine then has none either (see `ServerSettings`).
     confinement: Option<Confinement>,
@@ -24,13 +30,29 @@ impl AppState {
     pub(crate) fn new(handle: EngineHandle, settings: ServerSettings, shutdown: Shutdown) -> Self {
         let confinement = settings.confinement().ok();
         let hosts = HostPolicy::new(&settings.server);
+        let origins = OriginPolicy::new(&settings.server);
         Self {
             handle,
             settings,
             shutdown,
             hosts,
+            origins,
+            connections: AtomicUsize::new(0),
             confinement,
         }
+    }
+
+    /// Takes one of the `max` stream connections, or `None` if all are taken. The connection is
+    /// given back when the returned guard drops.
+    pub(crate) fn take_connection(self: &Arc<Self>, max: usize) -> Option<ConnectionSlot> {
+        self.connections
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |open| {
+                (open < max).then_some(open + 1)
+            })
+            .ok()
+            .map(|_| ConnectionSlot {
+                state: Arc::clone(self),
+            })
     }
 
     /// The problem for a failed command, with library messages written in display form.
@@ -49,6 +71,17 @@ impl AppState {
         exchange(|reply| self.handle.submit(make(reply)))
             .await
             .map_err(|error| self.problem(&error))
+    }
+}
+
+/// One of the stream connections `[server.stream] max_connections` allows; released on drop.
+pub(crate) struct ConnectionSlot {
+    state: Arc<AppState>,
+}
+
+impl Drop for ConnectionSlot {
+    fn drop(&mut self) {
+        self.state.connections.fetch_sub(1, Ordering::AcqRel);
     }
 }
 

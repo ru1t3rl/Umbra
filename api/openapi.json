@@ -587,7 +587,7 @@
         "description": "An event on the stream (best-effort; `dropped` and `events_truncated` make loss visible).",
         "properties": {
           "detail": {
-            "description": "The payload of a `custom` event, or the action of a `simulation_control`.",
+            "description": "A `custom` event: `{\"kind\": <component id>, \"payload\": <the payload>}`. A\n`simulation_control`: `{\"action\": \"start\" | \"pause\" | \"resume\" | \"stop\" | \"step\"}`, with\n`\"count\"` for `step`.",
             "type": [
               "object",
               "null"
@@ -682,7 +682,7 @@
             "description": "The run status."
           },
           "seq": {
-            "description": "The engine's frame counter; increases, with gaps where frames were dropped.",
+            "description": "The number of the frame in its subscription, from 0 at the priming frame. Between two sent\nframes it grows by `dropped + 1`, so a gap is a drop.",
             "format": "int64",
             "minimum": 0,
             "type": "integer"
@@ -1577,8 +1577,7 @@
         "type": "object"
       },
       "Subscription": {
-        "additionalProperties": false,
-        "description": "The body of a `subscribe` message; a new one replaces the previous one.",
+        "description": "The body of a `subscribe` message; a new one replaces the previous one. Unknown fields are\nrefused.",
         "properties": {
           "filter": {
             "oneOf": [
@@ -3484,6 +3483,82 @@
         "summary": "The engine status: the contract version, the run status and the loaded scenario, if any.",
         "tags": [
           "status"
+        ]
+      }
+    },
+    "/api/v1/stream": {
+      "get": {
+        "description": "Refused before the upgrade, in this order: an `Origin` that is not allowed (`403\norigin_not_allowed`; no `Origin` is allowed), an `encoding` other than `json` (`400\nunsupported_encoding`), a request that is not a WebSocket upgrade (`400 bad_request`), and more\nopen stream connections than `[server.stream] max_connections` (`503 too_many_connections`).",
+        "operationId": "openStream",
+        "parameters": [
+          {
+            "description": "The message encoding: `json` (the default). `msgpack` and anything else are refused with\n`400 unsupported_encoding`.",
+            "in": "query",
+            "name": "encoding",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching Protocols: a WebSocket carrying the messages of api/stream.schema.json and api/asyncapi.json"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "unsupported_encoding, or not a WebSocket upgrade request (bad_request)"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`host_not_allowed`."
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`method_not_allowed`."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`internal`."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`engine_busy`, `engine_unavailable`."
+          }
+        },
+        "summary": "Upgrades to the stream WebSocket (protocol `umbra.stream.v1`, ADR 0027).",
+        "tags": [
+          "stream"
         ]
       }
     },

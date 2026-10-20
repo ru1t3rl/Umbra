@@ -65,6 +65,16 @@ pub struct EntityListParams {
     max_lon_deg: Option<f64>,
 }
 
+/// The query of `GET /api/v1/stream`, for the document only.
+#[derive(IntoParams, Deserialize)]
+#[into_params(parameter_in = Query)]
+#[expect(dead_code, reason = "documents the query; the handler reads it")]
+pub struct StreamParams {
+    /// The message encoding: `json` (the default). `msgpack` and anything else are refused with
+    /// `400 unsupported_encoding`.
+    encoding: Option<String>,
+}
+
 /// The query of `GET /api/v1/components`, for the document only.
 #[derive(IntoParams, Deserialize)]
 #[into_params(parameter_in = Query)]
@@ -96,6 +106,7 @@ pub struct ComponentListParams {
     handlers::plugins::get_plugins,
     handlers::catalog::get_behavior_catalog,
     handlers::validate::validate_behavior,
+    crate::stream::upgrade::open_stream,
     get_openapi,
 ))]
 struct Routes;
