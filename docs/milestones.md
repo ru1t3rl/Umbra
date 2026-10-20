@@ -48,6 +48,7 @@ Mark acceptance criteria with evidence (test names / command output summary). So
   - [ ] `bun run typecheck`, `lint`, `test`, `check:deps` and `test:e2e` pass (`verify-frontend`); `bun run gen:api` produces no diff.
   - [ ] The GUI imports no engine source (REQ-A-4, enforced by dependency-cruiser).
   - [ ] M5b changes no engine crate behavior and no engine acceptance criterion; any contract gap is a separate, additive `update-openapi` work item that never reopens M5.
+  - [ ] Umbra icon (human decision 2026-10-20): the app's favicon is `umbra_icon.svg` (the repository-root file, copied into the app's public assets by the build, never redrawn), set in the M5b app shell's `index.html` (`<link rel="icon" type="image/svg+xml">`) in the first app-shell work item; a test asserts the served page links it and the asset is byte-identical to the root file. The Tauri bundle icons follow in M8 from the same file.
   - [ ] Vantage design system (amendment A-003, human decision 2026-10-19: all of A-003 in M5b, as its first work items before `map-view` and the dashboard shell): A-003's acceptance criteria pass (`gen:tokens --check`, `check:tokens`, `check:contrast` in `verify-frontend`; all 14 reference components in `@umbra/ui-kit` with reference props and tests; showcase in Ops and Day with screenshot tests; a hex literal in a feature fails `check:tokens`; app starts in Ops and switches to Day without reload).
 - [ ] M6 Networking and DIS
 - [ ] M7 More plugin kinds and replay
