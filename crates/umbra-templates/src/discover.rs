@@ -50,7 +50,7 @@ struct Collected {
 }
 
 /// An `io` diagnostic for `path`.
-pub(crate) fn io_diagnostic(path: &Path, error: &io::Error) -> Diagnostic {
+pub fn io_diagnostic(path: &Path, error: &io::Error) -> Diagnostic {
     let message = format!("cannot read {}: {error}", path.display());
     Diagnostic::new(DiagnosticCode::Io, message, None)
 }
@@ -492,4 +492,51 @@ pub fn scenario_plugin_paths(path: &Path) -> Vec<PathBuf> {
         }
     }
     out
+}
+
+/// The files and directories a load of a scenario file reads, found leniently like
+/// [`scenario_plugin_paths`] (path confinement, D-b, ADR 0026): problems are left to the full load.
+///
+/// Every list is resolved against the scenario file's directory and is empty for a file that is
+/// missing, unreadable or not a scenario.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ScenarioInputs {
+    /// The scenario file itself.
+    pub scenario: PathBuf,
+    /// The `template_paths` directories, in file order.
+    pub template_dirs: Vec<PathBuf>,
+    /// The template and graph files a load reads: every `*.toml` file below the template
+    /// directories, in sorted path order without duplicates. A link to a file is listed as the link.
+    pub files: Vec<PathBuf>,
+    /// The `plugin_paths` directories, in file order.
+    pub plugin_dirs: Vec<PathBuf>,
+}
+
+/// The inputs a load of `path` would read (see [`ScenarioInputs`]).
+#[must_use]
+pub fn scenario_inputs(path: &Path) -> ScenarioInputs {
+    let mut inputs = ScenarioInputs {
+        scenario: path.to_path_buf(),
+        ..ScenarioInputs::default()
+    };
+    let Ok(source) = read_source(path) else {
+        return inputs;
+    };
+    if !is_scenario_source(&source) {
+        return inputs;
+    }
+    let base = path.parent().unwrap_or_else(|| Path::new(""));
+    for (entry, _) in template_paths(&source) {
+        let dir = base.join(entry);
+        inputs.files.extend(toml_files(&dir, &mut Vec::new()));
+        inputs.template_dirs.push(dir);
+    }
+    inputs.files.sort();
+    inputs.files.dedup();
+    inputs.plugin_dirs = plugin_path_strings(&source)
+        .into_iter()
+        .map(|entry| base.join(entry))
+        .collect();
+    inputs
 }

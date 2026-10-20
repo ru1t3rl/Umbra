@@ -95,6 +95,18 @@ pub(crate) fn is_scenario(file: &SourceFile) -> bool {
     parse(file).0.is_some_and(|t| t.get("scenario").is_some())
 }
 
+/// The top-level `id` string of a behavior graph document, read leniently with the same parser as
+/// the loader: `None` when it has no `id` or the `id` is not a string. A syntax error elsewhere in
+/// the document does not hide an `id` the parser recovered.
+#[must_use]
+pub fn graph_document_id(file: &SourceFile) -> Option<String> {
+    let table = parse(file).0?;
+    match table.get("id")?.kind() {
+        LKind::String(id) => Some(id.clone()),
+        _ => None,
+    }
+}
+
 struct Settings {
     name: String,
     seed: u64,

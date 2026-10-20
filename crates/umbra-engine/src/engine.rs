@@ -5,6 +5,7 @@
 
 use std::ops::ControlFlow;
 use std::sync::Arc;
+use std::time::Duration;
 
 use umbra_core::Enu;
 use umbra_core::{
@@ -17,7 +18,7 @@ use umbra_kernel::{
     TickReport, WallClock,
 };
 
-use umbra_plugin_host::PluginHost;
+use umbra_plugin_host::{PluginFault, PluginHost};
 
 use crate::error::{EngineError, SpawnParam};
 
@@ -329,4 +330,90 @@ fn validate_spawn(spec: &SpawnSpec, position: umbra_core::Ecef) -> Result<(), En
         return Err(EngineError::InvalidSpawn(SpawnParam::Speed));
     }
     Ok(())
+}
+
+/// What one [`Engine::pump`] call did (ADR 0024).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum Pumped {
+    /// One tick ran.
+    Ticked(TickReport),
+    /// One tick ran and a plugin faulted under the `abort` policy in it (ADR 0021, ASM-145 a). The
+    /// tick's report, with its events, is kept; the driver stops the run after publishing it.
+    Aborted {
+        /// The report of the faulting tick.
+        report: TickReport,
+        /// The fault.
+        fault: PluginFault,
+    },
+    /// No tick was due; the call waited, at most `max_wait` and never past the next deadline.
+    Waited,
+    /// Nothing to do: the clock is paused, or stepped with no pending steps.
+    Idle,
+}
+
+impl Engine {
+    /// One pacing decision, for a driver that must stay responsive (the engine thread, ADR 0024):
+    /// runs a tick if one is due, otherwise waits for the clock at most `max_wait`, or says there is
+    /// nothing to do. Never runs more than one tick. After a tick it checks the plugin host like
+    /// [`Engine::run`] does, but reports the fault as [`Pumped::Aborted`] with the tick's report
+    /// instead of an error.
+    ///
+    /// # Stack
+    /// As [`Engine::run`].
+    ///
+    /// # Errors
+    /// [`EngineError::Kernel`] when the tick counter is exhausted; no tick ran then.
+    pub fn pump(&mut self, max_wait: Duration) -> Result<Pumped, EngineError> {
+        match self.kernel.clock_mut().poll() {
+            Pace::Tick => {
+                let report = self.kernel.tick()?;
+                let fault = self.plugins.as_ref().and_then(|h| h.take_abort());
+                Ok(match fault {
+                    Some(fault) => Pumped::Aborted { report, fault },
+                    None => Pumped::Ticked(report),
+                })
+            }
+            Pace::WaitUntil(deadline) => {
+                let clock = self.kernel.clock();
+                clock.wait_until(deadline.min(clock.wall_now().saturating_add(max_wait)));
+                Ok(Pumped::Waited)
+            }
+            Pace::Idle => Ok(Pumped::Idle),
+        }
+    }
+
+    /// Requests `n` more steps (consumed in stepped mode).
+    pub fn request_steps(&mut self, n: u64) {
+        self.kernel.clock_mut().request_steps(n);
+    }
+
+    /// Drops the steps requested and not yet run.
+    pub fn cancel_steps(&mut self) {
+        self.kernel.clock_mut().cancel_steps();
+    }
+
+    /// The steps requested and not yet run.
+    pub fn pending_steps(&self) -> u64 {
+        self.kernel.clock().pending_steps()
+    }
+
+    /// Whether the clock is paused.
+    pub fn is_paused(&self) -> bool {
+        self.kernel.clock().is_paused()
+    }
+
+    /// The current clock mode.
+    pub fn clock_mode(&self) -> ClockMode {
+        self.kernel.clock().mode()
+    }
+
+    /// Removes an entity between ticks (REQ-C-2, ADR 0028): its behavior instance is dropped, so a
+    /// plugin instance is destroyed here. Ids are not reused.
+    ///
+    /// # Errors
+    /// [`EngineError::Kernel`] wrapping `KernelError::UnknownEntity`; nothing changes then.
+    pub fn remove(&mut self, id: EntityId) -> Result<(), EngineError> {
+        Ok(self.kernel.remove(id)?)
+    }
 }

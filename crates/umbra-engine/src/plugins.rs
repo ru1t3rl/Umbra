@@ -60,9 +60,23 @@ pub fn load_plugins(
 #[must_use]
 pub fn resolve_plugin_paths(extra: &[PathBuf], scenario: Option<&Path>) -> Vec<PathBuf> {
     let named = scenario.map(scenario_plugin_paths).unwrap_or_default();
+    dedup_plugin_paths(extra.iter().cloned().chain(named))
+}
+
+/// `extra` followed by `settings.extra_plugin_paths`.
+fn with_settings_paths(extra: &[PathBuf], settings: &LoadSettings) -> Vec<PathBuf> {
+    extra
+        .iter()
+        .chain(&settings.extra_plugin_paths)
+        .cloned()
+        .collect()
+}
+
+/// `paths` without duplicates by canonical path, first occurrence kept (ASM-144).
+pub(crate) fn dedup_plugin_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     let mut seen = Vec::new();
     let mut out = Vec::new();
-    for path in extra.iter().cloned().chain(named) {
+    for path in paths {
         let identity = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
         if !seen.contains(&identity) {
             seen.push(identity);
@@ -85,7 +99,9 @@ pub fn load_scenario_with_plugins(
     load_scenario_with_plugins_and_settings(base, path, extra, &LoadSettings::default())
 }
 
-/// [`load_scenario_with_plugins`] with explicit [`LoadSettings`].
+/// [`load_scenario_with_plugins`] with explicit [`LoadSettings`]: `settings.extra_plugin_paths` are
+/// searched after `extra`. `settings.confinement` is not applied here; it applies only through
+/// `Session::load`.
 ///
 /// # Errors
 /// As [`load_scenario_with_plugins`].
@@ -95,8 +111,21 @@ pub fn load_scenario_with_plugins_and_settings(
     extra: &[PathBuf],
     settings: &LoadSettings,
 ) -> Result<LoadedScenario, ScenarioError> {
-    let paths = resolve_plugin_paths(extra, Some(path));
-    let (registry, host) = load_plugins(base, &paths, HostOptions::default())?;
+    let paths = resolve_plugin_paths(&with_settings_paths(extra, settings), Some(path));
+    load_with_host_options(base, path, &paths, settings, HostOptions::default())
+}
+
+/// Loads the plugins under `paths` (already resolved) into a fresh host built with `host_options`,
+/// loads the scenario against them inside the host's build scope and sets the scenario's fault
+/// policy. The body of [`load_scenario_with_plugins_and_settings`], also used by `Session::load`.
+pub(crate) fn load_with_host_options(
+    base: &Registry,
+    path: &Path,
+    paths: &[PathBuf],
+    settings: &LoadSettings,
+    host_options: HostOptions,
+) -> Result<LoadedScenario, ScenarioError> {
+    let (registry, host) = load_plugins(base, paths, host_options)?;
     // The loader dry-runs `configure` of plugin behaviors, which a run-mode host allows only inside
     // its build scope (ASM-138).
     let scenario = {
@@ -123,7 +152,8 @@ pub fn validate_path_with_plugins(
     validate_path_with_plugins_and_settings(base, path, extra, &LoadSettings::default())
 }
 
-/// [`validate_path_with_plugins`] with explicit [`LoadSettings`].
+/// [`validate_path_with_plugins`] with explicit [`LoadSettings`]: `settings.extra_plugin_paths` are
+/// searched after `extra`. `settings.confinement` is not applied here.
 ///
 /// # Errors
 /// As [`validate_path_with_plugins`].
@@ -133,7 +163,7 @@ pub fn validate_path_with_plugins_and_settings(
     extra: &[PathBuf],
     settings: &LoadSettings,
 ) -> Result<ValidationReport, ScenarioError> {
-    let paths = resolve_plugin_paths(extra, Some(path));
+    let paths = resolve_plugin_paths(&with_settings_paths(extra, settings), Some(path));
     let mut options = HostOptions::default();
     options.mode = HostMode::Validation;
     let (registry, _host) = load_plugins(base, &paths, options)?;

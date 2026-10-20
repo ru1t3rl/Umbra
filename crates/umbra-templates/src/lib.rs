@@ -30,11 +30,12 @@ pub mod template;
 pub mod value;
 
 pub use diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, Location, Note};
-pub use discover::scenario_plugin_paths;
+pub use discover::{ScenarioInputs, io_diagnostic, scenario_inputs, scenario_plugin_paths};
 pub use graph_resolve::GraphSet;
 pub use loader::{Loader, LoaderError, LoaderOptions, ValidationReport};
 pub use resolve::{ComponentRef, ResolvedTemplate, TemplateSet};
 pub use scenario::{ClockSetting, Placement, RoutePlan, Scenario, TickRateSource};
+pub use scenario_read::graph_document_id;
 pub use schema::{CompiledSchema, SchemaError};
 pub use source::SourceFile;
 pub use value::{LTable, LValue};

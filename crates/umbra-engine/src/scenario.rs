@@ -3,7 +3,7 @@
 //! Components are built through the registry by ID only; this module never names a concrete
 //! motion model or terrain type.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use umbra_core::{ComponentKind, EntityId, Ownership, Registry, TemplateId, TickRate};
@@ -16,6 +16,7 @@ pub use umbra_templates::{
 
 use umbra_plugin_host::PluginHost;
 
+use crate::confine::Confinement;
 use crate::engine::{AgentInit, Engine, EngineConfig, RouteSpec, SpawnSpec};
 use crate::error::EngineError;
 
@@ -75,6 +76,15 @@ pub struct LoadSettings {
     /// The tick rate of a scenario that omits `tick_rate_hz`; 60 Hz by default. An explicit value
     /// in the scenario always wins.
     pub default_tick_rate: TickRate,
+    /// Plugin directories searched before those the scenario names, used by the plugin-aware
+    /// loaders and `Session::load` (the configuration file's `plugin_paths`, ADR 0029). Never
+    /// confined: they are trusted. `load_scenario_with_settings` and `validate_path_with_settings`
+    /// load no plugins and ignore them.
+    pub extra_plugin_paths: Vec<PathBuf>,
+    /// Keeps the inputs of a load inside the scenario root (D-b). Applied only by `Session::load`;
+    /// every other function taking `LoadSettings` ignores it. `None` outside the server (which sets
+    /// it from WI-11).
+    pub confinement: Option<Confinement>,
 }
 
 impl LoadSettings {
@@ -94,7 +104,8 @@ pub fn load_scenario(registry: &Registry, path: &Path) -> Result<Scenario, Scena
     load_scenario_with_settings(registry, path, &LoadSettings::default())
 }
 
-/// [`load_scenario`] with explicit [`LoadSettings`].
+/// [`load_scenario`] with explicit [`LoadSettings`] (the tick rate default only; plugin paths and
+/// confinement are not used here).
 ///
 /// # Errors
 /// As [`load_scenario`].
@@ -114,7 +125,8 @@ pub fn validate_path(registry: &Registry, path: &Path) -> Result<ValidationRepor
     validate_path_with_settings(registry, path, &LoadSettings::default())
 }
 
-/// [`validate_path`] with explicit [`LoadSettings`].
+/// [`validate_path`] with explicit [`LoadSettings`] (the tick rate default only; plugin paths and
+/// confinement are not used here).
 ///
 /// # Errors
 /// As [`validate_path`].
@@ -196,6 +208,43 @@ fn build_agent(
     })
 }
 
+/// Builds one placement through `registry` (which must hold the scenario's graphs, see
+/// [`scenario_registry`]) and spawns it; `index` names the placement in build errors. Shared by
+/// [`instantiate`] and `Session::spawn`, so an API spawn is built exactly like a placement
+/// (ASM-153).
+pub(crate) fn spawn_placement(
+    engine: &mut Engine,
+    registry: &Registry,
+    index: usize,
+    placement: &Placement,
+) -> Result<EntityId, EngineError> {
+    let motion = registry
+        .motion_model(&placement.motion.id)
+        .ok_or_else(|| EngineError::UnknownComponent {
+            kind: ComponentKind::MotionModel,
+            id: placement.motion.id.clone(),
+        })?
+        .build(&placement.motion.params)
+        .map_err(|source| EngineError::Build {
+            entity: index,
+            source,
+        })?;
+    let agent = build_agent(registry, index, placement)?;
+    let spec = SpawnSpec {
+        position: placement.position,
+        heading: placement.heading,
+        speed: placement.speed,
+        ownership: Ownership::Owned,
+        motion,
+        route: placement.route.as_ref().map(|r| RouteSpec {
+            waypoints: r.waypoints.clone(),
+            arrival_radius: r.arrival_radius,
+            cruise_speed: r.cruise_speed,
+        }),
+    };
+    engine.spawn_with(spec, agent)
+}
+
 /// Builds terrain, motion models, behaviors and sensors through the registry and spawns in file
 /// order. The scenario's file graphs are registered first ([`scenario_registry`]). Every placement is
 /// spawned with [`Engine::spawn_with`]; one without behavior, sensors and force gets
@@ -250,28 +299,7 @@ pub(crate) fn instantiate_in(
     };
     let mut entities = Vec::with_capacity(scenario.entities.len());
     for (index, placement) in scenario.entities.iter().enumerate() {
-        let motion = registry
-            .motion_model(&placement.motion.id)
-            .ok_or_else(|| unknown(ComponentKind::MotionModel, &placement.motion.id))?
-            .build(&placement.motion.params)
-            .map_err(|source| EngineError::Build {
-                entity: index,
-                source,
-            })?;
-        let agent = build_agent(registry, index, placement)?;
-        let spec = SpawnSpec {
-            position: placement.position,
-            heading: placement.heading,
-            speed: placement.speed,
-            ownership: Ownership::Owned,
-            motion,
-            route: placement.route.as_ref().map(|r| RouteSpec {
-                waypoints: r.waypoints.clone(),
-                arrival_radius: r.arrival_radius,
-                cruise_speed: r.cruise_speed,
-            }),
-        };
-        let id = engine.spawn_with(spec, agent)?;
+        let id = spawn_placement(&mut engine, registry, index, placement)?;
         entities.push(EntityInfo {
             id,
             template: placement.template.clone(),
