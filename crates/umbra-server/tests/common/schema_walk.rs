@@ -318,11 +318,118 @@ fn evaluated_names(root: &Value, schema: &serde_json::Map<String, Value>, out: &
     }
 }
 
+/// [`validate`] plus a closed-world check for responses (M5 WI-18): every property of every object in
+/// `instance` must be documented by the schema that applies at its level (its own `properties`, its
+/// `$ref`, every `allOf` branch and the `oneOf` branches the instance matches). An object level whose
+/// schemas say `additionalProperties` (true or a schema), or declare no `properties` at all (a
+/// free-form value), is open. Requests are not walked this way: they
+/// close themselves with `additionalProperties: false`, and responses stay tolerant for clients
+/// (ADR 0026), so this is a test-side rule that an undocumented response field fails AT-11.
+///
+/// # Errors
+/// The first violation, with the instance path.
+pub fn validate_closed(root: &Value, schema: &Value, instance: &Value) -> Result<(), String> {
+    validate(root, schema, instance)?;
+    closed(root, schema, instance, "$", 0)
+}
+
+/// The schemas that apply to `instance` at this level: `schema`, what it `$ref`s, its `allOf`
+/// branches and the `oneOf` branches `instance` matches, recursively.
+fn applying<'a>(root: &'a Value, schema: &'a Value, instance: &Value, out: &mut Vec<&'a Value>) {
+    let Some(object) = schema.as_object() else {
+        return;
+    };
+    out.push(schema);
+    if let Some(target) = object
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|reference| reference.strip_prefix('#'))
+        .and_then(|pointer| root.pointer(pointer))
+    {
+        applying(root, target, instance, out);
+    }
+    for branch in object
+        .get("allOf")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        applying(root, branch, instance, out);
+    }
+    for branch in object
+        .get("oneOf")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if validate(root, branch, instance).is_ok() {
+            applying(root, branch, instance, out);
+        }
+    }
+}
+
+fn closed(
+    root: &Value,
+    schema: &Value,
+    instance: &Value,
+    path: &str,
+    depth: usize,
+) -> Result<(), String> {
+    if depth > 64 {
+        return Err(format!("{path}: schema nesting is too deep"));
+    }
+    let mut here = Vec::new();
+    applying(root, schema, instance, &mut here);
+    match instance {
+        // A level whose schemas declare no `properties` at all is a free-form value (for example
+        // `params_schema`, a `serde_json::Value`): there is nothing to close it against.
+        Value::Object(_) if !here.iter().any(|s| s.get("properties").is_some()) => {}
+        Value::Object(map) => {
+            let open: Vec<&Value> = here
+                .iter()
+                .filter_map(|s| s.get("additionalProperties"))
+                .filter(|extra| **extra != Value::Bool(false))
+                .collect();
+            for (name, value) in map {
+                let child = format!("{path}.{name}");
+                let documented: Vec<&Value> = here
+                    .iter()
+                    .filter_map(|s| s.get("properties").and_then(|p| p.get(name)))
+                    .collect();
+                if documented.is_empty() && open.is_empty() {
+                    return Err(format!("{child}: property is not documented by the schema"));
+                }
+                for property in documented
+                    .iter()
+                    .chain(open.iter().filter(|e| e.is_object()))
+                {
+                    closed(root, property, value, &child, depth + 1)?;
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item_schema in here.iter().filter_map(|s| s.get("items")) {
+                for (i, element) in items.iter().enumerate() {
+                    closed(
+                        root,
+                        item_schema,
+                        element,
+                        &format!("{path}[{i}]"),
+                        depth + 1,
+                    )?;
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::validate;
+    use super::{validate, validate_closed};
 
     #[test]
     fn the_walker_checks_what_it_claims_to() {
@@ -393,5 +500,42 @@ mod tests {
         let named = json!({"type": "object", "propertyNames": {"enum": ["a", "b"]}});
         assert!(validate(&root, &named, &json!({"a": 1, "b": 2})).is_ok());
         assert!(validate(&root, &named, &json!({"a": 1, "c": 2})).is_err());
+    }
+
+    /// The closed-world check fails an undocumented response property at any depth, follows `$ref`,
+    /// `allOf` and the matching `oneOf` branch, and leaves `additionalProperties` levels open.
+    #[test]
+    fn the_closed_check_refuses_undocumented_properties() {
+        let root = json!({"components": {"schemas": {
+            "Inner": {"type": "object", "properties": {"x": {"type": "integer"}}},
+            "Outer": {"type": "object", "properties": {
+                "inner": {"$ref": "#/components/schemas/Inner"},
+                "list": {"type": "array", "items": {"$ref": "#/components/schemas/Inner"}},
+                "map": {"type": "object", "additionalProperties": {"type": "integer"}}
+            }}
+        }}});
+        let schema = json!({"$ref": "#/components/schemas/Outer"});
+        let ok = json!({"inner": {"x": 1}, "list": [{"x": 2}], "map": {"any": 3}});
+        validate_closed(&root, &schema, &ok).expect("documented");
+        for bad in [
+            json!({"inner": {"x": 1}, "extra": true}),
+            json!({"inner": {"x": 1, "extra": true}}),
+            json!({"list": [{"x": 2, "extra": true}]}),
+        ] {
+            assert!(
+                validate(&root, &schema, &bad).is_ok(),
+                "open walk accepts {bad}"
+            );
+            assert!(
+                validate_closed(&root, &schema, &bad).is_err(),
+                "closed walk refuses {bad}"
+            );
+        }
+        let tagged = json!({"oneOf": [
+            {"type": "object", "required": ["type"], "properties": {"type": {"const": "a"}, "n": {}}},
+            {"type": "object", "required": ["type"], "properties": {"type": {"const": "b"}}}
+        ]});
+        validate_closed(&root, &tagged, &json!({"type": "a", "n": 1})).expect("branch a");
+        assert!(validate_closed(&root, &tagged, &json!({"type": "b", "n": 1})).is_err());
     }
 }

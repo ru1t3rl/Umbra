@@ -574,6 +574,38 @@ fn stops_at_duration_with_reason_and_final_frame() {
     assert_eq!(status.stop_reason, Some(StopReason::Duration));
 }
 
+/// A control frame carries the state hash when a subscription asks for hashes (ASM-191 d, M5 WI-18): a
+/// client reads a run's final hash from its stop frame, and it equals the last tick's hash. A subscription
+/// that asks for no hashes gets none, while no subscription asks.
+#[test]
+fn control_frames_carry_the_hash_only_when_a_subscription_asks() {
+    let (handle, _thread) = engine();
+    handle.load(short_skeleton(), None, None).expect("load");
+    let mut plain = lossless();
+    plain.with_state_hash = false;
+    let quiet = handle.subscribe(plain);
+    let primed = quiet.wait(GUARD).frames;
+    assert!(
+        primed.iter().all(|f| f.state_hash.is_none()),
+        "no subscription asks for hashes yet"
+    );
+    let sub = handle.subscribe(lossless());
+
+    handle.start().expect("start");
+    let frames = until_stopped(&sub);
+
+    let stop = frames.last().expect("frames");
+    assert_eq!(stop.cause, FrameCause::Control);
+    assert_eq!(stop.run.state, Stopped);
+    let last_tick = frames
+        .iter()
+        .rev()
+        .find(|f| f.cause == FrameCause::Tick)
+        .expect("a tick frame");
+    assert!(stop.state_hash.is_some(), "the stop frame carries the hash");
+    assert_eq!(stop.state_hash, last_tick.state_hash);
+}
+
 #[test]
 fn plugin_fault_abort_publishes_the_faulting_tick_then_stops() {
     let _lock = plugin_lock();

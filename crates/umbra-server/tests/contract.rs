@@ -349,7 +349,7 @@ async fn responses_conform_to_their_openapi_schemas() {
             "{method} {uri}: no {media} schema for {}",
             reply.status
         );
-        if let Err(e) = schema_walk::validate(&doc, schema, &reply.json()) {
+        if let Err(e) = schema_walk::validate_closed(&doc, schema, &reply.json()) {
             panic!("{method} {uri} ({}): {e}\n{}", reply.status, reply.text());
         }
     }

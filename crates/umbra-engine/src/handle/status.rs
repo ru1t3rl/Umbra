@@ -62,10 +62,13 @@ impl Worker {
     }
 
     /// Publishes a control frame of the current state, carrying `events` (those of the command that
-    /// caused it), to every subscription, if there are any.
+    /// caused it), to every subscription, if there are any. The frame carries the state hash when a
+    /// subscription asks for hashes (ASM-191 d, M5 WI-18), so a client reads the final hash of a run
+    /// from its stop frame.
     pub(super) fn publish_control(&mut self, events: Vec<SimEvent>) {
-        if self.bus.interest().0 {
-            let frame = self.frame(FrameCause::Control, events, None, false);
+        let (any, any_hash) = self.bus.interest();
+        if any {
+            let frame = self.frame(FrameCause::Control, events, None, any_hash);
             self.bus.publish(frame, None);
         }
     }
