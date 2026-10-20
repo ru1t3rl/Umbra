@@ -34,7 +34,7 @@ There is no CI gate: this list, run in this order, is the definition of done (CL
 | 1 | Format | `cargo fmt --all -- --check` | M0 |
 | 2 | Lint | `cargo clippy --workspace --all-targets --locked -- -D warnings` | M0 |
 | 3 | Tests | `cargo test --workspace --locked` | M0 |
-| 4 | Determinism (REQ-K-4) | `cargo test -p umbra-engine --test determinism --test behavior_determinism --test plugin_determinism --locked` | M1 (skipped in M0, ASM-019); from M2 `determinism` runs `examples/scenarios/walking_skeleton`; from M3 (ASM-087) `behavior_determinism` also runs `examples/scenarios/patrol_and_engage`; from M4 (WI-13, ASM-115) `plugin_determinism` runs `examples/scenarios/plugin_wander` with the `example-wander` plugin, built by the tests' build helper |
+| 4 | Determinism (REQ-K-4) | `cargo test -p umbra-engine --test determinism --test behavior_determinism --test plugin_determinism --test handle_determinism --locked` | M1 (skipped in M0, ASM-019); from M2 `determinism` runs `examples/scenarios/walking_skeleton`; from M3 (ASM-087) `behavior_determinism` also runs `examples/scenarios/patrol_and_engage`; from M4 (WI-13, ASM-115) `plugin_determinism` runs `examples/scenarios/plugin_wander` with the `example-wander` plugin, built by the tests' build helper; from M5 (WI-10, ASM-155) `handle_determinism` runs the three reference scenarios through `EngineHandle` and compares every tick with an `Engine` run |
 | 5 | Dependency rules (REQ-A-1..3, NFR-2) | `cargo xtask check-deps` | M0 |
 | 6 | Licenses, bans, sources, advisories (NFR-4) | `cargo deny check` | M0 |
 | 7 | Vulnerabilities in `Cargo.lock` | `cargo audit` | M0 |
