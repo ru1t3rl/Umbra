@@ -1,6 +1,6 @@
 # ADR 0016: Intent set v1 and its versioning
 
-- **Status**: Accepted (decided by the human project owner on 2026-10-17; `Fire`, `Spawn`, `Despawn`, `Custom` recorded only until M5; M3 plan `docs/plans/M3.md`). Spec decision D-33.
+- **Status**: Accepted (decided by the human project owner on 2026-10-17; `Fire`, `Spawn`, `Despawn`, `Custom` recorded only until M5, `Spawn` and `Despawn` until M7 (amended 2026-10-20, ADR 0028, see the note at the end); M3 plan `docs/plans/M3.md`). Spec decision D-33.
 - **Requirement IDs**: REQ-B-1, REQ-B-2, REQ-M-1, REQ-K-2, REQ-K-5, REQ-P-2, REQ-P-6, ASM-029, ASM-030, ASM-048
 - **Affected**: `umbra-core::intent`, `umbra-kernel` (route expansion, snapshot), `umbra-motion` (`SetHeading`), M4 ABI
 
@@ -31,3 +31,11 @@ Option 1. `pub const INTENT_SET_VERSION: u32 = 1;` Variants added (existing ones
 - Harder: `Fire`, `Spawn`, `Despawn` look effective but are not; documented in `docs/behavior.md` and in
   the M3 open questions.
 - Revisit when Events-phase resolution (`Fire` -> `Fire` event, REQ-C-5) and the spawn path (M5) land.
+
+## Note (2026-10-20, M5 WI-19; ADR 0028, human-approved 2026-10-19)
+The text "recorded only until M5" now reads **until M7** for `Spawn` and `Despawn` (decision 5): they stay
+recorded and unapplied through M5, because applying them in the kernel breaks the frozen M3 tests, and are
+applied in M7 together with recording and replay. `Fire` and `Custom` became canonical events in the kernel
+Events phase in M5 (ADR 0028, spec D-46); they still change no state and are not hashed. The "Revisit"
+line above is met for events (M5) and open for the spawn path (M7). The intent set and
+`INTENT_SET_VERSION` are unchanged.

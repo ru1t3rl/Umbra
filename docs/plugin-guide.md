@@ -381,13 +381,25 @@ in-process; gate 4 checks the example plugin, not yours.
 | Intents per batch item per call | 64 (`UMBRA_MAX_INTENTS_PER_ITEM`) | the 65th is refused, fault |
 | Error message | 4 KiB (`UMBRA_MAX_ERROR_LEN`) | truncated at a character boundary |
 
+## Intents, events and the API (M5, ADR 0028)
+A plugin behavior's `Fire` and `Custom` intents become canonical events: in each tick's Events phase, for
+every Owned entity in `EntityId` order, its `Fire` and `Custom` intents (in emission order) become
+`SimEvent::Fire` and `SimEvent::Custom` (the `source` is the emitting entity and `kind` the component id of
+the `Custom` intent). They reach the stream as `fire` and `custom` events (`docs/api.md`, "The stream"),
+best-effort: a slow client can lose some, and `dropped` and `events_truncated` say so. Events change no
+state and are not part of the state hash, so a plugin cannot influence a run through them.
+`Spawn` and `Despawn` intents are accepted by the ABI and recorded in the snapshot, but are **not applied
+until M7**; a plugin that emits them today creates and removes nothing. The plugin list of the loaded
+scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Loading a scenario again (or
+`POST /api/v1/scenario` over a running session) starts a new plugin lifecycle: `init` runs again.
+
 ## Not in v0
 - Kinds other than `behavior`: motion model, network adapter, sensor, component, condition, action
   (M6/M7). Their kind numbers are reserved; a capability of such a kind is rejected as unsupported.
 - Host API beyond `log` and RNG: terrain queries and event emit come with M7 (REQ-P-5 is staged);
   there is no memory helper and no runtime registration call (the descriptor is the only registration).
 - Saving and restoring instance state (replay, M7); hot reload; plugin-level configuration in scenarios;
-  selecting individual plugins inside a plugin directory; plugin signing; REST plugin listing (M5).
+  selecting individual plugins inside a plugin directory; plugin signing. (The REST plugin listing, `GET /api/v1/plugins`, exists since M5.)
 - `umbra new-plugin` scaffolding (M7); the C# NativeAOT sample and a C++ check of the header (M9).
 - Sandboxed or out-of-process plugins (not in v1, spec 1.3).
 - 32-bit targets.

@@ -146,7 +146,7 @@ Latitude must be within [-90, 90] and longitude within [-180, 180]; violations a
 at the position table. Both forms are converted to ECEF once.
 
 ## Configuration file (`umbra.toml`, ADR 0029)
-Read by `run`, `validate` and `list-plugins` (and `serve` from WI-17). `--config FILE` (a missing file is
+Read by `run`, `validate`, `list-plugins` and `serve`. `--config FILE` (a missing file is
 exit 1), else `./umbra.toml` if it exists (announced on stderr as `note: using configuration ./umbra.toml`),
 else built-in defaults. Precedence per setting is flag > file > default; lists are replaced, not merged.
 Same reader and diagnostics as the other files: unknown keys are `unknown_key` at every level, all errors
@@ -172,7 +172,7 @@ resolve against the file's directory. Print the schema with `umbra schema config
 | `[server.stream] send_timeout_s` | number > 0, 10 | |
 | `[server.stream] max_connections` | integer >= 1, 64 | |
 
-The `[server]` keys are read and validated now; `umbra serve` (WI-17) uses them.
+Only `umbra serve` uses the `[server]` keys; `run`, `validate` and `list-plugins` read the file for `[simulation]`, `[plugins]` and `[log]` and validate the rest. The reader is `umbra_templates::config` (not the CLI or the server). The meaning of the server keys, an example file and the precedence rules are in `docs/api.md` ("Configuration reference"); that page is checked against `config.v1.schema.json` by a test.
 
 ## Diagnostics
 Text form, one per error, sorted by (path, byte offset, code, message) without duplicates:

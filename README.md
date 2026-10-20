@@ -21,7 +21,8 @@ The GUI lives in `gui/` (Bun workspaces): `features/` and `feature-shells/` are 
 ## Running scenarios
 - `cargo run -p umbra-cli -- run examples/scenarios/walking_skeleton/scenario.toml [--ticks N] [--seed S] [--clock afap|realtime|stepped|scaled=F] [--print-every N] [--hash-every N] [--json] [--log-level LEVEL]` runs a scenario file headless and prints entity state and a final `state_hash=<hex>` line.
 - `cargo run -p umbra-cli -- validate <path>... [--json]` checks scenario and template files (or directories) without running them; exit 0 valid, 1 invalid, 2 usage.
-- `cargo run -p umbra-cli -- schema template|scenario|component <ID>` prints a JSON Schema.
+- `cargo run -p umbra-cli -- schema template|scenario|config|component <ID>` prints a JSON Schema.
+- `cargo run -p umbra-cli -- serve [--bind ADDR] [--scenario PATH] [--scenario-root DIR]` serves the REST API (`/api/v1`) and the WebSocket stream (`/api/v1/stream`) on `127.0.0.1:7878` by default, with no authentication (localhost only unless you bind otherwise). Server settings and the default tick rate come from an optional `umbra.toml`. Reference, examples and the configuration keys: [`docs/api.md`](docs/api.md); the contract files are `api/openapi.json`, `api/stream.schema.json` and `api/asyncapi.json`.
 
 ## Tips
 - Run one milestone per session and review the plan before implementation starts.

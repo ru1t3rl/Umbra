@@ -17,4 +17,4 @@ and update that file's range in the table below. Do not add entries to this inde
 | M2 | [`docs/assumptions/M2.md`](assumptions/M2.md) | ASM-053..ASM-069 | 17 |
 | M3 | [`docs/assumptions/M3.md`](assumptions/M3.md) | ASM-070..ASM-110 | 41 |
 | M4 | [`docs/assumptions/M4.md`](assumptions/M4.md) | ASM-111..ASM-148 | 38 |
-| M5 | [`docs/assumptions/M5.md`](assumptions/M5.md) | ASM-149..ASM-220 | 72 |
+| M5 | [`docs/assumptions/M5.md`](assumptions/M5.md) | ASM-149..ASM-223 | 75 |

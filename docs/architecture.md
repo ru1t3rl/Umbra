@@ -9,16 +9,16 @@ Source of truth: `docs/SPEC.md` section 4. This file is started in M0 WI-1 and g
 | `umbra-kernel` | `crates/umbra-kernel` | Clock (four modes, wall-clock site), hecs-backed world, fixed six-phase tick pipeline, state hash, snapshot (M1); M3: Perception and Behavior phase systems, `AgentInit` and `Kernel::spawn_with` (force, behavior, sensors), snapshot fields `force`, `behavior`, `status`, `intents`, `contacts` | `umbra-core` (REQ-A-2) |
 | `umbra-motion` | `crates/umbra-motion` | Built-in motion models, `builtin.ground.kinematic` (M1; `SetHeading` in M3) | `umbra-core` |
 | `umbra-behavior` | `crates/umbra-behavior` | Behavior graph interpreter (M3): compiles a `umbra_core::GraphDef` into a shared program and runs per-entity instances (composites, decorators, FSM, subgraphs, halt, input and output copies); the eight built-in conditions and actions (`register_builtins`); `register_graphs` adds graphs to a `Registry` as behaviors. Knows no file format: it never sees TOML (ADR 0011) | `umbra-core` only (section 4); external: `thiserror`, `serde_json`. Tests may not use `umbra-templates` or `umbra-motion` (dev edges are checked, ASM-005) |
-| `umbra-templates` | `crates/umbra-templates` | Template and scenario reading, inheritance, schema validation, located diagnostics (M2); M3: `*.behavior.toml` graph reader and graph-set validation (`graph_read`, `graph_resolve`), template `[behavior]`/`[[sensors]]` resolution against graphs of the same load (`overlay`), placement `force`, `behavior.v1.schema.json` | `umbra-core` only (section 4) |
+| `umbra-templates` | `crates/umbra-templates` | Template and scenario reading, inheritance, schema validation, located diagnostics (M2); M3: `*.behavior.toml` graph reader and graph-set validation (`graph_read`, `graph_resolve`), template `[behavior]`/`[[sensors]]` resolution against graphs of the same load (`overlay`), placement `force`, `behavior.v1.schema.json`; M5: the `umbra.toml` configuration reader (`config`, ADR 0029) with `config.v1.schema.json`, `LoaderOptions::default_tick_rate` | `umbra-core` only (section 4) |
 | `umbra-plugin-api` | `crates/umbra-plugin-api` | Plugin C ABI v0 (M4, ADR 0019-0021): `#[repr(C)]` types, function-pointer tables and version constants only; `no_std`, no logic; the C header `include/umbra_plugin_api.h` is generated from it (REQ-SDK-2); 64-bit targets only (ASM-120); layout final since WI-14, frozen at the M4 close-out (`docs/plugin-abi-changelog.md`) | none, external ones included (section 4, ASM-009) |
 | `umbra-plugin-host` | `crates/umbra-plugin-host` | Plugin discovery, loading, descriptor validation, lifecycle and the bridge from plugin capabilities to the core traits in the one registry (M4, D-8, ADR 0020-0022): `discover` (ADR 0022 layout and order), `plugin.toml` checked before opening, libraries opened with explicit flags (`libloading`, ADR 0023 item 1), the process-wide image table with lifecycle states, descriptor copy and validation, `init`/`shutdown`, the thread-local call-record stack, host API `log` and RNG, all-or-nothing `register`, the behavior bridge, per-host fault state and build scope (see "Plugin host" below); `unsafe` allowed (FFI crate, NFR-2) | `umbra-core`, `umbra-plugin-api`; external: `libloading` (ISC), `toml`, `serde_json`, `thiserror`, `tracing` |
 | `umbra-sdk` | `crates/umbra-sdk` | Safe Rust traits, conversions, panic guards and `export_plugin!` for plugin authors (M4, REQ-SDK-1, D-7); re-exports the ABI as `umbra_sdk::abi`; its only global state is the copied host API of the current plugin lifecycle, the static descriptor and an empty contacts scratch buffer (ASM-127); `unsafe` allowed (FFI crate, NFR-2) | `umbra-plugin-api` only (REQ-A-3) |
 | `umbra-test-plugin` | `crates/umbra-test-plugin` | Test fixture plugin (M4 WI-10, ADR 0023 item 4): a `cdylib` built with `umbra-sdk` and `#![forbid(unsafe_code)]`, plugin `test.plugin.fixture` 0.1.0 with one capability per fault an SDK plugin can produce (ASM-132) and the capabilities the engine tests use (`ok`, `draw_speed`, `needs_target`, `cross_param`); features `entry_panics`, `init_fails`, `init_panics`, `shutdown_panics`, `bad_schema`. Built by the tests' build helper into `CARGO_TARGET_TMPDIR`, never linked | `umbra-sdk` only (REQ-SDK-3) |
 | `example-wander` | `examples/plugins/wander` | Example plugin (M4 WI-13, REQ-SDK-4, M4 acceptance 1): a `cdylib` built with `umbra-sdk` and `#![forbid(unsafe_code)]`, plugin `example.plugin.wander` 0.1.0 with behavior `example.behavior.wander` (params `speed_mps`, bindable, and `turn_every_s`; a new heading from the entity's RNG stream on the first tick and every `ceil(turn_every_s * hz)` ticks; output `turns`). An explicit workspace member (ADR 0023 item 4); packaged by `cargo xtask build-plugins` to `<target dir>/plugins/wander/` and run by `examples/scenarios/plugin_wander` with `--plugin-path target/plugins` (ASM-113, ASM-147); never linked | `umbra-sdk` only (REQ-SDK-3) |
 | `umbra-engine` | `crates/umbra-engine` | Embeddable synchronous facade, placement by ECEF or lat/lon/alt, the M1 hard-coded demo is replaced by `examples/scenarios/walking_skeleton/` (M2); built-in registry, `builtin.terrain.flat`, scenario load/validate/instantiate, `ControlFlow` run callbacks (M2); M3: `builtin.visual` sensor, the two built-in graphs (`behaviors/*.behavior.toml`), `standard_registry` (`builtin_registry` keeps its M2 contents, ASM-084), `scenario_registry` (a registry clone with the scenario's file graphs), `Engine::spawn_with` | `umbra-core`, `umbra-kernel`, `umbra-motion`, `umbra-templates`, `umbra-behavior` |
-| `umbra-api-types` | `crates/umbra-api-types` | Wire types of the control API and stream (M5, REQ-X-4, REQ-X-6, D-12, ADR 0025): `serde` + `utoipa::ToSchema` DTOs only and `API_VERSION` (`1.0.0`); WI-1 scaffold has the version constant only | none (ASM-008) |
-| `umbra-server` | `crates/umbra-server` | REST API under `/api/v1` and WebSocket stream over the engine handle (M5, REQ-X-4..9, D-10, D-11, ADR 0025); owns the tokio runtime; optional in the CLI (feature `server`); WI-1 scaffold has `API_BASE` only | `umbra-engine`, `umbra-api-types` (never `umbra-kernel` or `umbra-core`, REQ-X-7) |
-| `umbra-cli` | `crates/umbra-cli` | Binary; `run`, `validate`, `schema` commands (M2; `demo` removed); M4: `--plugin-path` on `run` and `validate`, `list-plugins [SCENARIO] [--plugin-path DIR].. [--json]`; M3: all commands use `standard_registry()`, `schema behavior`, the command runs on a thread with an 8 MiB stack (ASM-098, ASM-109) | `umbra-engine`, `umbra-server` (optional, feature `server`, default on; M5 WI-1: wiring only, no `serve` yet) |
+| `umbra-api-types` | `crates/umbra-api-types` | Wire types of the control API and stream (M5, REQ-X-4, REQ-X-6, D-12, ADR 0025): `serde` + `utoipa::ToSchema` DTOs only (REST bodies, `Problem` and `ProblemCode`, stream messages) and `API_VERSION` (`1.0.0`); the domain types never appear on the wire, the server maps at the edge | none (ASM-008) |
+| `umbra-server` | `crates/umbra-server` | REST API under `/api/v1` and WebSocket stream over the engine handle (M5, REQ-X-4..9, D-10, D-11, ADR 0025); owns the tokio runtime; optional in the CLI (feature `server`); it talks only to `EngineHandle` and never touches ECS data; see "Engine handle, bus and server" below | `umbra-engine`, `umbra-api-types` (never `umbra-kernel` or `umbra-core`, REQ-X-7) |
+| `umbra-cli` | `crates/umbra-cli` | Binary; `run`, `validate`, `schema` commands (M2; `demo` removed); M4: `--plugin-path` on `run` and `validate`, `list-plugins [SCENARIO] [--plugin-path DIR].. [--json]`; M3: all commands use `standard_registry()`, `schema behavior`, the command runs on a thread with an 8 MiB stack (ASM-098, ASM-109) | `umbra-engine`, `umbra-server` (optional, feature `server`, default on; `umbra serve`, M5 WI-17; `--no-default-features` builds the engine-only CLI, gate 16) |
 
 `umbra-templates` and `umbra-behavior` do not know each other: the first turns graph files into `GraphDef`s
 (a `umbra-core` type), the second runs them, and `umbra-engine` is the one place that composes both (ADR
@@ -91,18 +91,55 @@ semver, kinds, metadata against the schema), per-host checks (manifest match, pl
   `{"plugins":[{"id","name","version","abi":"<major>.<minor>","path","capabilities":[{"kind","id","version"}]}]}`
   in load order. Exit codes: 0 success, 1 invalid input, load error or plugin fault, 2 usage error.
 
+## Engine handle, bus and server (M5)
+```
+ HTTP / WebSocket clients
+        |  (tokio runtime, 2 workers, owned by umbra-server)
+   umbra-server  --- DTO mapping, problem details, Host/Origin layers, stream connections
+        |  EngineHandle (cloneable; bounded std channel, callback replies)
+   engine thread "umbra-engine"  --- owns Engine, PluginHost, Session; applies commands between ticks
+        |  Frame (immutable Arc) per tick / per state-changing command
+   Bus: one ring per subscription (capacity 4, oldest dropped, events carried over)
+```
+- **Handle** (`umbra-engine::handle`, ADR 0024). One named thread (stack 8 MiB, at least 4 MiB) owns every
+  `Engine`, plugin host and registry of a session, so `Engine` need not be `Send`. `EngineHandle::submit`
+  uses `try_send`; a full queue is `Busy`, a finished thread `Closed`. The thread drains queued commands in
+  arrival order between ticks (after Publish of tick N, before Ingest of tick N+1), then polls the clock
+  once through `Engine::pump`. A `Session` is one scenario load; a new load drops the old session first.
+  Async code never ticks, and wall time stays inside the `Clock` (D-5).
+- **Bus** (`umbra-engine::bus`). After each tick and each state-changing command the thread builds one
+  `Arc<Frame>`, only if some subscription is due (stride follows the tick rate and the subscriber's
+  rate), and pushes it to every subscription. A push takes a short mutex and never waits; on overflow
+  the oldest frame is dropped, its events are carried into the next drained frame (bounded), and a
+  counter increments. A late subscriber is primed with one frame of the current state. Reply after
+  publish: a reply implies the frame is already queued.
+- **Server** (`umbra-server`, ADR 0025..0027). `routes` builds the axum router; `handlers/` map requests
+  to handle commands and engine types to `umbra-api-types` DTOs (`map`); `extract` wraps axum's
+  rejections so every error is a problem document (`problem`); `layers/` holds the `Host` allow-list and
+  the single mutating-routes layer (the seam for a later auth layer); `stream/` is the WebSocket: a reader
+  half and a writer half over a generic sink and stream, filtering and JSON encoding on blocking tasks,
+  send timeout and counters. `run` binds, installs the signal handlers, serves, and shuts down in order
+  (streams 1001, engine thread joined within the grace period). `contract::documents()` produces the three
+  committed files in `api/`.
+- **Configuration.** The reader of `umbra.toml` lives in `umbra-templates` (`config`), not in the CLI or
+  the server: it has the located-diagnostics pipeline and returns plain values. `umbra-cli` maps them to
+  `HandleConfig` and `ServerSettings` (flag > file > default).
+- **Not here.** The server never sees `umbra-kernel` or `umbra-core` (REQ-X-7). Network adapters (M6) and
+  recording (M7) join later.
+Reference for clients: `docs/api.md`.
+
 ## Tick pipeline (`umbra-kernel`, REQ-K-2)
 Every tick runs the six phases of `Phase::ALL` in this order. Perception, Behavior and Motion act on
 **Owned** entities only (REQ-K-5); Remote entities are never ticked, but they are perceived.
 
 | Phase | What it does |
 |---|---|
-| Ingest | Network and command input (empty until the adapters and the server exist) |
+| Ingest | Network input (empty until the adapters exist, M6); API commands apply between ticks in the engine handle, not here (ADR 0024) |
 | Perception | For each Owned entity with sensors, in `EntityId` order: run its sensors against every other entity (Owned and Remote) as it was before the tick; merge contacts per target (first sensor wins), sort by id (ADR 0015) |
 | Behavior | For each Owned entity, in `EntityId` order: clear its intents; tick its behavior instance with its own state, route view and contacts (it can only append intents), then expand the first `FollowRoute` into the route stand-in's intents; an entity without a behavior runs the M1 route stand-in unchanged (ASM-082); M4: an entity whose behavior returns a batch from `Behavior::batch()` is not ticked in that walk but grouped (by `Arc::ptr_eq`, groups ordered by their first entity id); each group is then ticked with one `tick_batch` call over its members in id order, and the batched entities get the `FollowRoute` expansion afterwards in id order (ADR 0020, ASM-126) |
 | Motion | Motion models turn intents into new kinematic state (ASM-030, ASM-094) |
 | Events | Owned entities' `Fire` and `Custom` intents become canonical `SimEvent`s in `TickReport::events` (ADR 0028); no state changes. `Spawn` and `Despawn` intents are recorded in the snapshot, not applied, until M7 (ADR 0016, ADR 0028) |
-| Publish | Output to observers, empty so far (the server and adapters come later) |
+| Publish | Empty; observers are fed by the engine bus after the tick (ADR 0024); adapters come later |
 
 Each entity has its own contact vector, intent buffer and hashed RNG stream and sees only pre-tick
 state, so the outcome does not depend on the order in which entities are visited (ADR 0013). The state

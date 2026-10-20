@@ -787,7 +787,7 @@ the target is lost, as `builtin.fsm.patrol_and_engage` does through `enemy_in_ra
 The twelve node types above are catalog entries too (provenance `builtin`, with their settings schema).
 The catalog (`umbra_core::Catalog`) lists node types, conditions, actions and behaviors with ID,
 description, provenance, read-only flag, version, parameter schema, binding-only param types, outputs and
-result text (REQ-B-17); it is exposed over REST in M5.
+result text (REQ-B-17); it is exposed over REST as `GET /api/v1/catalog/behavior`, and a graph document is checked without changing any state by `POST /api/v1/behaviors/validate` (diagnostics are the result, `valid: false`, not an error; `docs/api.md`).
 
 ## Perception
 The kernel's Perception phase runs before the Behavior phase (ADR 0015, ASM-080, ASM-108):
@@ -903,5 +903,6 @@ on Linux). So:
 - the thread that calls `Kernel::tick`, `Engine::step` or `Engine::run` needs at least **2 MiB**; spawn it
   with an explicit stack of **4 MiB or more** (`std::thread::Builder::stack_size`);
 - do not rely on a process main thread: it has 8 MiB on Linux but only 1 MiB on Windows;
-- `umbra-cli` runs its command on a thread with 8 MiB; the M5 server's tick thread must get 4 MiB or more
-  (`docs/milestones.md`, M5).
+- `umbra-cli` runs its command on a thread with 8 MiB. The engine thread of the handle (`umbra serve`,
+  ADR 0024) gets 8 MiB by default and `EngineHandle::spawn` refuses anything below 4 MiB
+  (`SpawnError::StackTooSmall`); the server's async workers never tick.
