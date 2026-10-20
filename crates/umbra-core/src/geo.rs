@@ -292,3 +292,73 @@ impl Euler {
         }
     }
 }
+
+/// Yaw, pitch and roll of a body FRD to ECEF rotation, z-y'-x'' order (ADR 0032).
+///
+/// Unlike [`Euler`], which is relative to the local NED frame, these angles are measured from the
+/// ECEF axes: `yaw` about ECEF z, then `pitch` about the new y axis, then `roll` about the new x
+/// (body forward) axis. Positive pitch tips the forward axis toward -z. Protocol adapters copy the
+/// three angles; they need no trigonometry of their own. At pitch +-90 degrees the decomposition
+/// is a gimbal lock: within about 4.5e-8 rad of the pole [`Quaternion::to_world_euler`] returns
+/// roll 0 and puts the combined rotation into yaw (ASM-260).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WorldEuler {
+    /// Rotation about ECEF z, in `(-pi, pi]`.
+    pub yaw: Radians,
+    /// Rotation about the intermediate y axis, in `[-pi/2, pi/2]`.
+    pub pitch: Radians,
+    /// Rotation about the body forward axis, in `(-pi, pi]`.
+    pub roll: Radians,
+}
+
+/// `|sin(pitch)|` at and above which the decomposition is treated as a gimbal lock.
+const GIMBAL_LIMIT: f64 = 1.0 - 1e-15;
+
+impl Quaternion {
+    /// The body FRD to ECEF rotation with the given world-frame angles (ADR 0032).
+    #[must_use]
+    pub fn from_world_euler(e: WorldEuler) -> Self {
+        // Same z-y'-x'' composition as `Euler::to_quaternion`, with ECEF axes instead of NED.
+        Euler {
+            heading: e.yaw,
+            pitch: e.pitch,
+            roll: e.roll,
+        }
+        .to_quaternion()
+    }
+
+    /// The world-frame angles of this body FRD to ECEF rotation (ADR 0032).
+    ///
+    /// Yaw and roll are in `(-pi, pi]`, pitch in `[-pi/2, pi/2]`.
+    #[must_use]
+    pub fn to_world_euler(self) -> WorldEuler {
+        let Self { w, x, y, z } = self;
+        let sin_pitch = (2.0 * (w * y - x * z)).clamp(-1.0, 1.0);
+        let pitch = math::asin(sin_pitch);
+        let (yaw, roll) = if sin_pitch.abs() >= GIMBAL_LIMIT {
+            (
+                math::atan2(-2.0 * (x * y - w * z), 1.0 - 2.0 * (x * x + z * z)),
+                0.0,
+            )
+        } else {
+            (
+                math::atan2(2.0 * (x * y + w * z), 1.0 - 2.0 * (y * y + z * z)),
+                math::atan2(2.0 * (y * z + w * x), 1.0 - 2.0 * (x * x + y * y)),
+            )
+        };
+        WorldEuler {
+            yaw: math::wrap_pi(Radians(yaw)),
+            pitch: Radians(pitch),
+            roll: math::wrap_pi(Radians(roll)),
+        }
+    }
+
+    /// The smallest rotation angle taking `self` to `other`, in `[0, pi]` (symmetric; the sign
+    /// of either quaternion does not matter).
+    #[must_use]
+    pub fn angle_between(self, other: Self) -> Radians {
+        let d = self.conjugate().mul(other);
+        let v = Vec3::new(d.x, d.y, d.z).norm();
+        Radians(2.0 * math::atan2(v, d.w.abs()))
+    }
+}
