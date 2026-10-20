@@ -1,7 +1,7 @@
 //! The state every handler shares, and the one way a handler talks to the engine (REQ-X-7).
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use tokio::sync::oneshot;
 use umbra_engine::Confinement;
@@ -11,6 +11,7 @@ use crate::config::ServerSettings;
 use crate::layers::host::{HostPolicy, OriginPolicy};
 use crate::problem::ApiError;
 use crate::shutdown::Shutdown;
+use crate::stream::{ConnectionStats, LiveStats};
 
 /// Shared by the clones of a [`Server`](crate::Server) and by every handler.
 pub(crate) struct AppState {
@@ -21,6 +22,8 @@ pub(crate) struct AppState {
     pub(crate) origins: OriginPolicy,
     /// Open stream connections (WI-15), for `[server.stream] max_connections`.
     pub(crate) connections: AtomicUsize,
+    /// The counters of the open stream connections, in connection order (WI-16).
+    streams: Mutex<Vec<Arc<LiveStats>>>,
     /// For scrubbing the text of library errors (ASM-194). `None` only if the configured
     /// directories cannot be resolved; the engine then has none either (see `ServerSettings`).
     confinement: Option<Confinement>,
@@ -38,6 +41,7 @@ impl AppState {
             hosts,
             origins,
             connections: AtomicUsize::new(0),
+            streams: Mutex::new(Vec::new()),
             confinement,
         }
     }
@@ -50,9 +54,23 @@ impl AppState {
                 (open < max).then_some(open + 1)
             })
             .ok()
-            .map(|_| ConnectionSlot {
-                state: Arc::clone(self),
+            .map(|_| {
+                let live = Arc::new(LiveStats::default());
+                self.streams().push(Arc::clone(&live));
+                ConnectionSlot {
+                    state: Arc::clone(self),
+                    live,
+                }
             })
+    }
+
+    fn streams(&self) -> std::sync::MutexGuard<'_, Vec<Arc<LiveStats>>> {
+        self.streams.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The counters of every open stream connection, in connection order.
+    pub(crate) fn stream_stats(&self) -> Vec<ConnectionStats> {
+        self.streams().iter().map(|live| live.snapshot()).collect()
     }
 
     /// The problem for a failed command, with library messages written in display form.
@@ -77,10 +95,21 @@ impl AppState {
 /// One of the stream connections `[server.stream] max_connections` allows; released on drop.
 pub(crate) struct ConnectionSlot {
     state: Arc<AppState>,
+    live: Arc<LiveStats>,
+}
+
+impl ConnectionSlot {
+    /// The counters of this connection, listed by [`AppState::stream_stats`].
+    pub(crate) fn live(&self) -> Arc<LiveStats> {
+        Arc::clone(&self.live)
+    }
 }
 
 impl Drop for ConnectionSlot {
     fn drop(&mut self) {
+        self.state
+            .streams()
+            .retain(|live| !Arc::ptr_eq(live, &self.live));
         self.state.connections.fetch_sub(1, Ordering::AcqRel);
     }
 }

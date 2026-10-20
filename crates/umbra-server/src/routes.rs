@@ -119,15 +119,13 @@ impl Server {
         }
     }
 
-    /// Per-connection queue maxima and drop counts, in connection order (WI-16).
+    /// Per-connection queue maxima and drop counts, one entry per open stream connection, in
+    /// connection order (WI-16). It briefly takes the bus lock of each connection, which the tick
+    /// thread also takes to push a frame: for tests and monitoring, not for a hot path.
     #[doc(hidden)]
     #[must_use]
-    #[expect(
-        clippy::todo,
-        reason = "WI-6 signature stub; the body arrives in WI-16"
-    )]
     pub fn stream_stats(&self) -> Vec<ConnectionStats> {
-        todo!("WI-16")
+        self.state.stream_stats()
     }
 }
 

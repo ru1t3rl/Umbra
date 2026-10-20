@@ -97,7 +97,8 @@ pub struct StreamSettings {
     pub queue_frames: u32,
     /// Events per frame before `events_truncated` is set.
     pub max_events_per_frame: u32,
-    /// A send that takes longer closes the connection (1008 `too_slow`).
+    /// A send that takes longer ends the connection: close code 1008 `too_slow` when the close frame
+    /// can still be delivered, otherwise the connection is dropped.
     pub send_timeout_s: f64,
     /// The longest accepted client message (1009 beyond it).
     pub max_message_bytes: u32,

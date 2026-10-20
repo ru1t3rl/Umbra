@@ -4,8 +4,8 @@
 //! without changing what is simulated (REQ-X-4..9, REQ-X-7, D-10, D-11, ADR 0025). The router, the
 //! `Host` layer, the extractors, problem mapping, status, scenario and run control and the served
 //! `OpenAPI` document are real (WI-11), and so are the entity, template and component routes
-//! (WI-13); the catalog and plugin routes (WI-14) and the stream protocol (WI-15) are real too. The
-//! slow-client policy and the stream probes (WI-16) are not yet.
+//! (WI-13); the catalog and plugin routes (WI-14), the stream protocol (WI-15) and the slow-client
+//! policy with the stream probes (WI-16) are real too.
 //!
 //! Dependency rule (REQ-A-1..4, REQ-X-7): depends on `umbra-engine` and `umbra-api-types` only
 //! among workspace crates, never on `umbra-kernel` or `umbra-core` directly. It contains no
@@ -30,7 +30,9 @@ pub use config::{ServerSettings, SetupError};
 pub use problem::ApiError;
 pub use routes::Server;
 pub use shutdown::Shutdown;
-pub use stream::{ConnectionParams, ConnectionStats, Encoding, run_connection};
+pub use stream::{
+    CloseReason, ConnectionParams, ConnectionStats, Encoding, ReadFailure, run_connection,
+};
 
 /// Path prefix of every REST route and of the stream (ADR 0026).
 pub const API_BASE: &str = "/api/v1";

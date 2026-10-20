@@ -4,7 +4,7 @@
 //! It never writes to the socket. Replies, errors and close requests go to the writer, which owns
 //! the sink, so a send in progress is never cancelled or interleaved.
 
-use std::num::{NonZeroU64, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,16 +13,12 @@ use futures_util::{Stream, StreamExt};
 use serde_json::Value;
 use tokio::sync::{mpsc, watch};
 use umbra_api_types as api;
-use umbra_engine::TickRate;
 use umbra_engine::bus::SubscribeOptions;
-use umbra_engine::handle::{Command, HandleError};
 
 use super::filter::Filter;
 use super::{
-    Active, CLOSE_ENGINE_GONE, CLOSE_MESSAGE_TOO_BIG, MAX_ENTITY_IDS, MAX_MESSAGE_BYTES,
-    READ_TOO_BIG, Shared, ToWriter,
+    Active, CloseReason, MAX_ENTITY_IDS, MAX_MESSAGE_BYTES, ReadFailure, Shared, ToWriter,
 };
-use crate::state::exchange;
 
 /// Reads messages until the client leaves, a limit is exceeded or the writer is gone. Dropping the
 /// sender on return tells the writer the client is done.
@@ -33,18 +29,19 @@ pub(super) async fn run<St, E>(
     mailbox: watch::Sender<Option<Pending>>,
 ) where
     St: Stream<Item = Result<Message, E>> + Unpin + Send,
-    E: std::fmt::Display + Send,
+    E: Into<ReadFailure> + Send,
 {
     while let Some(item) = stream.next().await {
         let message = match item {
             Ok(message) => message,
             Err(error) => {
-                let text = error.to_string();
-                if text == READ_TOO_BIG {
-                    close(&to_writer, CLOSE_MESSAGE_TOO_BIG, "message_too_big").await;
-                } else {
-                    tracing::debug!(error = %text, "stream read failed");
-                }
+                match error.into() {
+                    ReadFailure::TooBig => close(&to_writer, CloseReason::MessageTooBig).await,
+                    other => {
+                        tracing::debug!(error = %other, "stream read failed");
+                        false
+                    }
+                };
                 return;
             }
         };
@@ -75,7 +72,7 @@ async fn on_text(
     mailbox: &watch::Sender<Option<Pending>>,
 ) -> bool {
     if text.len() > MAX_MESSAGE_BYTES {
-        return close(to_writer, CLOSE_MESSAGE_TOO_BIG, "message_too_big").await;
+        return close(to_writer, CloseReason::MessageTooBig).await;
     }
     let subscription = match parse(text) {
         Ok(subscription) => subscription,
@@ -92,26 +89,15 @@ async fn on_text(
             .await;
         }
     };
-    let tick_rate_hz = match engine_tick_rate(shared).await {
-        Ok(hz) => hz,
-        Err(HandleError::Closed) => {
-            return close(to_writer, CLOSE_ENGINE_GONE, "engine_unavailable").await;
-        }
-        // Busy or any other refusal: the stride is only an optimisation, so stay at every tick.
-        Err(_) => None,
-    };
     // The newest checked `subscribe` replaces an older one the writer has not taken yet.
-    mailbox.send_replace(Some(Pending {
-        prepared,
-        tick_rate_hz,
-    }));
+    mailbox.send_replace(Some(Pending { prepared }));
     true
 }
 
 /// Asks the writer to close the connection; always `false`: the reader stops.
-async fn close(to_writer: &mpsc::Sender<ToWriter>, code: u16, reason: &'static str) -> bool {
+async fn close(to_writer: &mpsc::Sender<ToWriter>, reason: CloseReason) -> bool {
     // If the writer is gone the connection is closing anyway.
-    drop(to_writer.send(ToWriter::Close(code, reason)).await);
+    drop(to_writer.send(ToWriter::Close(reason)).await);
     false
 }
 
@@ -147,12 +133,10 @@ fn parse(text: &str) -> Result<api::Subscription, (api::StreamErrorCode, String)
     }
 }
 
-/// A checked `subscribe` and the tick rate it was checked against, waiting for the writer to
-/// register it with the engine.
+/// A checked `subscribe`, waiting for the writer to register it with the engine.
 #[derive(Clone)]
 pub(super) struct Pending {
     prepared: Prepared,
-    tick_rate_hz: Option<u32>,
 }
 
 /// A checked `subscribe`.
@@ -185,73 +169,32 @@ fn prepare(subscription: &api::Subscription, shared: &Shared) -> Result<Prepared
     })
 }
 
-/// The tick rate of the loaded scenario, `None` while idle.
-async fn engine_tick_rate(shared: &Shared) -> Result<Option<u32>, HandleError> {
-    let status = exchange(|reply| shared.handle.submit(Command::Status { reply })).await?;
-    Ok(status.run.tick_rate.map(TickRate::hz))
-}
-
-/// The engine subscription for a checked `subscribe`: capacity `queue_frames`, stride
-/// `max(1, tick_rate_hz / rate)` with integer division of whole hertz (ASM-165, ASM-207), carry
-/// cap `max_events_per_frame`. The engine primes it with a control frame.
+/// The engine subscription for a checked `subscribe`: capacity `queue_frames`, the rate-following
+/// stride `max(1, tick_rate_hz / rate)` the bus derives from the tick rate of the frames it
+/// publishes (ASM-165, ASM-212), carry cap `max_events_per_frame`. The engine primes it with a
+/// control frame.
 pub(super) fn register(pending: Pending, shared: &Shared) -> Active {
-    let Pending {
-        prepared,
-        tick_rate_hz,
-    } = pending;
+    let Pending { prepared } = pending;
     let settings = &shared.settings;
     let mut options = SubscribeOptions::new();
     // A zero in a hand-built `StreamConfig` (the file reader refuses it) would be a capacity of one.
     options.capacity = NonZeroUsize::new(settings.queue_frames).unwrap_or(NonZeroUsize::MIN);
-    options.min_tick_stride = stride(tick_rate_hz, prepared.rate_hz);
+    options.max_rate_hz = Some(prepared.rate_hz);
     options.max_carry_events = settings.max_events_per_frame;
     options.with_state_hash = prepared.state_hash;
     let notify = Arc::clone(&shared.notify);
     options.notify = Some(Arc::new(move || notify.notify_one()));
     Active {
-        subscription: shared.handle.subscribe(options),
+        subscription: Arc::new(shared.handle.subscribe(options)),
         filter: prepared.filter,
         min_interval: Duration::from_secs_f64(1.0 / prepared.rate_hz),
         state_hash: prepared.state_hash,
     }
 }
 
-/// `max(1, tick_rate_hz / rate_hz)`, the quotient rounded down; every tick if the rate is unknown.
-fn stride(tick_rate_hz: Option<u32>, rate_hz: f64) -> NonZeroU64 {
-    let ticks = tick_rate_hz.map_or(1.0, f64::from);
-    // Truncation is the point: a quotient below 1 (or any negative) saturates to 0 and becomes 1.
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "a floor of a small positive quotient"
-    )]
-    let whole = (ticks / rate_hz).floor() as u64;
-    NonZeroU64::new(whole).unwrap_or(NonZeroU64::MIN)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn stride_is_the_integer_quotient_and_at_least_one() {
-        let cases = [
-            (Some(30), 10.0, 3),
-            (Some(30), 15.0, 2),
-            (Some(30), 60.0, 1),
-            (Some(60), 30.0, 2),
-            (Some(60), 25.0, 2),
-            (Some(60), 7.5, 8),
-            (None, 1.0, 1),
-        ];
-        for (ticks, rate, expected) in cases {
-            assert_eq!(
-                stride(ticks, rate).get(),
-                expected,
-                "{ticks:?} Hz at {rate}"
-            );
-        }
-    }
 
     #[test]
     fn parse_tells_invalid_json_unknown_types_and_bad_subscribes_apart() {

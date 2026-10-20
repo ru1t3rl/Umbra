@@ -374,6 +374,7 @@ impl Worker {
     /// Drops the session on this thread, so plugin teardown runs here and before anything that
     /// follows (review D-a). A pending step must have been taken first.
     pub(super) fn drop_session(&mut self) {
+        self.bus.set_tick_rate(None);
         if let Some(run) = self.run.take() {
             self.idle_clock = run.session.engine().clock_mode();
         }
@@ -560,6 +561,32 @@ mod tests {
 
         assert!(matches!(result, Err(HandleError::StepCancelled { .. })));
         assert_eq!(state, Some(RunState::Idle));
+    }
+
+    /// ASM-212 (review M1): the bus learns the tick rate from load and unload even when nobody is
+    /// subscribed, so a rate-following subscription is right before its priming frame is served.
+    #[test]
+    fn load_and_unload_set_the_bus_tick_rate_without_a_subscriber() {
+        let (_tx, rx) = mpsc::sync_channel(4);
+        let mut worker = worker(rx);
+        let scenario = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/scenarios/walking_skeleton/scenario.toml");
+        worker.apply(Command::Load {
+            path: scenario,
+            seed: None,
+            clock: Some(ClockMode::Stepped),
+            reply: Reply::new(|_: Result<SessionInfo, HandleError>| {}),
+        });
+        let mut options = crate::bus::SubscribeOptions::new();
+        options.max_rate_hz = Some(5.0);
+        let subscription = worker.bus.subscribe(options);
+        // The skeleton runs at 30 Hz: every 6th tick at 5 Hz, and no frame has been published.
+        assert!(subscription.drain().frames.is_empty());
+        assert!(!worker.bus.wants_frame(5) && worker.bus.wants_frame(6));
+        worker.apply(Command::Unload {
+            reply: Reply::new(|_| {}),
+        });
+        assert!(worker.bus.wants_frame(1), "unloaded: the fixed stride");
     }
 
     #[test]

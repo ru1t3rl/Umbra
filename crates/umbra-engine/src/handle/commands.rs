@@ -195,6 +195,7 @@ impl Worker {
             duration_ticks: session.duration_ticks(),
             entity_count: session.entities().len(),
         };
+        self.bus.set_tick_rate(Some(info.tick_rate));
         self.run = Some(Run {
             directory: Arc::new(session.entities().clone()),
             session,

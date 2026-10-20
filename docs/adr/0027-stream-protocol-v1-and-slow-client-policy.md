@@ -83,6 +83,9 @@ These rules supersede the Decision above where they differ.
   `min_tick_stride = max(1, tick_rate_hz / max_rate_hz)`, using integer division. Below that stride the
   engine builds no frame for that connection. Control frames, step completions, pause and stop are always
   delivered.
+  *Implementation note (M5 WI-16, ASM-212; the decision is unchanged):* the connection passes its
+  `max_rate_hz` (`SubscribeOptions::max_rate_hz`) and the engine bus applies the same formula with the
+  tick rate the engine sets on load and unload, so the stride follows a load that changes the rate.
 
 ### Connection (M4, m9)
 - **Generic loop.** The connection loop is written over a generic `Sink<Message>` and

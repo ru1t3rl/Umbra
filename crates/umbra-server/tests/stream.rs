@@ -451,7 +451,7 @@ async fn seq_increases_and_dropped_is_reported() {
     for _ in 0..20 {
         h.step(100).await.assert_json(200);
     }
-    let mut total = 0;
+    let mut total = last["dropped"].as_u64().expect("dropped");
     loop {
         let frame = ws.next_frame().await;
         let seq = frame["seq"].as_u64().expect("seq");
@@ -471,8 +471,48 @@ async fn seq_increases_and_dropped_is_reported() {
         }
     }
     assert!(total > 0, "something was dropped");
-    // The cross-check against `Server::stream_stats()` (bus drops plus skipped frames) belongs to
-    // WI-16, which implements that probe; WI-15 pins the per-frame identity above.
+    // The probe counts what the frames reported: bus drops plus frames skipped for a newer one.
+    let stats = h.server.stream_stats();
+    assert_eq!(stats.len(), 1, "one open connection: {stats:?}");
+    assert_eq!(
+        stats[0].bus_dropped + stats[0].skipped,
+        total,
+        "the sum of the frames' `dropped` equals the probe's drops: {stats:?}"
+    );
+    assert!(
+        stats[0].bus_dropped > 0,
+        "capacity 1 drops in the bus: {stats:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_stride_follows_a_load_that_changes_the_tick_rate() {
+    // ASM-212: subscribed while idle (no tick rate known), then the 30 Hz skeleton is loaded: the
+    // subscription at 5 Hz builds a frame every 6th tick.
+    let h = Harness::start("stream-stride-load");
+    let addr = h.serve_on_loopback().await;
+    let mut ws = WsClient::connect(addr).await;
+    ws.hello().await;
+    ws.subscribe(json!({"max_rate_hz": 5.0})).await;
+    let primed = ws.next_frame().await;
+    assert_eq!(primed["run"]["state"], "idle", "subscribed before any load");
+    h.load_skeleton("stepped").await;
+    h.run_command("start").await.assert_json(200);
+    let status = h.handle.status().expect("status");
+    assert_eq!(
+        status.run.tick_rate.map(umbra_engine::TickRate::hz),
+        Some(30)
+    );
+    let before = h.handle.snapshot_builds();
+    let outcome = h.handle.step(60).expect("step");
+    assert!(outcome.completed);
+    assert_eq!(
+        h.handle.snapshot_builds() - before,
+        10,
+        "60 ticks at 30 Hz / 5 Hz: every 6th tick, not every tick"
+    );
+    let last = ws.frame_until(|f| f["tick"] == 60).await;
+    assert_eq!(last["cause"], "tick");
 }
 
 #[tokio::test]
@@ -495,7 +535,8 @@ async fn server_shutdown_closes_streams_1001() {
 
 #[tokio::test]
 async fn a_quiet_stream_closes_1011_when_the_engine_is_gone() {
-    // ASM-187 h: with no frames coming, the connection finds the dead engine by asking it.
+    // ASM-206 d: with no frames coming, the connection finds the dead engine by reading the
+    // handle's closed flag at its liveness tick.
     let (mut h, mut ws) = connected("stream-engine-gone", SKELETON).await;
     ws.subscribe(json!({})).await;
     ws.next_frame().await;
@@ -510,6 +551,25 @@ async fn a_quiet_stream_closes_1011_when_the_engine_is_gone() {
             Incoming::Ended => panic!("the connection ended without a 1011 close"),
         }
     }
+}
+
+#[tokio::test]
+async fn subscribing_to_a_dead_engine_closes_1011() {
+    let (mut h, mut ws) = connected("stream-engine-dead", SKELETON).await;
+    h.stop_engine();
+    ws.subscribe(json!({})).await;
+    let close = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            match ws.recv().await {
+                Incoming::Close(code, reason) => return (code, reason),
+                Incoming::Json(_) => {}
+                Incoming::Ended => panic!("the connection ended without a close"),
+            }
+        }
+    })
+    .await
+    .expect("a close within 10 s");
+    assert_eq!((close.0, close.1.as_str()), (1011, "engine_unavailable"));
 }
 
 #[tokio::test]
@@ -595,22 +655,36 @@ async fn frames_keep_coming_while_an_afap_run_rings_the_bell_all_the_time() {
     h.run_command("stop").await.assert_json(200);
 }
 
+/// The pieces of [`gated_connection`].
+struct Gated<St, Si> {
+    /// What the client sends.
+    client: tokio::sync::mpsc::UnboundedSender<axum::extract::ws::Message>,
+    /// What the sink forwarded once the gate opened.
+    out: tokio::sync::mpsc::UnboundedReceiver<axum::extract::ws::Message>,
+    stream: St,
+    sink: Si,
+    /// How many messages the stream was asked for.
+    requests: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
 /// A stream of the given client messages, and a sink that holds back everything it is given until
 /// `gate` is opened, then forwards it to `out`: the writer is blocked on its first send meanwhile.
+/// The last value counts how often the stream was asked for a message: the reader asks again only
+/// after it has handled the previous one, so `n + 1` asks mean `n` messages were handled.
 fn gated_connection(
     gate: &tokio::sync::watch::Sender<bool>,
-) -> (
-    tokio::sync::mpsc::UnboundedSender<axum::extract::ws::Message>,
-    tokio::sync::mpsc::UnboundedReceiver<axum::extract::ws::Message>,
+) -> Gated<
     impl futures_util::Stream<Item = Result<axum::extract::ws::Message, String>> + Unpin + Send + use<>,
     impl futures_util::Sink<axum::extract::ws::Message, Error = String> + Unpin + Send + use<>,
-) {
+> {
     let (client_tx, client_rx) = tokio::sync::mpsc::unbounded_channel();
     let (out_tx, out_rx) = tokio::sync::mpsc::unbounded_channel();
-    let stream = Box::pin(futures_util::stream::unfold(
-        client_rx,
-        |mut rx| async move { rx.recv().await.map(|message| (Ok(message), rx)) },
-    ));
+    let requests = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = std::sync::Arc::clone(&requests);
+    let stream = Box::pin(futures_util::stream::unfold(client_rx, move |mut rx| {
+        counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        async move { rx.recv().await.map(|message| (Ok(message), rx)) }
+    }));
     let gate_rx = gate.subscribe();
     let sink = Box::pin(futures_util::sink::unfold(out_tx, move |out, message| {
         let mut gate_rx = gate_rx.clone();
@@ -623,7 +697,13 @@ fn gated_connection(
             Ok::<_, String>(out)
         }
     }));
-    (client_tx, out_rx, stream, sink)
+    Gated {
+        client: client_tx,
+        out: out_rx,
+        stream,
+        sink,
+        requests,
+    }
 }
 
 #[tokio::test]
@@ -632,7 +712,13 @@ async fn pipelined_subscribes_leave_one_live_subscription_and_the_newest_wins() 
     h.load_skeleton("stepped").await;
     h.run_command("start").await.assert_json(200);
     let (gate, _keep) = tokio::sync::watch::channel(false);
-    let (client, mut out, stream, sink) = gated_connection(&gate);
+    let Gated {
+        client,
+        mut out,
+        stream,
+        sink,
+        requests,
+    } = gated_connection(&gate);
     let params = umbra_server::ConnectionParams::new(
         h.handle.clone(),
         h.settings.server.stream.clone(),
@@ -650,8 +736,10 @@ async fn pipelined_subscribes_leave_one_live_subscription_and_the_newest_wins() 
                 .expect("send");
         }
     }
-    // Everything is read (and answered with a status question to the engine) within a moment.
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // The reader has handled all twelve once it asks for the thirteenth message.
+    while requests.load(std::sync::atomic::Ordering::SeqCst) < 13 {
+        tokio::task::yield_now().await;
+    }
     gate.send_replace(true);
     let mut frames = Vec::new();
     while frames.is_empty() {
@@ -666,7 +754,10 @@ async fn pipelined_subscribes_leave_one_live_subscription_and_the_newest_wins() 
             }
         }
     }
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // Two round trips to the engine thread: it has served any priming a stray subscription asked
+    // for before the builds are counted (a command turn comes first, priming after it).
+    h.handle.status().expect("status");
+    h.handle.status().expect("status");
     assert_eq!(entity_ids(&frames[0]), [3], "the newest subscribe won");
     assert_eq!(
         h.handle.snapshot_builds() - builds_before,
@@ -675,4 +766,66 @@ async fn pipelined_subscribes_leave_one_live_subscription_and_the_newest_wins() 
     );
     h.shutdown.trigger();
     connection.await.expect("the connection ends");
+}
+
+#[tokio::test(start_paused = true)]
+async fn frames_skipped_for_a_newer_one_are_counted_in_the_connection_stats() {
+    // Three frames queue up within the 1 Hz pacing interval (capacity 4, so the bus drops none):
+    // the writer sends the newest and skips two, and the counters say so.
+    let h = Harness::start("stream-skipped");
+    h.load_skeleton("stepped").await;
+    h.run_command("start").await.assert_json(200);
+    let (gate, _keep) = tokio::sync::watch::channel(true);
+    let Gated {
+        client,
+        mut out,
+        stream,
+        sink,
+        ..
+    } = gated_connection(&gate);
+    let params = umbra_server::ConnectionParams::new(
+        h.handle.clone(),
+        h.settings.server.stream.clone(),
+        h.shutdown.clone(),
+        umbra_server::Encoding::Json,
+    );
+    let connection = tokio::spawn(umbra_server::run_connection(sink, stream, params));
+    let message = json!({"type": "subscribe", "max_rate_hz": 1.0});
+    client
+        .send(axum::extract::ws::Message::Text(message.to_string().into()))
+        .expect("send");
+    let mut frames = Vec::new();
+    // `hello`, then the priming frame.
+    while frames.is_empty() {
+        let next = out.recv().await.expect("the connection is open");
+        if let axum::extract::ws::Message::Text(text) = next {
+            let value: Value = serde_json::from_str(text.as_str()).expect("json");
+            if value["type"] == "frame" {
+                frames.push(value);
+            }
+        }
+    }
+    // 30 Hz at 1 Hz is a stride of 30: each step of 30 ticks completes with one frame.
+    for _ in 0..3 {
+        h.handle.step(30).expect("step");
+    }
+    let mut newest = None;
+    while newest.is_none() {
+        let next = out.recv().await.expect("the connection is open");
+        if let axum::extract::ws::Message::Text(text) = next {
+            let value: Value = serde_json::from_str(text.as_str()).expect("json");
+            if value["type"] == "frame" {
+                newest = Some(value);
+            }
+        }
+    }
+    let newest = newest.expect("a frame");
+    assert_eq!(newest["tick"], 90);
+    assert_eq!(newest["dropped"], 2, "two queued frames were skipped");
+    h.shutdown.trigger();
+    let (stats, reason) = connection.await.expect("the connection ends");
+    assert_eq!(reason, umbra_server::CloseReason::GoingAway);
+    assert_eq!(stats.skipped, 2, "{stats:?}");
+    assert_eq!(stats.bus_dropped, 0, "{stats:?}");
+    assert_eq!(stats.sent, 2, "the priming frame and the newest: {stats:?}");
 }

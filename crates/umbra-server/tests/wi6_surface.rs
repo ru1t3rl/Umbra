@@ -219,7 +219,8 @@ async fn stub_signatures_compile(
     let _ = (params, serving);
 }
 
-/// `run_connection` accepts any sink and stream whose errors can be displayed.
+/// `run_connection` accepts any sink whose errors can be displayed and a stream whose errors convert
+/// into `ReadFailure`, and returns the counters and the close reason.
 #[expect(dead_code, reason = "type-check only")]
 async fn run_connection_bounds<Si, St>(sink: Si, stream: St, params: umbra_server::ConnectionParams)
 where
@@ -230,5 +231,6 @@ where
         + Send
         + 'static,
 {
-    umbra_server::run_connection(sink, stream, params).await;
+    let (_stats, _reason): (umbra_server::ConnectionStats, umbra_server::CloseReason) =
+        umbra_server::run_connection(sink, stream, params).await;
 }

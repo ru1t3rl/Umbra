@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
@@ -145,7 +145,14 @@ pub struct SubscribeOptions {
     /// Frames queued before the oldest is dropped; default 4.
     pub capacity: NonZeroUsize,
     /// Tick frames are built only every this many ticks; control frames are always built; default 1.
+    /// Used while `max_rate_hz` is unset or no scenario is loaded (no tick rate known).
     pub min_tick_stride: NonZeroU64,
+    /// The most frames per second the subscriber wants. When set (and finite and above 0; anything
+    /// else counts as unset), the stride follows the tick rate the engine told the bus
+    /// ([`Bus::set_tick_rate`]): `max(1, floor(tick_rate_hz / max_rate_hz))` ([`stride_for`]), so a
+    /// load that changes the tick rate changes the stride before its first tick (ASM-212). Default
+    /// `None`.
+    pub max_rate_hz: Option<f64>,
     /// Events carried over from dropped frames before `events_truncated`; default 4096.
     pub max_carry_events: usize,
     /// Whether frames need a state hash; default false.
@@ -161,6 +168,7 @@ impl SubscribeOptions {
         Self {
             capacity: NonZeroUsize::MIN.saturating_add(3),
             min_tick_stride: NonZeroU64::MIN,
+            max_rate_hz: None,
             max_carry_events: 4096,
             with_state_hash: false,
             notify: None,
@@ -172,6 +180,26 @@ impl Default for SubscribeOptions {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// The tick stride that delivers about `rate_hz` frames per second at `tick_rate_hz` ticks per
+/// second: `max(1, floor(tick_rate_hz / rate_hz))`, integer division of whole hertz (ASM-165).
+///
+/// A `rate_hz` that is not finite and above 0 gives 1 (every tick); a subscription with such a rate
+/// uses its `min_tick_stride` instead (see `SubscribeOptions::max_rate_hz`).
+#[must_use]
+pub fn stride_for(tick_rate_hz: u32, rate_hz: f64) -> NonZeroU64 {
+    if !(rate_hz.is_finite() && rate_hz > 0.0) {
+        return NonZeroU64::MIN;
+    }
+    // Truncation is the point: a quotient below 1 (or any negative) saturates to 0 and becomes 1.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a floor of a small positive quotient"
+    )]
+    let whole = (f64::from(tick_rate_hz) / rate_hz).floor() as u64;
+    NonZeroU64::new(whole).unwrap_or(NonZeroU64::MIN)
 }
 
 /// Identifies a subscription slot on the bus, to target a frame at one subscriber (priming).
@@ -230,6 +258,7 @@ struct Slot {
     id: SlotId,
     capacity: usize,
     stride: u64,
+    rate_hz: Option<f64>,
     max_carry: usize,
     with_state_hash: bool,
     notify: Option<Arc<dyn Fn() + Send + Sync>>,
@@ -242,8 +271,14 @@ impl Slot {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn due(&self, tick: u64) -> bool {
-        tick.is_multiple_of(self.stride)
+    /// Whether a tick frame is due at `tick`; `tick_rate_hz` is the bus's current tick rate, 0 if
+    /// none is loaded.
+    fn due(&self, tick: u64, tick_rate_hz: u32) -> bool {
+        let stride = match self.rate_hz {
+            Some(rate) if tick_rate_hz > 0 => stride_for(tick_rate_hz, rate).get(),
+            _ => self.stride,
+        };
+        tick.is_multiple_of(stride)
     }
 
     /// Pushes `frame`, dropping the oldest frames over the capacity; never waits for space.
@@ -366,6 +401,8 @@ impl Drop for Subscription {
 pub struct Bus {
     registry: Mutex<Vec<Weak<Slot>>>,
     next_slot: AtomicU64,
+    /// The tick rate of the loaded scenario ([`Bus::set_tick_rate`]), 0 while none is loaded.
+    tick_rate_hz: AtomicU32,
 }
 
 impl std::fmt::Debug for Bus {
@@ -379,6 +416,19 @@ impl Bus {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Tells the bus the tick rate of the loaded scenario, `None` once it is unloaded. The engine
+    /// thread calls it on load and unload, before any frame is built or any interest is checked, so
+    /// a rate-following stride (`SubscribeOptions::max_rate_hz`) is right from the first tick of a
+    /// session, with or without a subscriber at the time of the load (ASM-212).
+    pub fn set_tick_rate(&self, rate: Option<TickRate>) {
+        self.tick_rate_hz
+            .store(rate.map_or(0, TickRate::hz), Ordering::Release);
+    }
+
+    fn tick_rate(&self) -> u32 {
+        self.tick_rate_hz.load(Ordering::Acquire)
     }
 
     fn registry(&self) -> MutexGuard<'_, Vec<Weak<Slot>>> {
@@ -397,6 +447,9 @@ impl Bus {
             id: SlotId(self.next_slot.fetch_add(1, Ordering::Relaxed)),
             capacity: options.capacity.get(),
             stride: options.min_tick_stride.get(),
+            rate_hz: options
+                .max_rate_hz
+                .filter(|rate| rate.is_finite() && *rate > 0.0),
             max_carry: options.max_carry_events,
             with_state_hash: options.with_state_hash,
             notify: options.notify,
@@ -413,21 +466,26 @@ impl Bus {
     /// Whether any subscription is due a tick frame at `tick` by its stride.
     #[must_use]
     pub fn wants_frame(&self, tick: u64) -> bool {
-        self.live().iter().any(|s| s.due(tick))
+        let hz = self.tick_rate();
+        self.live().iter().any(|s| s.due(tick, hz))
     }
 
     /// Whether a subscription due a tick frame at `tick` asked for the state hash.
     #[must_use]
     pub fn wants_state_hash(&self, tick: u64) -> bool {
-        self.live().iter().any(|s| s.due(tick) && s.with_state_hash)
+        let hz = self.tick_rate();
+        self.live()
+            .iter()
+            .any(|s| s.due(tick, hz) && s.with_state_hash)
     }
 
     /// `(frame due, state hash due)` at `tick` from one registry snapshot: the answers of
     /// [`wants_frame`](Self::wants_frame) and [`wants_state_hash`](Self::wants_state_hash) together.
     #[must_use]
     pub fn due(&self, tick: u64) -> (bool, bool) {
+        let hz = self.tick_rate();
         self.live().iter().fold((false, false), |(frame, hash), s| {
-            let due = s.due(tick);
+            let due = s.due(tick, hz);
             (frame || due, hash || (due && s.with_state_hash))
         })
     }
@@ -479,6 +537,64 @@ mod tests {
             FrameCause::Tick,
             RunStatus::new(RunState::Running, ClockMode::Stepped, 1),
         )
+    }
+
+    #[test]
+    fn stride_is_the_integer_quotient_and_at_least_one() {
+        let cases = [
+            (30, 10.0, 3),
+            (30, 15.0, 2),
+            (30, 60.0, 1),
+            (60, 30.0, 2),
+            (60, 25.0, 2),
+            (60, 7.5, 8),
+            (60, 0.0, 1),
+            (60, -2.0, 1),
+            (60, f64::NAN, 1),
+            (60, f64::INFINITY, 1),
+        ];
+        for (ticks, rate, expected) in cases {
+            assert_eq!(
+                stride_for(ticks, rate).get(),
+                expected,
+                "{ticks} Hz at {rate}"
+            );
+        }
+    }
+
+    /// ASM-212: a rate-following stride tracks the tick rate set on the bus, with no frame published.
+    #[test]
+    fn rate_following_stride_tracks_the_tick_rate_the_engine_sets() {
+        let bus = Arc::new(Bus::new());
+        let mut options = SubscribeOptions::new();
+        options.max_rate_hz = Some(10.0);
+        let _sub = bus.subscribe(options);
+        // No tick rate known: every tick (the fixed stride, 1).
+        assert!(bus.wants_frame(1));
+        bus.set_tick_rate(TickRate::new(60));
+        assert!(
+            !bus.wants_frame(5) && bus.wants_frame(6),
+            "60 Hz at 10 Hz: every 6th"
+        );
+        bus.set_tick_rate(TickRate::new(30));
+        assert!(
+            !bus.wants_frame(2) && bus.wants_frame(3),
+            "30 Hz at 10 Hz: every 3rd"
+        );
+        bus.set_tick_rate(None);
+        assert!(bus.wants_frame(1), "unloaded: back to the fixed stride");
+        // A rate that is not a positive number is no rate: the fixed stride stays.
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            let mut options = SubscribeOptions::new();
+            options.max_rate_hz = Some(bad);
+            options.min_tick_stride = NonZeroU64::new(4).expect("non zero");
+            let sub = bus.subscribe(options);
+            bus.set_tick_rate(TickRate::new(60));
+            assert!(
+                !sub.slot.due(3, 60) && sub.slot.due(4, 60) && sub.slot.due(8, 60),
+                "rate {bad}: the fixed stride of 4"
+            );
+        }
     }
 
     /// m1: a panic while the registry lock is held poisons it; every bus operation recovers.

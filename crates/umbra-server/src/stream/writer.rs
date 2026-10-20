@@ -5,23 +5,24 @@
 //! body, after the other futures were dropped, so no `select!` ever cancels a send in progress. The
 //! frames are built and encoded on `spawn_blocking`; no engine or bus lock is held across an
 //! `.await` (the subscription is drained synchronously, then the lock is gone).
+//!
+//! Slow clients (WI-16): every send, `hello`, frames, errors and the close, is bounded by
+//! `send_timeout_s`. A send that exceeds it ends the connection with [`CloseReason::TooSlow`]; the
+//! unfinished send is dropped together with the connection, never in favour of another send.
 
 use std::ops::ControlFlow;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::ws::{CloseFrame, Message};
-use futures_util::{Sink, SinkExt};
+use futures_util::{FutureExt, Sink, SinkExt};
 use tokio::sync::{mpsc, watch};
 use tokio::time::{Instant, MissedTickBehavior, interval_at, sleep_until};
 use umbra_api_types as api;
 
-use super::Encoding;
 use super::encode::{Delivery, Wanted, build_frame, to_text};
 use super::reader::{Pending, register};
-use super::{
-    Active, CLOSE_ENGINE_GONE, CLOSE_GOING_AWAY, CLOSE_INTERNAL, MAX_ENTITY_IDS, MAX_MESSAGE_BYTES,
-    Shared, ToWriter,
-};
+use super::{Active, CloseReason, Encoding, MAX_ENTITY_IDS, MAX_MESSAGE_BYTES, Shared, ToWriter};
 
 /// How often an otherwise quiet connection looks at the engine's closed flag. Reading a flag costs
 /// nothing; the engine also rings every subscription as it ends (ASM-206).
@@ -49,19 +50,97 @@ struct Writer {
     wanted: bool,
 }
 
-/// Runs the writer until the connection closes, then returns; the caller stops the reader.
+/// The sink, and how long one send on it may take.
+struct Out<Si> {
+    sink: Si,
+    limit: Duration,
+}
+
+/// How a send ended.
+enum Sent {
+    Done,
+    /// The sink reported an error: the client is gone.
+    Failed,
+    /// The send did not complete within the limit.
+    TimedOut,
+}
+
+impl<Si> Out<Si>
+where
+    Si: Sink<Message> + Unpin + Send,
+    Si::Error: std::fmt::Display + Send,
+{
+    /// Sends one message, waiting at most the limit. A send is never given up for any other reason.
+    async fn send(&mut self, message: Message) -> Sent {
+        match tokio::time::timeout(self.limit, self.sink.send(message)).await {
+            Ok(Ok(())) => Sent::Done,
+            Ok(Err(error)) => {
+                tracing::debug!(%error, "stream send failed");
+                Sent::Failed
+            }
+            Err(_) => Sent::TimedOut,
+        }
+    }
+
+    /// Sends `message`; the connection goes on unless the send failed or timed out.
+    async fn send_or_end(&mut self, message: Message) -> ControlFlow<CloseReason> {
+        match self.send(message).await {
+            Sent::Done => ControlFlow::Continue(()),
+            Sent::Failed => ControlFlow::Break(CloseReason::SendFailed),
+            Sent::TimedOut => {
+                // One try that waits for nothing: a sink that is merely slow may take the close
+                // frame, one that is stalled does not, and then the connection is just dropped
+                // (ASM-214).
+                if let Some((code, text)) = CloseReason::TooSlow.close_frame() {
+                    let frame = CloseFrame {
+                        code,
+                        reason: text.into(),
+                    };
+                    drop(self.sink.send(Message::Close(Some(frame))).now_or_never());
+                }
+                ControlFlow::Break(CloseReason::TooSlow)
+            }
+        }
+    }
+
+    /// Sends the close frame for `reason` (if it has one) and ends the connection. A close that
+    /// cannot be sent in time changes nothing: the connection ends for `reason` anyway.
+    async fn close(&mut self, reason: CloseReason) -> ControlFlow<CloseReason> {
+        if let Some((code, text)) = reason.close_frame() {
+            let frame = CloseFrame {
+                code,
+                reason: text.into(),
+            };
+            self.send(Message::Close(Some(frame))).await;
+        }
+        ControlFlow::Break(reason)
+    }
+
+    /// An error of ours (encoding, a panicked blocking task): log it and close with 1011.
+    async fn internal(&mut self, error: String) -> ControlFlow<CloseReason> {
+        tracing::error!(%error, "stream frame could not be produced");
+        self.close(CloseReason::Internal).await
+    }
+}
+
+/// Runs the writer until the connection closes, then returns why; the caller stops the reader.
 pub(super) async fn run<Si>(
-    mut sink: Si,
+    sink: Si,
     mut inbox: mpsc::Receiver<ToWriter>,
     mut mailbox: watch::Receiver<Option<Pending>>,
     shared: &Shared,
     encoding: Encoding,
-) where
+) -> CloseReason
+where
     Si: Sink<Message> + Unpin + Send,
     Si::Error: std::fmt::Display + Send,
 {
-    if !send(&mut sink, hello(shared, encoding)).await {
-        return;
+    let mut out = Out {
+        sink,
+        limit: shared.settings.send_timeout,
+    };
+    if let ControlFlow::Break(reason) = out.send_or_end(hello(shared, encoding)).await {
+        return reason;
     }
     let mut state = Writer {
         active: None,
@@ -94,13 +173,13 @@ pub(super) async fn run<Si>(
             }
         };
         let flow = match wake {
-            Wake::Shutdown => close(&mut sink, CLOSE_GOING_AWAY, "going_away").await,
+            Wake::Shutdown => out.close(CloseReason::GoingAway).await,
             // The reader is gone: the client closed, or a read failed. Finish the handshake.
             Wake::Inbox(None) => {
-                drop(sink.close().await);
-                ControlFlow::Break(())
+                drop(tokio::time::timeout(out.limit, out.sink.close()).await);
+                ControlFlow::Break(CloseReason::ClientGone)
             }
-            Wake::Inbox(Some(message)) => on_inbox(&mut sink, message).await,
+            Wake::Inbox(Some(message)) => on_inbox(&mut out, message).await,
             Wake::Mailbox(open) => {
                 mailbox_open = open;
                 // The newest `subscribe` only; one still in the mailbox when we got here is the one
@@ -113,16 +192,16 @@ pub(super) async fn run<Si>(
             }
             Wake::Notified => {
                 state.wanted = true;
-                check_engine(&mut sink, shared).await
+                check_engine(&mut out, shared).await
             }
-            Wake::Due => match check_engine(&mut sink, shared).await {
-                ControlFlow::Continue(()) => send_newest(&mut sink, &mut state, shared).await,
-                stop @ ControlFlow::Break(()) => stop,
+            Wake::Due => match check_engine(&mut out, shared).await {
+                ControlFlow::Continue(()) => send_newest(&mut out, &mut state, shared).await,
+                stop @ ControlFlow::Break(_) => stop,
             },
-            Wake::Liveness => check_engine(&mut sink, shared).await,
+            Wake::Liveness => check_engine(&mut out, shared).await,
         };
-        if flow.is_break() {
-            return;
+        if let ControlFlow::Break(reason) = flow {
+            return reason;
         }
     }
 }
@@ -130,28 +209,37 @@ pub(super) async fn run<Si>(
 /// Registers the `subscribe` taken from the mailbox. The first frame must not wait for the old
 /// subscription's pacing, and its numbering starts again.
 fn subscribe(state: &mut Writer, pending: Pending, shared: &Shared) {
-    state.active = Some(register(pending, shared));
+    let active = register(pending, shared);
+    let current = Arc::clone(&active.subscription);
+    // The new subscription first: the counters still hold the old one until `replace` folds it in,
+    // so nothing is lost between the two steps.
+    state.active = Some(active);
+    shared.live.replace(Some(current));
     state.offered = 0;
     state.next_allowed = Instant::now();
     state.wanted = true;
 }
 
-async fn on_inbox<Si>(sink: &mut Si, message: ToWriter) -> ControlFlow<()>
+async fn on_inbox<Si>(out: &mut Out<Si>, message: ToWriter) -> ControlFlow<CloseReason>
 where
     Si: Sink<Message> + Unpin + Send,
     Si::Error: std::fmt::Display + Send,
 {
     match message {
         ToWriter::Error(error) => match to_text(&api::ServerMessage::Error(error)) {
-            Ok(text) => continue_if(send(sink, Message::Text(text.into())).await),
-            Err(error) => internal(sink, error.to_string()).await,
+            Ok(text) => out.send_or_end(Message::Text(text.into())).await,
+            Err(error) => out.internal(error.to_string()).await,
         },
-        ToWriter::Close(code, reason) => close(sink, code, reason).await,
+        ToWriter::Close(reason) => out.close(reason).await,
     }
 }
 
 /// Drains the subscription and sends its newest frame, with the events of the others.
-async fn send_newest<Si>(sink: &mut Si, state: &mut Writer, shared: &Shared) -> ControlFlow<()>
+async fn send_newest<Si>(
+    out: &mut Out<Si>,
+    state: &mut Writer,
+    shared: &Shared,
+) -> ControlFlow<CloseReason>
 where
     Si: Sink<Message> + Unpin + Send,
     Si::Error: std::fmt::Display + Send,
@@ -165,6 +253,7 @@ where
         return ControlFlow::Continue(());
     }
     let skipped = u64::try_from(drained.frames.len() - 1).unwrap_or(u64::MAX);
+    shared.live.add_skipped(skipped);
     let dropped = drained.dropped.saturating_add(skipped);
     let seq = state.offered.saturating_add(dropped);
     state.offered = seq.saturating_add(1);
@@ -189,24 +278,27 @@ where
     .await;
     match encoded {
         Ok(Some(Ok(text))) => {
-            let flow = continue_if(send(sink, Message::Text(text.into())).await);
+            let flow = out.send_or_end(Message::Text(text.into())).await;
+            if flow.is_continue() {
+                shared.live.add_sent();
+            }
             state.next_allowed = Instant::now() + interval;
             flow
         }
-        Ok(Some(Err(error))) => internal(sink, error.to_string()).await,
+        Ok(Some(Err(error))) => out.internal(error.to_string()).await,
         Ok(None) => ControlFlow::Continue(()),
-        Err(error) => internal(sink, error.to_string()).await,
+        Err(error) => out.internal(error.to_string()).await,
     }
 }
 
 /// Closes with 1011 if the engine thread has ended. It reads a flag: no command, no waiting.
-async fn check_engine<Si>(sink: &mut Si, shared: &Shared) -> ControlFlow<()>
+async fn check_engine<Si>(out: &mut Out<Si>, shared: &Shared) -> ControlFlow<CloseReason>
 where
     Si: Sink<Message> + Unpin + Send,
     Si::Error: std::fmt::Display + Send,
 {
     if shared.handle.is_closed() {
-        close(sink, CLOSE_ENGINE_GONE, "engine_unavailable").await
+        out.close(CloseReason::EngineUnavailable).await
     } else {
         ControlFlow::Continue(())
     }
@@ -232,51 +324,4 @@ fn hello(shared: &Shared, encoding: Encoding) -> Message {
     // These types serialise to JSON without failing; the fallback is a text no client accepts, and
     // is never reached.
     Message::Text(to_text(&message).unwrap_or_default().into())
-}
-
-/// Sends one message; `false` if the sink failed (the client is gone).
-async fn send<Si>(sink: &mut Si, message: Message) -> bool
-where
-    Si: Sink<Message> + Unpin + Send,
-    Si::Error: std::fmt::Display + Send,
-{
-    match sink.send(message).await {
-        Ok(()) => true,
-        Err(error) => {
-            tracing::debug!(%error, "stream send failed");
-            false
-        }
-    }
-}
-
-fn continue_if(sent: bool) -> ControlFlow<()> {
-    if sent {
-        ControlFlow::Continue(())
-    } else {
-        ControlFlow::Break(())
-    }
-}
-
-/// Sends a close frame and ends the connection.
-async fn close<Si>(sink: &mut Si, code: u16, reason: &'static str) -> ControlFlow<()>
-where
-    Si: Sink<Message> + Unpin + Send,
-    Si::Error: std::fmt::Display + Send,
-{
-    let frame = CloseFrame {
-        code,
-        reason: reason.into(),
-    };
-    send(sink, Message::Close(Some(frame))).await;
-    ControlFlow::Break(())
-}
-
-/// An error of ours (encoding, a panicked blocking task): log it and close with 1011.
-async fn internal<Si>(sink: &mut Si, error: String) -> ControlFlow<()>
-where
-    Si: Sink<Message> + Unpin + Send,
-    Si::Error: std::fmt::Display + Send,
-{
-    tracing::error!(%error, "stream frame could not be produced");
-    close(sink, CLOSE_INTERNAL, "internal").await
 }

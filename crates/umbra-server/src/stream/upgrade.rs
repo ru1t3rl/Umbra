@@ -83,16 +83,14 @@ pub(crate) async fn open_stream(
         .max_message_size(2 * MAX_MESSAGE_BYTES)
         .max_frame_size(2 * MAX_MESSAGE_BYTES)
         .on_upgrade(move |socket| async move {
-            // Held until the connection ends: the connection limit counts open streams.
-            let _slot = slot;
+            // `slot` is held until the connection ends: the connection limit counts open streams, and
+            // `Server::stream_stats` lists the slot's counters.
             let (sink, stream) = socket.split();
             let stream = stream.map(|item| item.map_err(|error| read_failure(&error)));
-            run_connection(
-                sink,
-                stream,
-                ConnectionParams::new(handle, settings, shutdown, encoding),
-            )
-            .await;
+            let params =
+                ConnectionParams::new(handle, settings, shutdown, encoding).with_live(slot.live());
+            // The close reason and counters matter to tests that drive the loop themselves.
+            run_connection(sink, stream, params).await;
         });
     Ok(response.into_response())
 }

@@ -3,8 +3,7 @@
 //!
 //! The first two tests drive the generic connection loop `run_connection` with stub sinks under
 //! `tokio::time::pause` (virtual time, no real waiting); the engine runs on its own thread with a
-//! `ManualWallClock`. The last two use real loopback sockets. Every test is ignored until its WI
-//! exists: the engine handle (WI-8), the connection loop (WI-15, WI-16) and the router (WI-11).
+//! `ManualWallClock`. The last two use real loopback sockets.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -29,7 +28,7 @@ use umbra_engine::bus::{FrameCause, RunState, StopReason, SubscribeOptions};
 use umbra_engine::{
     ClockMode, Config, ManualWallClock, RunUntil, Session, SessionOptions, SimTime, StreamConfig,
 };
-use umbra_server::{ConnectionParams, Encoding, run_connection};
+use umbra_server::{CloseReason, ConnectionParams, Encoding, run_connection};
 
 /// The per-tick state hashes of `walking_skeleton` from a plain engine run (the reference).
 fn reference_hashes() -> Vec<u64> {
@@ -59,22 +58,36 @@ fn reference_hashes() -> Vec<u64> {
         .expect("reference thread")
 }
 
-/// A sink that never becomes ready.
-struct StalledSink;
+/// A sink that takes the first message (`hello`) and then never becomes ready again. The first
+/// message passes so that the writer gets to register its engine subscription: a writer stuck in
+/// `hello` would never subscribe and the bus would have nothing to drop (ASM-214).
+#[derive(Default)]
+struct StalledSink {
+    started: usize,
+}
 
 impl Sink<Message> for StalledSink {
     type Error = String;
 
     fn poll_ready(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), String>> {
-        Poll::Pending
+        if self.started == 0 {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
+        }
     }
 
-    fn start_send(self: Pin<&mut Self>, _item: Message) -> Result<(), String> {
+    fn start_send(mut self: Pin<&mut Self>, _item: Message) -> Result<(), String> {
+        self.started += 1;
         Ok(())
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), String>> {
-        Poll::Pending
+        if self.started <= 1 {
+            Poll::Ready(Ok(()))
+        } else {
+            Poll::Pending
+        }
     }
 
     fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), String>> {
@@ -94,6 +107,8 @@ struct GateState {
     started: usize,
     delivered: Vec<String>,
     last_text: Option<String>,
+    /// The code of a close frame handed over with `start_send`.
+    close_code: Option<u16>,
 }
 
 /// A sink that accepts a message at once but completes its flush only while the gate is open.
@@ -111,10 +126,14 @@ impl Sink<Message> for GatedSink {
         state.overlapped |= state.in_flight;
         state.in_flight = true;
         state.started += 1;
+        if let Message::Close(Some(frame)) = &item {
+            state.close_code = Some(frame.code);
+        }
         state.last_text = match item {
             Message::Text(text) => Some(text.as_str().to_string()),
             _ => None,
         };
+
         Ok(())
     }
 
@@ -170,11 +189,10 @@ async fn wait_until_stopped(h: &Harness) -> umbra_engine::handle::EngineStatus {
 
 /// A connection whose sink never becomes ready does not slow the tick: the run reaches
 /// `stopped(duration)`, a lossless subscription sees the reference per-tick hashes, and the
-/// connection ends after `send_timeout` of paused time. WI-16 changes `run_connection` to return the
-/// connection's `ConnectionStats` and a close reason; the queue-bound, drop-count and `too_slow`
-/// assertions are added then (ASM-186).
+/// connection ends `too_slow` after `send_timeout` of paused time, with its queue within
+/// `queue_frames` and its drops counted (`run_connection` returns the counters and the close
+/// reason, ASM-186, ASM-214).
 #[tokio::test(start_paused = true)]
-#[ignore = "WI-16"]
 async fn stalled_sink_never_slows_the_tick() {
     let reference = reference_hashes();
     let h = Harness::start("slow-stalled");
@@ -186,14 +204,16 @@ async fn stalled_sink_never_slows_the_tick() {
     lossless_options.with_state_hash = true;
     let lossless = h.handle.subscribe(lossless_options);
 
+    let settings = stream_settings(timeout);
+    let queue_frames = settings.queue_frames;
     let params = ConnectionParams::new(
         h.handle.clone(),
-        stream_settings(timeout),
+        settings,
         h.shutdown.clone(),
         Encoding::Json,
     );
     let connection = tokio::spawn(run_connection(
-        StalledSink,
+        StalledSink::default(),
         client_stream(&json!({"type": "subscribe"})),
         params,
     ));
@@ -230,7 +250,7 @@ async fn stalled_sink_never_slows_the_tick() {
 
     // After `send_timeout` of paused time the stalled connection gives up.
     let started = tokio::time::Instant::now();
-    tokio::time::timeout(Duration::from_secs(120), connection)
+    let (counters, reason) = tokio::time::timeout(Duration::from_secs(120), connection)
         .await
         .expect("the stalled connection closes (virtual time)")
         .expect("connection task");
@@ -238,10 +258,23 @@ async fn stalled_sink_never_slows_the_tick() {
         started.elapsed() >= timeout,
         "closed no earlier than send_timeout"
     );
+    assert_eq!(reason, CloseReason::TooSlow);
+    assert!(
+        counters.max_queue_len > 0,
+        "frames were queued: {counters:?}"
+    );
+    assert!(
+        counters.max_queue_len <= queue_frames,
+        "the queue never exceeded queue_frames ({queue_frames}): {counters:?}"
+    );
+    assert!(
+        counters.bus_dropped + counters.skipped > 0,
+        "7200 ticks into a stalled connection drop frames: {counters:?}"
+    );
+    assert_eq!(counters.sent, 0, "nothing was ever sent: {counters:?}");
 }
 
 #[tokio::test(start_paused = true)]
-#[ignore = "WI-16"]
 async fn writer_never_cancels_a_send_in_progress() {
     let h = Harness::start("slow-no-cancel");
     h.load_body(&json!({"path": "walking_skeleton/scenario.toml", "clock": {"mode": "stepped"}}))
@@ -319,8 +352,32 @@ async fn writer_never_cancels_a_send_in_progress() {
     connection.abort();
 }
 
+/// A send that times out makes one try to hand over the 1008 close frame without waiting: a sink
+/// that takes a message at once (here: not flushing it) receives it, so a merely slow client can
+/// see why it was dropped (ASM-214).
+#[tokio::test(start_paused = true)]
+async fn a_timed_out_send_tries_the_too_slow_close_once() {
+    let h = Harness::start("slow-close-try");
+    let gate = Arc::new(Mutex::new(GateState::default()));
+    let params = ConnectionParams::new(
+        h.handle.clone(),
+        stream_settings(Duration::from_secs(10)),
+        h.shutdown.clone(),
+        Encoding::Json,
+    );
+    let (_stats, reason) = run_connection(
+        GatedSink(Arc::clone(&gate)),
+        client_stream(&json!({"type": "subscribe"})),
+        params,
+    )
+    .await;
+    assert_eq!(reason, CloseReason::TooSlow);
+    let state = gate.lock().expect("lock");
+    assert_eq!(state.started, 2, "hello, then the close frame");
+    assert_eq!(state.close_code, Some(1008));
+}
+
 #[tokio::test]
-#[ignore = "WI-16"]
 async fn snapshot_builds_follow_the_stride() {
     let h = Harness::start("slow-stride");
     let mut options = SubscribeOptions::new();
@@ -389,7 +446,6 @@ fn write_big_scenario(root: &std::path::Path) {
 }
 
 #[tokio::test]
-#[ignore = "WI-16"]
 async fn real_socket_smoke_with_2000_entities() {
     let h = Harness::start("slow-real-socket");
     write_big_scenario(&h.root);
@@ -435,7 +491,6 @@ async fn real_socket_smoke_with_2000_entities() {
 }
 
 #[tokio::test]
-#[ignore = "WI-16"]
 async fn many_clients_mixed_speeds() {
     let h = Harness::start("slow-many");
     h.load_skeleton("afap").await;

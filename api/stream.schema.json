@@ -773,7 +773,7 @@
           "type": "integer"
         },
         "send_timeout_s": {
-          "description": "A send that takes longer closes the connection (1008 `too_slow`).",
+          "description": "A send that takes longer ends the connection: close code 1008 `too_slow` when the close frame\ncan still be delivered, otherwise the connection is dropped.",
           "format": "double",
           "type": "number"
         }
