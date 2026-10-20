@@ -232,6 +232,13 @@ impl Session {
         &self.registry
     }
 
+    /// The registry plus the scenario's file graphs: what API spawns build from, and what the
+    /// component and catalog queries describe.
+    #[must_use]
+    pub fn graph_registry(&self) -> &Registry {
+        &self.build_registry
+    }
+
     /// The plugin host of this session.
     #[must_use]
     pub fn plugins(&self) -> &PluginHost {

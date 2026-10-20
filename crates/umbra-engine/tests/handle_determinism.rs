@@ -19,6 +19,8 @@
 
 mod common;
 mod handle_support;
+
+use handle_support::guarded_step;
 mod plugin_support;
 
 use core::time::Duration;
@@ -161,7 +163,7 @@ fn stepped_hashes(
     (0..ticks)
         .map(|tick| {
             before_tick(handle, tick);
-            handle.step(1).expect("step").state_hash
+            guarded_step(handle, 1).expect("step").state_hash
         })
         .collect()
 }
@@ -232,7 +234,6 @@ fn final_hashes_are_the_goldens() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn slow_absent_and_strided_subscribers_change_no_hash() {
     const TICKS: u64 = 120;
     let want = reference("walking_skeleton", None, Some(TICKS));
@@ -259,7 +260,6 @@ fn slow_absent_and_strided_subscribers_change_no_hash() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn priming_changes_no_hash() {
     const TICKS: u64 = 60;
     let want = reference("walking_skeleton", None, Some(TICKS)).hashes;
@@ -284,7 +284,6 @@ fn priming_changes_no_hash() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn same_command_script_at_same_ticks_gives_same_hashes() {
     const TICKS: u64 = 30;
     let script = |tick: u64, handle: &EngineHandle| match tick {

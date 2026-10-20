@@ -45,7 +45,6 @@ fn shutdown_while_command_queue_full() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn shutdown_cancels_pending_step_with_closed() {
     let (handle, thread) = engine();
     load_stepped(&handle, long_skeleton());

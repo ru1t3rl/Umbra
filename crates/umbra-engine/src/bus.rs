@@ -113,7 +113,7 @@ pub struct Frame {
     pub snapshot: Option<Snapshot>,
     /// Name, template and group of every entity, shared between frames while unchanged.
     pub directory: Arc<BTreeMap<EntityId, EntityInfo>>,
-    /// The events since the previous frame of this cause (a tick's events for a tick frame).
+    /// The events of the tick(s) since the previous built frame (none for a pure command frame).
     pub events: Vec<SimEvent>,
     /// The state hash, computed only when a due subscription asked for it.
     pub state_hash: Option<StateHash>,

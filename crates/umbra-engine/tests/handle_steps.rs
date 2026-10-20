@@ -11,6 +11,8 @@
 
 mod common;
 mod handle_support;
+
+use handle_support::guarded_step;
 mod plugin_support;
 
 use core::time::Duration;
@@ -48,7 +50,6 @@ fn pending_step() -> (
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn step_reply_after_n_ticks_completed_true() {
     let (handle, _thread) = engine();
     load_stepped(&handle, long_skeleton());
@@ -57,7 +58,7 @@ fn step_reply_after_n_ticks_completed_true() {
     let mut trace = common::Trace::default();
     run_traced(&mut reference, RunUntil::Ticks(5), &mut trace);
 
-    let outcome = handle.step(5).expect("step");
+    let outcome = guarded_step(&handle, 5).expect("step");
 
     assert_eq!(outcome.requested, 5);
     assert!(outcome.completed);
@@ -70,7 +71,6 @@ fn step_reply_after_n_ticks_completed_true() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn second_step_while_pending_is_step_in_progress() {
     let (handle, _thread, first) = pending_step();
 
@@ -96,7 +96,6 @@ fn second_step_while_pending_is_step_in_progress() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn step_ended_by_duration_is_completed_false() {
     let (handle, _thread) = engine();
     let info = handle
@@ -104,7 +103,7 @@ fn step_ended_by_duration_is_completed_false() {
         .expect("load");
     handle.start().expect("start");
 
-    let outcome = handle.step(info.duration_ticks + 1000).expect("step");
+    let outcome = guarded_step(&handle, info.duration_ticks + 1000).expect("step");
 
     assert!(!outcome.completed);
     assert_eq!(outcome.requested, info.duration_ticks + 1000);
@@ -114,7 +113,6 @@ fn step_ended_by_duration_is_completed_false() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn step_ended_by_stop_is_completed_false() {
     let (handle, _thread, step) = pending_step();
 
@@ -129,7 +127,6 @@ fn step_ended_by_stop_is_completed_false() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn pause_unload_clock_change_and_fault_cancel_the_step() {
     type Action = fn(&EngineHandle);
     let actions: [(&str, Action); 3] = [
@@ -169,7 +166,7 @@ fn pause_unload_clock_change_and_fault_cancel_the_step() {
         .expect("load");
     handle.start().expect("start");
 
-    let faulted = handle.step(1000);
+    let faulted = guarded_step(&handle, 1000);
 
     assert!(
         matches!(faulted, Err(HandleError::StepCancelled { .. })),
@@ -181,7 +178,6 @@ fn pause_unload_clock_change_and_fault_cancel_the_step() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn frame_published_at_step_completion_even_with_stride() {
     let (handle, _thread) = engine();
     load_stepped(&handle, long_skeleton());
@@ -192,7 +188,7 @@ fn frame_published_at_step_completion_even_with_stride() {
     handle.start().expect("start");
     drop(sub.wait(GUARD));
 
-    handle.step(7).expect("step");
+    guarded_step(&handle, 7).expect("step");
 
     let frames = sub.drain().frames;
     let last = frames.last().expect("a frame at the step's end");
@@ -205,7 +201,6 @@ fn frame_published_at_step_completion_even_with_stride() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn step_100_across_a_fire_delivers_the_event_to_a_capacity_4_subscriber() {
     const TICKS: u64 = 100;
     // The reference: the Fire events of the first 100 ticks.
@@ -241,7 +236,7 @@ fn step_100_across_a_fire_delivers_the_event_to_a_capacity_4_subscriber() {
     load_stepped(&handle, examples().join("patrol_and_engage/scenario.toml"));
     let sub = handle.subscribe(SubscribeOptions::new());
     handle.start().expect("start");
-    handle.step(TICKS).expect("step");
+    guarded_step(&handle, TICKS).expect("step");
 
     let drained = sub.drain();
     let got: Vec<SimEvent> = drained

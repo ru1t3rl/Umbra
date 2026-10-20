@@ -5,6 +5,8 @@
 #![forbid(unsafe_code)]
 
 mod handle_support;
+
+use handle_support::guarded_step;
 mod plugin_support;
 
 use handle_support::{
@@ -18,7 +20,6 @@ fn ids(items: &[umbra_engine::handle::EntityState]) -> Vec<u64> {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn entities_keyset_paging_with_after_id() {
     let (handle, _thread) = engine();
     load_stepped(&handle, walking_skeleton());
@@ -50,13 +51,12 @@ fn entities_keyset_paging_with_after_id() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn pages_report_their_tick() {
     let (handle, _thread) = engine();
     load_stepped(&handle, walking_skeleton());
     let at_start = handle.entities(EntityQuery::default()).expect("page").tick;
     handle.start().expect("start");
-    handle.step(4).expect("step");
+    guarded_step(&handle, 4).expect("step");
 
     let later = handle.entities(EntityQuery::default()).expect("page").tick;
     let detail = handle
@@ -68,7 +68,6 @@ fn pages_report_their_tick() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn entities_filter_by_name() {
     // extra: a filter narrows both the items and the total.
     let (handle, _thread) = engine();
@@ -83,7 +82,6 @@ fn entities_filter_by_name() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn validate_graph_runs_in_build_scope() {
     // REQ-X-11, M6: a posted graph that calls a plugin behavior is valid only inside the session's
     // plugin build scope (the real `example-wander` library).

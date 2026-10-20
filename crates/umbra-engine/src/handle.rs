@@ -3,13 +3,18 @@
 //!
 //! The data types, [`Reply`], [`HandleConfig`], [`Command`] and the error enums are in this file.
 //! The thread and its loop are in `thread`, the command arms in `commands`, the status and frame
-//! builders in `status`, priming in `prime` and the shutdown protocol in `shutdown`. The step,
-//! entity-query and catalog bodies are `todo!` until WI-9.
+//! builders in `status`, priming in `prime`, steps in `steps`, spawn and remove in `spawns`, the
+//! read-only queries in `queries`, display-form paths in `shown` and the shutdown protocol in
+//! `shutdown`.
 
 mod commands;
 mod prime;
+mod queries;
+mod shown;
 mod shutdown;
+mod spawns;
 mod status;
+mod steps;
 mod thread;
 
 use std::fmt;
@@ -252,6 +257,24 @@ pub struct GeoBox {
     pub max_lat_deg: f64,
     /// Eastern edge.
     pub max_lon_deg: f64,
+}
+
+impl GeoBox {
+    /// Whether the point is inside the box, edges included. A box with `min_lon_deg >
+    /// max_lon_deg` crosses the antimeridian and holds the longitudes at or east of the minimum
+    /// and at or west of the maximum. Longitudes are reported in `(-180, 180]`, so an entity at
+    /// exactly 180 is not in a box whose edge is written `-180`; write that edge as `180`. The one bbox test of the engine (the stream filter calls it
+    /// too).
+    #[must_use]
+    pub fn contains(&self, lat_deg: f64, lon_deg: f64) -> bool {
+        let in_lat = (self.min_lat_deg..=self.max_lat_deg).contains(&lat_deg);
+        let in_lon = if self.min_lon_deg <= self.max_lon_deg {
+            (self.min_lon_deg..=self.max_lon_deg).contains(&lon_deg)
+        } else {
+            lon_deg >= self.min_lon_deg || lon_deg <= self.max_lon_deg
+        };
+        in_lat && in_lon
+    }
 }
 
 /// Which side owns the entities to list.
@@ -642,9 +665,8 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
-    #[expect(clippy::todo, unused_variables, reason = "WI-9 body")]
     pub fn step(&self, count: u64) -> Result<StepOutcome, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::Step { count, reply })
     }
 
     /// Blocking form of [`Command::SetClock`].
@@ -659,23 +681,16 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
-    #[expect(
-        clippy::todo,
-        clippy::needless_pass_by_value,
-        unused_variables,
-        reason = "WI-9 body"
-    )]
     pub fn spawn_entity(&self, spec: TemplateSpawn) -> Result<EntityState, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::Spawn { spec, reply })
     }
 
     /// Blocking form of [`Command::Remove`].
     ///
     /// # Errors
     /// As the command.
-    #[expect(clippy::todo, unused_variables, reason = "WI-9 body")]
     pub fn remove_entity(&self, id: EntityId) -> Result<Applied, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::Remove { id, reply })
     }
 
     /// Blocking form of [`Command::Status`].
@@ -690,86 +705,73 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
-    #[expect(
-        clippy::todo,
-        clippy::needless_pass_by_value,
-        unused_variables,
-        reason = "WI-9 body"
-    )]
     pub fn entities(&self, query: EntityQuery) -> Result<EntityPage, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::Entities { query, reply })
     }
 
     /// Blocking form of [`Command::Entity`].
     ///
     /// # Errors
     /// As the command.
-    #[expect(clippy::todo, unused_variables, reason = "WI-9 body")]
     pub fn entity(&self, id: EntityId) -> Result<EntityState, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::Entity { id, reply })
     }
 
     /// Blocking form of [`Command::Templates`].
     ///
     /// # Errors
     /// As the command.
-    #[expect(clippy::todo, reason = "WI-9 body")]
     pub fn templates(&self) -> Result<Vec<ResolvedTemplate>, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::Templates { reply })
     }
 
     /// Blocking form of [`Command::Components`].
     ///
     /// # Errors
     /// As the command.
-    #[expect(clippy::todo, unused_variables, reason = "WI-9 body")]
     pub fn components(
         &self,
         kind: Option<ComponentKind>,
     ) -> Result<Vec<ComponentEntry>, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::Components { kind, reply })
     }
 
     /// Blocking form of [`Command::Catalog`].
     ///
     /// # Errors
     /// As the command.
-    #[expect(clippy::todo, reason = "WI-9 body")]
     pub fn catalog(&self) -> Result<Catalog, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::Catalog { reply })
     }
 
     /// Blocking form of [`Command::Plugins`].
     ///
     /// # Errors
     /// As the command.
-    #[expect(clippy::todo, reason = "WI-9 body")]
     pub fn plugins(&self) -> Result<PluginReport, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::Plugins { reply })
     }
 
     /// Blocking form of [`Command::ValidateGraph`].
     ///
     /// # Errors
     /// As the command.
-    #[expect(
-        clippy::todo,
-        clippy::needless_pass_by_value,
-        unused_variables,
-        reason = "WI-9 body"
-    )]
     pub fn validate_graph(
         &self,
         name: String,
         document: String,
     ) -> Result<GraphValidation, HandleError> {
-        todo!("WI-9")
+        self.call(|reply| Command::ValidateGraph {
+            name,
+            document,
+            reply,
+        })
     }
 }
 
 impl EngineThread {
     /// Sets the shutdown flag, wakes the thread without blocking on the queue, and joins it. A step
-    /// in progress is answered [`HandleError::Closed`] (from WI-9).
+    /// in progress is answered [`HandleError::Closed`].
     ///
     /// # Errors
     /// [`HandleError::Closed`] if the thread had already ended by a panic.

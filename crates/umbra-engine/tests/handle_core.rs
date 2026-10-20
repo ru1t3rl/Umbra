@@ -1,9 +1,8 @@
-//! AT-4 (engine handle core, M5 WI-8, with rows that need WI-9 marked so): thread, state machine,
+//! AT-4 (engine handle core, M5 WI-8 and WI-9): thread, state machine,
 //! command order, priming, publish-then-reply, load and unload, queue and panic policy.
 //! Requirements: REQ-X-1, REQ-K-3, ADR 0024, ADR 0026 (command x state matrix), ASM-098.
 //!
-//! Tests that need a stub body are ignored with the work item that implements it; where a test
-//! needs both, the later one is named. Engines run on a manual wall clock unless the test says
+//! Engines run on a manual wall clock unless the test says
 //! otherwise; a run that must hold its state uses the frozen wall clock of `handle_support`.
 //! Steps, queries and shutdown are in `handle_steps.rs`, `handle_queries.rs`, `handle_stack.rs` and
 //! `handle_shutdown.rs`.
@@ -13,6 +12,8 @@
 #![expect(clippy::panic, reason = "tests fail by panicking")]
 
 mod handle_support;
+
+use handle_support::guarded_step;
 mod plugin_support;
 
 use std::path::{Path, PathBuf};
@@ -224,10 +225,9 @@ fn command_state_matrix() {
 /// ADR 0026, m3: the rows that need entities, steps and queries (WI-9), including `step` on a
 /// stepped clock and the read-only queries that work in every state.
 #[test]
-#[ignore = "WI-9"]
 fn command_state_matrix_entity_commands() {
     let one = EntityId::new(1).expect("non-zero");
-    let stepped = |h: &EngineHandle| out(h.step(1));
+    let stepped = |h: &EngineHandle| out(guarded_step(h, 1));
     let spawn = |h: &EngineHandle| out(h.spawn_entity(spawn_spec("matrix")));
 
     let got = run_matrix(&[
@@ -262,7 +262,6 @@ fn command_state_matrix_entity_commands() {
 
 /// ADR 0026, m3: `step` in `running` on a clock that is not stepped is `not_stepped`.
 #[test]
-#[ignore = "WI-9"]
 fn step_on_a_clock_that_is_not_stepped_is_not_stepped() {
     // extra: the second `step` cell of the table.
     let (handle, _thread) = start_engine(frozen_config());
@@ -272,7 +271,7 @@ fn step_on_a_clock_that_is_not_stepped_is_not_stepped() {
     handle.start().expect("start");
     assert_eq!(state_of(&handle), Running);
 
-    let outcome = out(handle.step(1));
+    let outcome = out(guarded_step(&handle, 1));
 
     assert_eq!(outcome, Out::NotStepped);
     assert_eq!(state_of(&handle), Running);
@@ -295,12 +294,11 @@ fn repeated_commands_are_not_idempotent() {
 // ---- order ----
 
 #[test]
-#[ignore = "WI-9"]
 fn commands_apply_between_ticks_in_arrival_order() {
     let (handle, _thread) = engine();
     load_stepped(&handle, short_skeleton());
     handle.start().expect("start");
-    handle.step(5).expect("step");
+    guarded_step(&handle, 5).expect("step");
     let first = handle.spawn_entity(spawn_spec("a")).expect("spawn a");
 
     // Submitted without waiting, so they sit in the queue together: the name `a` is free for the
@@ -347,7 +345,6 @@ fn commands_apply_between_ticks_in_arrival_order() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn commands_from_two_clients_apply_in_arrival_order() {
     let (handle, _thread) = engine();
     load_stepped(&handle, short_skeleton());
@@ -454,12 +451,11 @@ fn publish_then_reply_frame_is_in_every_subscription_when_reply_arrives() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn subscribe_while_paused_gets_a_current_frame() {
     let (handle, _thread) = engine();
     load_stepped(&handle, short_skeleton());
     handle.start().expect("start");
-    handle.step(3).expect("step");
+    guarded_step(&handle, 3).expect("step");
     handle.pause().expect("pause");
 
     let sub = handle.subscribe(SubscribeOptions::new());
@@ -923,7 +919,6 @@ fn engine_thread_panic_makes_every_command_closed() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn queries_work_when_stopped() {
     let (handle, _thread) = engine();
     load_stepped(&handle, short_skeleton());
@@ -989,7 +984,6 @@ fn assert_tick_spans(spans: &[trace::SpanSeen], at_least: usize) {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn tick_trace_span_carries_phase_wall() {
     // m16, ASM-177, ASM-187: a TRACE-level span named `tick` per tick with the fields above.
     let capture_log = trace::install();
@@ -998,7 +992,7 @@ fn tick_trace_span_carries_phase_wall() {
     load_stepped(&handle, short_skeleton());
     handle.start().expect("start");
 
-    handle.step(5).expect("step");
+    guarded_step(&handle, 5).expect("step");
 
     assert_tick_spans(&capture_log.spans().split_off(before), 5);
 }

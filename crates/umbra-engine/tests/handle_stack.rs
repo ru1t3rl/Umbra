@@ -6,6 +6,8 @@
 #![expect(clippy::panic, reason = "tests fail by panicking")]
 
 mod handle_support;
+
+use handle_support::guarded_step;
 mod plugin_support;
 
 use std::path::{Path, PathBuf};
@@ -62,7 +64,6 @@ fn scenario_with_chain(n: usize) -> PathBuf {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn deepest_allowed_graph_runs_on_a_4_mib_engine_thread() {
     let mut smallest = config();
     smallest.stack_size = MIN_STACK_SIZE;
@@ -70,7 +71,7 @@ fn deepest_allowed_graph_runs_on_a_4_mib_engine_thread() {
     load_stepped(&handle, scenario_with_chain(14));
     handle.start().expect("start");
 
-    let outcome = handle.step(5).expect("the deepest allowed graph ticks");
+    let outcome = guarded_step(&handle, 5).expect("the deepest allowed graph ticks");
 
     assert!(outcome.completed);
     assert_eq!(outcome.reached.tick(), 5);

@@ -2,7 +2,7 @@
 //! make the publisher wait, event carry-over, strides, priming and the lock rules. Requirements:
 //! REQ-K-6, REQ-X-7, ADR 0024 (design-review amendments M1, M2, M11, m1).
 //!
-//! `no_frame_built_without_subscribers` is `#[ignore = "WI-9"]` (it goes through the engine handle and `step`). Events are tagged with a unique
+//! `no_frame_built_without_subscribers` goes through the engine handle and `step` (WI-9). Events are tagged with a unique
 //! number carried in `ControlAction::Step(n)` so tests can follow them across drops.
 //!
 //! "Due" (ASM-174): a subscription with stride `s` is due a tick frame at tick `t` when `t % s == 0`;
@@ -493,14 +493,13 @@ fn no_frame_built_without_subscribers_wants_nothing() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn no_frame_built_without_subscribers() {
     // The handle half of the row: ticks and a step with nobody subscribed build no frame; the first
     // subscriber costs exactly its priming frame.
     let (handle, _thread) = start_engine(config());
     handle_support::load_stepped(&handle, short_skeleton());
     handle.start().expect("start");
-    handle.step(5).expect("step");
+    handle_support::guarded_step(&handle, 5).expect("step");
     assert_eq!(handle.snapshot_builds(), 0);
 
     let sub = handle.subscribe(SubscribeOptions::new());

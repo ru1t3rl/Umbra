@@ -271,6 +271,16 @@ pub fn finishes<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) ->
         .unwrap_or_else(|e| panic!("did not finish: {e}"))
 }
 
+/// `handle.step(count)` that fails the test, instead of hanging it, when no answer comes within
+/// [`GUARD`].
+pub fn guarded_step(
+    handle: &EngineHandle,
+    count: u64,
+) -> Result<umbra_engine::handle::StepOutcome, HandleError> {
+    let handle = handle.clone();
+    finishes(move || handle.step(count))
+}
+
 /// Drops `value` here. Used where the type has no destructor yet (a stub), so that
 /// `drop(value)` would be flagged; the call still reads as "this ends now".
 #[expect(

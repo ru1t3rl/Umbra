@@ -12,7 +12,11 @@ use crate::bus::{RunState, StopReason};
 use crate::session::{Session, SessionOptions};
 
 /// A state of the matrix in which `command` is refused with `invalid_state`.
-fn need(run: &Run, allowed: &[RunState], command: &'static str) -> Result<(), HandleError> {
+pub(super) fn need(
+    run: &Run,
+    allowed: &[RunState],
+    command: &'static str,
+) -> Result<(), HandleError> {
     if allowed.contains(&run.state) {
         Ok(())
     } else {
@@ -24,7 +28,7 @@ fn need(run: &Run, allowed: &[RunState], command: &'static str) -> Result<(), Ha
 }
 
 impl Worker {
-    /// Applies one command. The WI-9 commands are not implemented yet.
+    /// Applies one command.
     pub(super) fn apply(&mut self, command: Command) {
         match command {
             Command::Load {
@@ -59,7 +63,20 @@ impl Worker {
             }
             Command::Status { reply } => reply.complete(Ok(self.engine_status())),
             Command::Prime | Command::Shutdown => {}
-            other => not_yet(other),
+            Command::Step { count, reply } => self.begin_step(count, reply),
+            Command::Spawn { spec, reply } => self.spawn_entity(spec, reply),
+            Command::Remove { id, reply } => self.remove_entity(id, reply),
+            Command::Entities { query, reply } => reply.complete(self.entities(&query)),
+            Command::Entity { id, reply } => reply.complete(self.entity(id)),
+            Command::Templates { reply } => reply.complete(self.templates()),
+            Command::Components { kind, reply } => reply.complete(Ok(self.components(kind))),
+            Command::Catalog { reply } => reply.complete(Ok(self.catalog())),
+            Command::Plugins { reply } => reply.complete(Ok(self.plugins())),
+            Command::ValidateGraph {
+                name,
+                document,
+                reply,
+            } => reply.complete(self.validate_graph(&name, &document)),
         }
     }
 
@@ -80,7 +97,7 @@ impl Worker {
         }
     }
 
-    fn run_mut(&mut self) -> Result<&mut Run, HandleError> {
+    pub(super) fn run_mut(&mut self) -> Result<&mut Run, HandleError> {
         self.run.as_mut().ok_or(HandleError::NoSession)
     }
 
@@ -159,7 +176,7 @@ impl Worker {
         let loaded = Session::load(&self.settings.base, path, options);
         let result = match loaded {
             Ok(session) => Ok(self.install(session, path, seed)),
-            Err(error) => Err(HandleError::Session(error)),
+            Err(error) => Err(HandleError::Session(self.shown_session_error(error))),
         };
         self.publish_control(Vec::new());
         reply.complete(result);
@@ -189,14 +206,8 @@ impl Worker {
             state: RunState::Ready,
             stop_reason: None,
             step: None,
+            held: Vec::new(),
         });
         info
     }
-}
-
-/// The commands WI-9 implements (steps, spawns, queries): their arms are filled in there.
-#[expect(clippy::todo, reason = "WI-9 command arms")]
-fn not_yet(command: Command) {
-    drop(command);
-    todo!("WI-9")
 }

@@ -45,6 +45,8 @@ pub(super) struct PendingStep {
 /// How a pending step ends when its run does something else first (ADR 0026 "Step results").
 #[derive(Clone, Copy)]
 pub(super) enum StepEnd {
+    /// `completed: true`: a tick reached the target.
+    Complete,
     /// `completed: false`: a `stop` or the duration ended the run.
     Incomplete,
     /// `StepCancelled`: pause, clock change, fault, error or unload.
@@ -68,15 +70,22 @@ pub(super) struct Run {
     pub(super) state: RunState,
     pub(super) stop_reason: Option<StopReason>,
     pub(super) step: Option<PendingStep>,
+    /// Events of ticks that built no frame, in order, for the next frame that is built (at most
+    /// [`HELD_EVENTS_CAP`]; later ones are dropped).
+    pub(super) held: Vec<SimEvent>,
 }
 
+/// The most events kept for a frame that is not built yet.
+const HELD_EVENTS_CAP: usize = 65_536;
+
 impl Run {
-    /// Takes the pending step, unanswered, with the time reached now.
+    /// Takes the pending step, unanswered, with the time reached now. The ticks it still had
+    /// queued in the clock are dropped, so a later `resume` does not run them.
     pub(super) fn take_step(&mut self, end: StepEnd) -> Option<EndingStep> {
+        let step = self.step.take()?;
+        self.session.engine_mut().cancel_steps();
         let reached = self.session.engine().now();
-        self.step
-            .take()
-            .map(|step| EndingStep { step, end, reached })
+        Some(EndingStep { step, end, reached })
     }
 }
 
@@ -233,8 +242,15 @@ impl Worker {
             .and_then(|r| r.step.as_ref())
             .is_some_and(|s| tick >= s.target_tick);
         self.publish_tick(report, step_done || stop_now);
+        if step_done {
+            // Answered before the stop: a step that finishes on the duration tick completed.
+            let done = self
+                .run
+                .as_mut()
+                .and_then(|r| r.take_step(StepEnd::Complete));
+            self.finish_step(done);
+        }
         if stop_now {
-            // WI-9: a step that finishes on this very tick is answered `completed: true` first.
             let ending = self.stop_with(StopReason::Duration, StepEnd::Incomplete);
             self.publish_control_then(Vec::new(), ending);
         }
@@ -253,8 +269,9 @@ impl Worker {
         self.publish_control_then(Vec::new(), ending);
     }
 
-    /// Builds and publishes the frame of a tick. Built only if a subscription is due one, or if
-    /// `forced` (a step completes, or the run ends) and anyone subscribes.
+    /// Builds and publishes the frame of a tick. Built only if a subscription is due one (cause
+    /// `Tick`), or if `forced` (a step completes, or the run ends) and anyone subscribes (cause
+    /// `Control` when no subscription was due).
     fn publish_tick(&mut self, report: TickReport, forced: bool) {
         let tick = report.time.tick();
         let (due, hash_due) = self.bus.due(tick);
@@ -265,8 +282,23 @@ impl Worker {
             (due, hash_due)
         };
         if build {
-            let frame = self.frame(FrameCause::Tick, report.events, hash);
+            // A frame built only because the step or the run ends here is a control frame (the
+            // bus doc: a step completion, a pause, a stop); one that was due is a tick frame.
+            let cause = if due {
+                FrameCause::Tick
+            } else {
+                FrameCause::Control
+            };
+            let held = self.run.as_mut().map(|r| std::mem::take(&mut r.held));
+            let mut events = held.unwrap_or_default();
+            events.extend(report.events);
+            let frame = self.frame(cause, events, hash);
             self.bus.publish(frame, None);
+        } else if let Some(run) = self.run.as_mut().filter(|_| self.bus.interest().0) {
+            // Nobody is due a frame, but somebody is waiting for the events of this tick: they
+            // join the next frame that is built.
+            let room = HELD_EVENTS_CAP.saturating_sub(run.held.len());
+            run.held.extend(report.events.into_iter().take(room));
         }
     }
 
@@ -291,16 +323,16 @@ impl Worker {
         self.finish_step(ending);
     }
 
-    /// Answers a taken step: `StepCancelled`, or `completed: false` with the state now.
+    /// Answers a taken step: `completed` true or false with the state now, or `StepCancelled`.
     pub(super) fn finish_step(&mut self, ending: Option<EndingStep>) {
         let Some(EndingStep { step, end, reached }) = ending else {
             return;
         };
         match (end, self.run.as_ref()) {
-            (StepEnd::Incomplete, Some(run)) => {
+            (StepEnd::Complete | StepEnd::Incomplete, Some(run)) => {
                 let outcome = StepOutcome {
                     requested: step.requested,
-                    completed: false,
+                    completed: matches!(end, StepEnd::Complete),
                     applied_at: step.applied_at,
                     reached,
                     state_hash: run.session.engine().state_hash(),
