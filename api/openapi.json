@@ -1005,33 +1005,33 @@
       "ProblemCode": {
         "description": "A stable problem code. The list is closed per minor version; new codes are a minor bump.",
         "enum": [
-          "BadRequest",
-          "InvalidBody",
-          "UnsupportedEncoding",
-          "PathNotAllowed",
-          "HostNotAllowed",
-          "OriginNotAllowed",
-          "NotFound",
-          "EntityNotFound",
-          "TemplateNotFound",
-          "MethodNotAllowed",
-          "NoScenario",
-          "InvalidState",
-          "NotStepped",
-          "StepInProgress",
-          "StepCancelled",
-          "DuplicateName",
-          "PayloadTooLarge",
-          "UnsupportedMediaType",
-          "ValidationFailed",
-          "InvalidId",
-          "InvalidSpawn",
-          "ScenarioInvalid",
-          "ScenarioLoadFailed",
-          "Internal",
-          "EngineBusy",
-          "EngineUnavailable",
-          "TooManyConnections"
+          "bad_request",
+          "invalid_body",
+          "unsupported_encoding",
+          "path_not_allowed",
+          "host_not_allowed",
+          "origin_not_allowed",
+          "not_found",
+          "entity_not_found",
+          "template_not_found",
+          "method_not_allowed",
+          "no_scenario",
+          "invalid_state",
+          "not_stepped",
+          "step_in_progress",
+          "step_cancelled",
+          "duplicate_name",
+          "payload_too_large",
+          "unsupported_media_type",
+          "validation_failed",
+          "invalid_id",
+          "invalid_spawn",
+          "scenario_invalid",
+          "scenario_load_failed",
+          "internal",
+          "engine_busy",
+          "engine_unavailable",
+          "too_many_connections"
         ],
         "type": "string"
       },
@@ -1766,6 +1766,178 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/behaviors/validate": {
+      "post": {
+        "operationId": "validateBehavior",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateGraphRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationResult"
+                }
+              }
+            },
+            "description": "The diagnostics of the document"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "invalid_body"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`host_not_allowed`."
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`method_not_allowed`."
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "payload_too_large"
+          },
+          "415": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "unsupported_media_type"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "validation_failed (also: `name` is absolute or contains `..`)"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`internal`."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`engine_busy`, `engine_unavailable`."
+          }
+        },
+        "summary": "Validates a behavior graph document without changing any state. A `name` that is absolute or\ncontains `..` is refused with `422 validation_failed`. Inside a loaded scenario the\ndocument sees the session's plugins and graphs; otherwise only the engine's own. The\ndiagnostics are the result: an invalid document answers 200 with `valid: false`.",
+        "tags": [
+          "behaviors"
+        ]
+      }
+    },
+    "/api/v1/catalog/behavior": {
+      "get": {
+        "operationId": "getBehaviorCatalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BehaviorCatalog"
+                }
+              }
+            },
+            "description": "The behavior catalog"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`host_not_allowed`."
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`method_not_allowed`."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`internal`."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`engine_busy`, `engine_unavailable`."
+          }
+        },
+        "summary": "The behavior catalog: node types, conditions, actions and behavior graphs, each with its schema,\nversion and provenance. With a scenario it includes the session's plugins and graphs; without\none, the engine's own entries.",
+        "tags": [
+          "behaviors"
+        ]
+      }
+    },
     "/api/v1/components": {
       "get": {
         "operationId": "listComponents",
@@ -2400,7 +2572,11 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {}
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
             },
             "description": "This document"
           },
@@ -2448,6 +2624,67 @@
         "summary": "`GET /api/v1/openapi.json`.",
         "tags": [
           "status"
+        ]
+      }
+    },
+    "/api/v1/plugins": {
+      "get": {
+        "operationId": "getPlugins",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginReport"
+                }
+              }
+            },
+            "description": "The loaded plugins"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`host_not_allowed`."
+          },
+          "405": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`method_not_allowed`."
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`internal`."
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`engine_busy`, `engine_unavailable`."
+          }
+        },
+        "summary": "The plugins of the loaded scenario with their capabilities, and the fault that stopped the run,\nif any. Empty without a scenario.",
+        "tags": [
+          "plugins"
         ]
       }
     },

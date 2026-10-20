@@ -1,8 +1,5 @@
 //! AT-19 (server rows, WI-11): path confinement as the API shows it. Requirements: REQ-X-8, NFR-4,
 //! ADR 0026 (amended, D-b). The engine side is in `umbra-engine/tests/confine.rs`.
-//!
-//! `no_response_contains_an_absolute_path_outside_the_root` stays ignored until the routes its
-//! walkthrough touches exist (WI-13, WI-14); the others run.
 
 #![forbid(unsafe_code)]
 
@@ -100,7 +97,6 @@ async fn symlink_out_of_root_is_403_path_not_allowed() {
 }
 
 #[tokio::test]
-#[ignore = "WI-14"]
 async fn no_response_contains_an_absolute_path_outside_the_root() {
     let h = Harness::start("paths-no-leak");
     let replies = walkthrough(&h).await;

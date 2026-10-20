@@ -93,6 +93,9 @@ pub struct ComponentListParams {
     handlers::templates::list_templates,
     handlers::templates::get_template,
     handlers::components::list_components,
+    handlers::plugins::get_plugins,
+    handlers::catalog::get_behavior_catalog,
+    handlers::validate::validate_behavior,
     get_openapi,
 ))]
 struct Routes;
@@ -113,7 +116,7 @@ pub fn document() -> Document {
     path = "/api/v1/openapi.json",
     operation_id = "getOpenApi",
     tag = "status",
-    responses((status = 200, description = "This document", content_type = "application/json"), CommonProblems),
+    responses((status = 200, description = "This document", body = Object, content_type = "application/json"), CommonProblems),
 )]
 pub(crate) async fn get_openapi() -> Result<Json<serde_json::Value>, ApiError> {
     crate::contract::openapi_value()

@@ -10,6 +10,9 @@ macro_rules! problem_codes {
     ($($variant:ident => ($text:literal, $status:literal, $title:literal)),+ $(,)?) => {
         /// A stable problem code. The list is closed per minor version; new codes are a minor bump.
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
+        // `rename_all` is for the generated schema: `ToSchema` does not read the macro-built
+        // per-variant `rename`, and a test pins that every spelling agrees.
+        #[serde(rename_all = "snake_case")]
         pub enum ProblemCode {
             $(
                 #[doc = $title]
@@ -110,5 +113,30 @@ impl Problem {
     pub fn with_diagnostics(mut self, diagnostics: Vec<Diagnostic>) -> Self {
         self.diagnostics = Some(diagnostics);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use utoipa::OpenApi;
+
+    #[test]
+    fn serde_and_schema_spell_every_code_as_its_text() {
+        let document = serde_json::to_value(crate::ApiSchemas::openapi()).expect("document");
+        let listed: Vec<&str> = document["components"]["schemas"]["ProblemCode"]["enum"]
+            .as_array()
+            .expect("the schema lists the codes")
+            .iter()
+            .map(|v| v.as_str().expect("text"))
+            .collect();
+        let texts: Vec<&str> = ProblemCode::ALL.iter().map(|c| c.as_str()).collect();
+        assert_eq!(listed, texts, "the schema spells the codes as they travel");
+        for code in ProblemCode::ALL {
+            assert_eq!(
+                serde_json::to_value(code).expect("code"),
+                serde_json::Value::from(code.as_str())
+            );
+        }
     }
 }

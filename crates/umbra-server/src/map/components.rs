@@ -9,7 +9,7 @@ use crate::problem::ApiError;
 
 /// The wire kind for an engine kind; `None` for a kind added to the engine that the wire does not
 /// know yet (the enum is non-exhaustive).
-fn wire_kind(kind: ComponentKind) -> Option<api::ComponentKind> {
+pub(super) fn wire_kind(kind: ComponentKind) -> Option<api::ComponentKind> {
     Some(match kind {
         ComponentKind::MotionModel => api::ComponentKind::MotionModel,
         ComponentKind::Terrain => api::ComponentKind::Terrain,
@@ -19,6 +19,15 @@ fn wire_kind(kind: ComponentKind) -> Option<api::ComponentKind> {
         ComponentKind::Action => api::ComponentKind::Action,
         _ => return None,
     })
+}
+
+/// The wire provenance of an engine provenance.
+pub(super) fn wire_provenance(provenance: Provenance) -> api::Provenance {
+    match provenance {
+        Provenance::Builtin => api::Provenance::Builtin,
+        Provenance::File => api::Provenance::File,
+        Provenance::Plugin => api::Provenance::Plugin,
+    }
 }
 
 /// The `kind` filter of `GET /components`.
@@ -62,11 +71,7 @@ pub fn component_entry(entry: &ComponentEntry) -> Option<api::ComponentEntry> {
         id: entry.id.as_str().to_owned(),
         version: entry.version.to_string(),
         description: entry.description.clone(),
-        provenance: match entry.provenance {
-            Provenance::Builtin => api::Provenance::Builtin,
-            Provenance::File => api::Provenance::File,
-            Provenance::Plugin => api::Provenance::Plugin,
-        },
+        provenance: wire_provenance(entry.provenance),
         params_schema: entry.params_schema.as_json().clone(),
     })
 }

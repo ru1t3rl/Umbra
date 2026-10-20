@@ -100,6 +100,37 @@ fn validation_diagnostics_are_shown_without_the_root() {
 }
 
 #[test]
+fn a_document_name_that_is_an_absolute_path_does_not_unscrub_a_session_graph() {
+    // A client names the document after a session graph's on-disk path; the graph's own located
+    // diagnostic must still be shown in display form (D-b: no root-layout oracle).
+    let scenario = scenario_copy(
+        &examples().join("patrol_and_engage"),
+        "paths-validate-name",
+        |t| t,
+    );
+    let root = root_of(&scenario);
+    let (handle, _thread) = start_engine(confined(&root, &[]));
+    handle.load(scenario, None, None).expect("load");
+    let graph = root.join("behaviors/attack.behavior.toml");
+    std::fs::write(&graph, "garbage = \n").expect("break a graph");
+
+    for name in [
+        graph.display().to_string(),
+        "../behaviors/attack.behavior.toml".to_owned(),
+    ] {
+        let validation = handle
+            .validate_graph(name.clone(), String::new())
+            .expect("validate");
+        let text = format!("{:?}", validation.diagnostics);
+        assert!(
+            text.contains("attack.behavior.toml"),
+            "the broken graph is reported for name {name}: {text}"
+        );
+        assert_clean(&text, &root);
+    }
+}
+
+#[test]
 fn plugin_origins_are_shown_in_display_form() {
     let _lock = plugin_lock();
     let dir = plugin_support::scratch_copy(&plugin_support::wander_example_dir(), "paths-plugins");

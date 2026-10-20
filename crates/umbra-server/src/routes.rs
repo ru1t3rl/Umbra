@@ -14,7 +14,9 @@ use umbra_api_types::ProblemCode;
 use umbra_engine::handle::EngineHandle;
 
 use crate::config::ServerSettings;
-use crate::handlers::{components, entities, run, scenario, status, templates};
+use crate::handlers::{
+    catalog, components, entities, plugins, run, scenario, status, templates, validate,
+};
 use crate::layers::{host, mutating};
 use crate::openapi;
 use crate::problem::ApiError;
@@ -54,6 +56,16 @@ impl Server {
             .route("/api/v1/templates", get(templates::list_templates))
             .route("/api/v1/templates/{id}", get(templates::get_template))
             .route("/api/v1/components", get(components::list_components))
+            .route("/api/v1/plugins", get(plugins::get_plugins))
+            .route(
+                "/api/v1/catalog/behavior",
+                get(catalog::get_behavior_catalog),
+            )
+            // A POST that reads: validation changes no state, so it is not behind the mutating seam.
+            .route(
+                "/api/v1/behaviors/validate",
+                post(validate::validate_behavior),
+            )
             .route("/api/v1/openapi.json", get(openapi::get_openapi));
         let writers = mutating::guard(
             Router::new()

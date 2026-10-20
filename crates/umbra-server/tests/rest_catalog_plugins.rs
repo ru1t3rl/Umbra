@@ -2,8 +2,7 @@
 //! plugin loaded. Requirements: REQ-X-10, REQ-X-11, REQ-B-13, REQ-B-17, REQ-P-10, ADR 0026.
 //!
 //! The example plugin is built by the nested-cargo helper shared with the engine tests. The plugin
-//! image table is process-wide, so the tests of this file take `PLUGIN_TEST_LOCK`. Every test is
-//! ignored until the router (WI-11) and the handlers (WI-14) exist.
+//! image table is process-wide, so the tests of this file take `PLUGIN_TEST_LOCK`.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -40,7 +39,6 @@ fn entries<'a>(catalog: &'a Value, provenance: &str) -> Vec<&'a Value> {
 }
 
 #[tokio::test]
-#[ignore = "WI-14"]
 async fn builtin_and_plugin_entries_are_read_only() {
     let _guard = PLUGIN_TEST_LOCK.lock().await;
     let h = with_wander("catp-readonly").await;
@@ -57,7 +55,6 @@ async fn builtin_and_plugin_entries_are_read_only() {
 }
 
 #[tokio::test]
-#[ignore = "WI-14"]
 async fn validate_graph_referencing_plugin_behavior_is_valid() {
     let _guard = PLUGIN_TEST_LOCK.lock().await;
     let h = with_wander("catp-validate").await;
@@ -82,7 +79,6 @@ async fn validate_graph_referencing_plugin_behavior_is_valid() {
 }
 
 #[tokio::test]
-#[ignore = "WI-14"]
 async fn plugins_report_capabilities_faults_and_root_relative_origins() {
     let _guard = PLUGIN_TEST_LOCK.lock().await;
     let h = with_wander("catp-report").await;

@@ -4,7 +4,7 @@
 //! `responses_conform_to_their_openapi_schemas` walks real responses against the served document
 //! with `common::schema_walk`, which fails closed on keywords it does not support. The committed
 //! files are `api/openapi.json` and `api/stream.schema.json` (written by `cargo xtask gen-api`).
-//! That test is ignored until WI-14. Routes of later work items are listed in `NOT_YET`.
+//! Routes of later work items are listed in `NOT_YET`.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -67,14 +67,8 @@ const EXTRA_PROBLEMS: [(&str, &[&str]); 16] = [
 ];
 
 /// Routes of `ROUTES` that a later work item adds: the router does not serve them and the document
-/// does not list them yet. Each work item removes its lines (WI-14: plugins, catalog and
-/// validation, WI-15: the stream).
-const NOT_YET: [(&str, &str); 4] = [
-    ("get", "/api/v1/plugins"),
-    ("get", "/api/v1/catalog/behavior"),
-    ("post", "/api/v1/behaviors/validate"),
-    ("get", "/api/v1/stream"),
-];
+/// does not list them yet. WI-15 removes the stream line.
+const NOT_YET: [(&str, &str); 1] = [("get", "/api/v1/stream")];
 
 const TAGS: [&str; 9] = [
     "status",
@@ -332,7 +326,6 @@ fn template_for(doc: &Value, uri: &str) -> Option<String> {
 }
 
 #[tokio::test]
-#[ignore = "WI-14"]
 async fn responses_conform_to_their_openapi_schemas() {
     let h = Harness::start("contract-conform");
     let doc = served(&h).await;

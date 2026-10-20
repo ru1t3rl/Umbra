@@ -4,7 +4,7 @@
 //! - checked: `type` (a name or an array such as `["integer", "null"]`), `properties`, `required`,
 //!   `items`, `$ref` (a JSON pointer into the document, `#/components/schemas/X` or `#/$defs/X`),
 //!   `enum`, `const`, `oneOf` (exactly one branch matches), `allOf`, `additionalProperties`
-//!   (`false` or a schema), `minimum` and `maximum`;
+//!   (`false` or a schema), `propertyNames` (a schema every key must satisfy), `minimum` and `maximum`;
 //! - ignored annotations: `description`, `title`, `example`, `examples`, `default`, `deprecated`,
 //!   `format`, `pattern`, `readOnly`, `writeOnly`, `$schema`, `$id`, `$defs`, `definitions`,
 //!   `externalDocs` and `discriminator` (a hint; `oneOf` decides).
@@ -33,7 +33,7 @@ const ANNOTATIONS: [&str; 16] = [
     "discriminator",
 ];
 
-const CHECKED: [&str; 12] = [
+const CHECKED: [&str; 13] = [
     "type",
     "properties",
     "required",
@@ -44,6 +44,7 @@ const CHECKED: [&str; 12] = [
     "oneOf",
     "allOf",
     "additionalProperties",
+    "propertyNames",
     "minimum",
     "maximum",
 ];
@@ -240,6 +241,9 @@ fn check_object(
     };
     for (name, value) in instance {
         let here = format!("{path}.{name}");
+        if let Some(names) = schema.get("propertyNames") {
+            walk(root, names, &Value::String(name.clone()), &here, depth + 1)?;
+        }
         if let Some(property) = properties.get(name) {
             walk(root, property, value, &here, depth + 1)?;
         } else {
@@ -316,5 +320,9 @@ mod tests {
         let open = json!({"type": "object", "additionalProperties": {"type": "integer"}});
         assert!(validate(&root, &open, &json!({"x": 1, "y": 2})).is_ok());
         assert!(validate(&root, &open, &json!({"x": 1, "y": "no"})).is_err());
+        // `propertyNames` constrains every key.
+        let named = json!({"type": "object", "propertyNames": {"enum": ["a", "b"]}});
+        assert!(validate(&root, &named, &json!({"a": 1, "b": 2})).is_ok());
+        assert!(validate(&root, &named, &json!({"a": 1, "c": 2})).is_err());
     }
 }

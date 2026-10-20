@@ -240,7 +240,7 @@ impl Worker {
         validation.diagnostics = validation
             .diagnostics
             .into_iter()
-            .map(|d| self.shown_diagnostic(d))
+            .map(|d| self.shown_diagnostic_keeping(d, super::shown::plain_relative_name(name)))
             .collect();
         Ok(validation)
     }
