@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": { "outDir": ".tsbuild/app", "tsBuildInfoFile": ".tsbuild/app.tsbuildinfo" },
+  "include": ["src"],
+  "references": [{ "path": "./features/ui-kit" }]
+}

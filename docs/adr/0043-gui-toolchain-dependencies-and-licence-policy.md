@@ -2,7 +2,7 @@
 
 - **Status**: Accepted by the human 2026-10-20 (proposed by frontend-architect, M5b plan `docs/plans/M5b.md`, 2026-10-20)
 - **Requirement IDs**: F-1..F-8, D-13, NFR-4 (licences), REQ-A-4, A-003 (step 4, fonts and icons), ADR 0004 (no CI)
-- **Affected**: `gui/package.json`, every `gui/**/package.json`, `gui/bun.lock`, `gui/scripts/check-licenses.mjs`, `docs/build.md` (prerequisites), decision row D-59
+- **Affected**: `gui/package.json`, every `gui/**/package.json`, `gui/bun.lock`, `gui/scripts/check-licenses.ts`, `docs/build.md` (prerequisites), decision row D-59
 
 ## Context
 M5b creates the `gui/` Bun monorepo (F-2). F-1..F-8 fix the tools by name but not versions or licences.
@@ -35,7 +35,7 @@ Option 1.
 - **Where they live.** Each dependency is declared in the package that imports it (`maplibre-gl` only in
   `@umbra/map-view`, `zustand` only in `@umbra/engine-stream`, `@tanstack/react-query` and `orval` only in
   `@umbra/data`, fonts and icons only in `@umbra/ui-kit`); shared dev tools in the root package.
-- **Licence policy, `bun run check:licenses`** (`gui/scripts/check-licenses.mjs`, no dependency): reads
+- **Licence policy, `bun run check:licenses`** (`gui/scripts/check-licenses.ts`, no dependency): reads
   every installed package's `license` field (SPDX expression) and fails on anything outside the allow
   list. Runtime closure (what ships in the bundle): MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0,
   0BSD, and OFL-1.1 for font files. Dev-only closure additionally: MPL-2.0 (`axe-core`), CC-BY-4.0
@@ -53,3 +53,31 @@ Option 1.
 - Easier: reproducible installs, licence regressions caught locally (gate 15), offline afterwards.
 - Harder: Node is a second runtime to install; version bumps are deliberate PRs.
 - Revisit when Playwright supports the Bun runtime, or when a dependency changes its licence.
+
+## Installed versions (M5b WI-1, 2026-10-20)
+Human decision 2026-10-20: when the registry's current major differed from the plan's table (typescript 7,
+vite 8, @vitejs/plugin-react 6, happy-dom 21, jest-dom 7), the plan's major was pinned; every other package
+takes the latest version within the plan's major. Versions are exact in `gui/package.json` and `gui/bun.lock`.
+Only the dependencies WI-1 needs are installed; the others arrive with the WI that uses them (each with
+an online `bun install`).
+
+| Package | Version | Licence (installed `license` field) | Where |
+|---|---|---|---|
+| react, react-dom | 19.3.1 | MIT | root, runtime |
+| @fontsource/archivo, @fontsource/jetbrains-mono | 5.3.0 | OFL-1.1 (the plan said MIT; allowed for fonts) | ui-kit, runtime |
+| material-symbols | 0.48.0 | Apache-2.0 | ui-kit, runtime |
+| typescript | 5.9.3 | Apache-2.0 | root, dev |
+| vite | 7.3.7 | MIT | root, dev |
+| @vitejs/plugin-react | 5.2.0 | MIT | root, dev |
+| @types/react, @types/react-dom | 19.3.0 | MIT | root, dev |
+| @types/bun | 1.4.3 | MIT | root, dev |
+| @biomejs/biome | 2.5.15 | MIT OR Apache-2.0 | root, dev |
+| @happy-dom/global-registrator | 20.14.6 | MIT | root, dev |
+| @testing-library/react | 16.3.3 | MIT | root, dev |
+| @testing-library/dom | 10.4.2 | MIT | root, dev |
+| @testing-library/jest-dom | 6.10.0 | MIT | root, dev |
+| @testing-library/user-event | 14.6.8 | MIT | root, dev |
+
+Bun is pinned as `bun@1.4.2`. `bun run check:licenses` passes on the full installed tree (6 runtime and 103
+dev-only packages). Not yet installed: react-router, @tanstack/react-query, zustand, maplibre-gl, orval,
+json-schema-to-typescript, dependency-cruiser, @playwright/test, @axe-core/playwright.

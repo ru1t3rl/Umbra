@@ -1,24 +1,31 @@
 ---
 name: verify-frontend
-description: Run the full GUI verification and build pipeline with Bun: install, typecheck, lint, tests, architecture check, API drift check, production build, optional Tauri bundle and e2e. Use before declaring any frontend task done and when frontend CI fails.
+description: Run the full GUI verification and build pipeline with Bun: install, typecheck, lint, tests, architecture check, API drift check, production build, design-system and licence checks, e2e. Use before declaring any frontend task done and when gate 15 fails.
 ---
 
 # Verify the frontend
 
-Run from `gui/`. Stop at the first failure and fix the cause; never weaken a gate.
+Run from `gui/` (this is gate 15 of `docs/build.md`; `scripts/gates.sh --gui` runs it). Stop at the first failure and fix the cause; never weaken a gate.
 
 ```bash
 bun install --frozen-lockfile
-bun run gen:api --check          # generated client matches ../api/openapi.json
-bun run typecheck                # tsc -b across all workspaces, strict
-bun run lint                     # biome check (lint + format)
-bun run check:deps               # dependency-cruiser: layering, tiers, no deep imports, no cycles
-bun test                         # unit + component + shell tests
-bun run build                    # vite production build
-# slower gates (CI, or before closing M8)
-bun run test:e2e                 # playwright against headless engine + example scenario
-bun run tauri build              # Windows bundle (on a Windows runner)
+bun run verify                   # the ordered list below, stops at the first failure
 ```
+
+`bun run verify` runs, in order (ADR 0044). A step whose input does not exist yet is not faked; `verify` grows work item by work item, and the WI that adds a step updates this list in the same commit:
+1. `gen:api --check`: generated client matches `../api/openapi.json` (added in M5b WI-9)
+2. `gen:tokens --check`: tokens.css/tokens.ts match tokens.json (A-003)
+3. `check:tokens`: no hard-coded design values outside ui-kit tokens (A-003)
+4. `check:contrast`: WCAG claims of the tokens in both themes (A-003)
+5. `check:licenses`: npm licences within the allow list (ADR 0043)
+6. `typecheck`: `tsc -b` across all workspaces, strict
+7. `lint`: biome check (lint + format)
+8. `check:deps`: dependency-cruiser layering, tiers, no deep imports, no cycles (added in M5b WI-2)
+9. `test`: bun test, unit + component + shell tests
+10. `build`: vite production build
+11. `test:e2e`: playwright (added in M5b WI-7; needs the release `umbra` binary and Chromium)
+
+Currently active (M5b WI-1): steps 2 to 7, 9 and 10. Then, on a Windows runner only (M8): `bun run tauri build`.
 
 ## Report
 Pass/fail per step, first failure with message and probable cause, and the owner: layering or structure -> `frontend-architect`; implementation -> `frontend-engineer`; contract mismatch -> `api-engineer`; flaky test -> `frontend-test-engineer`; pipeline/tooling -> `build-engineer`.

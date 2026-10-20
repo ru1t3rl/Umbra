@@ -1,0 +1,18 @@
+{
+  "name": "@umbra/ui-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "umbra": {
+    "tier": "foundation"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "dependencies": {
+    "@fontsource/archivo": "5.3.0",
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "material-symbols": "0.48.0"
+  }
+}

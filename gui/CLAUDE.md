@@ -36,7 +36,7 @@ gui/
 4. Features come in two tiers (set `"umbra": {"tier": "foundation" | "domain"}` in each `package.json`):
    - `foundation` (e.g. `ui-kit`, `data`, `engine-stream`): may import only other foundation features.
    - `domain` (e.g. `entity-inspector`, `scenario-control`): may import foundation features, **never other domain features**. Cross-feature composition happens in shells via props/callbacks.
-5. Import another package only through its package name (`@umbra/x`) which resolves to `src/index.ts`. Deep imports (`@umbra/x/src/...`) are forbidden.
+5. Import another package only through its package name (`@umbra/x`) which resolves to `src/index.ts`. Deep imports (`@umbra/x/src/...`) are forbidden. The one exception: a package that ships CSS may declare a second export `./styles.css`, imported once by the app (ADR 0043); components never import CSS.
 6. No cyclic dependencies. No `any`, no `@ts-ignore` without a linked reason.
 7. Generated code is never hand-edited and is produced by `bun run gen:api`: the REST client and its TanStack Query hooks by **orval** from `../api/openapi.json` into `features/data/src/generated/` (config `features/data/orval.config.ts`: `client: 'react-query'`, `httpClient: 'fetch'`, a custom mutator in `features/data/src/fetcher.ts` that applies the runtime base URL and turns `application/problem+json` into a typed `ApiProblem`), and the stream types from `../api/stream.schema.json` into `features/engine-stream/src/generated/` (`json-schema-to-typescript`; orval does not cover WebSocket/JSON Schema). Other features import REST data only from `@umbra/data`'s `src/index.ts` (re-exported hooks, query keys, `ApiProblem`, the `DataProvider`), never from `generated/`.
 
@@ -49,4 +49,12 @@ gui/
 - The GUI never contains engine logic. It only calls the generated client and decodes the stream.
 
 ## Scripts (root package.json, run with bun)
-`dev`, `build`, `preview`, `typecheck` (tsc -b), `lint` (biome check), `format`, `test` (bun test), `test:e2e` (playwright), `check:deps`, `gen:api`, `tauri`.
+`dev`, `build`, `preview`, `typecheck` (tsc -b), `lint` (biome check), `format`, `test` (bun test), `test:e2e` (playwright), `check:deps`, `gen:api`, `gen:tokens`, `check:tokens`, `check:contrast`, `check:licenses`, `verify` (the ordered list of the `verify-frontend` skill; gate 15), `tauri`. Scripts are added by the work item that creates their input.
+
+## Design system (Vantage, amendment A-003)
+All UI follows docs/design-system/ (README.md, tactical-display.md, UMBRA-IMPLEMENTATION.md). Use the apply-design-system skill for any UI work.
+- Colours, fonts, sizes, radii, shadows, spacing, motion come only from @umbra/ui-kit tokens (var(--azure), .type-body, ...). No hex/rgb/hsl, font-size or font-family literals outside ui-kit/src/tokens. `bun run check:tokens` enforces this.
+- Use @umbra/ui-kit components as-is. New components are ported from ui-kit/reference/vantage with identical props and class names.
+- tokens.json is the only place to change design values; run `bun run gen:tokens`, then `check:contrast`. Never hand-edit tokens.css/tokens.ts.
+- Azure = command (one filled azure Button per view), cyan = data. Glass only for floating panels/command bar, never glass on glass. Affiliation colours only for framed symbols.
+- ui-kit is a foundation feature; other packages depend on it, never the reverse.

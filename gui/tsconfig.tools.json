@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "outDir": ".tsbuild/tools",
+    "tsBuildInfoFile": ".tsbuild/tools.tsbuildinfo"
+  },
+  "include": ["vite.config.ts", "scripts/**/*.ts", "test"]
+}

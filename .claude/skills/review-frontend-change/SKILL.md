@@ -18,3 +18,5 @@ description: Structured review of a GUI change against the frontend architecture
 8. **Tooling**: bun only; `bun.lock` is the sole lockfile; new dependency justified (size, license, maintenance).
 9. **Tests**: written first, cover the public API plus failure and empty states, architecture tests still catch violations, e2e updated for user-facing pages.
 10. **Output**: Verdict (APPROVE / REQUEST CHANGES), then findings by severity (Blocker, Major, Minor, Nit) with file:line, rule and concrete fix. Read-only: do not edit code.
+
+Design system compliance: tokens only, accents used for their jobs, no glass-on-glass, content rules, both themes checked.

@@ -273,7 +273,7 @@ and come before `map-view` and the dashboard shell (human decision 2026-10-19).
     `noDefaultExport` except `feature-shells/*/src/*Page.tsx`), `vite.config.ts` (React plugin only for
     now), `index.html` (no icon yet), `src/main.tsx` (placeholder render), `test/setup.ts` (happy-dom
     registrator, jest-dom matchers).
-  - `scripts/check-licenses.mjs`, `scripts/check-tokens.test.ts`.
+  - `scripts/check-licenses.ts`, `scripts/check-tokens.test.ts`.
   - `features/ui-kit/{package.json,tsconfig.json,README.md,src/index.ts}` (empty exports).
   - `.gitignore` entries: `gui/node_modules`, `gui/dist`, `gui/dist-e2e`, `gui/test-results`,
     `gui/playwright-report`, `gui/**/.tsbuild`.
@@ -650,6 +650,7 @@ app fetches that style at runtime)?
 
 **H-3 New npm dependencies (ADR 0043, D-59).** Each one is listed below with its expected version and
 licence.
+- Human decision 2026-10-20: where the registry major differed (typescript 7, vite 8, plugin-react 6, happy-dom 21, jest-dom 7), the plan's major is pinned; all others take the latest within the plan's major. WI-1 recorded the installed versions and licences in ADR 0043 ("Installed versions"); fonts are OFL-1.1, not MIT.
 - These versions are what I know as of planning. I could not query the registry. WI-1 pins exact
   versions in `bun.lock` and records them in ADR 0043. If a resolved **major** differs from this table,
   work stops for you.
@@ -741,7 +742,7 @@ showcase and dashboard baselines once, in WI-8 and WI-15.
 - D-62 unused.
 
 ## Assumptions
-ASM-300..ASM-321 are in `docs/assumptions/M5b.md` (proposed with this plan; final at WI-17).
+ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; final at WI-17).
 
 ## Running log
 ### Status
@@ -750,7 +751,7 @@ ASM-300..ASM-321 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
 - 2026-10-20: the human accepted the plan and ADRs 0040-0045; every recommendation H-1..H-10 as written.
 
 ### Done
-(none)
+- WI-1 (2026-10-20, uncommitted at the time of writing): `gui/` Bun workspace (root `gui/package.json`, `gui/bun.lock`, `features/ui-kit`), tsconfig/biome/vite/bunfig/test setup, `check-licenses.ts`, `check-tokens.mjs --root` with the vacuous-pass guard, the three design-system scripts wired, gate 15 in `scripts/gates.sh` and `docs/build.md`, A-003 apply steps 1-3 (H-9), `verify-frontend` skill. `bun run verify` (WI-1 steps 2-7, 9, 10) passes. ASM-322..ASM-326.
 
 ### Deferred
 - To M8:

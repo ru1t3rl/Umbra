@@ -20,3 +20,5 @@ You prove the GUI works. Authority: `gui/CLAUDE.md`, `docs/frontend-architecture
 - Colocate tests with source; e2e in `gui/e2e/`. Descriptive names; one behavior per test.
 - Confirm a new test can fail by briefly breaking the code under test.
 - Report gaps as a table (REQ-ID or F-ID, test, status). If a test reveals a bug, report a minimal failing test to `frontend-engineer` instead of patching production code.
+
+Add Playwright screenshot tests for each ui-kit component and each shell in both themes (Ops and Day).

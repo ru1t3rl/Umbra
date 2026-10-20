@@ -5,7 +5,7 @@
 #
 #   scripts/gates.sh                 every active gate, then m2-compat and the golden state hashes
 #   scripts/gates.sh --quick CRATE…  fmt, clippy and tests of the named crates only (engineers, during a WI)
-#   scripts/gates.sh --gui           also gate 15 (from M8)
+#   scripts/gates.sh --gui           also gate 15 (GUI, from M5b WI-1; needs Bun and Node LTS)
 #
 # Gate 10 runs once `cargo xtask gen-api` exists (M5); gates 3 and 11 get target/tools/bin on PATH
 # (pinned cbindgen, until it is installed system-wide).
@@ -95,8 +95,9 @@ gate 14-bench cargo bench -p umbra-kernel --bench tick --no-run --locked --offli
 gate 16-engine-only sh -c 'cargo build -p umbra-cli --no-default-features --locked --offline &&
     cargo clippy -p umbra-cli --no-default-features --all-targets --locked --offline -- -D warnings'
 if [ "${1:-}" = --gui ]; then
-    gate 15-gui sh -c 'cd gui && bun install --frozen-lockfile && bun run gen:api --check &&
-        bun run typecheck && bun run lint && bun run check:deps && bun test && bun run build'
+    gate 15-gui sh -c 'cd gui && bun install --frozen-lockfile && bun run verify'
+else
+    echo "skip  15-gui            (pass --gui)"
 fi
 gate m2-compat sh scripts/m2-compat.sh
 gate goldens goldens

@@ -1,0 +1,43 @@
+{
+  "name": "umbra-gui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "features/*",
+    "feature-shells/*"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "bun test",
+    "gen:tokens": "bun scripts/gen-tokens.mjs",
+    "check:tokens": "bun scripts/check-tokens.mjs",
+    "check:contrast": "bun scripts/check-contrast.mjs",
+    "check:licenses": "bun scripts/check-licenses.ts",
+    "verify": "bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run test && bun run build"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@happy-dom/global-registrator": "20.14.6",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "6.10.0",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@types/bun": "1.4.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  }
+}
