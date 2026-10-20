@@ -1,0 +1,12 @@
+[package]
+name = "umbra-kernel"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+umbra-core = { path = "../umbra-core" }
+umbra-net = { path = "../umbra-net" }
+
+[lints]
+workspace = true

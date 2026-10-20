@@ -117,3 +117,35 @@ pub const RULES: RuleSet = RuleSet {
 
 /// Crates allowed to contain `unsafe` (CLAUDE.md rule 5, ASM-024).
 pub const UNSAFE_ALLOWED: &[&str] = &["umbra-plugin-api", "umbra-plugin-host", "umbra-sdk"];
+
+/// Protocol-neutral crates (ADR 0030, ASM-226, ASM-255): the engine side knows no protocol, so none
+/// of them, nor any workspace crate they may depend on ([`protocol_scope`], ASM-256), may depend,
+/// in any kind or target, on a crate whose name matches [`is_protocol_crate`]. Sorted. Workspace edges to adapter crates are already forbidden by
+/// [`RULES`]; this entry covers external (registry, git, `[patch]`) protocol crates.
+pub const PROTOCOL_NEUTRAL: &[&str] = &["umbra-core", "umbra-engine", "umbra-kernel", "umbra-net"];
+
+/// Anchored name patterns of protocol crates (ASM-226): `-` and `_` are the same character and
+/// case is ignored, so `redis` or `discord` never match.
+#[must_use]
+pub fn is_protocol_crate(name: &str) -> bool {
+    const EXACT: &[&str] = &["dis-rs", "dis", "rti", "hla"];
+    const PREFIX: &[&str] = &["open-dis", "opendis", "portico", "rti-", "hla-", "dis-"];
+    const SUFFIX: &[&str] = &["-dis", "-hla"];
+    let n = name.to_ascii_lowercase().replace('_', "-");
+    EXACT.contains(&n.as_str())
+        || PREFIX.iter().any(|p| n.starts_with(p))
+        || n.contains("-dis-")
+        || SUFFIX.iter().any(|s| n.ends_with(s))
+}
+
+/// Crates that must not depend on protocol crates: [`PROTOCOL_NEUTRAL`] plus the transitive closure
+/// of their allowed workspace dependencies in `rules` (ASM-256). A protocol crate cannot enter
+/// through an allowed member such as `umbra-templates`.
+#[must_use]
+pub fn protocol_scope(rules: &RuleSet) -> BTreeSet<&'static str> {
+    let mut scope: BTreeSet<&'static str> = PROTOCOL_NEUTRAL.iter().copied().collect();
+    for name in PROTOCOL_NEUTRAL {
+        scope.extend(rules.closure(name));
+    }
+    scope
+}

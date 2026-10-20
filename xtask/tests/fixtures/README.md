@@ -103,3 +103,10 @@ with its own `cbindgen.toml` and the header the pinned `cbindgen` 0.29.4 generat
 The tests check it as is (current), and copies under `CARGO_TARGET_TMPDIR` with a field appended to
 `src/lib.rs` (drift, exit 1), with a CRLF header (not drift) and with a hand-edited header (write mode
 restores it). Regenerate the committed header only when the pinned `cbindgen` version changes.
+
+## protocol neutrality (M6 WI-1, ADR 0030, ASM-226, ASM-256; tests in `xtask/tests/check_rules.rs`, module `protocol_neutrality`)
+Both use a directory-source `vendor/` with a fake registry crate `dis-rs`, like `violating`.
+| Fixture | Content | Expected |
+|---|---|---|
+| `protocol_violating` | `umbra-kernel -> umbra-net`, `umbra-net -> umbra-net-dis`, `umbra-engine -> umbra-net-dis`, `umbra-engine -> umbra-net-hla` (workspace edges), `umbra-net -> dis-rs` (registry), `umbra-engine -> umbra-templates -> dis-rs` (entry through an allowed member) | four `ForbiddenWorkspaceDep`, `ProtocolDep umbra-net -> dis-rs` and `ProtocolDep umbra-templates -> dis-rs`, one line each, exit 1 |
+| `protocol_launder_patch` | root `[patch.crates-io]`: `umbra-engine -> shim = "0.1"` is patched to `./shim`, which depends on `dis-rs` | `IndirectProtocolDep umbra-engine -> shim -> dis-rs (resolved)` and `NonMemberPathPackage` for `shim` |

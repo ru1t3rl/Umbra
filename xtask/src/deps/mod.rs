@@ -10,7 +10,9 @@ mod load;
 mod rules;
 
 pub use load::{CrateRoot, LoadError, Manifest, ResolvedDep, ResolvedGraph, ResolvedPackage};
-pub use rules::{CrateRule, RULES, RuleSet, UNSAFE_ALLOWED};
+pub use rules::{
+    CrateRule, PROTOCOL_NEUTRAL, RULES, RuleSet, UNSAFE_ALLOWED, is_protocol_crate, protocol_scope,
+};
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -142,6 +144,25 @@ pub enum Violation {
         /// Cargo package id.
         id: String,
     },
+    /// A protocol-neutral crate depends on a protocol crate by name pattern (ADR 0030, ASM-226).
+    ProtocolDep {
+        /// Depending crate.
+        from: String,
+        /// Dependency (real package name).
+        to: String,
+        /// Edge kind.
+        kind: DepKind,
+    },
+    /// The resolved graph reaches a protocol crate from a protocol-neutral crate through
+    /// non-member packages (ADR 0030, ASM-005), for example `umbra-engine -> shim -> dis-rs`.
+    IndirectProtocolDep {
+        /// Depending member.
+        from: String,
+        /// Non-member packages on the path, in order.
+        via: Vec<String>,
+        /// Protocol package reached.
+        to: String,
+    },
     /// A crate root or manifest could not be parsed, so it cannot be verified (ASM-024).
     UnparsableSource {
         /// Package name.
@@ -237,6 +258,20 @@ impl Violation {
             Violation::NonMemberPathPackage { name, version, id } => format!(
                 "ASM-006: package {name} {version} ({id}) is a path package outside the workspace (path dependency, [patch] or [replace]); its code is not checked"
             ),
+            Violation::ProtocolDep { from, to, kind } => format!(
+                "ADR 0030: {from} -> {to} ({}) not allowed; {from} is protocol-neutral and must not depend on protocol crates (name pattern)",
+                kind.label()
+            ),
+            Violation::IndirectProtocolDep { from, via, to } => {
+                let path: Vec<&str> = std::iter::once(from.as_str())
+                    .chain(via.iter().map(String::as_str))
+                    .chain(std::iter::once(to.as_str()))
+                    .collect();
+                format!(
+                    "ADR 0030: {} (resolved) not allowed; {from} is protocol-neutral and must not reach protocol crates (name pattern)",
+                    path.join(" -> ")
+                )
+            }
             Violation::UnparsableSource {
                 package,
                 file,
@@ -252,6 +287,7 @@ impl Violation {
 #[must_use]
 pub fn check(graph: &WorkspaceGraph, rules: &RuleSet) -> Vec<Violation> {
     let mut out = BTreeSet::new();
+    let scope = protocol_scope(rules);
     let names = graph
         .members
         .iter()
@@ -265,6 +301,14 @@ pub fn check(graph: &WorkspaceGraph, rules: &RuleSet) -> Vec<Violation> {
         let Some(rule) = rules.get(&e.from) else {
             continue;
         };
+        // Workspace edges to adapter crates are rule-table violations below, not reported twice.
+        if !e.is_workspace && scope.contains(e.from.as_str()) && is_protocol_crate(&e.to) {
+            out.insert(Violation::ProtocolDep {
+                from: e.from.clone(),
+                to: e.to.clone(),
+                kind: e.kind,
+            });
+        }
         if e.is_workspace {
             if !rule.allowed_workspace_deps.contains(&e.to.as_str()) {
                 out.insert(Violation::ForbiddenWorkspaceDep {
@@ -311,6 +355,7 @@ pub fn check(graph: &WorkspaceGraph, rules: &RuleSet) -> Vec<Violation> {
 #[must_use]
 pub fn check_resolved(graph: &ResolvedGraph, rules: &RuleSet) -> Vec<Violation> {
     let mut out = BTreeSet::new();
+    let scope = protocol_scope(rules);
     let name = |id| graph.name(id);
     let member_names: BTreeSet<&str> = graph.members.iter().map(|id| name(id)).collect();
     for (id, p) in &graph.packages {
@@ -365,14 +410,16 @@ pub fn check_resolved(graph: &ResolvedGraph, rules: &RuleSet) -> Vec<Violation> 
                 prev.insert(&d.id, n);
                 if !graph.members.contains(&d.id) {
                     queue.push_back(&d.id);
-                } else if !allowed.contains(name(&d.id)) {
-                    let mut via = Vec::new();
-                    let mut cur = n;
-                    while cur != m.as_str() {
-                        via.push(name(cur).to_string());
-                        cur = prev.get(cur).copied().unwrap_or(m);
+                    if scope.contains(from) && is_protocol_crate(name(&d.id)) {
+                        let via = path_back(&prev, graph, n, m);
+                        out.insert(Violation::IndirectProtocolDep {
+                            from: from.to_string(),
+                            via,
+                            to: name(&d.id).to_string(),
+                        });
                     }
-                    via.reverse();
+                } else if !allowed.contains(name(&d.id)) {
+                    let via = path_back(&prev, graph, n, m);
                     out.insert(Violation::IndirectWorkspaceDep {
                         from: from.to_string(),
                         via,
@@ -384,6 +431,23 @@ pub fn check_resolved(graph: &ResolvedGraph, rules: &RuleSet) -> Vec<Violation> 
         }
     }
     out.into_iter().collect()
+}
+
+/// Names of the non-member packages from `n` back to (excluding) member `m`, in order from `m`.
+fn path_back<'a>(
+    prev: &BTreeMap<&'a str, &'a str>,
+    graph: &'a ResolvedGraph,
+    n: &'a str,
+    m: &'a str,
+) -> Vec<String> {
+    let mut via = Vec::new();
+    let mut cur = n;
+    while cur != m {
+        via.push(graph.name(cur).to_string());
+        cur = prev.get(cur).copied().unwrap_or(m);
+    }
+    via.reverse();
+    via
 }
 
 fn first_line(error: &str) -> String {

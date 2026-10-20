@@ -849,3 +849,328 @@ fn given_m5_allowed_edges_when_checked_then_no_violation() {
     ]);
     assert_eq!(check(&g, &RULES), Vec::<Violation>::new());
 }
+
+// ---------------------------------------------------------------- M6 WI-1 (ADR 0030, ASM-226, ASM-255)
+
+/// Protocol-neutrality rule: the engine-side crates must not depend on protocol crates, by name
+/// pattern, whatever the dependency is called. Fixtures: `tests/fixtures/protocol_*`.
+mod protocol_neutrality {
+    use std::collections::BTreeSet;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Output};
+
+    use xtask::deps::{
+        DepEdge, DepKind, PROTOCOL_NEUTRAL, RULES, Violation, Workspace, WorkspaceGraph, check,
+        check_workspace, is_protocol_crate, protocol_scope,
+    };
+
+    fn edge(from: &str, to: &str, kind: DepKind) -> DepEdge {
+        DepEdge {
+            from: from.to_string(),
+            to: to.to_string(),
+            kind,
+            target: None,
+            is_workspace: to.starts_with("umbra-"),
+            is_path: false,
+        }
+    }
+
+    fn graph(edges: Vec<DepEdge>) -> WorkspaceGraph {
+        let mut members: BTreeSet<String> = edges.iter().map(|e| e.from.clone()).collect();
+        members.extend(
+            edges
+                .iter()
+                .filter(|e| e.is_workspace)
+                .map(|e| e.to.clone()),
+        );
+        WorkspaceGraph { members, edges }
+    }
+
+    fn fixture(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures")
+            .join(name)
+            .join("Cargo.toml")
+    }
+
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper: a spawn failure is a test error"
+    )]
+    fn run_check_deps(manifest: &Path) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_xtask"))
+            .arg("check-deps")
+            .arg("--manifest-path")
+            .arg(manifest)
+            .output()
+            .expect("spawn xtask binary")
+    }
+
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper: a fixture that fails to load is a test error"
+    )]
+    fn violations(name: &str) -> Vec<Violation> {
+        let mut v = check_workspace(
+            &Workspace::load(Some(&fixture(name))).expect("load"),
+            &RULES,
+        );
+        for x in &mut v {
+            if let Violation::NonMemberPathPackage { id, .. } = x {
+                *id = "<id>".to_string();
+            }
+        }
+        v.sort();
+        v
+    }
+
+    fn forbidden(from: &str, to: &str, requirement: &'static str) -> Violation {
+        Violation::ForbiddenWorkspaceDep {
+            from: from.into(),
+            to: to.into(),
+            kind: DepKind::Normal,
+            requirement,
+        }
+    }
+
+    /// The name patterns match protocol crates and not look-alikes (ASM-226: anchored).
+    #[test]
+    fn given_crate_names_when_classified_then_only_protocol_crates_match() {
+        for yes in [
+            "dis-rs",
+            "dis_rs",
+            "dis",
+            "DIS",
+            "open-dis-rust",
+            "opendis",
+            "umbra-net-dis",
+            "my_dis",
+            "rti",
+            "rti-sys",
+            "portico",
+            "portico-rti",
+            "hla",
+            "hla-fom",
+            "umbra-net-hla",
+            "dis-codec",
+            "foo-dis-bar",
+            "Dis_Codec",
+        ] {
+            assert!(is_protocol_crate(yes), "{yes} should match");
+        }
+        for no in [
+            "redis",
+            "discord",
+            "radis",
+            "disk-utils",
+            "dispatch",
+            "display-info",
+            "distributed",
+            "disk",
+            "umbra-net",
+            "umbra-core",
+            "serde",
+            "pedis",
+            "critic",
+            "hlas",
+            "rtic",
+            "umbra-engine",
+        ] {
+            assert!(!is_protocol_crate(no), "{no} should not match");
+        }
+    }
+
+    /// The neutral crates are exactly the four of ASM-226.
+    #[test]
+    fn neutral_crates_are_core_kernel_net_engine() {
+        assert_eq!(
+            PROTOCOL_NEUTRAL,
+            &["umbra-core", "umbra-engine", "umbra-kernel", "umbra-net"]
+        );
+    }
+
+    /// An external protocol crate on a neutral crate is reported for every edge kind; the same
+    /// dependency on an adapter crate (not neutral) is allowed; a look-alike is allowed.
+    #[test]
+    fn given_external_protocol_dep_when_checked_then_only_neutral_crates_are_flagged() {
+        for kind in [DepKind::Normal, DepKind::Build, DepKind::Dev] {
+            let v = check(&graph(vec![edge("umbra-net", "dis-rs", kind)]), &RULES);
+            assert_eq!(
+                v,
+                vec![Violation::ProtocolDep {
+                    from: "umbra-net".into(),
+                    to: "dis-rs".into(),
+                    kind
+                }]
+            );
+        }
+        let ok = graph(vec![
+            edge("umbra-net-dis", "dis-rs", DepKind::Normal),
+            edge("umbra-net", "redis", DepKind::Normal),
+        ]);
+        assert_eq!(check(&ok, &RULES), Vec::<Violation>::new());
+    }
+
+    /// The message names the rule, the edge and the neutral crate.
+    #[test]
+    fn given_protocol_violation_when_rendered_then_message_is_precise() {
+        let v = Violation::ProtocolDep {
+            from: "umbra-net".into(),
+            to: "dis-rs".into(),
+            kind: DepKind::Dev,
+        };
+        assert_eq!(
+            v.render(&RULES),
+            "ADR 0030: umbra-net -> dis-rs (dev) not allowed; umbra-net is protocol-neutral and must not depend on protocol crates (name pattern)"
+        );
+        let i = Violation::IndirectProtocolDep {
+            from: "umbra-engine".into(),
+            via: vec!["shim".into()],
+            to: "dis-rs".into(),
+        };
+        assert_eq!(
+            i.render(&RULES),
+            "ADR 0030: umbra-engine -> shim -> dis-rs (resolved) not allowed; umbra-engine is protocol-neutral and must not reach protocol crates (name pattern)"
+        );
+    }
+
+    /// The five declared violations of the plan, in one fixture, exactly (sorted, one each).
+    #[test]
+    fn given_protocol_fixture_when_checked_then_each_seeded_violation_is_found() {
+        let mut expected = vec![
+            forbidden("umbra-kernel", "umbra-net", "REQ-A-2"),
+            forbidden("umbra-net", "umbra-net-dis", "section 4"),
+            forbidden("umbra-engine", "umbra-net-dis", "section 4"),
+            forbidden("umbra-engine", "umbra-net-hla", "section 4"),
+            Violation::ProtocolDep {
+                from: "umbra-net".into(),
+                to: "dis-rs".into(),
+                kind: DepKind::Normal,
+            },
+            Violation::ProtocolDep {
+                from: "umbra-templates".into(),
+                to: "dis-rs".into(),
+                kind: DepKind::Normal,
+            },
+        ];
+        expected.sort();
+        assert_eq!(violations("protocol_violating"), expected);
+    }
+
+    /// The binary exits 1 and prints one line per violation.
+    #[test]
+    fn given_protocol_fixture_when_check_deps_runs_then_exit_1_with_one_line_each() {
+        let out = run_check_deps(&fixture("protocol_violating"));
+        let text = String::from_utf8_lossy(&out.stdout).to_string()
+            + &String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(1), "output:\n{text}");
+        for needle in [
+            "REQ-A-2: umbra-kernel -> umbra-net (normal) not allowed",
+            "section 4: umbra-net -> umbra-net-dis (normal) not allowed",
+            "section 4: umbra-engine -> umbra-net-dis (normal) not allowed",
+            "section 4: umbra-engine -> umbra-net-hla (normal) not allowed",
+            "ADR 0030: umbra-net -> dis-rs (normal) not allowed",
+            "ADR 0030: umbra-templates -> dis-rs (normal) not allowed",
+        ] {
+            assert_eq!(
+                text.lines().filter(|l| l.contains(needle)).count(),
+                1,
+                "{needle}\n{text}"
+            );
+        }
+    }
+
+    /// Laundering: `umbra-engine -> shim -> dis-rs` with `shim` supplied by `[patch]` is found in
+    /// the resolved graph (the declared edge `umbra-engine -> shim` looks harmless).
+    #[test]
+    fn given_dis_rs_laundered_through_patch_when_checked_then_indirect_violation() {
+        assert_eq!(
+            violations("protocol_launder_patch"),
+            vec![
+                Violation::NonMemberPathPackage {
+                    name: "shim".into(),
+                    version: "0.1.0".into(),
+                    id: "<id>".into(),
+                },
+                Violation::IndirectProtocolDep {
+                    from: "umbra-engine".into(),
+                    via: vec!["shim".into()],
+                    to: "dis-rs".into(),
+                },
+            ]
+        );
+    }
+
+    #[expect(
+        clippy::expect_used,
+        reason = "test helper: a workspace that fails to load is a test error"
+    )]
+    fn load(manifest: &Path) -> Workspace {
+        Workspace::load(Some(manifest)).expect("load")
+    }
+
+    /// The real workspace has no protocol dependency on a neutral crate.
+    #[test]
+    fn given_real_workspace_when_checked_then_no_protocol_violation() {
+        let real = Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.toml");
+        let ws = load(&real);
+        let bad: Vec<_> = check_workspace(&ws, &RULES)
+            .into_iter()
+            .filter(|v| {
+                matches!(
+                    v,
+                    Violation::ProtocolDep { .. } | Violation::IndirectProtocolDep { .. }
+                )
+            })
+            .collect();
+        assert_eq!(bad, Vec::<Violation>::new());
+    }
+
+    /// A protocol crate that enters through an allowed workspace member (`umbra-engine ->
+    /// umbra-templates -> dis-rs`) is reported at the member that declares it: the scope is the
+    /// neutral crates plus their allowed workspace closure.
+    #[test]
+    fn given_protocol_dep_on_an_allowed_member_when_checked_then_reported() {
+        let scope = protocol_scope(&RULES);
+        for c in [
+            "umbra-engine",
+            "umbra-templates",
+            "umbra-motion",
+            "umbra-behavior",
+            "umbra-plugin-host",
+        ] {
+            assert!(scope.contains(c), "{c} should be in scope");
+        }
+        for c in ["umbra-net-dis", "umbra-server", "umbra-sdk", "umbra-cli"] {
+            assert!(!scope.contains(c), "{c} should be out of scope");
+        }
+        let v = check(
+            &graph(vec![edge("umbra-templates", "dis-rs", DepKind::Normal)]),
+            &RULES,
+        );
+        assert_eq!(
+            v,
+            vec![Violation::ProtocolDep {
+                from: "umbra-templates".into(),
+                to: "dis-rs".into(),
+                kind: DepKind::Normal
+            }]
+        );
+    }
+
+    /// `PROTOCOL_NEUTRAL` and the source scanner's crate list are the same set.
+    #[test]
+    fn scanner_crate_list_matches_protocol_neutral() {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../crates/umbra-net/tests/protocol_neutral.rs");
+        let text = std::fs::read_to_string(src).expect("read protocol_neutral.rs");
+        let decl = text
+            .split("const NEUTRAL_CRATES")
+            .nth(1)
+            .and_then(|t| t.split(';').next())
+            .unwrap_or_default();
+        let listed: BTreeSet<&str> = decl.split('"').skip(1).step_by(2).collect();
+        let expected: BTreeSet<&str> = PROTOCOL_NEUTRAL.iter().copied().collect();
+        assert_eq!(listed, expected);
+    }
+}

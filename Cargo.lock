@@ -1423,6 +1423,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "umbra-net"
+version = "0.1.0"
+
+[[package]]
 name = "umbra-plugin-api"
 version = "0.1.0"
 
