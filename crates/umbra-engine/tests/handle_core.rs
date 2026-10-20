@@ -20,9 +20,9 @@ use std::sync::mpsc;
 use std::sync::{Arc, Barrier};
 
 use handle_support::{
-    GUARD, capture, collect_until, config, engine, examples, frozen_config, jam, load_stepped,
-    lossless, plugin_lock, receive, scenario_copy, short_skeleton, start_engine, state_of, trace,
-    until_stopped, walking_skeleton,
+    GUARD, PluginRecorder, capture, collect_until, config, engine, examples, frozen_config, jam,
+    load_stepped, lossless, plugin_lock, receive, scenario_copy, short_skeleton, start_engine,
+    state_of, trace, until_stopped, walking_skeleton,
 };
 use plugin_support::{Tpl, write_scenario};
 use umbra_core::{Geodetic, Position, StateHash, TemplateId, TickRate};
@@ -190,7 +190,6 @@ use RunState::{Idle, Paused, Ready, Running, Stopped};
 
 /// ADR 0026, m3: the lifecycle rows of the command x state table.
 #[test]
-#[ignore = "WI-8"]
 fn command_state_matrix() {
     let scenario = short_skeleton();
     let load =
@@ -280,7 +279,6 @@ fn step_on_a_clock_that_is_not_stepped_is_not_stepped() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn repeated_commands_are_not_idempotent() {
     let (handle, _thread) = engine();
     load_stepped(&handle, short_skeleton());
@@ -396,7 +394,6 @@ fn commands_from_two_clients_apply_in_arrival_order() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn two_clients_racing_start_one_wins_one_409() {
     let (handle, _thread) = engine();
     load_stepped(&handle, short_skeleton());
@@ -431,7 +428,6 @@ type Change<'a> = (
 );
 
 #[test]
-#[ignore = "WI-8"]
 fn publish_then_reply_frame_is_in_every_subscription_when_reply_arrives() {
     let (handle, _thread) = engine();
     load_stepped(&handle, short_skeleton());
@@ -476,7 +472,6 @@ fn subscribe_while_paused_gets_a_current_frame() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn subscribe_while_idle_gets_an_idle_frame() {
     let (handle, _thread) = engine();
 
@@ -490,7 +485,6 @@ fn subscribe_while_idle_gets_an_idle_frame() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn subscribe_in_every_loaded_state_is_primed_with_that_state() {
     // extra: ready, running, paused and stopped are primed too (ADR 0024, M1).
     let scenario = short_skeleton();
@@ -507,7 +501,22 @@ fn subscribe_in_every_loaded_state_is_primed_with_that_state() {
 }
 
 #[test]
-#[ignore = "WI-8"]
+fn priming_reaches_only_the_new_subscription() {
+    // extra (WI-8): a late subscriber's priming frame is not pushed to the earlier ones.
+    let (handle, _thread) = engine();
+    load_stepped(&handle, short_skeleton());
+    let early = handle.subscribe(SubscribeOptions::new());
+    assert_eq!(early.wait(GUARD).frames.len(), 1, "its own priming frame");
+
+    let late = handle.subscribe(SubscribeOptions::new());
+    assert_eq!(late.wait(GUARD).frames.len(), 1);
+
+    // A command round trip puts the thread past the priming turn.
+    assert!(handle.status().is_ok());
+    assert!(early.drain().frames.is_empty());
+}
+
+#[test]
 fn subscribe_with_full_command_queue_is_primed_later() {
     let mut small = config();
     small.command_capacity = 2;
@@ -542,7 +551,6 @@ fn subscribe_with_full_command_queue_is_primed_later() {
 // ---- stopping, faults ----
 
 #[test]
-#[ignore = "WI-8"]
 fn stops_at_duration_with_reason_and_final_frame() {
     let (handle, _thread) = engine();
     let info = handle.load(short_skeleton(), None, None).expect("load");
@@ -571,7 +579,6 @@ fn stops_at_duration_with_reason_and_final_frame() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn plugin_fault_abort_publishes_the_faulting_tick_then_stops() {
     let _lock = plugin_lock();
     let mut with_fixture = config();
@@ -602,7 +609,6 @@ fn plugin_fault_abort_publishes_the_faulting_tick_then_stops() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn disable_capability_keeps_running() {
     let _lock = plugin_lock();
     let mut with_fixture = config();
@@ -633,7 +639,6 @@ fn disable_capability_keeps_running() {
 // ---- load and unload ----
 
 #[test]
-#[ignore = "WI-8"]
 fn failed_load_leaves_idle() {
     let (handle, _thread) = engine();
     handle.load(short_skeleton(), None, None).expect("load");
@@ -649,15 +654,15 @@ fn failed_load_leaves_idle() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn replace_with_same_plugin_without_unload() {
     // D-a: the old session is dropped (instances, behaviors, then the plugin's `shutdown`) before
-    // the new load starts, so the second load is a new image lifecycle. The plugin log is read
-    // through `tracing` (the host's default log); `init` itself does not log (ASM-176).
+    // the new load starts, so the second load is a new image lifecycle: `init` runs again. The log
+    // is read through `HandleConfig::plugin_log`; the fixture logs `init` and `shutdown`.
     let _lock = plugin_lock();
-    let capture_log = trace::install();
+    let (recorder, hook) = PluginRecorder::new();
     let mut with_fixture = config();
     with_fixture.load.extra_plugin_paths = vec![plugin_support::fixture(&[])];
+    with_fixture.plugin_log = Some(hook);
     let (handle, _thread) = start_engine(with_fixture);
     let scenario = write_scenario(
         "replace-same",
@@ -674,40 +679,54 @@ fn replace_with_same_plugin_without_unload() {
     let first = handle
         .load(scenario.clone(), None, None)
         .expect("first load");
-    let mark = capture_log.plugin_messages().len();
+    assert_eq!(recorder.count("init"), 1, "one lifecycle so far");
+    let mark = recorder.messages().len();
 
     let second = handle
         .load(scenario, None, None)
         .expect("second load, no unload");
 
-    let window = capture_log.plugin_messages().split_off(mark);
+    let window = recorder.messages().split_off(mark);
     let at = |what: &str| window.iter().position(|m| m == what);
-    let shutdown = at("shutdown").unwrap_or_else(|| panic!("no shutdown in {window:?}"));
-    let create = at("create_behavior").unwrap_or_else(|| panic!("no create in {window:?}"));
     let destroy = at("destroy_instance").unwrap_or_else(|| panic!("no destroy in {window:?}"));
+    let shutdown = at("shutdown").unwrap_or_else(|| panic!("no shutdown in {window:?}"));
+    let init = at("init").unwrap_or_else(|| panic!("no init in {window:?}"));
+    let create = at("create_behavior").unwrap_or_else(|| panic!("no create in {window:?}"));
     assert!(
-        destroy < shutdown && shutdown < create,
-        "old session first: {window:?}"
+        destroy < shutdown && shutdown < init && init < create,
+        "old session first, then the new lifecycle: {window:?}"
+    );
+    assert_eq!(
+        window.iter().filter(|m| *m == "init").count(),
+        1,
+        "{window:?}"
     );
     assert_eq!(
         window.iter().filter(|m| *m == "shutdown").count(),
         1,
         "{window:?}"
     );
+    assert_eq!(
+        recorder.count("init"),
+        2,
+        "init ran again, once per lifecycle"
+    );
     assert_eq!(second.session, first.session + 1);
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn validate_path_with_plugins_reuses_a_live_session_image_without_init() {
-    // D-a: validation next to a live session shares its image: it neither shuts the plugin down nor
-    // (ASM-176: `init` does not log; only `shutdown` is observable) ends a lifecycle of its own.
-    // With no session, validation starts and ends its own lifecycle, which shows as one `shutdown`.
+    // D-a: validation next to a live session shares its image: no `init`, no `shutdown`, no
+    // lifecycle of its own. With no session, validation starts and ends its own: one `init`, one
+    // `shutdown`. The session's messages come through `HandleConfig::plugin_log` (one `init`);
+    // validation builds its own host, which logs to `tracing`, so its messages are read there.
     let _lock = plugin_lock();
     let capture_log = trace::install();
+    let (recorder, hook) = PluginRecorder::new();
     let fixture = plugin_support::fixture(&[]);
     let mut with_fixture = config();
     with_fixture.load.extra_plugin_paths = vec![fixture.clone()];
+    with_fixture.plugin_log = Some(hook);
     let (handle, _thread) = start_engine(with_fixture);
     let scenario = write_scenario(
         "validate-live",
@@ -723,6 +742,11 @@ fn validate_path_with_plugins_reuses_a_live_session_image_without_init() {
     );
     let registry = standard_registry().expect("registry");
     handle.load(scenario.clone(), None, None).expect("load");
+    assert_eq!(
+        recorder.count("init"),
+        1,
+        "the session started the lifecycle"
+    );
     let live = capture_log.plugin_messages().len();
 
     let beside_session =
@@ -732,26 +756,37 @@ fn validate_path_with_plugins_reuses_a_live_session_image_without_init() {
     assert!(beside.diagnostics.is_empty(), "{:?}", beside.diagnostics);
     let during = capture_log.plugin_messages().split_off(live);
     assert!(
-        !during.iter().any(|m| m == "shutdown"),
-        "image shared: {during:?}"
+        !during.iter().any(|m| m == "init" || m == "shutdown"),
+        "image shared, no lifecycle of its own: {during:?}"
     );
+    assert_eq!(
+        recorder.count("init"),
+        1,
+        "the session's lifecycle is untouched"
+    );
+    assert_eq!(recorder.count("shutdown"), 0);
     assert_eq!(state_of(&handle), Ready, "the session is untouched");
 
     handle.unload().expect("unload");
+    assert_eq!(
+        recorder.count("shutdown"),
+        1,
+        "the unload ended the lifecycle"
+    );
     let idle = capture_log.plugin_messages().len();
     let alone = validate_path_with_plugins(&registry, &scenario, std::slice::from_ref(&fixture));
     let alone = alone.expect("validate");
     assert!(alone.diagnostics.is_empty(), "{:?}", alone.diagnostics);
     let alone_log = capture_log.plugin_messages().split_off(idle);
+    let count = |what: &str| alone_log.iter().filter(|m| *m == what).count();
     assert_eq!(
-        alone_log.iter().filter(|m| *m == "shutdown").count(),
-        1,
+        (count("init"), count("shutdown")),
+        (1, 1),
         "a lifecycle of its own: {alone_log:?}"
     );
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn load_unload_load_plugin_wander() {
     let _lock = plugin_lock();
     let mut with_wander = config();
@@ -782,7 +817,6 @@ fn load_unload_load_plugin_wander() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn invalid_scenario_is_session_error_with_diagnostics() {
     let (handle, _thread) = engine();
     let bad =
@@ -803,7 +837,6 @@ fn invalid_scenario_is_session_error_with_diagnostics() {
 // ---- queue, capacity, replies, panic ----
 
 #[test]
-#[ignore = "WI-8"]
 fn full_queue_is_busy() {
     let mut small = config();
     small.command_capacity = 2;
@@ -831,7 +864,6 @@ fn full_queue_is_busy() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn zero_command_capacity_is_refused() {
     let mut none = config();
     none.command_capacity = 0;
@@ -842,7 +874,6 @@ fn zero_command_capacity_is_refused() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn dropped_reply_reports_closed() {
     let (handle, thread) = engine();
     thread.shutdown().expect("shutdown");
@@ -858,7 +889,6 @@ fn dropped_reply_reports_closed() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn engine_thread_panic_makes_every_command_closed() {
     let (handle, thread) = engine();
     let (entered_tx, entered_rx) = mpsc::channel::<()>();
@@ -911,7 +941,6 @@ fn queries_work_when_stopped() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn handle_default_tick_rate_applies_only_to_scenarios_without_one() {
     let mut other_default = config();
     other_default.load.default_tick_rate = TickRate::new(20).expect("rate");
@@ -935,11 +964,34 @@ fn handle_default_tick_rate_applies_only_to_scenarios_without_one() {
     assert_eq!(explicit.tick_rate_source, TickRateSource::Scenario);
 }
 
+/// The fields of the engine thread's `tick` span (ADR 0024, m16): the tick and one wall time in
+/// nanoseconds per phase, in phase order (ASM-177, ASM-187).
+const TICK_SPAN_FIELDS: [&str; 7] = [
+    "tick",
+    "ingest_wall_ns",
+    "perception_wall_ns",
+    "behavior_wall_ns",
+    "motion_wall_ns",
+    "events_wall_ns",
+    "publish_wall_ns",
+];
+
+fn assert_tick_spans(spans: &[trace::SpanSeen], at_least: usize) {
+    assert!(
+        spans.len() >= at_least,
+        "one per tick (other tests' ticks may add more): {spans:?}"
+    );
+    for span in spans {
+        assert_eq!(span.name, "tick");
+        assert_eq!(span.level, tracing::Level::TRACE);
+        assert_eq!(span.fields, TICK_SPAN_FIELDS, "{span:?}");
+    }
+}
+
 #[test]
 #[ignore = "WI-9"]
 fn tick_trace_span_carries_phase_wall() {
-    // m16, ASM-177: the field names of the span are not specified; the test pins a TRACE-level
-    // span named `tick`, once per tick, with a declared field naming a wall time.
+    // m16, ASM-177, ASM-187: a TRACE-level span named `tick` per tick with the fields above.
     let capture_log = trace::install();
     let before = capture_log.spans().len();
     let (handle, _thread) = engine();
@@ -948,23 +1000,26 @@ fn tick_trace_span_carries_phase_wall() {
 
     handle.step(5).expect("step");
 
-    let spans = capture_log.spans().split_off(before);
-    assert!(
-        spans.len() >= 5,
-        "one per tick (other tests' ticks may add more): {spans:?}"
-    );
-    for span in &spans {
-        assert_eq!(span.name, "tick");
-        assert_eq!(span.level, tracing::Level::TRACE);
-        assert!(
-            span.fields.iter().any(|f| f.contains("wall")),
-            "no wall-time field in {span:?}"
-        );
-    }
+    assert_tick_spans(&capture_log.spans().split_off(before), 5);
 }
 
 #[test]
-#[ignore = "WI-8"]
+fn tick_trace_span_is_emitted_for_every_tick_of_a_running_run() {
+    // extra (WI-8): the same span check on a run that needs no `step`.
+    let capture_log = trace::install();
+    let before = capture_log.spans().len();
+    let (handle, _thread) = engine();
+    let info = handle.load(short_skeleton(), None, None).expect("load");
+    let sub = handle.subscribe(lossless());
+
+    handle.start().expect("start");
+    until_stopped(&sub);
+
+    let spans = capture_log.spans().split_off(before);
+    assert_tick_spans(&spans, usize::try_from(info.duration_ticks).expect("fits"));
+}
+
+#[test]
 fn collect_until_sees_a_stop_frame_after_stop() {
     // extra: the shared wait helper used above terminates on the stop frame (guards the helper).
     let (handle, _thread) = engine();

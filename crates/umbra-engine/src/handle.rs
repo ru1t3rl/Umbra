@@ -1,21 +1,22 @@
 //! The engine handle (REQ-X-1, ADR 0024): one thread owns the `Engine`; every other thread talks to
 //! it through a bounded command channel and reads frames from the [snapshot bus](crate::bus).
 //!
-//! WI-6 declares the types and the signatures. The data types, [`Reply`], [`HandleConfig`],
-//! [`Command`] and the error enums are final; the bodies of [`EngineHandle`] and [`EngineThread`]
-//! are `todo!` until WI-8 (thread, state machine, load, priming, shutdown) and WI-9 (steps and
-//! queries). Bodies name the work item that implements them.
+//! The data types, [`Reply`], [`HandleConfig`], [`Command`] and the error enums are in this file.
+//! The thread and its loop are in `thread`, the command arms in `commands`, the status and frame
+//! builders in `status`, priming in `prime` and the shutdown protocol in `shutdown`. The step,
+//! entity-query and catalog bodies are `todo!` until WI-9.
 
-#![expect(
-    clippy::todo,
-    clippy::needless_pass_by_value,
-    unused_variables,
-    reason = "WI-6 signature stubs; the bodies arrive in WI-8 and WI-9"
-)]
+mod commands;
+mod prime;
+mod shutdown;
+mod status;
+mod thread;
 
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::{self, SyncSender, TrySendError};
+use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use umbra_core::{
@@ -23,6 +24,7 @@ use umbra_core::{
     StateHash, TickRate, Version,
 };
 use umbra_kernel::{ClockMode, EntitySnapshot, StdWallClock, WallClock};
+use umbra_plugin_host::PluginLog;
 use umbra_templates::{ResolvedTemplate, TickRateSource};
 
 use crate::bus::{Bus, RunState, RunStatus, SubscribeOptions, Subscription};
@@ -31,6 +33,8 @@ use crate::plugins::{PluginFault, PluginInfo};
 use crate::scenario::{EntityInfo, LoadSettings};
 use crate::session::{SessionError, TemplateSpawn};
 use crate::validate::GraphValidation;
+
+use self::shutdown::Shared;
 
 /// The smallest stack the engine thread accepts: deep graphs recurse (ADR 0024).
 pub const MIN_STACK_SIZE: usize = 4 * 1024 * 1024;
@@ -111,6 +115,8 @@ pub struct HandleConfig {
     pub max_wait: Duration,
     /// Makes the wall clock of each new session.
     pub wall: Arc<dyn Fn() -> Box<dyn WallClock> + Send + Sync>,
+    /// Receives the log messages of the plugins of every session; `None` logs to `tracing`.
+    pub plugin_log: Option<Arc<dyn PluginLog>>,
 }
 
 impl HandleConfig {
@@ -124,6 +130,7 @@ impl HandleConfig {
             stack_size: 8 * 1024 * 1024,
             max_wait: Duration::from_millis(10),
             wall: Arc::new(|| -> Box<dyn WallClock> { Box::new(StdWallClock::new()) }),
+            plugin_log: None,
         }
     }
 }
@@ -135,7 +142,9 @@ pub struct Reply<T>(Option<Callback<T>>);
 type Callback<T> = Box<dyn FnOnce(Result<T, HandleError>) + Send>;
 
 impl<T> Reply<T> {
-    /// A reply that calls `callback` with the outcome.
+    /// A reply that calls `callback` with the outcome. The callback runs on the engine thread (or
+    /// on the thread that drops the reply uncompleted): it must be quick and must not block on the
+    /// handle, which would deadlock the engine thread.
     pub fn new(callback: impl FnOnce(Result<T, HandleError>) + Send + 'static) -> Self {
         Self(Some(Box::new(callback)))
     }
@@ -476,14 +485,19 @@ pub enum Command {
 /// A cloneable, thread-safe handle to the engine thread.
 #[derive(Clone)]
 pub struct EngineHandle {
-    #[expect(dead_code, reason = "read by the WI-8 bodies")]
+    /// Shared by every handle: the channel disconnects, and the thread ends, when the last handle
+    /// drops (the [`EngineThread`] holds only a `Weak`).
+    commands: Arc<SyncSender<Command>>,
     bus: Arc<Bus>,
+    shared: Arc<Shared>,
 }
 
-/// Owns the engine thread: [`shutdown`](Self::shutdown) joins it. (Joining on drop arrives with the
-/// thread, in WI-8.)
+/// Owns the engine thread: [`shutdown`](Self::shutdown) or dropping it sets the shutdown flag, wakes
+/// the thread and joins it, so the thread is never detached.
 pub struct EngineThread {
-    _private: (),
+    join: Option<std::thread::JoinHandle<()>>,
+    shared: Arc<Shared>,
+    wake: Weak<SyncSender<Command>>,
 }
 
 impl EngineHandle {
@@ -492,28 +506,78 @@ impl EngineHandle {
     /// # Errors
     /// [`SpawnError::ZeroCapacity`], [`SpawnError::StackTooSmall`], or [`SpawnError::Io`].
     pub fn spawn(config: HandleConfig) -> Result<(EngineHandle, EngineThread), SpawnError> {
-        todo!("WI-8")
+        if config.command_capacity == 0 {
+            return Err(SpawnError::ZeroCapacity);
+        }
+        if config.stack_size < MIN_STACK_SIZE {
+            return Err(SpawnError::StackTooSmall {
+                requested: config.stack_size,
+                minimum: MIN_STACK_SIZE,
+            });
+        }
+        let (tx, rx) = mpsc::sync_channel(config.command_capacity);
+        let bus = Arc::new(Bus::new());
+        let shared = Arc::new(Shared::new());
+        let worker_parts = (Arc::clone(&bus), Arc::clone(&shared));
+        let join = std::thread::Builder::new()
+            .name("umbra-engine".to_owned())
+            .stack_size(config.stack_size)
+            .spawn(move || thread::run(config, rx, worker_parts.0, worker_parts.1))?;
+        let commands = Arc::new(tx);
+        let thread = EngineThread {
+            join: Some(join),
+            shared: Arc::clone(&shared),
+            wake: Arc::downgrade(&commands),
+        };
+        Ok((
+            EngineHandle {
+                commands,
+                bus,
+                shared,
+            },
+            thread,
+        ))
     }
 
     /// Queues a command without waiting.
     ///
     /// # Errors
     /// [`HandleError::Busy`] if the queue is full; [`HandleError::Closed`] if the thread has ended.
+    /// The refused command is dropped, so its reply receives [`HandleError::Closed`].
     pub fn submit(&self, command: Command) -> Result<(), HandleError> {
-        todo!("WI-8")
+        self.commands.try_send(command).map_err(|e| match e {
+            TrySendError::Full(_) => HandleError::Busy,
+            TrySendError::Disconnected(_) => HandleError::Closed,
+        })
     }
 
     /// Registers a subscription and has it primed with a `Control` frame of the current state.
     #[must_use]
     pub fn subscribe(&self, options: SubscribeOptions) -> Subscription {
-        todo!("WI-8")
+        let subscription = self.bus.subscribe(options);
+        self.shared.mark_for_priming(subscription.id());
+        // A full queue is fine: the thread is iterating and serves the mark next turn.
+        drop(self.commands.try_send(Command::Prime));
+        subscription
     }
 
     /// How many tick and control frames the thread has built (probe for the stride test, AT-10).
+    /// Every frame counts once, whoever receives it; a priming frame counts as one build.
     #[doc(hidden)]
     #[must_use]
     pub fn snapshot_builds(&self) -> u64 {
-        todo!("WI-8")
+        self.shared.builds.load(Ordering::Relaxed)
+    }
+
+    /// Submits the command made by `make` and waits for its reply.
+    fn call<T: Send + 'static>(
+        &self,
+        make: impl FnOnce(Reply<T>) -> Command,
+    ) -> Result<T, HandleError> {
+        let (tx, rx) = mpsc::channel();
+        self.submit(make(Reply::new(move |result| drop(tx.send(result)))))?;
+        // The reply completes or drops, either of which sends; a failed receive means the same.
+        rx.recv().unwrap_or(Err(HandleError::Closed))
     }
 
     /// Blocking form of [`Command::Load`].
@@ -526,7 +590,12 @@ impl EngineHandle {
         seed: Option<u64>,
         clock: Option<ClockMode>,
     ) -> Result<SessionInfo, HandleError> {
-        todo!("WI-8")
+        self.call(|reply| Command::Load {
+            path,
+            seed,
+            clock,
+            reply,
+        })
     }
 
     /// Blocking form of [`Command::Unload`].
@@ -534,7 +603,7 @@ impl EngineHandle {
     /// # Errors
     /// As the command.
     pub fn unload(&self) -> Result<(), HandleError> {
-        todo!("WI-8")
+        self.call(|reply| Command::Unload { reply })
     }
 
     /// Blocking form of [`Command::Start`].
@@ -542,7 +611,7 @@ impl EngineHandle {
     /// # Errors
     /// As the command.
     pub fn start(&self) -> Result<RunStatus, HandleError> {
-        todo!("WI-8")
+        self.call(|reply| Command::Start { reply })
     }
 
     /// Blocking form of [`Command::Pause`].
@@ -550,7 +619,7 @@ impl EngineHandle {
     /// # Errors
     /// As the command.
     pub fn pause(&self) -> Result<RunStatus, HandleError> {
-        todo!("WI-8")
+        self.call(|reply| Command::Pause { reply })
     }
 
     /// Blocking form of [`Command::Resume`].
@@ -558,7 +627,7 @@ impl EngineHandle {
     /// # Errors
     /// As the command.
     pub fn resume(&self) -> Result<RunStatus, HandleError> {
-        todo!("WI-8")
+        self.call(|reply| Command::Resume { reply })
     }
 
     /// Blocking form of [`Command::Stop`].
@@ -566,13 +635,14 @@ impl EngineHandle {
     /// # Errors
     /// As the command.
     pub fn stop(&self) -> Result<RunStatus, HandleError> {
-        todo!("WI-8")
+        self.call(|reply| Command::Stop { reply })
     }
 
     /// Blocking form of [`Command::Step`].
     ///
     /// # Errors
     /// As the command.
+    #[expect(clippy::todo, unused_variables, reason = "WI-9 body")]
     pub fn step(&self, count: u64) -> Result<StepOutcome, HandleError> {
         todo!("WI-9")
     }
@@ -582,13 +652,19 @@ impl EngineHandle {
     /// # Errors
     /// As the command.
     pub fn set_clock(&self, mode: ClockMode) -> Result<RunStatus, HandleError> {
-        todo!("WI-8")
+        self.call(|reply| Command::SetClock { mode, reply })
     }
 
     /// Blocking form of [`Command::Spawn`].
     ///
     /// # Errors
     /// As the command.
+    #[expect(
+        clippy::todo,
+        clippy::needless_pass_by_value,
+        unused_variables,
+        reason = "WI-9 body"
+    )]
     pub fn spawn_entity(&self, spec: TemplateSpawn) -> Result<EntityState, HandleError> {
         todo!("WI-9")
     }
@@ -597,6 +673,7 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
+    #[expect(clippy::todo, unused_variables, reason = "WI-9 body")]
     pub fn remove_entity(&self, id: EntityId) -> Result<Applied, HandleError> {
         todo!("WI-9")
     }
@@ -606,13 +683,19 @@ impl EngineHandle {
     /// # Errors
     /// As the command.
     pub fn status(&self) -> Result<EngineStatus, HandleError> {
-        todo!("WI-8")
+        self.call(|reply| Command::Status { reply })
     }
 
     /// Blocking form of [`Command::Entities`].
     ///
     /// # Errors
     /// As the command.
+    #[expect(
+        clippy::todo,
+        clippy::needless_pass_by_value,
+        unused_variables,
+        reason = "WI-9 body"
+    )]
     pub fn entities(&self, query: EntityQuery) -> Result<EntityPage, HandleError> {
         todo!("WI-9")
     }
@@ -621,6 +704,7 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
+    #[expect(clippy::todo, unused_variables, reason = "WI-9 body")]
     pub fn entity(&self, id: EntityId) -> Result<EntityState, HandleError> {
         todo!("WI-9")
     }
@@ -629,6 +713,7 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
+    #[expect(clippy::todo, reason = "WI-9 body")]
     pub fn templates(&self) -> Result<Vec<ResolvedTemplate>, HandleError> {
         todo!("WI-9")
     }
@@ -637,6 +722,7 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
+    #[expect(clippy::todo, unused_variables, reason = "WI-9 body")]
     pub fn components(
         &self,
         kind: Option<ComponentKind>,
@@ -648,6 +734,7 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
+    #[expect(clippy::todo, reason = "WI-9 body")]
     pub fn catalog(&self) -> Result<Catalog, HandleError> {
         todo!("WI-9")
     }
@@ -656,6 +743,7 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
+    #[expect(clippy::todo, reason = "WI-9 body")]
     pub fn plugins(&self) -> Result<PluginReport, HandleError> {
         todo!("WI-9")
     }
@@ -664,6 +752,12 @@ impl EngineHandle {
     ///
     /// # Errors
     /// As the command.
+    #[expect(
+        clippy::todo,
+        clippy::needless_pass_by_value,
+        unused_variables,
+        reason = "WI-9 body"
+    )]
     pub fn validate_graph(
         &self,
         name: String,
@@ -675,11 +769,11 @@ impl EngineHandle {
 
 impl EngineThread {
     /// Sets the shutdown flag, wakes the thread without blocking on the queue, and joins it. A step
-    /// in progress is answered [`HandleError::Closed`].
+    /// in progress is answered [`HandleError::Closed`] (from WI-9).
     ///
     /// # Errors
     /// [`HandleError::Closed`] if the thread had already ended by a panic.
-    pub fn shutdown(self) -> Result<(), HandleError> {
-        todo!("WI-8")
+    pub fn shutdown(mut self) -> Result<(), HandleError> {
+        self.stop_and_join()
     }
 }

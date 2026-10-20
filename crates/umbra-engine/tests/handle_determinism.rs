@@ -176,7 +176,6 @@ fn stepped_engine(seed: Option<u64>) -> (EngineHandle, umbra_engine::handle::Eng
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn handle_run_equals_engine_run_per_tick_hashes_intents_contacts() {
     let _lock = plugin_lock();
     for name in SCENARIOS {
@@ -201,7 +200,6 @@ fn handle_run_equals_engine_run_per_tick_hashes_intents_contacts() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn final_hashes_are_the_goldens() {
     let _lock = plugin_lock();
     let gates = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/gates.sh");
@@ -325,7 +323,6 @@ fn same_command_script_at_same_ticks_gives_same_hashes() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn different_seed_differs() {
     let default_seed = handle_run("walking_skeleton", None, &[]).0.hashes;
     let other = handle_run("walking_skeleton", Some(43), &[]).0.hashes;

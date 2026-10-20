@@ -25,6 +25,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use umbra_core::PluginId;
+use umbra_engine::PluginLog;
 use umbra_engine::builtins::standard_registry;
 use umbra_engine::bus::{Frame, RunState, SubscribeOptions, Subscription};
 use umbra_engine::handle::{Command, EngineHandle, EngineThread, HandleConfig, HandleError, Reply};
@@ -40,6 +42,39 @@ pub fn plugin_lock() -> MutexGuard<'static, ()> {
     PLUGIN_TEST_LOCK
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Collects the plugin log messages of the sessions of a handle (`HandleConfig::plugin_log`).
+#[derive(Default)]
+pub struct PluginRecorder(Mutex<Vec<String>>);
+
+impl PluginLog for PluginRecorder {
+    fn log(&self, _plugin: &PluginId, _level: umbra_plugin_host::LogLevel, message: &str) {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(message.to_owned());
+    }
+}
+
+impl PluginRecorder {
+    /// A recorder, and the same recorder as the `HandleConfig` hook.
+    pub fn new() -> (Arc<Self>, Arc<dyn PluginLog>) {
+        let recorder = Arc::new(Self::default());
+        let hook: Arc<dyn PluginLog> = recorder.clone();
+        (recorder, hook)
+    }
+
+    pub fn messages(&self) -> Vec<String> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    pub fn count(&self, message: &str) -> usize {
+        self.messages().iter().filter(|m| *m == message).count()
+    }
 }
 
 /// Wall time that never advances; waiting yields instead of sleeping.

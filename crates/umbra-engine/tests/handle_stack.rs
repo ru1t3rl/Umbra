@@ -10,11 +10,10 @@ mod plugin_support;
 
 use std::path::{Path, PathBuf};
 
-use handle_support::{config, load_stepped, start_engine};
+use handle_support::{config, load_stepped, lossless, start_engine, until_stopped};
 use umbra_engine::handle::{EngineHandle, MIN_STACK_SIZE, SpawnError};
 
 #[test]
-#[ignore = "WI-8"]
 fn stack_below_4_mib_is_refused() {
     let mut small = config();
     small.stack_size = MIN_STACK_SIZE - 1;
@@ -28,7 +27,6 @@ fn stack_below_4_mib_is_refused() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn stack_of_exactly_4_mib_is_accepted() {
     // extra: the limit is inclusive.
     let mut exact = config();
@@ -76,4 +74,32 @@ fn deepest_allowed_graph_runs_on_a_4_mib_engine_thread() {
 
     assert!(outcome.completed);
     assert_eq!(outcome.reached.tick(), 5);
+}
+
+#[test]
+fn deepest_allowed_graph_runs_to_its_end_on_a_4_mib_engine_thread() {
+    // extra (WI-8): the 4 MiB row without `step`. The run ends by its duration, not by a panic of
+    // the engine thread (which would make the status call fail with `Closed`).
+    let mut smallest = config();
+    smallest.stack_size = MIN_STACK_SIZE;
+    let (handle, _thread) = start_engine(smallest);
+    let info = handle
+        .load(
+            scenario_with_chain(14),
+            None,
+            Some(umbra_engine::ClockMode::AsFastAsPossible),
+        )
+        .expect("load");
+    let sub = handle.subscribe(lossless());
+
+    handle.start().expect("start");
+    let frames = until_stopped(&sub);
+
+    let last = frames.last().expect("frames");
+    assert_eq!(
+        last.run.stop_reason,
+        Some(umbra_engine::bus::StopReason::Duration)
+    );
+    assert!(info.duration_ticks >= 5, "the run is long enough to tick");
+    assert!(handle.status().is_ok());
 }

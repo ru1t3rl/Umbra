@@ -15,7 +15,6 @@ use handle_support::{
 use umbra_engine::handle::{Command, EngineStatus, HandleError, StepOutcome};
 
 #[test]
-#[ignore = "WI-8"]
 fn shutdown_while_command_queue_full() {
     let mut small = config();
     small.command_capacity = 1;
@@ -65,7 +64,6 @@ fn shutdown_cancels_pending_step_with_closed() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn dropping_engine_thread_joins() {
     let (handle, thread) = engine();
     assert!(handle.status().is_ok());
@@ -79,7 +77,6 @@ fn dropping_engine_thread_joins() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn dropping_all_handles_ends_the_thread() {
     let (handle, thread) = engine();
     let clone = handle.clone();
@@ -90,4 +87,28 @@ fn dropping_all_handles_ends_the_thread() {
 
     let shut = finishes(move || thread.shutdown());
     assert!(shut.is_ok(), "the thread ended normally, not by a panic");
+}
+
+#[test]
+fn dropping_engine_thread_inside_a_reply_callback_does_not_deadlock() {
+    // m3: a callback runs on the engine thread; dropping the owner there must not join itself.
+    let (handle, thread) = engine();
+    let (done_tx, done_rx) = mpsc::channel();
+    let reply =
+        umbra_engine::handle::Reply::new(move |_result: Result<EngineStatus, HandleError>| {
+            drop(thread);
+            let _ = done_tx.send(());
+        });
+    handle.submit(Command::Status { reply }).expect("submit");
+
+    done_rx.recv_timeout(GUARD).expect("the callback finished");
+
+    // The flag ends the thread once the callback returned: later commands are `Closed`.
+    let ended = finishes(move || {
+        while handle.status().is_ok() {
+            std::thread::yield_now();
+        }
+        matches!(handle.status(), Err(HandleError::Closed))
+    });
+    assert!(ended);
 }

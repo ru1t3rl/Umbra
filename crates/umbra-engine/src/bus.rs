@@ -404,6 +404,25 @@ impl Bus {
         self.live().iter().any(|s| s.due(tick) && s.with_state_hash)
     }
 
+    /// `(frame due, state hash due)` at `tick` from one registry snapshot: the answers of
+    /// [`wants_frame`](Self::wants_frame) and [`wants_state_hash`](Self::wants_state_hash) together.
+    #[must_use]
+    pub fn due(&self, tick: u64) -> (bool, bool) {
+        self.live().iter().fold((false, false), |(frame, hash), s| {
+            let due = s.due(tick);
+            (frame || due, hash || (due && s.with_state_hash))
+        })
+    }
+
+    /// `(any subscription exists, any of them asks for state hashes)`, for frames built whatever the
+    /// stride (control frames, step completion, stop).
+    #[must_use]
+    pub fn interest(&self) -> (bool, bool) {
+        self.live().iter().fold((false, false), |(_, hash), s| {
+            (true, hash || s.with_state_hash)
+        })
+    }
+
     /// Pushes `frame` to every subscription, or only to `only` (priming). Never waits for space: a
     /// full queue drops its oldest frame and counts it; the dropped frame's events are carried.
     pub fn publish(&self, frame: Frame, only: Option<SlotId>) {

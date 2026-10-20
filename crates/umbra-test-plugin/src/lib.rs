@@ -17,7 +17,7 @@
 //! | `intent_flood` | pushes 65 intents for its item (the cap is 64) |
 //! | `bad_value` | reports output `turns` as entity 0, which breaks the `BbValue` invariants |
 //!
-//! The plugin's `shutdown` logs `shutdown`. Cargo features (one library per feature set, built by the
+//! The plugin's `init` logs `init` and its `shutdown` logs `shutdown`. Cargo features (one library per feature set, built by the
 //! tests' build helper): `entry_panics` (building the descriptor panics, so the entry returns null),
 //! `init_fails`, `init_panics`, `shutdown_panics`, and `bad_schema` (adds `test.behavior.bad_schema`,
 //! whose param schema uses `anyOf`, outside the ADR 0009 subset). A library without the entry symbol,
@@ -351,13 +351,14 @@ fn init() -> Result<(), Error> {
     Err(Error::new("init_fails: init fails on purpose"))
 }
 
-/// Plugin `init`: nothing to set up.
+/// Plugin `init`: logs `init` (so a test can count image lifecycles), nothing else to set up.
 #[cfg(not(any(feature = "init_fails", feature = "init_panics")))]
 #[expect(
     clippy::unnecessary_wraps,
     reason = "export_plugin! takes `fn() -> Result<(), Error>`"
 )]
 fn init() -> Result<(), Error> {
+    log(Level::Info, "init");
     Ok(())
 }
 

@@ -2,7 +2,7 @@
 //! make the publisher wait, event carry-over, strides, priming and the lock rules. Requirements:
 //! REQ-K-6, REQ-X-7, ADR 0024 (design-review amendments M1, M2, M11, m1).
 //!
-//! `no_frame_built_without_subscribers` is `#[ignore = "WI-8"]` (it goes through the engine handle). Events are tagged with a unique
+//! `no_frame_built_without_subscribers` is `#[ignore = "WI-9"]` (it goes through the engine handle and `step`). Events are tagged with a unique
 //! number carried in `ControlAction::Step(n)` so tests can follow them across drops.
 //!
 //! "Due" (ASM-174): a subscription with stride `s` is due a tick frame at tick `t` when `t % s == 0`;
@@ -493,7 +493,7 @@ fn no_frame_built_without_subscribers_wants_nothing() {
 }
 
 #[test]
-#[ignore = "WI-8"]
+#[ignore = "WI-9"]
 fn no_frame_built_without_subscribers() {
     // The handle half of the row: ticks and a step with nobody subscribed build no frame; the first
     // subscriber costs exactly its priming frame.
@@ -508,6 +508,56 @@ fn no_frame_built_without_subscribers() {
 
     assert_eq!(primed.frames.len(), 1);
     assert_eq!(handle.snapshot_builds(), 1);
+}
+
+#[test]
+fn no_frame_built_without_subscribers_while_running() {
+    // The handle half of the row without `step` (WI-8): a run to its duration with nobody
+    // subscribed builds no frame; the first subscriber then costs exactly its priming frame.
+    let (handle, _thread) = start_engine(config());
+    handle
+        .load(short_skeleton(), None, Some(ClockMode::AsFastAsPossible))
+        .expect("load");
+    handle.start().expect("start");
+    while handle.status().expect("status").run.state != RunState::Stopped {
+        std::thread::yield_now();
+    }
+    assert_eq!(handle.snapshot_builds(), 0);
+
+    let sub = handle.subscribe(SubscribeOptions::new());
+    let primed = sub.wait(GUARD);
+
+    assert_eq!(primed.frames.len(), 1);
+    assert_eq!(handle.snapshot_builds(), 1);
+}
+
+#[test]
+fn due_and_interest_agree_with_the_single_questions() {
+    // ASM-174 / WI-8: `due` is `(wants_frame, wants_state_hash)` from one registry read, and
+    // `interest` is `(any subscription, any asks for hashes)` whatever the stride.
+    let bus = new_bus();
+    assert_eq!(bus.interest(), (false, false));
+    assert_eq!(bus.due(4), (false, false));
+    let plain = bus.subscribe(SubscribeOptions::new());
+    assert_eq!(bus.interest(), (true, false));
+    let mut strided = SubscribeOptions::new();
+    strided.min_tick_stride = NonZeroU64::new(3).expect("non-zero");
+    strided.with_state_hash = true;
+    let hashed = bus.subscribe(strided);
+    assert_eq!(bus.interest(), (true, true));
+
+    for tick in 0..12 {
+        assert_eq!(
+            bus.due(tick),
+            (bus.wants_frame(tick), bus.wants_state_hash(tick)),
+            "tick {tick}"
+        );
+    }
+    assert_eq!(bus.due(1), (true, false), "only the plain one is due");
+    assert_eq!(bus.due(3), (true, true));
+    drop(plain);
+    drop(hashed);
+    assert_eq!(bus.interest(), (false, false));
 }
 
 // ---- the invariants over random sequences ----

@@ -16,6 +16,7 @@ umbra-motion = { path = "../umbra-motion" }
 umbra-plugin-host = { path = "../umbra-plugin-host" }
 umbra-templates = { path = "../umbra-templates" }
 thiserror.workspace = true
+tracing = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true
@@ -23,4 +24,3 @@ workspace = true
 [dev-dependencies]
 proptest.workspace = true
 serde_json.workspace = true
-tracing = { workspace = true, features = ["std"] }
