@@ -77,7 +77,8 @@ an online `bun install`).
 | @testing-library/dom | 10.4.2 | MIT | root, dev |
 | @testing-library/jest-dom | 6.10.0 | MIT | root, dev |
 | @testing-library/user-event | 14.6.8 | MIT | root, dev |
+| dependency-cruiser | 17.4.3 (M5b WI-2; the registry's current major is 18, plan major 17 pinned) | MIT | root, dev |
 
 Bun is pinned as `bun@1.4.2`. `bun run check:licenses` passes on the full installed tree (6 runtime and 103
 dev-only packages). Not yet installed: react-router, @tanstack/react-query, zustand, maplibre-gl, orval,
-json-schema-to-typescript, dependency-cruiser, @playwright/test, @axe-core/playwright.
+json-schema-to-typescript, @playwright/test, @axe-core/playwright.

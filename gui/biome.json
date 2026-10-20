@@ -10,6 +10,7 @@
       "!**/test-results",
       "!**/playwright-report",
       "!**/generated",
+      "!**/arch-fixtures",
       "!**/reference",
       "!**/tokens.css",
       "!**/tokens.ts",

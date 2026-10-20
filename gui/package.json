@@ -20,7 +20,8 @@
     "check:tokens": "bun scripts/check-tokens.mjs",
     "check:contrast": "bun scripts/check-contrast.mjs",
     "check:licenses": "bun scripts/check-licenses.ts",
-    "verify": "bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run test && bun run build"
+    "check:deps": "depcruise --config .dependency-cruiser.cjs . && bun scripts/check-plain-requests.ts",
+    "verify": "bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run check:deps && bun run test && bun run build"
   },
   "dependencies": {
     "react": "19.3.1",
@@ -37,6 +38,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.2.0",
+    "dependency-cruiser": "17.4.3",
     "typescript": "5.9.3",
     "vite": "7.3.7"
   }

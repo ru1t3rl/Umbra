@@ -1,0 +1,16 @@
+{
+  "name": "@umbra/map-view",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "umbra": {
+    "tier": "domain"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@umbra/data": "workspace:*",
+    "@umbra/ui-kit": "workspace:*"
+  }
+}

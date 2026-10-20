@@ -20,12 +20,12 @@ bun run verify                   # the ordered list below, stops at the first fa
 5. `check:licenses`: npm licences within the allow list (ADR 0043)
 6. `typecheck`: `tsc -b` across all workspaces, strict
 7. `lint`: biome check (lint + format)
-8. `check:deps`: dependency-cruiser layering, tiers, no deep imports, no cycles (added in M5b WI-2)
+8. `check:deps`: dependency-cruiser layering, tiers, no deep imports, no cycles (added in M5b WI-2; also runs the ADR 0045 plain-request scan)
 9. `test`: bun test, unit + component + shell tests
 10. `build`: vite production build
 11. `test:e2e`: playwright (added in M5b WI-7; needs the release `umbra` binary and Chromium)
 
-Currently active (M5b WI-1): steps 2 to 7, 9 and 10. Then, on a Windows runner only (M8): `bun run tauri build`.
+Currently active (M5b WI-2): steps 2 to 10 (all but 1 and 11). Then, on a Windows runner only (M8): `bun run tauri build`.
 
 ## Report
 Pass/fail per step, first failure with message and probable cause, and the owner: layering or structure -> `frontend-architect`; implementation -> `frontend-engineer`; contract mismatch -> `api-engineer`; flaky test -> `frontend-test-engineer`; pipeline/tooling -> `build-engineer`.
