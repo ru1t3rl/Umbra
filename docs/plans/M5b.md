@@ -753,6 +753,7 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
 ### Done
 - WI-1 (2026-10-20, uncommitted at the time of writing): `gui/` Bun workspace (root `gui/package.json`, `gui/bun.lock`, `features/ui-kit`), tsconfig/biome/vite/bunfig/test setup, `check-licenses.ts`, `check-tokens.mjs --root` with the vacuous-pass guard, the three design-system scripts wired, gate 15 in `scripts/gates.sh` and `docs/build.md`, A-003 apply steps 1-3 (H-9), `verify-frontend` skill. `bun run verify` (WI-1 steps 2-7, 9, 10) passes. ASM-322..ASM-326.
 - WI-2 (2026-10-20, uncommitted at the time of writing): `gui/.dependency-cruiser.cjs` (all rules of the WI list, tiers read from `umbra.tier`), `gui/test/architecture.test.ts` with `gui/test/arch-fixtures/` (one failing fixture per rule, REQ-A-4 `../crates` and `../api/openapi.json` cases, meta test that every rule has a fixture), `gui/scripts/check-plain-requests.ts` (ADR 0045), `check:deps` in `verify` (after lint, ADR 0044), dependency-cruiser 17.4.3 recorded in ADR 0043. ASM-327..ASM-331.
+- WI-3 (2026-10-20, uncommitted at the time of writing): `@umbra/ui-kit` foundations: `styles.css` entry, `base.css`, `ThemeProvider`/`useTheme` (`src/theme/`), `defineMessages` (`src/i18n/`), `Icon`, token re-exports; tests `ThemeProvider.test.tsx`, `defineMessages.test.ts`, `Icon.test.tsx`; `bun run verify` passes. ASM-332..ASM-334.
 
 ### Deferred
 - To M8:

@@ -1,0 +1,6 @@
+/* Single stylesheet entry of @umbra/ui-kit (ADR 0043). Component CSS is imported here as components land;
+   the components also import their own CSS so a bundler resolves either path. */
+@import "./fonts.css";
+@import "./tokens/tokens.css";
+@import "./base.css";
+@import "./components/Icon/Icon.css";

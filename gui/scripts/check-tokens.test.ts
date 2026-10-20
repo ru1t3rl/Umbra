@@ -50,6 +50,19 @@ describe("check-tokens", () => {
     const r = run(fixture({ "src/a.css": ".a { color: var(--ink); }\n" }));
     expect(r.code).toBe(0);
   });
+  test.each([
+    ["font-family", "var(--font-sans)", '"Arial"'],
+    ["border-radius", "var(--radius-sm)", "4px"],
+    ["box-shadow", "var(--shadow-focus)", "0 0 2px black"],
+  ])("%s: var() with a space passes, a literal fails", (prop, ok, bad) => {
+    expect(run(fixture({ "src/a.css": `.a { ${prop}: ${ok}; }\n` })).code).toBe(0);
+    expect(run(fixture({ "src/a.css": `.a { ${prop}:${ok}; }\n` })).code).toBe(0);
+    expect(run(fixture({ "src/a.css": `.a { ${prop}: ${bad}; }\n` })).code).toBe(1);
+  });
+  test("none, inherit and 0 stay allowed", () => {
+    const css = ".a { box-shadow: none; font-family: inherit; border-radius: 0; }\n";
+    expect(run(fixture({ "src/a.css": css })).code).toBe(0);
+  });
   test("the repository tree passes", () => {
     expect(run().code).toBe(0);
   });

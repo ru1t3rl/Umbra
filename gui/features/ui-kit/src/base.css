@@ -1,0 +1,23 @@
+/* Base styles (A-003): page surface, default text, focus ring, reduced motion. Tokens only. */
+html {
+  color-scheme: dark;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px; /* umbra-allow */
+  line-height: 20px;
+  font-weight: 400;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}

@@ -12,10 +12,10 @@ const skip = (p) => /node_modules|[\\/]dist[\\/]|[\\/]generated[\\/]|[\\/]refere
 const rules = [
   ["hex colour literal", /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b(?![\w-])/],
   ["rgb/hsl/oklch colour literal", /\b(?:rgba?|hsla?|oklch|oklab)\(/],
-  ["literal font-family (use var(--font-*))", /font-family\s*:\s*(?!var\(|inherit)/],
+  ["literal font-family (use var(--font-*))", /font-family\s*:(?!\s*(?:var\(|inherit))/],
   ["literal font-size (use a .type-* class)", /font-size\s*:\s*\d/],
-  ["literal border-radius (use var(--radius-*))", /border-radius\s*:\s*(?!0\b|50%|inherit|var\()/],
-  ["literal box-shadow (use var(--shadow-*))", /box-shadow\s*:\s*(?!none|var\()/],
+  ["literal border-radius (use var(--radius-*))", /border-radius\s*:(?!\s*(?:0\b|50%|inherit|var\())/],
+  ["literal box-shadow (use var(--shadow-*))", /box-shadow\s*:(?!\s*(?:none|var\())/],
 ];
 const files = [];
 const walk = (d) => { for (const n of readdirSync(d)) { const p = join(d, n); if (skip(p + sep)) continue; const s = statSync(p); s.isDirectory() ? walk(p) : /\.(tsx?|css)$/.test(n) && files.push(p); } };

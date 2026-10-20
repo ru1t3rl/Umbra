@@ -1,5 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "outDir": ".tsbuild", "tsBuildInfoFile": ".tsbuild/ui-kit.tsbuildinfo" },
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/ui-kit.tsbuildinfo",
+    "types": ["bun"]
+  },
   "include": ["src"]
 }
