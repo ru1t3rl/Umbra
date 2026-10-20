@@ -3,7 +3,7 @@
 Companion to spec sections 12-13 and `gui/CLAUDE.md`. Defines how the GUI is organized so agents can extend it consistently.
 
 ## 1. Concepts
-- **Feature**: a library (`features/<name>`, package `@umbra/<name>`) that does one domain thing well and exposes a small public API via `src/index.ts`. Examples: `ui-kit`, `engine-client`, `engine-stream`, `map-view`, `entity-inspector`, `scenario-control`, `template-browser`, `plugin-status`, `log-view`.
+- **Feature**: a library (`features/<name>`, package `@umbra/<name>`) that does one domain thing well and exposes a small public API via `src/index.ts`. Examples: `ui-kit`, `data`, `engine-stream`, `map-view`, `entity-inspector`, `scenario-control`, `template-browser`, `plugin-status`, `log-view`.
 - **Feature shell**: a library (`feature-shells/<name>`, package `@umbra/shell-<name>`) representing a **page**. It composes features into a layout and exports a route definition. Examples: `dashboard` (live map + run controls + inspector), `templates`, `plugins`, `settings`.
 - **App** (`src/`): bootstraps providers (query client, engine connection, theme), builds the router from shell route definitions, reads runtime config (engine URL). Almost no code.
 
@@ -13,7 +13,7 @@ Milestone column (A-002, D-36): M5b (live map) is the first GUI slice and delive
 | Package | Type | Tier | Purpose | Milestone |
 |---|---|---|---|---|
 | `@umbra/ui-kit` | feature | foundation | Design tokens, primitives (Button, Panel, Table, Toast), i18n helper | M5b (minimum: i18n helper, Panel); rest M8 |
-| `@umbra/engine-client` | feature | foundation | Generated REST client, typed hooks wrapper, connection/config | M5b |
+| `@umbra/data` | feature | foundation | The REST data layer: orval-generated client and TanStack Query `useQuery`/`useMutation` hooks for every operation in `api/openapi.json`, query keys, the fetch mutator (runtime base URL, `ApiProblem` from problem+json), `DataProvider` (QueryClient); the only package features use for REST data (human decision 2026-10-20) | M5b |
 | `@umbra/engine-stream` | feature | foundation | WebSocket connection, encoding negotiation (json/msgpack), subscription filters, entity store | M5b (JSON encoding with the negotiation hook) |
 | `@umbra/map-view` | feature | domain | `MapView` interface + implementation (library chosen at M5b by ADR), entity layer | M5b |
 | `@umbra/entity-inspector` | feature | domain | Entity list/detail panel | M8 |
@@ -56,7 +56,7 @@ feature-shells/<name>/
 ```
 
 ## 5. Data flow
-- Commands and config: generated REST client (`engine-client`) wrapped by TanStack Query hooks.
+- Commands and config: the orval-generated TanStack Query hooks of `@umbra/data` (`useQuery` for reads, `useMutation` for commands, invalidation by generated query keys).
 - Live state: `engine-stream` owns the WebSocket, decodes frames, applies deltas to a Zustand store; features read through narrow selectors.
 - Contract source of truth: `api/openapi.json` + stream schema from the Rust server. Regenerate with `bun run gen:api`; never hand-write API types.
 

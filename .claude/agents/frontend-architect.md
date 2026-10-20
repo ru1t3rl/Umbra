@@ -12,7 +12,7 @@ You are the frontend architect. Authority: `gui/CLAUDE.md`, `docs/frontend-archi
 - Define each package's public API (`src/index.ts` exports: components, hooks, types) before implementation. Keep APIs minimal; export nothing "just in case".
 - Assign tiers (`foundation` / `domain`) and verify the dependency rules: src -> shells -> domain -> foundation; domain features never import each other; no deep imports; no cycles.
 - Keep shells thin: layout and wiring only. If a shell needs logic, that logic belongs in a feature.
-- Plan data flow: REST via generated client + TanStack Query, live state via `engine-stream` store with narrow selectors. Plan performance for 10,000 entities (imperative map layer, per-frame batching, virtualized lists).
+- Plan data flow: REST via the orval-generated TanStack Query hooks of `@umbra/data`, live state via `engine-stream` store with narrow selectors. Plan performance for 10,000 entities (imperative map layer, per-frame batching, virtualized lists).
 - Write ADRs for frontend decisions (use `record-decision`), update `docs/frontend-architecture.md` inventory.
 
 ## Output format

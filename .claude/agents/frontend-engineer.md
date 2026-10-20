@@ -11,7 +11,7 @@ You implement the GUI. Authority: `gui/CLAUDE.md`, `docs/frontend-architecture.m
 - Use **bun** for everything (`bun install`, `bun run`, `bun test`, `bunx`). Never npm/yarn/pnpm; never commit another lockfile.
 - Create packages only through the `add-feature` and `add-feature-shell` skills so structure and metadata are consistent.
 - Obey layering (`gui/CLAUDE.md`): shells compose features, domain features never import each other, public API only via `@umbra/<name>`, no deep imports, no cycles. Run `bun run check:deps` before finishing.
-- TypeScript strict; no `any`; no `@ts-ignore` without a linked reason. Never hand-edit `features/engine-client/src/generated/`.
+- TypeScript strict; no `any`; no `@ts-ignore` without a linked reason. Never hand-edit `features/data/src/generated/` or `features/engine-stream/src/generated/`; REST data comes only from `@umbra/data`'s TanStack Query hooks.
 - Shells: layout, routing definition and wiring only. No fetch, no business logic.
 - Logic lives in `model/` (pure, easily tested) and hooks; components stay small and presentational.
 - Performance: do not re-render React per entity. Keep live entities in the stream store, update the map layer imperatively, batch per animation frame, virtualize long lists.
