@@ -2,8 +2,7 @@
 //! make the publisher wait, event carry-over, strides, priming and the lock rules. Requirements:
 //! REQ-K-6, REQ-X-7, ADR 0024 (design-review amendments M1, M2, M11, m1).
 //!
-//! Every test that needs the `Bus` bodies is `#[ignore = "WI-7"]` until WI-7 lands, except the one
-//! that is also marked WI-8 (it goes through the engine handle). Events are tagged with a unique
+//! `no_frame_built_without_subscribers` is `#[ignore = "WI-8"]` (it goes through the engine handle). Events are tagged with a unique
 //! number carried in `ControlAction::Step(n)` so tests can follow them across drops.
 //!
 //! "Due" (ASM-174): a subscription with stride `s` is due a tick frame at tick `t` when `t % s == 0`;
@@ -78,7 +77,6 @@ fn new_bus() -> Arc<Bus> {
 // ---- never blocking, bounded, newest kept ----
 
 #[test]
-#[ignore = "WI-7"]
 fn publish_never_waits_for_a_full_subscriber() {
     let bus = new_bus();
     let sub = bus.subscribe(options(2));
@@ -96,7 +94,6 @@ fn publish_never_waits_for_a_full_subscriber() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn queue_never_exceeds_capacity() {
     let bus = new_bus();
     let sub = bus.subscribe(options(3));
@@ -110,7 +107,6 @@ fn queue_never_exceeds_capacity() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn newest_frame_is_always_kept() {
     let bus = new_bus();
     let sub = bus.subscribe(options(4));
@@ -127,7 +123,6 @@ fn newest_frame_is_always_kept() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn dropped_count_is_exact() {
     let bus = new_bus();
     let sub = bus.subscribe(options(4));
@@ -149,7 +144,6 @@ fn dropped_count_is_exact() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn drain_of_an_empty_queue_is_empty() {
     // extra: an untouched subscription hands out nothing and reports no drops.
     let bus = new_bus();
@@ -163,7 +157,6 @@ fn drain_of_an_empty_queue_is_empty() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn frames_pushed_before_a_subscription_existed_are_not_delivered() {
     // extra: `Bus::subscribe` promises that older frames are not delivered.
     let bus = new_bus();
@@ -177,7 +170,6 @@ fn frames_pushed_before_a_subscription_existed_are_not_delivered() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn every_subscription_gets_every_frame_independently() {
     // extra: a slow subscriber does not cost a fast one a frame.
     let bus = new_bus();
@@ -198,7 +190,6 @@ fn every_subscription_gets_every_frame_independently() {
 // ---- carried events (M2) ----
 
 #[test]
-#[ignore = "WI-7"]
 fn dropped_frames_events_are_carried_into_the_next_drain() {
     let bus = new_bus();
     let sub = bus.subscribe(options(2));
@@ -228,7 +219,6 @@ fn dropped_frames_events_are_carried_into_the_next_drain() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn carried_events_are_handed_out_once() {
     // extra: a second drain does not repeat them.
     let bus = new_bus();
@@ -249,7 +239,6 @@ fn carried_events_are_handed_out_once() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn carried_events_cap_sets_truncated() {
     let bus = new_bus();
     let mut capped = options(1);
@@ -271,7 +260,6 @@ fn carried_events_cap_sets_truncated() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn carried_events_exactly_at_the_cap_are_not_truncated() {
     // extra: the cap is a limit, not a trigger.
     let bus = new_bus();
@@ -288,7 +276,6 @@ fn carried_events_exactly_at_the_cap_are_not_truncated() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn truncation_is_reported_once_per_drain() {
     // extra: the flag belongs to one drain, like `dropped`.
     let bus = new_bus();
@@ -306,7 +293,6 @@ fn truncation_is_reported_once_per_drain() {
 // ---- registration and notification ----
 
 #[test]
-#[ignore = "WI-7"]
 fn dropped_subscription_unregisters() {
     let bus = new_bus();
     {
@@ -331,7 +317,6 @@ fn counting(options: &mut SubscribeOptions) -> Arc<AtomicU64> {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn notify_called_once_per_publish() {
     let bus = new_bus();
     let mut watched = options(2);
@@ -345,7 +330,6 @@ fn notify_called_once_per_publish() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn notify_is_not_called_for_a_frame_aimed_at_another_slot() {
     // extra: priming one slot does not wake the others.
     let bus = new_bus();
@@ -360,7 +344,6 @@ fn notify_is_not_called_for_a_frame_aimed_at_another_slot() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn no_lock_held_during_notify() {
     let bus = new_bus();
     let kept: Arc<Mutex<Vec<Subscription>>> = Arc::new(Mutex::new(Vec::new()));
@@ -389,7 +372,34 @@ fn no_lock_held_during_notify() {
 }
 
 #[test]
-#[ignore = "WI-7"]
+fn notify_may_drain_its_own_subscription() {
+    // m1: the slot mutex is released before `notify`, so a notify that drains (as the server's
+    // consumer wake-up may) does not deadlock.
+    let bus = new_bus();
+    let cell: Arc<Mutex<Option<Arc<Subscription>>>> = Arc::new(Mutex::new(None));
+    let seen = Arc::new(AtomicU64::new(0));
+    let (cell_in, seen_in) = (Arc::clone(&cell), Arc::clone(&seen));
+    let mut watched = options(2);
+    watched.notify = Some(Arc::new(move || {
+        if let Some(sub) = cell_in.lock().expect("cell lock").as_ref() {
+            seen_in.fetch_add(sub.drain().frames.len() as u64, Ordering::SeqCst);
+        }
+    }));
+    *cell.lock().expect("cell lock") = Some(Arc::new(bus.subscribe(watched)));
+    let publisher = Arc::clone(&bus);
+
+    finishes(move || publisher.publish(frame(0, &[]), None));
+
+    assert_eq!(
+        seen.load(Ordering::SeqCst),
+        1,
+        "the notify drained the frame"
+    );
+    // Break the cycle cell -> subscription -> slot -> notify -> cell, so the subscription unregisters.
+    cell.lock().expect("cell lock").take();
+}
+
+#[test]
 fn poisoned_registry_recovers() {
     // m1. A panicking notify runs outside every lock, so this cannot poison the registry itself
     // (the registry's `PoisonError::into_inner` path is reachable only from inside `bus.rs`; see
@@ -417,7 +427,6 @@ fn poisoned_registry_recovers() {
 // ---- strides and the state hash (M11) ----
 
 #[test]
-#[ignore = "WI-7"]
 fn wants_frame_follows_the_smallest_due_stride() {
     let bus = new_bus();
     assert!(!bus.wants_frame(4), "nobody subscribed");
@@ -435,7 +444,6 @@ fn wants_frame_follows_the_smallest_due_stride() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn state_hash_only_when_requested() {
     let bus = new_bus();
     assert!(!bus.wants_state_hash(2), "nobody subscribed");
@@ -449,7 +457,6 @@ fn state_hash_only_when_requested() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn prime_targets_one_slot() {
     let bus = new_bus();
     let mut first_options = options(4);
@@ -475,7 +482,6 @@ fn prime_targets_one_slot() {
 // ---- no building without subscribers (M11) ----
 
 #[test]
-#[ignore = "WI-7"]
 fn no_frame_built_without_subscribers_wants_nothing() {
     // extra (bus half of the row): with no subscription the bus asks for nothing, at any tick.
     let bus = new_bus();
@@ -524,8 +530,7 @@ proptest! {
     /// The capacity bound, the kept newest frame, the exact drop count and the conservation of
     /// events (up to the carry cap) hold for any publish and drain sequence.
     #[test]
-    #[ignore = "WI-7"]
-    fn random_publish_and_drain_sequences_keep_the_invariants(
+        fn random_publish_and_drain_sequences_keep_the_invariants(
         capacity in 1_usize..6,
         carry_cap in prop_oneof![Just(4096_usize), 0_usize..8],
         script in ops(),
