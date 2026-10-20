@@ -74,7 +74,7 @@
       "properties": {
         "name": { "type": "string" },
         "seed": { "type": "integer", "minimum": 0 },
-        "tick_rate_hz": { "type": "integer", "minimum": 1, "description": "Whole hertz" },
+        "tick_rate_hz": { "type": "integer", "minimum": 1, "description": "Whole hertz; optional, the loader default (60 unless configured) applies when absent" },
         "clock": { "enum": ["afap", "realtime", "stepped", "scaled"] },
         "time_scale": { "type": "number", "minimum": 0.001, "maximum": 1000000 },
         "duration_s": { "type": "number", "exclusiveMinimum": 0 },
@@ -82,7 +82,7 @@
         "plugin_paths": { "type": "array", "items": { "type": "string" } },
         "on_plugin_fault": { "enum": ["abort", "disable_capability"] }
       },
-      "required": ["name", "seed", "tick_rate_hz", "duration_s"],
+      "required": ["name", "seed", "duration_s"],
       "additionalProperties": false
     },
     "terrain": {

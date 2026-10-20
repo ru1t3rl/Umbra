@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-use umbra_core::{ComponentId, ComponentKind, Provenance, Registry};
+use umbra_core::{ComponentId, ComponentKind, Provenance, Registry, TickRate};
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode, Diagnostics};
 use crate::graph_resolve::GraphSet;
@@ -39,12 +39,16 @@ pub struct LoaderOptions {
     /// registration then refuses (ASM-073). Values supplied at a call site are followed only to
     /// `MAX_CHAIN` (256) graphs deep, whatever this says (ASM-106 d).
     pub max_subgraph_depth: u32,
+    /// The tick rate of a scenario that omits `[scenario] tick_rate_hz`; 60 Hz unless changed
+    /// (ADR 0010 note of 2026-10-19, ADR 0029). An explicit value in the file always wins.
+    pub default_tick_rate: TickRate,
 }
 
 impl Default for LoaderOptions {
     fn default() -> Self {
         Self {
             max_subgraph_depth: umbra_core::DEFAULT_MAX_SUBGRAPH_DEPTH,
+            default_tick_rate: TickRate::default(),
         }
     }
 }
@@ -54,6 +58,9 @@ impl Default for LoaderOptions {
 pub struct ValidationReport {
     /// The files that were checked, in sorted path order.
     pub files_checked: Vec<PathBuf>,
+    /// Valid scenario files that omitted `tick_rate_hz`, with the default rate that applied, in
+    /// sorted path order.
+    pub defaulted_tick_rates: Vec<(PathBuf, TickRate)>,
     /// Every diagnostic, sorted.
     pub diagnostics: Vec<Diagnostic>,
 }

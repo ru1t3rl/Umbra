@@ -119,7 +119,7 @@ template (ASM-053).
 | `schema_version` | integer | required |
 | `[scenario]` `name` | string | required |
 | `seed` | integer >= 0 | required, master seed |
-| `tick_rate_hz` | integer >= 1 | required; whole hertz only |
+| `tick_rate_hz` | integer >= 1 | optional; whole hertz only. Absent: the loader's default applies, 60 Hz (from M5 WI-3 the configuration file `umbra.toml` can change it with `[simulation] tick_rate_hz`; ADR 0010 note, ADR 0029, ASM-168). A present value is always used as written; 0 or a negative number is `invalid_value`, a fraction or a string `wrong_type`. `umbra run` and `umbra validate` print a `note:` line on stderr when the default applied to a valid scenario (stdout is unchanged). A scenario without the key is not self-contained: its results also depend on that default, so examples keep an explicit `tick_rate_hz` |
 | `duration_s` | number > 0 | required; run length is `ceil(duration_s * hz)` ticks (a product within two ULPs of a whole number counts as that number, so 0.1 s at 30 Hz is 3 ticks; ASM-066) |
 | `clock` | `afap` \| `realtime` \| `stepped` \| `scaled` | default `afap` |
 | `time_scale` | number in [0.001, 1000000] | required with `clock = "scaled"`, an error otherwise |

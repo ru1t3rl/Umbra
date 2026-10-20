@@ -7,11 +7,13 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use umbra_core::TickRate;
+
 use crate::diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, sort_and_dedup};
 use crate::graph_read::is_graph_path;
 use crate::loader::{Loader, ValidationReport};
 use crate::resolve::LoadedTemplates;
-use crate::scenario::Scenario;
+use crate::scenario::{Scenario, TickRateSource};
 use crate::scenario_read::{is_scenario, plugin_path_strings, template_paths};
 use crate::source::SourceFile;
 
@@ -24,6 +26,18 @@ pub(crate) struct ScenarioLoad {
     pub(crate) diagnostics: Vec<Diagnostic>,
     /// Every file read, in sorted path order.
     pub(crate) files: Vec<PathBuf>,
+}
+
+/// Records `scenario` if it is valid (`clean`: no diagnostic of its own, its templates or its
+/// template set) and its tick rate came from the default (ASM-168 c).
+fn note_default(
+    defaulted: &mut Vec<(PathBuf, TickRate)>,
+    scenario: Option<&Scenario>,
+    clean: bool,
+) {
+    if let Some(s) = scenario.filter(|s| clean && s.tick_rate_source == TickRateSource::Default) {
+        defaulted.push((s.source.clone(), s.tick_rate));
+    }
 }
 
 /// The template files a scenario's `template_paths` lead to.
@@ -227,18 +241,22 @@ impl Loader<'_> {
     pub fn validate_path(&self, path: &Path) -> ValidationReport {
         let mut diagnostics = Vec::new();
         let mut files = Vec::new();
+        let mut defaulted = Vec::new();
         match fs::metadata(path) {
             Err(error) => diagnostics.push(io_diagnostic(path, &error)),
             Ok(meta) if meta.is_dir() => {
-                self.validate_directory(path, &mut files, &mut diagnostics);
+                self.validate_directory(path, &mut files, &mut diagnostics, &mut defaulted);
             }
-            Ok(_) => self.validate_file(path, &mut files, &mut diagnostics),
+            Ok(_) => self.validate_file(path, &mut files, &mut diagnostics, &mut defaulted),
         }
         files.sort();
         files.dedup();
+        defaulted.sort();
+        defaulted.dedup();
         sort_and_dedup(&mut diagnostics);
         ValidationReport {
             files_checked: files,
+            defaulted_tick_rates: defaulted,
             diagnostics,
         }
     }
@@ -248,6 +266,7 @@ impl Loader<'_> {
         path: &Path,
         files: &mut Vec<PathBuf>,
         diagnostics: &mut Vec<Diagnostic>,
+        defaulted: &mut Vec<(PathBuf, TickRate)>,
     ) {
         let file = match read_source(path) {
             Ok(file) => file,
@@ -262,6 +281,11 @@ impl Loader<'_> {
             diagnostics.extend(self.validate_template_file(&file));
         } else if is_scenario(&file) {
             let load = self.scenario_pipeline(&file);
+            note_default(
+                defaulted,
+                load.scenario.as_ref(),
+                load.diagnostics.is_empty(),
+            );
             files.extend(load.files);
             diagnostics.extend(load.diagnostics);
         } else {
@@ -302,6 +326,7 @@ impl Loader<'_> {
         dir: &Path,
         files: &mut Vec<PathBuf>,
         diagnostics: &mut Vec<Diagnostic>,
+        defaulted: &mut Vec<(PathBuf, TickRate)>,
     ) {
         let paths = toml_files(dir, diagnostics);
         files.extend(paths.iter().cloned());
@@ -322,6 +347,7 @@ impl Loader<'_> {
         let mut sets: BTreeMap<BTreeSet<PathBuf>, LoadedTemplates> = BTreeMap::new();
         self.load_set(&templates, &unread, &mut sets, diagnostics);
         for scenario in &scenarios {
+            let before = diagnostics.len();
             let collected = collect_templates(scenario, diagnostics, &mut cache);
             files.extend(collected.files);
             let loaded = self.load_set(
@@ -330,7 +356,11 @@ impl Loader<'_> {
                 &mut sets,
                 diagnostics,
             );
-            diagnostics.extend(self.read_scenario(scenario, loaded, &collected.unread).1);
+            let (read, own) = self.read_scenario(scenario, loaded, &collected.unread);
+            let clean =
+                own.is_empty() && loaded.diagnostics.is_empty() && diagnostics.len() == before;
+            note_default(defaulted, read.as_ref(), clean);
+            diagnostics.extend(own);
         }
     }
 

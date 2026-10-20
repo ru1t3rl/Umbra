@@ -9,9 +9,26 @@ use core::num::{NonZeroU32, NonZeroU64};
 
 use crate::units::Seconds;
 
+/// The tick rate a scenario gets when it omits `tick_rate_hz` and no configuration says otherwise
+/// (ADR 0010 note of 2026-10-19, ADR 0029).
+pub const DEFAULT_TICK_RATE_HZ: u32 = 60;
+
 /// Simulation tick rate in whole hertz. Never zero.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TickRate(NonZeroU32);
+
+/// [`DEFAULT_TICK_RATE_HZ`] as a rate; a zero constant fails to compile.
+const DEFAULT_TICK_RATE: TickRate = match TickRate::new(DEFAULT_TICK_RATE_HZ) {
+    Some(rate) => rate,
+    None => panic!("DEFAULT_TICK_RATE_HZ must not be 0"),
+};
+
+impl Default for TickRate {
+    /// [`DEFAULT_TICK_RATE_HZ`].
+    fn default() -> Self {
+        DEFAULT_TICK_RATE
+    }
+}
 
 impl TickRate {
     /// Creates a rate from hertz; returns `None` for zero.

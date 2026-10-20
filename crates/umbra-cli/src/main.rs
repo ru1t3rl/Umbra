@@ -23,10 +23,10 @@ use tracing_subscriber::filter::LevelFilter;
 use args::{Cli, Command, ListPluginsArgs, RunArgs, SchemaArgs, SchemaKind, ValidateArgs};
 use output::Format;
 use umbra_engine::builtins::standard_registry;
-use umbra_engine::scenario::{Diagnostic, Diagnostics, RunOptions, ScenarioError};
+use umbra_engine::scenario::{Diagnostic, Diagnostics, RunOptions, ScenarioError, TickRateSource};
 use umbra_engine::{
     BEHAVIOR_FILE_SCHEMA, ComponentId, ComponentKind, HostOptions, PluginInfo,
-    SCENARIO_FILE_SCHEMA, StdWallClock, TEMPLATE_FILE_SCHEMA, instantiate_with_plugins,
+    SCENARIO_FILE_SCHEMA, StdWallClock, TEMPLATE_FILE_SCHEMA, TickRate, instantiate_with_plugins,
     load_plugins, load_scenario_with_plugins, resolve_plugin_paths, validate_path_with_plugins,
 };
 
@@ -96,6 +96,18 @@ fn report_invalid(diagnostics: &[Diagnostic]) -> ExitCode {
     ExitCode::FAILURE
 }
 
+/// Writes the stderr `note:` for a scenario whose tick rate came from the default (ASM-160, ASM-168).
+/// Written whatever `--log-level` says; stdout is untouched.
+fn note_default_tick_rate(path: &std::path::Path, rate: TickRate) {
+    // Nothing sensible remains to do if stderr is gone.
+    let _ = writeln!(
+        io::stderr(),
+        "note: {}: `tick_rate_hz` is not set; using the default of {} Hz",
+        path.display(),
+        rate.hz()
+    );
+}
+
 fn run(args: &RunArgs) -> Result<ExitCode> {
     init_logging(args.log_level)?;
     let registry = standard_registry().context("building the component registry")?;
@@ -111,6 +123,9 @@ fn run(args: &RunArgs) -> Result<ExitCode> {
         seed: args.seed,
         clock: args.clock,
     };
+    if loaded.scenario.tick_rate_source == TickRateSource::Default {
+        note_default_tick_rate(&loaded.scenario.source, loaded.scenario.tick_rate);
+    }
     log_plugins(args.log_level, loaded.plugins.plugins());
     let mut run = instantiate_with_plugins(&loaded, options).context("instantiating")?;
     let ticks = args.ticks.unwrap_or(run.duration_ticks);
@@ -200,6 +215,9 @@ fn validate(args: &ValidateArgs) -> Result<ExitCode> {
     for path in &args.paths {
         let report =
             validate_path_with_plugins(&registry, path, &args.plugin_path).context("validating")?;
+        for (file, rate) in &report.defaulted_tick_rates {
+            note_default_tick_rate(file, *rate);
+        }
         files.extend(report.files_checked);
         diagnostics.extend(report.diagnostics);
     }

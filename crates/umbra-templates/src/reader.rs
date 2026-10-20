@@ -1,7 +1,7 @@
 //! Typed access to the located tree that records errors instead of stopping at the first
 //! (REQ-T-2). Typed getters plus unknown-key detection; no serde (ADR 0008, ASM-054).
 
-use umbra_core::IdError;
+use umbra_core::{IdError, TickRate};
 
 use crate::diagnostic::{Diagnostic, DiagnosticCode, Location};
 use crate::source::SourceFile;
@@ -11,6 +11,9 @@ use crate::value::{LKind, LTable, LValue, Origin};
 pub(crate) struct Reader<'f> {
     file: &'f SourceFile,
     out: Vec<Diagnostic>,
+    /// The tick rate of a scenario that omits `tick_rate_hz`; the loader sets it from
+    /// `LoaderOptions::default_tick_rate` (kept out of `new` so its signature stays, check 2b).
+    pub(crate) default_tick_rate: TickRate,
 }
 
 impl<'f> Reader<'f> {
@@ -19,6 +22,7 @@ impl<'f> Reader<'f> {
         Self {
             file,
             out: Vec::new(),
+            default_tick_rate: TickRate::default(),
         }
     }
 

@@ -12,7 +12,7 @@ use crate::loader::Loader;
 use crate::position::read_position;
 use crate::reader::Reader;
 use crate::resolve::{ComponentRef, LoadedTemplates, missing_template_notes};
-use crate::scenario::{ClockSetting, Placement, RoutePlan, Scenario};
+use crate::scenario::{ClockSetting, Placement, RoutePlan, Scenario, TickRateSource};
 use crate::source::SourceFile;
 use crate::template::{RawComponent, Version, check_version, component};
 use crate::value::{LEntry, LKind, LTable, LValue, Origin, parse};
@@ -99,6 +99,7 @@ struct Settings {
     name: String,
     seed: u64,
     tick_rate: TickRate,
+    tick_rate_source: TickRateSource,
     clock: ClockSetting,
     duration_ticks: u64,
     plugin_paths: Vec<PathBuf>,
@@ -151,6 +152,7 @@ impl Loader<'_> {
             return (None, diagnostics);
         }
         let mut reader = Reader::new(file);
+        reader.default_tick_rate = self.options.default_tick_rate;
         if matches!(check_version(&mut reader, &table), Version::Newer) {
             return (None, reader.into_diagnostics());
         }
@@ -186,6 +188,7 @@ impl Loader<'_> {
             source: file.path().to_path_buf(),
             seed: settings.seed,
             tick_rate: settings.tick_rate,
+            tick_rate_source: settings.tick_rate_source,
             clock: settings.clock,
             duration_ticks: settings.duration_ticks,
             terrain: terrain?,
@@ -506,7 +509,10 @@ fn read_settings(reader: &mut Reader<'_>, table: &LTable) -> Option<Settings> {
     let name =
         required(reader, table, "name").and_then(|v| reader.string("name", v).map(str::to_string));
     let seed = required(reader, table, "seed").and_then(|v| read_seed(reader, v));
-    let tick_rate = required(reader, table, "tick_rate_hz").and_then(|v| read_tick_rate(reader, v));
+    let (tick_rate, tick_rate_source) = match table.get("tick_rate_hz") {
+        Some(v) => (read_tick_rate(reader, v), TickRateSource::Scenario),
+        None => (Some(reader.default_tick_rate), TickRateSource::Default),
+    };
     let clock = read_clock(reader, table);
     let duration = required(reader, table, "duration_s");
     let duration_ticks = match (duration, tick_rate) {
@@ -521,6 +527,7 @@ fn read_settings(reader: &mut Reader<'_>, table: &LTable) -> Option<Settings> {
         name: name?,
         seed: seed?,
         tick_rate: tick_rate?,
+        tick_rate_source,
         clock: clock?,
         duration_ticks: duration_ticks?,
         plugin_paths: plugin_paths?,

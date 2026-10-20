@@ -33,7 +33,7 @@ pub use discover::scenario_plugin_paths;
 pub use graph_resolve::GraphSet;
 pub use loader::{Loader, LoaderError, LoaderOptions, ValidationReport};
 pub use resolve::{ComponentRef, ResolvedTemplate, TemplateSet};
-pub use scenario::{ClockSetting, Placement, RoutePlan, Scenario};
+pub use scenario::{ClockSetting, Placement, RoutePlan, Scenario, TickRateSource};
 pub use schema::{CompiledSchema, SchemaError};
 pub use source::SourceFile;
 pub use value::{LTable, LValue};

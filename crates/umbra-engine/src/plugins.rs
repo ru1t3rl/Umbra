@@ -19,7 +19,8 @@ use umbra_templates::{Scenario, ValidationReport, scenario_plugin_paths};
 use crate::engine::Engine;
 use crate::error::EngineError;
 use crate::scenario::{
-    RunOptions, ScenarioError, ScenarioRun, instantiate_in, load_scenario, validate_path,
+    LoadSettings, RunOptions, ScenarioError, ScenarioRun, instantiate_in,
+    load_scenario_with_settings, validate_path_with_settings,
 };
 
 /// A scenario with the plugins it needs loaded into one fresh host.
@@ -81,13 +82,26 @@ pub fn load_scenario_with_plugins(
     path: &Path,
     extra: &[PathBuf],
 ) -> Result<LoadedScenario, ScenarioError> {
+    load_scenario_with_plugins_and_settings(base, path, extra, &LoadSettings::default())
+}
+
+/// [`load_scenario_with_plugins`] with explicit [`LoadSettings`].
+///
+/// # Errors
+/// As [`load_scenario_with_plugins`].
+pub fn load_scenario_with_plugins_and_settings(
+    base: &Registry,
+    path: &Path,
+    extra: &[PathBuf],
+    settings: &LoadSettings,
+) -> Result<LoadedScenario, ScenarioError> {
     let paths = resolve_plugin_paths(extra, Some(path));
     let (registry, host) = load_plugins(base, &paths, HostOptions::default())?;
     // The loader dry-runs `configure` of plugin behaviors, which a run-mode host allows only inside
     // its build scope (ASM-138).
     let scenario = {
         let _scope = host.build_scope();
-        load_scenario(&registry, path)?
+        load_scenario_with_settings(&registry, path, settings)?
     };
     host.set_fault_policy(scenario.on_plugin_fault);
     Ok(LoadedScenario {
@@ -106,11 +120,24 @@ pub fn validate_path_with_plugins(
     path: &Path,
     extra: &[PathBuf],
 ) -> Result<ValidationReport, ScenarioError> {
+    validate_path_with_plugins_and_settings(base, path, extra, &LoadSettings::default())
+}
+
+/// [`validate_path_with_plugins`] with explicit [`LoadSettings`].
+///
+/// # Errors
+/// As [`validate_path_with_plugins`].
+pub fn validate_path_with_plugins_and_settings(
+    base: &Registry,
+    path: &Path,
+    extra: &[PathBuf],
+    settings: &LoadSettings,
+) -> Result<ValidationReport, ScenarioError> {
     let paths = resolve_plugin_paths(extra, Some(path));
     let mut options = HostOptions::default();
     options.mode = HostMode::Validation;
     let (registry, _host) = load_plugins(base, &paths, options)?;
-    validate_path(&registry, path)
+    validate_path_with_settings(&registry, path, settings)
 }
 
 /// Like `instantiate`, for a scenario with plugins: creates the engine, attaches `loaded.plugins`,

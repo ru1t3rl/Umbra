@@ -59,6 +59,16 @@ pub struct Placement {
     pub force: Option<Force>,
 }
 
+/// Where a scenario's tick rate came from (ADR 0010 note of 2026-10-19).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TickRateSource {
+    /// `[scenario] tick_rate_hz` in the file.
+    Scenario,
+    /// The key was absent; the loader's default applied (`LoaderOptions::default_tick_rate`).
+    Default,
+}
+
 /// A scenario with its templates resolved.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scenario {
@@ -68,8 +78,10 @@ pub struct Scenario {
     pub source: PathBuf,
     /// Master seed.
     pub seed: u64,
-    /// Ticks per second.
+    /// Ticks per second (the effective rate: the file's, or the default when it was absent).
     pub tick_rate: TickRate,
+    /// Whether `tick_rate` came from the file or from the default.
+    pub tick_rate_source: TickRateSource,
     /// Requested clock.
     pub clock: ClockSetting,
     /// `ceil(duration_s * hz)`.

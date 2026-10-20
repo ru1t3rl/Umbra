@@ -84,7 +84,7 @@ pub use plugin::PluginFaultPolicy;
 pub use registry::{BuildError, ComponentKind, Factory, Registry, RegistryError};
 pub use rng::{RngStream, SimRng, SplitMix64, StreamKey};
 pub use terrain::{FlatTerrain, TerrainProvider};
-pub use time::{SimTime, TickRate, TimeError};
+pub use time::{DEFAULT_TICK_RATE_HZ, SimTime, TickRate, TimeError};
 pub use units::{
     Kilograms, Meters, MetersPerSecond, MetersPerSecondSquared, Radians, RadiansPerSecond, Seconds,
 };

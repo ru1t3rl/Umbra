@@ -6,11 +6,12 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use umbra_core::{ComponentKind, EntityId, Ownership, Registry, TemplateId};
+use umbra_core::{ComponentKind, EntityId, Ownership, Registry, TemplateId, TickRate};
 use umbra_kernel::{ClockMode, TimeScale, WallClock};
-use umbra_templates::{ClockSetting, Loader, LoaderError, Placement};
+use umbra_templates::{ClockSetting, Loader, LoaderError, LoaderOptions, Placement};
 pub use umbra_templates::{
-    Diagnostic, DiagnosticCode, Diagnostics, Location, Note, Scenario, ValidationReport,
+    Diagnostic, DiagnosticCode, Diagnostics, Location, Note, Scenario, TickRateSource,
+    ValidationReport,
 };
 
 use umbra_plugin_host::PluginHost;
@@ -66,13 +67,43 @@ pub enum ScenarioError {
     Plugin(#[from] umbra_plugin_host::PluginError),
 }
 
+/// Settings that apply to one scenario load or validation (ADR 0029). `Default` is the built-in
+/// behavior of [`load_scenario`] and [`validate_path`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct LoadSettings {
+    /// The tick rate of a scenario that omits `tick_rate_hz`; 60 Hz by default. An explicit value
+    /// in the scenario always wins.
+    pub default_tick_rate: TickRate,
+}
+
+impl LoadSettings {
+    fn loader_options(&self) -> LoaderOptions {
+        let mut options = LoaderOptions::default();
+        options.default_tick_rate = self.default_tick_rate;
+        options
+    }
+}
+
 /// Loads a scenario file and its templates.
 ///
 /// # Errors
 /// [`ScenarioError::Invalid`] with every diagnostic; [`ScenarioError::Loader`] if a registered
 /// schema is broken.
 pub fn load_scenario(registry: &Registry, path: &Path) -> Result<Scenario, ScenarioError> {
-    Ok(Loader::new(registry)?.load_scenario(path)?)
+    load_scenario_with_settings(registry, path, &LoadSettings::default())
+}
+
+/// [`load_scenario`] with explicit [`LoadSettings`].
+///
+/// # Errors
+/// As [`load_scenario`].
+pub fn load_scenario_with_settings(
+    registry: &Registry,
+    path: &Path,
+    settings: &LoadSettings,
+) -> Result<Scenario, ScenarioError> {
+    Ok(Loader::with_options(registry, settings.loader_options())?.load_scenario(path)?)
 }
 
 /// Validates a scenario file, a template file or a directory without running anything.
@@ -80,7 +111,19 @@ pub fn load_scenario(registry: &Registry, path: &Path) -> Result<Scenario, Scena
 /// # Errors
 /// [`ScenarioError::Loader`] if a registered schema is broken.
 pub fn validate_path(registry: &Registry, path: &Path) -> Result<ValidationReport, ScenarioError> {
-    Ok(Loader::new(registry)?.validate_path(path))
+    validate_path_with_settings(registry, path, &LoadSettings::default())
+}
+
+/// [`validate_path`] with explicit [`LoadSettings`].
+///
+/// # Errors
+/// As [`validate_path`].
+pub fn validate_path_with_settings(
+    registry: &Registry,
+    path: &Path,
+    settings: &LoadSettings,
+) -> Result<ValidationReport, ScenarioError> {
+    Ok(Loader::with_options(registry, settings.loader_options())?.validate_path(path))
 }
 
 fn clock_mode(setting: ClockSetting) -> Result<ClockMode, EngineError> {
