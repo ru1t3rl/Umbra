@@ -10,11 +10,10 @@ repository.workspace = true
 
 [dependencies]
 serde.workspace = true
-utoipa.workspace = true
-
-# Used from WI-11 (DTO serde round-trip tests); unused by the WI-1 scaffold.
-[dev-dependencies]
+# Free-form JSON values (component parameters, schemas, custom event payloads); a workspace
+# dependency already in the tree (ASM-172).
 serde_json.workspace = true
+utoipa.workspace = true
 
 [lints]
 workspace = true

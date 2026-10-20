@@ -13,10 +13,12 @@
 #![forbid(unsafe_code)]
 
 pub mod builtins;
+pub mod bus;
 pub mod confine;
 pub mod display;
 pub mod engine;
 pub mod error;
+pub mod handle;
 pub mod plugins;
 pub mod scenario;
 pub mod session;
@@ -35,12 +37,13 @@ pub use plugins::{
     load_scenario_with_plugins, load_scenario_with_plugins_and_settings, resolve_plugin_paths,
     validate_path_with_plugins, validate_path_with_plugins_and_settings,
 };
-pub use scenario::LoadSettings;
+pub use scenario::{EntityInfo, LoadSettings, ScenarioError};
 pub use session::{Session, SessionError, SessionOptions, TemplateSpawn};
 pub use umbra_core::{
-    Catalog, CatalogEntry, CatalogKind, ComponentId, ComponentKind, EntityId, FlatTerrain,
-    Geodetic, Meters, ParamSchema, ParamValue, Position, Provenance, Radians, Registry, SimTime,
-    StateHash, TerrainProvider, TickRate, TimeError,
+    Catalog, CatalogEntry, CatalogKind, ComponentId, ComponentKind, ControlAction, EntityId,
+    FlatTerrain, Force, Geodetic, Meters, Ownership, ParamSchema, ParamValue, Position, Provenance,
+    Radians, Registry, SimEvent, SimTime, StateHash, TemplateId, TerrainProvider, TickRate,
+    TimeError, Version,
 };
 pub use umbra_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, StdWallClock, TickReport,
@@ -50,7 +53,8 @@ pub use umbra_templates::config::{
     Config, ConfigError, LogLevel, ServerConfig, StreamConfig, load_config,
 };
 pub use umbra_templates::{
-    BEHAVIOR_FILE_SCHEMA, CONFIG_FILE_SCHEMA, SCENARIO_FILE_SCHEMA, ScenarioInputs,
-    TEMPLATE_FILE_SCHEMA, scenario_inputs,
+    BEHAVIOR_FILE_SCHEMA, CONFIG_FILE_SCHEMA, ClockSetting, Diagnostic, Location, Note,
+    ResolvedTemplate, SCENARIO_FILE_SCHEMA, ScenarioInputs, TEMPLATE_FILE_SCHEMA, TickRateSource,
+    scenario_inputs,
 };
 pub use validate::{GraphValidation, validate_graph_document};

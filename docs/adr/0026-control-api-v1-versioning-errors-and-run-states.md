@@ -168,7 +168,9 @@ command applies. This table is also the AT-4 test table.
 a second `DELETE` of an entity is 404. Two clients racing the same command get one success and one 409.
 Commands from different clients apply in arrival order at the engine.
 
-**Step results (M10).** `StepResult { requested, completed, reached, state_hash, status }`.
+**Step results (M10).** `StepResult { requested, completed, reached, time_s, state_hash, run }` (`run`
+is the `RunStatus` after the step; corrected 2026-10-20 by the human to match the M5 plan, which
+wins over the earlier wording `status` without `time_s`; M5 WI-6, ASM-172).
 - `200` when all `requested` ticks ran (`completed: true`).
 - `200` with `completed: false` when the duration or a `stop` command ended the run first.
 - `409 step_cancelled` only for pause, unload, a clock change away from stepped, or a plugin fault.

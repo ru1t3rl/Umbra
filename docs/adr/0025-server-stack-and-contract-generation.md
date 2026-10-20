@@ -26,8 +26,9 @@ offline cargo cache (checked 2026-10-19). `xtask` depends on no workspace crate 
 
 ## Decision
 Option 1.
-- **Crates.** `umbra-api-types`: DTOs only; external deps `serde` (derive) and `utoipa` (derive), no
-  workspace deps (rule table unchanged, ASM-008). `umbra-server`: `axum` (features `http1`, `json`,
+- **Crates.** `umbra-api-types`: DTOs only; external deps `serde` (derive), `utoipa` (derive) and
+  `serde_json` (free-form JSON values such as component params, param schemas and event payloads; already
+  in the graph through `utoipa`; human decision 2026-10-20, M5 WI-6, ASM-172 a), no workspace deps (rule table unchanged, ASM-008). `umbra-server`: `axum` (features `http1`, `json`,
   `query`, `ws`, `tokio`), `tokio` (`rt-multi-thread`, `net`, `sync`, `time`, `macros`, `signal`),
   `utoipa`, `serde`, `serde_json`, `thiserror`, `tracing`, `futures-util` (if `axum` needs it for
   `ws` split); workspace deps `umbra-engine`, `umbra-api-types` only (existing rule entry). Dev:
