@@ -1388,8 +1388,10 @@ dependencies = [
 name = "umbra-engine"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "serde_json",
  "thiserror",
+ "tracing",
  "umbra-behavior",
  "umbra-core",
  "umbra-kernel",

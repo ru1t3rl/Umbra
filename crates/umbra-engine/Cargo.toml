@@ -21,4 +21,6 @@ thiserror.workspace = true
 workspace = true
 
 [dev-dependencies]
+proptest.workspace = true
 serde_json.workspace = true
+tracing = { workspace = true, features = ["std"] }

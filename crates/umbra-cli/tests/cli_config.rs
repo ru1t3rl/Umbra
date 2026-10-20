@@ -452,3 +452,164 @@ fn implicit_config_at_info_level_writes_the_note_but_not_the_info_line() {
     );
     assert!(!err.contains("info: using configuration"), "{err}");
 }
+
+// ---- AT-18 serve rows (WI-17, M5 step 4): `[server]` settings and flag precedence for `umbra serve`.
+// Each starts the real binary with `--config site.toml` in its own working directory and talks to it
+// through `serve_support` (plain HTTP and a minimal WebSocket client). Ignored until `serve` exists.
+
+#[cfg(feature = "server")]
+mod serve_support;
+
+/// A working directory with `site.toml` (the given text) and `walking_skeleton` copied in.
+#[cfg(feature = "server")]
+fn serve_dir(tag: &str, config: &str) -> PathBuf {
+    let dir = workdir(tag);
+    serve_support::copy_example(&dir, "walking_skeleton");
+    write(&dir, "site.toml", config);
+    dir
+}
+
+/// `umbra --config site.toml serve <extra>`, started and listening.
+#[cfg(feature = "server")]
+fn serve_with_config(dir: &Path, extra: &[&str]) -> serve_support::Served {
+    let mut args = vec!["--config", "site.toml", "serve"];
+    args.extend_from_slice(extra);
+    serve_support::Served::start_raw(dir, &args)
+}
+
+#[cfg(feature = "server")]
+#[test]
+#[ignore = "WI-17"]
+fn bind_flag_beats_config_beats_default() {
+    // Config beats the default (127.0.0.1:7878): the file names another loopback address.
+    let dir = serve_dir("serve-bind-config", "[server]\nbind = \"127.0.0.2:0\"\n");
+    let mut from_config = serve_with_config(&dir, &[]);
+    assert_eq!(
+        from_config.addr.ip().to_string(),
+        "127.0.0.2",
+        "{}",
+        from_config.listening
+    );
+    assert_eq!(from_config.terminate(), Some(0));
+
+    // The flag beats the config: the file's address cannot be bound, the flag's can.
+    let dir = serve_dir("serve-bind-flag", "[server]\nbind = \"192.0.2.1:0\"\n");
+    let mut from_flag = serve_with_config(&dir, &["--bind", "127.0.0.1:0"]);
+    assert_eq!(
+        from_flag.addr.ip().to_string(),
+        "127.0.0.1",
+        "{}",
+        from_flag.listening
+    );
+    assert_eq!(from_flag.terminate(), Some(0));
+}
+
+#[cfg(feature = "server")]
+#[test]
+#[ignore = "WI-17"]
+fn config_non_loopback_bind_warns() {
+    let dir = serve_dir("serve-bind-warn", "[server]\nbind = \"0.0.0.0:0\"\n");
+    let mut served = serve_with_config(&dir, &[]);
+    assert_eq!(served.terminate(), Some(0));
+    let stderr = served.stderr_text().to_lowercase();
+    assert!(
+        stderr.contains("warn") && stderr.contains("authentication"),
+        "a warning for a bind that came from the file: {stderr}"
+    );
+}
+
+#[cfg(feature = "server")]
+#[test]
+#[ignore = "WI-17"]
+fn config_scenario_root_confines_loads() {
+    // `scenario_root` is relative to the config file's directory.
+    let dir = workdir("serve-root");
+    serve_support::copy_example(&dir.join("root"), "walking_skeleton");
+    serve_support::copy_example(&dir.join("other"), "walking_skeleton");
+    fs::create_dir_all(dir.join("conf")).expect("mkdir");
+    write(
+        &dir,
+        "conf/site.toml",
+        "[server]\nbind = \"127.0.0.1:0\"\nscenario_root = \"../root\"\n",
+    );
+    // The working directory is `dir`, not `conf`: the root is `dir/root` only if it resolves against
+    // the config file's directory.
+    let mut served =
+        serve_support::Served::start_raw(&dir, &["--config", "conf/site.toml", "serve"]);
+    let inside = served.post(
+        "/api/v1/scenario",
+        &serde_json::json!({"path": "walking_skeleton/scenario.toml"}),
+    );
+    assert_eq!(inside.assert_json(201)["name"], "walking_skeleton");
+    let outside = dir.join("other/walking_skeleton/scenario.toml");
+    let refused = served.post(
+        "/api/v1/scenario",
+        &serde_json::json!({"path": outside.to_string_lossy()}),
+    );
+    refused.assert_problem(403, "path_not_allowed");
+    assert_eq!(served.terminate(), Some(0));
+}
+
+#[cfg(feature = "server")]
+#[test]
+#[ignore = "WI-17"]
+fn config_stream_settings_reach_hello() {
+    let dir = serve_dir(
+        "serve-stream",
+        "[server]\nbind = \"127.0.0.1:0\"\n[server.stream]\ndefault_rate_hz = 12\nmax_rate_hz = 24\n\
+         queue_frames = 3\nmax_events_per_frame = 100\nsend_timeout_s = 7.5\n",
+    );
+    let mut served = serve_with_config(&dir, &[]);
+    let mut ws =
+        serve_support::Ws::connect(served.addr, &[]).unwrap_or_else(|r| panic!("{}", r.text()));
+    let hello = ws.hello();
+    let settings = &hello["settings"];
+    assert_eq!(settings["default_rate_hz"], 12.0);
+    assert_eq!(settings["max_rate_hz"], 24.0);
+    assert_eq!(settings["queue_frames"], 3);
+    assert_eq!(settings["max_events_per_frame"], 100);
+    assert_eq!(settings["send_timeout_s"], 7.5);
+    assert_eq!(served.terminate(), Some(0));
+}
+
+#[cfg(feature = "server")]
+#[test]
+#[ignore = "WI-17"]
+fn config_body_limit_applies() {
+    let dir = serve_dir(
+        "serve-body-limit",
+        "[server]\nbind = \"127.0.0.1:0\"\nbody_limit_bytes = 512\n",
+    );
+    let mut served = serve_with_config(&dir, &[]);
+    let big = serde_json::json!({"path": "x".repeat(2000)});
+    served
+        .post("/api/v1/scenario", &big)
+        .assert_problem(413, "payload_too_large");
+    let small = served.post(
+        "/api/v1/scenario",
+        &serde_json::json!({"path": "walking_skeleton/scenario.toml"}),
+    );
+    assert_eq!(small.status, 201, "{}", small.text());
+    assert_eq!(served.terminate(), Some(0));
+}
+
+#[cfg(feature = "server")]
+#[test]
+#[ignore = "WI-17"]
+fn config_allowed_origins_extend_the_default() {
+    let dir = serve_dir(
+        "serve-origins",
+        "[server]\nbind = \"127.0.0.1:0\"\nallowed_origins = [\"https://ops.example\"]\n",
+    );
+    let mut served = serve_with_config(&dir, &[]);
+    let connect = |origin: &str| serve_support::Ws::connect(served.addr, &[("Origin", origin)]);
+    // The configured origin and the default loopback origins are both accepted.
+    for origin in ["https://ops.example", "http://localhost:5173"] {
+        let mut ws = connect(origin).unwrap_or_else(|r| panic!("{origin}: {}", r.text()));
+        assert_eq!(ws.hello()["protocol"], "umbra.stream.v1");
+    }
+    // Anything else is still refused.
+    let refused = connect("https://other.example").expect_err("a foreign origin is refused");
+    refused.assert_problem(403, "origin_not_allowed");
+    assert_eq!(served.terminate(), Some(0));
+}

@@ -123,3 +123,17 @@ fn validate_and_run_agree_on_duration_ticks_under_a_default() {
     assert_eq!(scenario.tick_rate.hz(), 25);
     assert_eq!(scenario.duration_ticks, 240 * 25);
 }
+
+/// Extra (AT-17 review): the run side of "validate and run agree". The instantiated run reports the
+/// same `duration_ticks` as the loaded scenario under a configured default, and stops its tick
+/// counter at the effective rate's duration, not the 60 Hz one.
+#[test]
+fn instantiated_run_reports_the_duration_ticks_of_the_effective_rate() {
+    let scenario = load(&copy_example("run-duration", false), 25);
+
+    let run = instantiate_with(&scenario, Duration::ZERO, None, None);
+
+    assert_eq!(run.duration_ticks, scenario.duration_ticks);
+    assert_eq!(run.duration_ticks, 240 * 25);
+    assert_eq!(run.engine.now().rate().hz(), 25);
+}

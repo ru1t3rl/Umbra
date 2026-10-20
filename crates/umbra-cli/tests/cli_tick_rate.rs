@@ -84,3 +84,20 @@ fn validate_without_rate_notes_the_default() {
     let explicit = cli(&["validate", example().as_str()]);
     assert_eq!(notes(&stderr(&explicit)).len(), 0);
 }
+
+/// Extra (AT-17 review, directory mode): `validate` on a directory notes each scenario that
+/// defaults its rate, once, and keeps the note on stderr.
+#[test]
+fn validate_directory_without_rate_notes_the_default_once() {
+    let path = scenario_without_rate("validate-dir");
+    let dir = path.parent().expect("scenario directory");
+    let out = cli(&["validate", dir.to_str().expect("utf8")]);
+
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    let err = stderr(&out);
+    let found = notes(&err);
+    assert_eq!(found.len(), 1, "{err}");
+    assert!(found[0].contains("default of 60 Hz"), "{}", found[0]);
+    assert!(found[0].contains("scenario.toml"), "{}", found[0]);
+    assert!(!stdout(&out).contains("note:"));
+}
