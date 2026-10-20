@@ -25,3 +25,6 @@ Optional, separately built plugin wrapping a vendor/Portico RTI; configurable FO
 Golden-packet encode/decode, round-trip property tests, loopback integration, two-instance exchange on localhost, echo-loop prevention, threshold/heartbeat publishing, ghost timeout, malformed packet handling (never panic).
 
 Use the `add-network-adapter` skill when creating adapters.
+
+## Before reporting
+Apply `docs/implementer-checklist.md` (mutation checks, no vacuous asserts, reuse, `scripts/gates.sh`, report format). When the prompt carries a work-item brief, work from it instead of reading the whole plan, spec or `docs/assumptions.md`.

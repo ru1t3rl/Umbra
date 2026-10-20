@@ -25,6 +25,8 @@ Plugin builds inside tests use about 630 MB under `target/tmp/plugin-build` (M4 
 and macOS paths of gates 3, 12 and 13 were not run in M4 (NFR-3 unverified, human decision 2026-10-19).
 
 ## Local gate (canonical, ADR 0004 / D-19)
+`scripts/gates.sh` runs this list in order with one summary line per gate, plus `scripts/m2-compat.sh` and the golden state hashes, and keeps each gate's log in `target/gates/`. `scripts/gates.sh --quick CRATE...` (fmt, clippy and tests of those crates) is for use during a work item; it is not the definition of done.
+
 There is no CI gate: this list, run in this order, is the definition of done (CLAUDE.md rule 8, NFR-3/4/5). Stop at the first failure; fix the cause, never weaken a gate. The `verify-and-build` skill follows this list. Commands are identical on Linux and Windows; on Windows also check path handling and `.dll` plugin loading, on Linux `.so`.
 
 | # | Gate | Command | Active |

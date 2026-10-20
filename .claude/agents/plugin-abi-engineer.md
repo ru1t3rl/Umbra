@@ -26,3 +26,6 @@ ABI major mismatch, ABI minor newer than host, missing symbol, wrong `struct_siz
 Trait in SDK, vtable in `umbra-plugin-api`, host bridge to the core trait, example plugin in `examples/plugins/`, a C-compiled example if the kind is public, regenerated `umbra_plugin_api.h`, docs in `docs/plugin-guide.md`.
 
 Use the `add-plugin-kind` skill for new kinds. Report ABI-affecting changes explicitly so the architect can bump versions deliberately.
+
+## Before reporting
+Apply `docs/implementer-checklist.md` (mutation checks, no vacuous asserts, reuse, `scripts/gates.sh`, report format). When the prompt carries a work-item brief, work from it instead of reading the whole plan, spec or `docs/assumptions.md`.

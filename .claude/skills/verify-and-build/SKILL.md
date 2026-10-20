@@ -7,7 +7,7 @@ description: Run the full Umbra verification and build pipeline locally (format,
 
 `docs/build.md` ("Local gate") is the canonical list and order of gates and which milestone activates each. If this file and `docs/build.md` differ, `docs/build.md` wins; update this file.
 
-Run in that order and stop at the first failure; fix the cause, never weaken a gate. Prerequisites: `cargo install --locked cargo-deny@0.20.2 cargo-audit@0.22.2`.
+Shortcut: `scripts/gates.sh` runs the whole list in order (plus m2-compat and the goldens) with compact output and logs in `target/gates/`. Run in that order and stop at the first failure; fix the cause, never weaken a gate. Prerequisites: `cargo install --locked cargo-deny@0.20.2 cargo-audit@0.22.2`.
 
 ```bash
 cargo fmt --all -- --check

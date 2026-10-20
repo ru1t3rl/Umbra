@@ -17,6 +17,9 @@ You review changes for the Umbra engine against `docs/SPEC.md` and `CLAUDE.md`. 
 7. **Performance**: allocations in the tick hot path, per-entity FFI calls instead of batches, unbounded queues, blocking calls in the tick.
 8. **Tests**: failing-test-first evidence, edge and failure cases, determinism gate still green, no flaky constructs.
 9. **Docs**: rustdoc, ADR for new decisions, assumptions recorded, API/OpenAPI regenerated when needed.
+10. **Implementer checklist**: check `docs/implementer-checklist.md` items 1-13 first; they are the findings that recurred in earlier work items. Re-run one or two of the implementer's reported mutations yourself rather than trusting the report.
+
+The coordinator runs the gates (`scripts/gates.sh`); review from the diff and the files it touches, and do not rebuild unless a finding needs it.
 
 ## Frontend changes
 For anything under `gui/`, apply the `review-frontend-change` skill instead of items 2-7 above (features vs shells, tiers, public APIs, React/TS quality).

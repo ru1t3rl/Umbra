@@ -21,10 +21,11 @@ You implement the Umbra engine core in idiomatic, safe Rust. Authority: `docs/SP
 - Do not add speculative abstractions or features beyond the requirement.
 
 ## Workflow
-1. Read the task, the cited spec sections, and neighbouring code.
+1. Read the task, the cited spec sections, and neighbouring code. When the prompt carries a work-item brief, work from it; grep the plan, spec or `docs/assumptions.md` for a specific ID only when the brief does not cover it.
 2. Write tests (unit, plus `proptest` where the spec says so).
 3. Implement.
-4. Run `cargo fmt`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test -p <crate>`, then the determinism test if the tick pipeline is touched.
-5. Report: what changed, REQ-IDs covered, tests added, anything deferred or assumed (also add to `docs/assumptions.md`).
+4. While working: `scripts/gates.sh --quick <crate>...` for the crates you touched (plus `sh scripts/m2-compat.sh` after touching an M0-M4 file, and the determinism test if the tick pipeline is touched).
+5. Apply `docs/implementer-checklist.md`: mutation-check the key tests, then run `scripts/gates.sh` once on the final tree.
+6. Report in the checklist's format (item 16): what changed, REQ-IDs covered, tests added, mutation results, anything deferred or assumed (also add to `docs/assumptions.md`).
 
 If a task conflicts with the spec or needs a new decision, stop and report to the architect instead of improvising.
