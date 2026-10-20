@@ -6,9 +6,9 @@ Applies to everything under `gui/`. Full architecture: `docs/frontend-architectu
 | ID | Decision | Why |
 |---|---|---|
 | F-1 | **Bun** as package manager, workspace manager, script runner and test runner; commit `bun.lock`, always `bun install --frozen-lockfile` in CI | Fast, one tool, native workspaces |
-| F-2 | **Bun workspaces**: `features/*` and `feature-shells/*` are separate packages (`@umbra/<name>`, `@umbra/shell-<name>`) | Real library boundaries, enforced public APIs |
+| F-2 | **One Bun monorepo** rooted at `gui/` (root `package.json` with `workspaces`, one `bun.lock`). Every library created, `features/*`, `feature-shells/*` and any later shared library, is its own workspace package (`@umbra/<name>`, `@umbra/shell-<name>`) with `"private": true`: never published, consumed only inside the monorepo through `workspace:*` dependencies. The app in `src/` is the root package, not a library. The scaffold is created in M5b's first work item (human decision 2026-10-20) | Real library boundaries, enforced public APIs, nothing leaks to a registry |
 | F-3 | **TypeScript strict** (`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) | Catch errors early; generated types stay trustworthy |
-| F-4 | **React + Vite** for build, **Tauri 2** for the Windows app (`src-tauri/`) | Same web build for web and desktop |
+| F-4 | **React + Vite + TypeScript** for the app and libraries (confirmed by the human 2026-10-20 over Angular), **Tauri 2** for the Windows app (`src-tauri/`) | Same web build for web and desktop; live-map speed comes from the imperative map layer (see Performance), not the UI framework; React keeps the xyflow/React Flow editor (M8b) and the map bindings |
 | F-5 | **Zustand** for client/stream state, **TanStack Query** for REST data | Small, no boilerplate; separate server-cache from live state |
 | F-6 | **Biome** for lint + format, **dependency-cruiser** for architecture rules | One fast tool plus an enforcer for layer rules |
 | F-7 | **`bun test`** (+ happy-dom, Testing Library) for unit/component tests, **Playwright** for e2e | KISS; fewer tools |
