@@ -421,7 +421,7 @@ async fn frames_validate_against_stream_schema() {
     h.step(1200).await.assert_json(200);
     let tick = ws.frame_until(|f| f["tick"] == 1200).await;
     for message in [&addr_hello.0, &addr_hello.1, &primed, &tick] {
-        if let Err(e) = schema_walk::validate(&schema, &schema, message) {
+        if let Err(e) = schema_walk::validate_closed(&schema, &schema, message) {
             panic!("{e}\nmessage: {message}");
         }
     }

@@ -399,11 +399,20 @@ fn closed(
                 if documented.is_empty() && open.is_empty() {
                     return Err(format!("{child}: property is not documented by the schema"));
                 }
-                for property in documented
-                    .iter()
-                    .chain(open.iter().filter(|e| e.is_object()))
-                {
-                    closed(root, property, value, &child, depth + 1)?;
+                // The child is walked once against every schema that applies to it, merged: the
+                // `properties` entries that name it, else (only then, as in JSON Schema) the
+                // `additionalProperties` schemas of this level.
+                let parts: Vec<Value> = if documented.is_empty() {
+                    open.iter()
+                        .filter(|e| e.is_object())
+                        .map(|e| (*e).clone())
+                        .collect()
+                } else {
+                    documented.iter().map(|p| (*p).clone()).collect()
+                };
+                if !parts.is_empty() {
+                    let merged = serde_json::json!({ "allOf": parts });
+                    closed(root, &merged, value, &child, depth + 1)?;
                 }
             }
         }
@@ -537,5 +546,31 @@ mod tests {
         ]});
         validate_closed(&root, &tagged, &json!({"type": "a", "n": 1})).expect("branch a");
         assert!(validate_closed(&root, &tagged, &json!({"type": "b", "n": 1})).is_err());
+        // An `allOf` member that adds properties extends the level; it is not closed against the other.
+        let extended = json!({"allOf": [
+            {"$ref": "#/components/schemas/Inner"},
+            {"type": "object", "properties": {"y": {"type": "integer"}}}
+        ]});
+        validate_closed(&root, &extended, &json!({"x": 1, "y": 2}))
+            .expect("x from Inner, y from the member");
+        assert!(validate_closed(&root, &extended, &json!({"x": 1, "z": 2})).is_err());
+        // Two members naming the same property merge into one walk of that child.
+        let shared = json!({"allOf": [
+            {"type": "object", "properties": {"p": {"type": "object", "properties": {"a": {}}}}},
+            {"type": "object", "properties": {"p": {"type": "object", "properties": {"b": {}}}}}
+        ]});
+        validate_closed(&root, &shared, &json!({"p": {"a": 1, "b": 2}}))
+            .expect("a and b both documented");
+        assert!(validate_closed(&root, &shared, &json!({"p": {"c": 3}})).is_err());
+        // A level with no `properties` is free-form; `additionalProperties: true` opens a level.
+        validate_closed(
+            &root,
+            &json!({"type": "object"}),
+            &json!({"any": {"thing": 1}}),
+        )
+        .expect("free-form");
+        let open_extra =
+            json!({"type": "object", "properties": {"a": {}}, "additionalProperties": true});
+        validate_closed(&root, &open_extra, &json!({"a": 1, "b": 2})).expect("open level");
     }
 }
