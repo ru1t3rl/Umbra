@@ -64,7 +64,7 @@ Short and functional: `duration-fast` (120ms) for state layers and toggles, `dur
 
 ## Iconography
 
-Material Symbols Rounded (outlined style, weight 400, optical size 20 and 24) from Google Fonts, set in the current text colour. Icons stand beside a label; an icon-only Button carries an `aria-label`. Military unit symbols are not icons: they are rendered by the symbol layer in APP-6D with the `affil-*` fills and the `symbol-frame` stroke, and are never substituted by Material icons. There is no logo in this system; the product name is set in `display-lg` in plain type.
+Material Symbols Rounded (outlined style, weight 400, optical size 20 and 24) from Google Fonts, set in the current text colour. Icons stand beside a label; an icon-only Button carries an `aria-label`. Military unit symbols are not icons: they are rendered by the symbol layer in APP-6D with the `affil-*` fills and the `symbol-frame` stroke, and are never substituted by Material icons. The product mark is `umbra_icon.svg` at the repository root (human decision 2026-10-20). It is the single source for every Umbra icon: the README header, the GUI favicon and window/app icon, and the Tauri bundle icons (M8: generate the platform sizes from this file, e.g. `bun tauri icon ../umbra_icon.svg`; never redraw or recolour it). Beside the mark, the product name is set in `display-lg` in plain type; the mark is never substituted by a Material Symbol.
 
 ## Components
 

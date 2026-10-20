@@ -1,3 +1,5 @@
+<p align="center"><img src="umbra_icon.svg" alt="Umbra" width="160" height="160"></p>
+
 # Umbra agent pack
 
 Claude Code configuration for building the Umbra engine from the specification.
