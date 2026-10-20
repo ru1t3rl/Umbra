@@ -1,0 +1,2 @@
+[server]
+command_queue = "many"

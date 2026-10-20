@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:umbra:schema:config:v1",
+  "title": "Umbra configuration file `umbra.toml`, format v1",
+  "description": "Every key is optional; an empty file means all defaults. The reader checks what this schema cannot: `bind` parses as a socket address, `allowed_origins` entries are origins, `default_rate_hz` does not exceed `max_rate_hz`. Hand-written next to the reader; the reader is authoritative (ADR 0029).",
+  "type": "object",
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1, "maximum": 1, "description": "Optional; absent means 1" },
+    "simulation": {
+      "type": "object",
+      "properties": {
+        "tick_rate_hz": { "type": "integer", "minimum": 1, "description": "Default tick rate of scenarios that omit tick_rate_hz; whole hertz" }
+      },
+      "additionalProperties": false
+    },
+    "plugins": {
+      "type": "object",
+      "properties": {
+        "paths": { "type": "array", "items": { "type": "string" }, "description": "Plugin directories, resolved against the file's directory, before each scenario's own plugin_paths" }
+      },
+      "additionalProperties": false
+    },
+    "log": {
+      "type": "object",
+      "properties": {
+        "level": { "enum": ["off", "error", "warn", "info", "debug", "trace"] }
+      },
+      "additionalProperties": false
+    },
+    "server": {
+      "type": "object",
+      "properties": {
+        "bind": { "type": "string", "description": "One socket address, `127.0.0.1:7878` or `[::1]:7878`" },
+        "scenario_root": { "type": "string", "description": "Loads are confined here (ADR 0026)" },
+        "body_limit_bytes": { "type": "integer", "minimum": 1 },
+        "command_queue": { "type": "integer", "minimum": 1 },
+        "allowed_hosts": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Extra Host values, names or addresses, port optional" },
+        "allowed_origins": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Extra WebSocket origins, exact `scheme://host[:port]`" },
+        "shutdown_grace_s": { "type": "number", "exclusiveMinimum": 0 },
+        "stream": {
+          "type": "object",
+          "properties": {
+            "default_rate_hz": { "type": "number", "exclusiveMinimum": 0, "maximum": 60 },
+            "max_rate_hz": { "type": "number", "exclusiveMinimum": 0, "maximum": 60 },
+            "queue_frames": { "type": "integer", "minimum": 1 },
+            "max_events_per_frame": { "type": "integer", "minimum": 1 },
+            "send_timeout_s": { "type": "number", "exclusiveMinimum": 0 },
+            "max_connections": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

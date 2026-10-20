@@ -1,0 +1,2 @@
+[server.stream]
+max_rate_hz = 61

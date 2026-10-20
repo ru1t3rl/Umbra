@@ -3,7 +3,7 @@
 Source of truth for the format: ADR 0010 (decisions; its planned key `plugins` became `plugin_paths`, ADR
 0022), ASM-053..ASM-069 (details), and the readers in
 `crates/umbra-templates`. The JSON Schemas `crates/umbra-templates/schemas/{template,scenario}.v1.schema.json`
-(printed by `umbra schema template|scenario`) describe the structure for editors; they are hand-written,
+(printed by `umbra schema template|scenario|config`) describe the structure for editors; they are hand-written,
 use only the ADR 0009 subset, and the reader is authoritative where they differ (REQ-T-3, NFR-5, D-14).
 
 Behavior graph files (`*.behavior.toml`, M3) have their own reference: `docs/behavior.md`.
@@ -119,7 +119,7 @@ template (ASM-053).
 | `schema_version` | integer | required |
 | `[scenario]` `name` | string | required |
 | `seed` | integer >= 0 | required, master seed |
-| `tick_rate_hz` | integer >= 1 | optional; whole hertz only. Absent: the loader's default applies, 60 Hz (from M5 WI-3 the configuration file `umbra.toml` can change it with `[simulation] tick_rate_hz`; ADR 0010 note, ADR 0029, ASM-168). A present value is always used as written; 0 or a negative number is `invalid_value`, a fraction or a string `wrong_type`. `umbra run` and `umbra validate` print a `note:` line on stderr when the default applied to a valid scenario (stdout is unchanged). A scenario without the key is not self-contained: its results also depend on that default, so examples keep an explicit `tick_rate_hz` |
+| `tick_rate_hz` | integer >= 1 | optional; whole hertz only. Absent: the loader's default applies, 60 Hz (the configuration file `umbra.toml` can change it with `[simulation] tick_rate_hz`, see "Configuration file" below; ADR 0010 note, ADR 0029, ASM-168, ASM-169). A present value is always used as written; 0 or a negative number is `invalid_value`, a fraction or a string `wrong_type`. `umbra run` and `umbra validate` print a `note:` line on stderr when the default applied to a valid scenario (stdout is unchanged). A scenario without the key is not self-contained: its results also depend on that default, so examples keep an explicit `tick_rate_hz` |
 | `duration_s` | number > 0 | required; run length is `ceil(duration_s * hz)` ticks (a product within two ULPs of a whole number counts as that number, so 0.1 s at 30 Hz is 3 ticks; ASM-066) |
 | `clock` | `afap` \| `realtime` \| `stepped` \| `scaled` | default `afap` |
 | `time_scale` | number in [0.001, 1000000] | required with `clock = "scaled"`, an error otherwise |
@@ -144,6 +144,35 @@ position = { ecef_m = [3921872.0, 274244.0, 5005546.0] }     # exactly three num
 ```
 Latitude must be within [-90, 90] and longitude within [-180, 180]; violations are `invalid_value` located
 at the position table. Both forms are converted to ECEF once.
+
+## Configuration file (`umbra.toml`, ADR 0029)
+Read by `run`, `validate` and `list-plugins` (and `serve` from WI-17). `--config FILE` (a missing file is
+exit 1), else `./umbra.toml` if it exists (announced on stderr as `note: using configuration ./umbra.toml`),
+else built-in defaults. Precedence per setting is flag > file > default; lists are replaced, not merged.
+Same reader and diagnostics as the other files: unknown keys are `unknown_key` at every level, all errors
+are reported. Every key is optional; `schema_version` may be omitted (absent means 1). Relative paths
+resolve against the file's directory. Print the schema with `umbra schema config`.
+
+| Key | Type / default | Meaning |
+|---|---|---|
+| `[simulation] tick_rate_hz` | integer >= 1, 60 | Default for scenarios that omit it; an explicit scenario value wins |
+| `[plugins] paths` | array of paths | Plugin directories before each scenario's `plugin_paths`; any `--plugin-path` replaces them |
+| `[log] level` | `off` `error` `warn` `info` `debug` `trace`, `warn` | Log level of `run`, lower-case names only; `--log-level` wins and is case-insensitive |
+| `[server] bind` | socket address, `127.0.0.1:7878` | `[::1]:7878` for IPv6 |
+| `[server] scenario_root` | path, `.` | Served loads are confined here |
+| `[server] body_limit_bytes` | integer >= 1, 1048576 | |
+| `[server] command_queue` | integer >= 1, 64 | |
+| `[server] allowed_hosts` | array of strings, empty | Extra `Host` values |
+| `[server] allowed_origins` | array of `scheme://host[:port]`, empty | Extra WebSocket origins |
+| `[server] shutdown_grace_s` | number > 0, 5 | |
+| `[server.stream] default_rate_hz` | number in (0, 60], 30 | Must not exceed `max_rate_hz` |
+| `[server.stream] max_rate_hz` | number in (0, 60], 60 | |
+| `[server.stream] queue_frames` | integer >= 1, 4 | |
+| `[server.stream] max_events_per_frame` | integer >= 1, 4096 | |
+| `[server.stream] send_timeout_s` | number > 0, 10 | |
+| `[server.stream] max_connections` | integer >= 1, 64 | |
+
+The `[server]` keys are read and validated now; `umbra serve` (WI-17) uses them.
 
 ## Diagnostics
 Text form, one per error, sorted by (path, byte offset, code, message) without duplicates:

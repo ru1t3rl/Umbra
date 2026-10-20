@@ -10,10 +10,12 @@
 #![forbid(unsafe_code)]
 
 mod args;
+mod config;
 mod output;
 
 use std::io::{self, Write};
 use std::ops::ControlFlow;
+use std::path::Path;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, anyhow};
@@ -21,13 +23,15 @@ use clap::Parser;
 use tracing_subscriber::filter::LevelFilter;
 
 use args::{Cli, Command, ListPluginsArgs, RunArgs, SchemaArgs, SchemaKind, ValidateArgs};
+use config::Outcome;
 use output::Format;
 use umbra_engine::builtins::standard_registry;
 use umbra_engine::scenario::{Diagnostic, Diagnostics, RunOptions, ScenarioError, TickRateSource};
 use umbra_engine::{
-    BEHAVIOR_FILE_SCHEMA, ComponentId, ComponentKind, HostOptions, PluginInfo,
+    BEHAVIOR_FILE_SCHEMA, CONFIG_FILE_SCHEMA, ComponentId, ComponentKind, HostOptions, PluginInfo,
     SCENARIO_FILE_SCHEMA, StdWallClock, TEMPLATE_FILE_SCHEMA, TickRate, instantiate_with_plugins,
-    load_plugins, load_scenario_with_plugins, resolve_plugin_paths, validate_path_with_plugins,
+    load_plugins, load_scenario_with_plugins_and_settings, resolve_plugin_paths,
+    validate_path_with_plugins_and_settings,
 };
 
 /// Stack of the thread that runs the command. Behavior graphs are ticked by recursion and need up
@@ -61,11 +65,12 @@ fn main() -> ExitCode {
 }
 
 fn command(cli: Cli) -> ExitCode {
+    let config = cli.config.as_deref();
     let result = match cli.command {
-        Command::Run(args) => run(&args),
-        Command::Validate(args) => validate(&args),
-        Command::Schema(args) => schema(&args),
-        Command::ListPlugins(args) => list_plugins(&args),
+        Command::Run(args) => run(&args, config),
+        Command::Validate(args) => validate(&args, config),
+        Command::Schema(args) => schema(&args, config),
+        Command::ListPlugins(args) => list_plugins(&args, config),
     };
     match result {
         Ok(code) => code,
@@ -108,10 +113,25 @@ fn note_default_tick_rate(path: &std::path::Path, rate: TickRate) {
     );
 }
 
-fn run(args: &RunArgs) -> Result<ExitCode> {
-    init_logging(args.log_level)?;
+fn run(args: &RunArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
+    let configuration = match config::load(config_flag)? {
+        Outcome::Loaded(loaded) => loaded,
+        Outcome::Invalid(diagnostics) => return Ok(report_invalid(&diagnostics)),
+    };
+    let log_level = config::log_level(args.log_level, &configuration.config);
+    init_logging(log_level)?;
+    if !configuration.implicit {
+        log_config(log_level, configuration.path.as_deref());
+    }
     let registry = standard_registry().context("building the component registry")?;
-    let loaded = match load_scenario_with_plugins(&registry, &args.scenario, &args.plugin_path) {
+    let plugin_paths = config::plugin_paths(&args.plugin_path, &configuration.config);
+    let settings = config::load_settings(&configuration.config);
+    let loaded = match load_scenario_with_plugins_and_settings(
+        &registry,
+        &args.scenario,
+        &plugin_paths,
+        &settings,
+    ) {
         Ok(loaded) => loaded,
         Err(ScenarioError::Invalid(diagnostics)) => {
             return Ok(report_invalid(&diagnostics.into_vec()));
@@ -126,7 +146,7 @@ fn run(args: &RunArgs) -> Result<ExitCode> {
     if loaded.scenario.tick_rate_source == TickRateSource::Default {
         note_default_tick_rate(&loaded.scenario.source, loaded.scenario.tick_rate);
     }
-    log_plugins(args.log_level, loaded.plugins.plugins());
+    log_plugins(log_level, loaded.plugins.plugins());
     let mut run = instantiate_with_plugins(&loaded, options).context("instantiating")?;
     let ticks = args.ticks.unwrap_or(run.duration_ticks);
     let format = if args.json {
@@ -194,9 +214,25 @@ fn log_plugins(level: LevelFilter, plugins: &[PluginInfo]) {
     }
 }
 
-fn list_plugins(args: &ListPluginsArgs) -> Result<ExitCode> {
+/// One stderr line naming the configuration file in use when the log level admits info (ADR 0029).
+fn log_config(level: LevelFilter, path: Option<&Path>) {
+    if level < LevelFilter::INFO {
+        return;
+    }
+    if let Some(path) = path {
+        // Nothing sensible remains to do if stderr is gone.
+        let _ = writeln!(io::stderr(), "info: using configuration {}", path.display());
+    }
+}
+
+fn list_plugins(args: &ListPluginsArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
+    let configuration = match config::load(config_flag)? {
+        Outcome::Loaded(loaded) => loaded,
+        Outcome::Invalid(diagnostics) => return Ok(report_invalid(&diagnostics)),
+    };
     let registry = standard_registry().context("building the component registry")?;
-    let paths = resolve_plugin_paths(&args.plugin_path, args.scenario.as_deref());
+    let flag_paths = config::plugin_paths(&args.plugin_path, &configuration.config);
+    let paths = resolve_plugin_paths(&flag_paths, args.scenario.as_deref());
     let (_, host) =
         load_plugins(&registry, &paths, HostOptions::default()).context("loading the plugins")?;
     let text = if args.json {
@@ -208,13 +244,20 @@ fn list_plugins(args: &ListPluginsArgs) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn validate(args: &ValidateArgs) -> Result<ExitCode> {
+fn validate(args: &ValidateArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
+    let configuration = match config::load(config_flag)? {
+        Outcome::Loaded(loaded) => loaded,
+        Outcome::Invalid(diagnostics) => return Ok(report_invalid(&diagnostics)),
+    };
     let registry = standard_registry().context("building the component registry")?;
+    let plugin_paths = config::plugin_paths(&args.plugin_path, &configuration.config);
+    let settings = config::load_settings(&configuration.config);
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
     for path in &args.paths {
         let report =
-            validate_path_with_plugins(&registry, path, &args.plugin_path).context("validating")?;
+            validate_path_with_plugins_and_settings(&registry, path, &plugin_paths, &settings)
+                .context("validating")?;
         for (file, rate) in &report.defaulted_tick_rates {
             note_default_tick_rate(file, *rate);
         }
@@ -248,10 +291,17 @@ fn validate(args: &ValidateArgs) -> Result<ExitCode> {
     })
 }
 
-fn schema(args: &SchemaArgs) -> Result<ExitCode> {
+fn schema(args: &SchemaArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
+    // `schema` uses no setting, but a named file must still exist and be valid (ADR 0029).
+    if config_flag.is_some()
+        && let Outcome::Invalid(diagnostics) = config::load(config_flag)?
+    {
+        return Ok(report_invalid(&diagnostics));
+    }
     let text = match &args.which {
         SchemaKind::Template => TEMPLATE_FILE_SCHEMA.to_string(),
         SchemaKind::Scenario => SCENARIO_FILE_SCHEMA.to_string(),
+        SchemaKind::Config => CONFIG_FILE_SCHEMA.to_string(),
         SchemaKind::Behavior => BEHAVIOR_FILE_SCHEMA.to_string(),
         SchemaKind::Component { id } => component_schema(id)?,
     };

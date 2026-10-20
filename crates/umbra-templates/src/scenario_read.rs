@@ -553,7 +553,7 @@ fn read_seed(reader: &mut Reader<'_>, value: &LValue) -> Option<u64> {
     })
 }
 
-fn read_tick_rate(reader: &mut Reader<'_>, value: &LValue) -> Option<TickRate> {
+pub(crate) fn read_tick_rate(reader: &mut Reader<'_>, value: &LValue) -> Option<TickRate> {
     let hz = reader.integer("tick_rate_hz", value)?;
     let rate = u32::try_from(hz).ok().and_then(TickRate::new);
     if rate.is_none() {

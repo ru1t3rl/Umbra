@@ -14,6 +14,9 @@ pub struct Cli {
     /// The command to run.
     #[command(subcommand)]
     pub command: Command,
+    /// The configuration file (default: `./umbra.toml` if it exists); see ADR 0029.
+    #[arg(long, global = true, value_name = "FILE")]
+    pub config: Option<PathBuf>,
 }
 
 /// Commands.
@@ -52,9 +55,10 @@ pub struct RunArgs {
     /// Print the state hash after every N ticks (0 prints none; the final hash is always printed).
     #[arg(long, default_value_t = 0)]
     pub hash_every: u64,
-    /// Log level: off, error, warn, info, debug or trace.
-    #[arg(long, default_value = "warn", value_parser = parse_level)]
-    pub log_level: LevelFilter,
+    /// Log level: off, error, warn, info, debug or trace (default: `[log] level` of the
+    /// configuration, else warn).
+    #[arg(long, value_parser = parse_level)]
+    pub log_level: Option<LevelFilter>,
     /// A directory of plugin packages to load (repeatable); the scenario's `plugin_paths` follow.
     #[arg(long = "plugin-path", value_name = "DIR")]
     pub plugin_path: Vec<PathBuf>,
@@ -102,6 +106,8 @@ pub enum SchemaKind {
     Template,
     /// The scenario file format.
     Scenario,
+    /// The configuration file format (`umbra.toml`).
+    Config,
     /// The behavior graph file format (`*.behavior.toml`).
     Behavior,
     /// The parameter schema of a registered component, of any kind.

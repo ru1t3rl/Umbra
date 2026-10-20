@@ -1,0 +1,27 @@
+schema_version = 1
+
+[simulation]
+tick_rate_hz = 30
+
+[plugins]
+paths = ["plugins", "../shared/plugins"]
+
+[log]
+level = "info"
+
+[server]
+bind = "0.0.0.0:9000"
+scenario_root = "scenarios"
+body_limit_bytes = 2097152
+command_queue = 128
+allowed_hosts = ["umbra.example", "10.0.0.5:9000"]
+allowed_origins = ["http://localhost:5173", "https://ui.example"]
+shutdown_grace_s = 2.5
+
+[server.stream]
+default_rate_hz = 20
+max_rate_hz = 45.5
+queue_frames = 8
+max_events_per_frame = 1000
+send_timeout_s = 3
+max_connections = 16

@@ -41,4 +41,9 @@ pub use umbra_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, StdWallClock, TickReport,
     TimeScale, WallClock,
 };
-pub use umbra_templates::{BEHAVIOR_FILE_SCHEMA, SCENARIO_FILE_SCHEMA, TEMPLATE_FILE_SCHEMA};
+pub use umbra_templates::config::{
+    Config, ConfigError, LogLevel, ServerConfig, StreamConfig, load_config,
+};
+pub use umbra_templates::{
+    BEHAVIOR_FILE_SCHEMA, CONFIG_FILE_SCHEMA, SCENARIO_FILE_SCHEMA, TEMPLATE_FILE_SCHEMA,
+};

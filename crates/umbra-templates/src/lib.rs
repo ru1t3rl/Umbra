@@ -12,6 +12,7 @@
 #![forbid(unsafe_code)]
 
 pub(crate) mod components;
+pub mod config;
 pub mod diagnostic;
 pub(crate) mod discover;
 pub(crate) mod graph_read;
@@ -50,3 +51,7 @@ pub const SCENARIO_FILE_SCHEMA: &str = include_str!("../schemas/scenario.v1.sche
 /// The JSON Schema of behavior graph files (`*.behavior.toml`, format v1, ADR 0012), in the
 /// ADR 0009 subset. It checks structure only; the reader is authoritative.
 pub const BEHAVIOR_FILE_SCHEMA: &str = include_str!("../schemas/behavior.v1.schema.json");
+
+/// The JSON Schema of the `umbra.toml` configuration file (format v1, ADR 0029), in the ADR 0009
+/// subset. The reader is authoritative.
+pub const CONFIG_FILE_SCHEMA: &str = include_str!("../schemas/config.v1.schema.json");
