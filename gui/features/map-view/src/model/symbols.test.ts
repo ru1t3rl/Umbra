@@ -126,8 +126,8 @@ describe("symbolSvg", () => {
 
 describe("images", () => {
   test("only owned has the plain image; remote and unknown share the ring image", () => {
-    expect(symbolImageId("friend", "owned")).toBe("symbol-friend-plain");
-    expect(symbolImageId("friend", "remote")).toBe("symbol-friend-ring");
+    expect(symbolImageId("friend", "owned")).toBe("umbra-symbol-friend-plain");
+    expect(symbolImageId("friend", "remote")).toBe("umbra-symbol-friend-ring");
     expect(symbolImageId("friend", "unknown")).toBe(symbolImageId("friend", "remote"));
   });
   test("symbolImages: 8 symbols plus the direction line, unique ids", () => {
@@ -142,5 +142,8 @@ describe("images", () => {
     expect(attrs(svg, "y1")).toEqual(["36"]);
     expect(attrs(svg, "y2")).toEqual(["0"]);
     expect(num(svg, "y1") - num(svg, "y2")).toBe(1.5 * 24);
+  });
+  test("every image id lives in the umbra- namespace", () => {
+    for (const image of symbolImages(COLORS)) expect(image.id.startsWith("umbra-")).toBe(true);
   });
 });

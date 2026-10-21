@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { LayerSpecification } from "maplibre-gl";
-import { buildMapStyle, type GeoJsonData, graticule } from "./style.ts";
+import { buildMapStyle, type GeoJsonData, graticule, paintUpdates } from "./style.ts";
 import { COLORS } from "./testing.ts";
 
 const inline = (theme: "dark" | "light", basemap = {}) => {
@@ -84,8 +84,8 @@ describe("buildMapStyle", () => {
     expect(entities.layout?.["icon-image"]).toEqual([
       "case",
       ["==", ["get", "ownership"], "owned"],
-      ["concat", "symbol-", ["get", "affiliation"], "-plain"],
-      ["concat", "symbol-", ["get", "affiliation"], "-ring"],
+      ["concat", "umbra-symbol-", ["get", "affiliation"], "-plain"],
+      ["concat", "umbra-symbol-", ["get", "affiliation"], "-ring"],
     ]);
   });
 
@@ -128,4 +128,18 @@ describe("buildMapStyle", () => {
     expect(meridians).not.toContain(180);
     expect(meridians).toContain(-180);
   });
+
+  test("paintUpdates matches the paint buildMapStyle emits, for both themes", () => {
+    for (const theme of ["dark", "light"] as const) {
+      const { layers } = inline(theme);
+      for (const { layer, property, value } of paintUpdates(COLORS, theme)) {
+        expect(layer_paint(layers, layer)[property]).toBe(value);
+      }
+    }
+  });
 });
+
+const layer_paint = (layers: LayerSpecification[], id: string): Record<string, unknown> => {
+  const l = layers.find((x) => x.id === id);
+  return l && "paint" in l && l.paint ? { ...l.paint } : {};
+};

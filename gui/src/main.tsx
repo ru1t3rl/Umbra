@@ -1,3 +1,4 @@
+import "@umbra/map-view/styles.css";
 import "@umbra/ui-kit/styles.css";
 import { configureEngineUrl } from "@umbra/data";
 import { connectEngineStream, streamUrl } from "@umbra/engine-stream";

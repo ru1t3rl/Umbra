@@ -41,12 +41,15 @@ const FRAMES: Readonly<Record<Affiliation, string>> = {
 const svg = (size: number, body: string): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${body}</svg>`;
 
+/** Image ids share one namespace with a configured third-party style (ASM-372). */
+export const IMAGE_PREFIX = "umbra-";
+
 /** The id under which the map registers the image (`addImage`). Only `owned` has the plain image. */
 export function symbolImageId(affiliation: Affiliation, ownership: SymbolOwnership): string {
-  return `symbol-${affiliation}-${ownership === "owned" ? "plain" : "ring"}`;
+  return `${IMAGE_PREFIX}symbol-${affiliation}-${ownership === "owned" ? "plain" : "ring"}`;
 }
 
-export const DIRECTION_IMAGE_ID = "direction";
+export const DIRECTION_IMAGE_ID = `${IMAGE_PREFIX}direction`;
 
 /**
  * Affiliation fill, `symbol-frame` stroke. A 1px `ink-muted` outer ring for every ownership except

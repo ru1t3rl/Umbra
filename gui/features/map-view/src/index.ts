@@ -1,3 +1,4 @@
-// Public API of @umbra/map-view: empty until WI-12 adds `LiveMap`, `LiveMapProps` and `./styles.css`.
-// `MapView` (src/MapView.ts) is internal and never exported (F-8).
-export {};
+// Public API of @umbra/map-view. `MapView` (src/MapView.ts) and the MapLibre implementation are internal (F-8).
+// The app imports `@umbra/map-view/styles.css` once (ADR 0043).
+export type { LiveMapProps } from "./LiveMap.tsx";
+export { LiveMap } from "./LiveMap.tsx";

@@ -1,0 +1,23 @@
+/* Imported once by the app (ADR 0043): the MapLibre CSS and the LiveMap container rules. Tokens only. */
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+.umbra-live-map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface-0);
+}
+
+.umbra-live-map-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.umbra-live-map-error {
+  position: absolute;
+  top: var(--space-4);
+  left: 50%;
+  z-index: 1;
+  transform: translateX(-50%);
+}

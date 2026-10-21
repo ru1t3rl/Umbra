@@ -16,7 +16,7 @@ Milestone column (A-002, D-36): M5b (live map) is the first GUI slice and delive
 | `@umbra/runtime-config` | feature | foundation | `RuntimeConfig`, `loadRuntimeConfig`, `parseRuntimeConfig`, `RuntimeConfigProvider`, `useRuntimeConfig` | M5b (WI-7) |
 | `@umbra/data` | feature | foundation | The REST data layer: orval-generated client and TanStack Query `useQuery`/`useMutation` hooks for every operation in `api/openapi.json`, query keys, the fetch mutator (runtime base URL, `ApiProblem` from problem+json), `DataProvider` (QueryClient); the only package features use for REST data (human decision 2026-10-20) | M5b |
 | `@umbra/engine-stream` | feature | foundation | WebSocket connection, encoding negotiation (json/msgpack), subscription filters, entity store | M5b (JSON encoding with the negotiation hook) |
-| `@umbra/map-view` | feature | domain | `MapView` interface + implementation (library chosen at M5b by ADR), entity layer; WI-11: pure model only (public API empty), `LiveMap` from WI-12 | M5b |
+| `@umbra/map-view` | feature | domain | `MapView` interface + implementation (library chosen at M5b by ADR), entity layer; public API `LiveMap`, `LiveMapProps`, `./styles.css` | M5b |
 | `@umbra/entity-inspector` | feature | domain | Entity list/detail panel | M8 |
 | `@umbra/scenario-control` | feature | domain | Load scenario, start/pause/step/stop, clock mode | M8 |
 | `@umbra/template-browser` | feature | domain | Browse templates, render param forms from JSON Schema | M8 |

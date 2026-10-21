@@ -3,8 +3,15 @@
   "compilerOptions": {
     "outDir": ".tsbuild",
     "tsBuildInfoFile": ".tsbuild/map-view.tsbuildinfo",
-    "types": ["bun"]
+    "types": ["bun", "vite/client"]
   },
   "include": ["src", "../../test/jest-dom.d.ts"],
-  "references": [{ "path": "../engine-stream" }, { "path": "../ui-kit" }]
+  "references": [
+    {
+      "path": "../engine-stream"
+    },
+    {
+      "path": "../ui-kit"
+    }
+  ]
 }

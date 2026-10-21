@@ -6,7 +6,7 @@ import type {
 } from "maplibre-gl";
 import type { MapColors } from "./colors.ts";
 import { emptyFeatureCollection } from "./features.ts";
-import { DIRECTION_IMAGE_ID, SYMBOL_FRAME_PX } from "./symbols.ts";
+import { DIRECTION_IMAGE_ID, IMAGE_PREFIX, SYMBOL_FRAME_PX } from "./symbols.ts";
 
 /**
  * The map style as plain data (ADR 0041): built from resolved token colours, no `glyphs` key (ASM-314).
@@ -52,8 +52,8 @@ export function symbolImageExpression(): IconImage {
   return [
     "case",
     ["==", ["get", "ownership"], "owned"],
-    ["concat", "symbol-", ["get", "affiliation"], "-plain"],
-    ["concat", "symbol-", ["get", "affiliation"], "-ring"],
+    ["concat", `${IMAGE_PREFIX}symbol-`, ["get", "affiliation"], "-plain"],
+    ["concat", `${IMAGE_PREFIX}symbol-`, ["get", "affiliation"], "-ring"],
   ];
 }
 
@@ -182,4 +182,26 @@ export function buildMapStyle(
       ],
     },
   };
+}
+
+export interface PaintUpdate {
+  readonly layer: string;
+  readonly property: string;
+  readonly value: string | number;
+}
+
+/**
+ * The paint properties of the offline base that depend on the theme, for `setPaintProperty` on a theme
+ * switch (no style reload). Same values as `buildMapStyle`; a test keeps the two in step.
+ */
+export function paintUpdates(colors: MapColors, theme: ResolvedTheme): readonly PaintUpdate[] {
+  const day = theme === "light";
+  return [
+    { layer: "background", property: "background-color", value: colors.surface0 },
+    { layer: "land", property: "fill-color", value: colors.surface1 },
+    { layer: "coast", property: "line-color", value: colors.line },
+    { layer: "borders", property: "line-color", value: colors.line },
+    { layer: "graticule", property: "line-color", value: day ? colors.lineStrong : colors.line },
+    { layer: "graticule", property: "line-opacity", value: day ? colors.opacityTrack : 1 },
+  ];
 }
