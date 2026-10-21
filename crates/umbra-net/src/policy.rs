@@ -64,7 +64,7 @@ pub struct PublishTracker {
 }
 
 /// Whole ticks of `d` at `rate` (`ceil(d * hz)`, ASM-269); zero for a non-positive duration.
-fn ticks_of(rate: TickRate, d: Seconds) -> u64 {
+pub(crate) fn ticks_of(rate: TickRate, d: Seconds) -> u64 {
     rate.ticks_for(d).map_or(
         // A duration that is not positive means "no limit" for the interval and is rejected by the
         // scenario reader for the heartbeat; one too large for u64 never elapses.
@@ -206,5 +206,11 @@ impl PublishTracker {
     /// the entity is forgotten either way.
     pub fn removed(&mut self, id: EntityId) -> bool {
         self.tracked.remove(&id).is_some()
+    }
+
+    /// How many entities are tracked (the manager's cleanup tests).
+    #[cfg(test)]
+    pub(crate) fn tracked_len(&self) -> usize {
+        self.tracked.len()
     }
 }

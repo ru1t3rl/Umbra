@@ -1,7 +1,7 @@
 //! AT-5 (unit level): echo suppression and the Owned-only publish rule. Requirements: REQ-K-5,
 //! REQ-N-4, REQ-N-5, ADR 0031.
 //!
-//! Step 4 of M6: written before WI-7; `NetworkManager` and `LoopbackHub` are `todo!()` stubs.
+//! Written in step 4 of M6, before WI-7; run since WI-7.
 
 #![forbid(unsafe_code)]
 
@@ -25,7 +25,6 @@ fn entity_state_keys(msgs: &[NetMessage]) -> Vec<NetKey> {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn remote_entities_are_never_published() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(2001, Some("tank"), 50.0)]);
@@ -50,7 +49,6 @@ fn remote_entities_are_never_published() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn own_key_space_inbound_is_dropped() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(OWN_BASE + 50, Some("tank"), 10.0)]);
@@ -67,7 +65,6 @@ fn own_key_space_inbound_is_dropped() {
 /// lie in the own space, so layers 1 and 3 of ADR 0031 both apply; the layer that matters beyond
 /// the space is tested in `manager.rs` (`a_key_bound_as_owned_outside_the_own_space_...`).
 #[test]
-#[ignore = "WI-7"]
 fn keys_of_owned_entities_are_dropped() {
     let mut rig = Rig::with(
         &serde_json::json!({"echo": true}),
@@ -88,7 +85,6 @@ fn keys_of_owned_entities_are_dropped() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn ghosts_from_one_adapter_are_not_published_on_another() {
     let hub_a = umbra_net::LoopbackHub::new(64);
     let hub_b = umbra_net::LoopbackHub::new(64);
@@ -135,7 +131,6 @@ fn ghosts_from_one_adapter_are_not_published_on_another() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn inbound_fire_with_an_own_space_shooter_is_counted_as_an_echo() {
     let mut rig = Rig::new();
     rig.peer_sends(
@@ -157,7 +152,6 @@ fn inbound_fire_with_an_own_space_shooter_is_counted_as_an_echo() {
 /// Only events whose source is an Owned entity go out; a ghost's `Fire` or `Detonation` never does,
 /// and the target of an owned shooter is sent under the peer's key.
 #[test]
-#[ignore = "WI-7"]
 fn fire_and_detonation_are_published_only_for_owned_sources() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(2001, Some("tank"), 50.0)]);
@@ -220,7 +214,6 @@ fn fire_and_detonation_are_published_only_for_owned_sources() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn publishing_more_entities_than_keys_counts_keys_exhausted_and_skips_the_rest() {
     let mut rig = Rig::new(); // 100 keys
     let views: Vec<_> = (1..=101_u32)

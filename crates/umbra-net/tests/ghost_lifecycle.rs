@@ -1,7 +1,7 @@
 //! AT-13 (unit level): the ghost lifecycle in the manager. Requirements: REQ-N-1..5, REQ-K-5,
 //! ADR 0030, ADR 0031, ASM-233, ASM-236, ASM-240, ASM-243, ASM-248, ASM-235, ASM-269.
 //!
-//! Step 4 of M6: written before WI-7. Time rule pinned here (ASM-269): a ghost is removed at the
+//! Written in step 4 of M6, before WI-7; run since WI-7. Time rule pinned here (ASM-269): a ghost is removed at the
 //! first ingest whose time is strictly more than `timeout` after its last update.
 
 #![forbid(unsafe_code)]
@@ -32,7 +32,6 @@ fn one_ghost_id(rig: &Rig) -> umbra_core::EntityId {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn ghost_is_created_with_the_mapped_template_force_name_and_source() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(PEER_BASE + 1, Some("tank"), 50.0)]);
@@ -57,7 +56,6 @@ fn ghost_is_created_with_the_mapped_template_force_name_and_source() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn a_second_state_of_the_same_key_updates_the_ghost_without_creating_another() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(PEER_BASE + 1, Some("tank"), 50.0)]);
@@ -75,7 +73,6 @@ fn a_second_state_of_the_same_key_updates_the_ghost_without_creating_another() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn entity_removed_removes_the_ghost_and_reports_it_once() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(PEER_BASE + 1, Some("tank"), 50.0)]);
@@ -101,7 +98,6 @@ fn entity_removed_removes_the_ghost_and_reports_it_once() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn a_ghost_goes_at_the_first_ingest_strictly_past_the_timeout() {
     // timeout 1 s at 30 Hz: updated at tick 0, still alive at tick 30, gone at tick 31.
     let mut rig = Rig::new();
@@ -119,7 +115,6 @@ fn a_ghost_goes_at_the_first_ingest_strictly_past_the_timeout() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn an_update_restarts_the_timeout() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(PEER_BASE + 1, Some("tank"), 50.0)]);
@@ -139,7 +134,6 @@ fn an_update_restarts_the_timeout() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn ghosts_beyond_max_are_refused_and_counted() {
     let mut s = settings("lb");
     s.ghosts = GhostPolicy { max: 2, ..s.ghosts };
@@ -161,7 +155,6 @@ fn ghosts_beyond_max_are_refused_and_counted() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn max_inbound_per_tick_leaves_the_rest_queued_for_the_next_ingest() {
     let mut s = settings("lb");
     s.ghosts = GhostPolicy {
@@ -185,7 +178,6 @@ fn max_inbound_per_tick_leaves_the_rest_queued_for_the_next_ingest() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn unmapped_types_are_not_mirrored_and_are_counted() {
     let mut rig = Rig::new();
     rig.peer_sends(
@@ -204,7 +196,6 @@ fn unmapped_types_are_not_mirrored_and_are_counted() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn unmapped_types_use_the_default_template_when_there_is_one() {
     let mut rig = Rig::with(
         &serde_json::json!({}),
@@ -221,7 +212,6 @@ fn unmapped_types_use_the_default_template_when_there_is_one() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn a_disabled_adapter_is_neither_polled_nor_published_to_and_its_ghosts_time_out() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(PEER_BASE + 1, Some("tank"), 50.0)]);
@@ -244,7 +234,6 @@ fn a_disabled_adapter_is_neither_polled_nor_published_to_and_its_ghosts_time_out
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn set_enabled_on_an_unknown_adapter_is_an_error() {
     let mut rig = Rig::new();
 
@@ -254,7 +243,6 @@ fn set_enabled_on_an_unknown_adapter_is_an_error() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn inbound_fire_becomes_an_event_only_when_shooter_and_target_are_mapped() {
     let mut rig = Rig::new();
     let weapon = WeaponId::new("example.weapon.main_gun").unwrap();
@@ -294,7 +282,6 @@ fn inbound_fire_becomes_an_event_only_when_shooter_and_target_are_mapped() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn inbound_detonation_passes_through_with_whatever_maps() {
     let mut rig = Rig::new();
     rig.peer_sends(
@@ -319,7 +306,6 @@ fn inbound_detonation_passes_through_with_whatever_maps() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn inbound_run_control_is_ignored_and_counted() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[NetMessage::SimulationControl(ControlAction::Stop)]);
@@ -387,7 +373,6 @@ fn two_counters() -> [Arc<AtomicUsize>; 2] {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn stop_reaches_every_adapter_and_may_be_repeated() {
     let stops = two_counters();
     let mut manager = counting_manager(&stops);
@@ -400,7 +385,6 @@ fn stop_reaches_every_adapter_and_may_be_repeated() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn dropping_the_manager_stops_every_adapter() {
     let stops = two_counters();
 
@@ -411,7 +395,6 @@ fn dropping_the_manager_stops_every_adapter() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn inbound_detonation_keeps_a_mapped_shooter() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(PEER_BASE + 7, Some("tank"), 1.0)]);
@@ -439,7 +422,6 @@ fn inbound_detonation_keeps_a_mapped_shooter() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn a_key_resent_after_its_ghost_timed_out_creates_a_new_ghost() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(PEER_BASE + 1, Some("tank"), 50.0)]);
@@ -470,7 +452,6 @@ fn control_rig(control: bool) -> Rig {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn run_control_is_published_only_when_the_policy_allows_it() {
     let (mut off, mut on) = (control_rig(false), control_rig(true));
 
@@ -485,7 +466,6 @@ fn run_control_is_published_only_when_the_policy_allows_it() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn a_zero_timeout_removes_a_ghost_at_the_next_tick() {
     let mut s = settings("lb");
     s.ghosts.timeout = Seconds(0.0);

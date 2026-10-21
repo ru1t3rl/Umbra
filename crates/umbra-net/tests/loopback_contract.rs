@@ -1,7 +1,7 @@
 //! AT-21 (loopback row): the `umbra_core::net::contract` suite on the loopback adapter, plus the
 //! loopback semantics the other tests rely on. Requirements: REQ-N-1 (LSP), ADR 0030.
 //!
-//! Step 4 of M6: written before WI-7; `LoopbackHub` is a `todo!()` stub.
+//! Written in step 4 of M6, before WI-7; run since WI-7.
 
 #![forbid(unsafe_code)]
 
@@ -25,7 +25,7 @@ fn echoing_config() -> Arc<dyn NetworkAdapterConfig> {
     )
 }
 
-// The contract suite, fed through the loopback's `echo` parameter; ignored until WI-7 (ASM-280).
+// The contract suite, fed through the loopback's `echo` parameter (ASM-280).
 mod contract {
     use super::{NetMessage, NetworkAdapter, echoing_config, tick};
 
@@ -35,11 +35,7 @@ mod contract {
             .unwrap_or_else(|e| panic!("feed publish failed: {e}"));
     }
 
-    umbra_core::network_adapter_contract_tests!(
-        attrs = [#[ignore = "WI-7"]],
-        echoing_config(),
-        feed = feed
-    );
+    umbra_core::network_adapter_contract_tests!(attrs = [], echoing_config(), feed = feed);
 }
 
 fn pause() -> NetMessage {
@@ -47,7 +43,6 @@ fn pause() -> NetMessage {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn a_published_message_reaches_the_other_endpoints_but_not_the_sender() {
     let hub = LoopbackHub::new(16);
     let mut a = config(&hub, "test.net.a", 0, &serde_json::json!({}))
@@ -66,7 +61,6 @@ fn a_published_message_reaches_the_other_endpoints_but_not_the_sender() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn the_echo_parameter_also_delivers_to_the_sender() {
     let mut a = echoing_config().start(&start_ctx()).unwrap();
 
@@ -78,7 +72,6 @@ fn the_echo_parameter_also_delivers_to_the_sender() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn a_full_queue_drops_the_excess_and_counts_it_at_the_receiver() {
     let hub = LoopbackHub::new(2);
     let mut a = config(&hub, "test.net.a", 0, &serde_json::json!({}))
@@ -96,7 +89,6 @@ fn a_full_queue_drops_the_excess_and_counts_it_at_the_receiver() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn the_key_space_param_overrides_the_factory_default() {
     let hub = LoopbackHub::new(16);
     let factory = hub.factory(cid("test.net.loopback"), KeySpace { base: 5, count: 6 });
@@ -117,7 +109,6 @@ fn the_key_space_param_overrides_the_factory_default() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn captured_lists_every_published_message_in_publish_order() {
     let hub = LoopbackHub::with_capture(16);
     let mut a = config(&hub, "test.net.a", 0, &serde_json::json!({}))
@@ -134,7 +125,6 @@ fn captured_lists_every_published_message_in_publish_order() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn a_hub_without_capture_records_nothing() {
     let hub = LoopbackHub::new(16);
     let mut a = config(&hub, "test.net.a", 0, &serde_json::json!({}))
@@ -147,7 +137,6 @@ fn a_hub_without_capture_records_nothing() {
 }
 
 #[test]
-#[ignore = "WI-7"]
 fn starting_an_endpoint_is_counted_by_the_hub() {
     let hub = LoopbackHub::new(16);
     let cfg = config(&hub, "test.net.a", 0, &serde_json::json!({}));

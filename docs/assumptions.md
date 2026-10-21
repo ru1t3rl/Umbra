@@ -24,4 +24,4 @@ Gaps left in a block stay unused. After both close, numbering continues after th
 | M3 | [`docs/assumptions/M3.md`](assumptions/M3.md) | ASM-070..ASM-110 | 41 |
 | M4 | [`docs/assumptions/M4.md`](assumptions/M4.md) | ASM-111..ASM-148 | 38 |
 | M5 | [`docs/assumptions/M5.md`](assumptions/M5.md) | ASM-149..ASM-223 | 75 |
-| M6 | [`docs/assumptions/M6.md`](assumptions/M6.md) | ASM-224..ASM-261 (block to ASM-299) | 38 |
+| M6 | [`docs/assumptions/M6.md`](assumptions/M6.md) | ASM-224..ASM-289 (block to ASM-299) | 38 |

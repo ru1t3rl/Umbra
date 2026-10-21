@@ -220,13 +220,15 @@ pub trait NetworkAdapterConfig: Send + Sync {
 
 /// A running adapter. Neither `publish` nor `poll` blocks.
 pub trait NetworkAdapter: Send {
-    /// Queues `out` for sending.
+    /// Queues `out` for sending. A transient failure (one send failed) is counted in
+    /// [`AdapterCounters`] and returns `Ok`; `Err` means the adapter can do nothing more.
     ///
     /// # Errors
     /// An error (never a panic) once the adapter is stopped or faulted.
     fn publish(&mut self, now: SimTime, out: &[OutboundEvent]) -> Result<(), NetError>;
 
-    /// Appends at most `max` received messages to `into`, in arrival order.
+    /// Appends at most `max` received messages to `into`, in arrival order. Like `publish`, a
+    /// transient failure is counted and returns `Ok`; `Err` means the adapter can do nothing more.
     ///
     /// # Errors
     /// An error (never a panic) once the adapter is stopped or faulted.

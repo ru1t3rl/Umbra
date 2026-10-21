@@ -152,6 +152,8 @@ pub struct FakeWorld {
     pub ghosts: BTreeMap<EntityId, FakeGhost>,
     pub created: usize,
     pub updated: usize,
+    /// When set, `update_ghost` refuses (the ghost stays in `ghosts` until removed).
+    pub refuse_updates: bool,
     next: u64,
 }
 
@@ -174,6 +176,9 @@ impl GhostWorld for FakeWorld {
     }
 
     fn update_ghost(&mut self, id: EntityId, remote: RemoteState) -> Result<(), GhostError> {
+        if self.refuse_updates {
+            return Err(GhostError::World("updates refused".to_owned()));
+        }
         let ghost = self
             .ghosts
             .get_mut(&id)

@@ -2,9 +2,8 @@
 //!
 //! Responsibility (from M6): the network manager, publish policy, ghost lifecycle, identity map,
 //! echo suppression and the adapter interface. It knows no protocol vocabulary; protocols live in
-//! adapter crates, outside the engine side. The modules below are signature stubs (M6 step 4);
-//! their bodies arrive with WI-5 (`identity`, `typemap`), WI-6 (`policy`) and WI-7 (`ghosts`,
-//! `manager`, `loopback`).
+//! adapter crates, outside the engine side. Modules: `identity` and `typemap` (WI-5), `policy`
+//! (WI-6), `ghosts`, `manager` and `loopback` (WI-7).
 //!
 //! Dependency rule (section 4): depends on `umbra-core` only among workspace crates, and on no
 //! protocol crate (`cargo xtask check-deps`, `tests/protocol_neutral.rs`). It contains no `unsafe`
