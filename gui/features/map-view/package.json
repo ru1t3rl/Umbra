@@ -1,0 +1,19 @@
+{
+  "name": "@umbra/map-view",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "feature",
+    "tier": "domain"
+  },
+  "dependencies": {
+    "maplibre-gl": "5.9.0",
+    "@umbra/engine-stream": "workspace:*",
+    "@umbra/ui-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
+  }
+}

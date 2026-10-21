@@ -6,6 +6,7 @@
     { "path": "./feature-shells/showcase" },
     { "path": "./features/data" },
     { "path": "./features/engine-stream" },
+    { "path": "./features/map-view" },
     { "path": "./features/runtime-config" },
     { "path": "./features/ui-kit" }
   ]

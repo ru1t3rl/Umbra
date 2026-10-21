@@ -533,6 +533,13 @@ and come before `map-view` and the dashboard shell (human decision 2026-10-19).
 - **Files:** `src/maplibre/createMapLibreView.ts`, `src/LiveMap.tsx`, `src/e2eHook.ts` (registered only
   when `import.meta.env.VITE_UMBRA_E2E`), `src/styles.css` (imports `maplibre-gl/dist/maplibre-gl.css`
   and container rules), `README.md`.
+- **Added by the WI-11 review (ASM-363, ASM-366):**
+  - `maplibre-gl` 5.9.0 is already installed (types only so far); this WI bundles its runtime;
+  - never call `getData()` or `updateData` on the entity source (`toFeatureCollection` reuses its buffer);
+  - a test that two in-flight `setData` calls deliver the last frame;
+  - `LiveMap` catches a `resolveMapColors` error and shows the map error state;
+  - `resolveMapColors` is called with `getComputedStyle(document.documentElement)`;
+  - the `MapInspection` return types are settled here.
 - **Behaviour:**
   - `setEntities` stores the frame and schedules one flush per animation frame;
   - the theme switch rebuilds the images and calls `setPaintProperty`, with no reload;
@@ -767,15 +774,16 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
   `../umbra-m5b` (branch `m5b`, not yet merged into `develop`); M6 is in `../umbra-m6` (branch `m6`).
 
 ### In progress
-- Nothing. The working tree is clean at the WI-10 commit.
+- Nothing. The working tree is clean at the WI-11 commit.
 
 ### Next
-- WI-11: `@umbra/map-view` model (interface, style, symbols, affiliation); then WI-12..WI-17.
+- WI-12: MapLibre implementation and `LiveMap` (bundles `maplibre-gl`, ASM-363); then WI-13..WI-17.
 - **Pending human review (H-10):** the six showcase baselines in `gui/e2e/__screenshots__/linux/` (ASM-347).
 - Open nit from the WI-2 review: the `scripts/` entry of the second `no-deep-import` rule has no fixture.
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
+- WI-11 (2026-10-21, reviewed GO-with-fixes, fixes applied: ring keyed on `ownership !== "owned"`, MapLibre 5.9.0 types (no local style types), ring clearance and 1.5x direction line under the symbol, DOM-free colours, 343 bun + 15 e2e tests): `@umbra/map-view` (domain) pure model: `src/model/{affiliation,colors,symbols,style,features}.ts`, internal `src/MapView.ts`, tests (affiliation, colors, symbols, style, features), remote-entity rule in `tactical-display.md` (H-8), ASM-362..366 (ring for remote and unknown; `maplibre-gl` 5.9.0 installed for types; ring clears every frame; direction below symbols).
 - WI-10 (2026-10-21, reviewed GO-with-fixes, fixes applied: close code 4002, engine URL validated, throwing socket factory retried, GUI domain types with "unknown" values (ASM-359), route validation, render-count 10k test, listener isolation; 302 bun + 15 e2e tests): `@umbra/engine-stream` runtime: `model/{decode,store,backoff,url}.ts`, `connection.ts` (`connectEngineStream`, injectable socket/scheduler/timers), `EngineStreamProvider`, `hooks.ts`; `main.tsx` creates the connection (`streamUrl` from the config), `App` takes it as a prop and nests `ThemeProvider > DataProvider > EngineStreamProvider > RouterProvider`. zustand 5.0.15 pinned. Subprotocol finding: the server negotiates none, so the client sends none; protocol is checked in `hello` (ASM-356). Measured: decoding a 10,000-entity frame (1.5 MB) takes about 3.7 ms (JSON.parse alone 1.7 ms) in Bun, within the 16 ms budget. All WI-10 test rows incl. the two forward-compat rows and the 10,000-entity rows, plus an App-level provider test. Mutation checks: 10 mutants, all caught. Review fixes applied: close code 4002, engineUrl validation, throwing socket factory retried, domain types with `unknown` values and a `skipped` counter, route validation, listener isolation, render-count rows. ASM-356..361.
 - WI-9 (2026-10-21, reviewed GO-with-fixes, fixes applied: `--check` generates in a temp copy and never writes under `gui/`, `configureEngineUrl` once in `main.tsx` (src-only, arch fixture), App-level provider test, AbortError rethrown; 240 bun + 15 e2e tests): `@umbra/data` (`features/data`: `fetcher.ts` mutator, `problem.ts`, `DataProvider.tsx`, `orval.config.ts`, generated `api.ts`), `@umbra/engine-stream` skeleton (generated `stream.d.ts`, type-only index), `scripts/gen-api.mjs` (`gen:api`, `--check`), `App` wraps the router in `DataProvider`, `verify` starts with `gen:api --check`. First-use check passed for all four items (type arrays, `oneOf` with null, `ids` repeated style, `application/problem+json`). Pins: orval 7.21.0, @tanstack/react-query 5.104.5, json-schema-to-typescript 15.0.4. Tests: `fetcher.test.ts` (14), `DataProvider.test.tsx` (3), `gen-api.test.ts` (6), App-level `useGetStatus` test (1), plus an arch fixture for `configureEngineUrl`; see the final count in the report. ASM-348..355.
 - WI-8 (2026-10-21, reviewed GO-with-fixes, fixes applied: computed-style glass-on-glass guard (mutations proven), all token groups exported by ui-kit, per-platform baseline dir, Alert named by its title, sample strings via messages, one h1, threshold 0.05, 216 bun + 15 e2e tests): `@umbra/shell-showcase` (`feature-shells/showcase`, route `/showcase`, lazy `ShowcasePage`: docked CommandBar with `ThemeToggle`, token sections, all 14 components in reference states, floating CommandBar sample), router uses the shell route; tests `ShowcasePage.test.tsx` (10), `e2e/showcase.spec.ts` (7), `app.spec.ts` theme switch. ASM-344..347. **Baselines pending human review (H-10)**, Linux-generated, in `gui/e2e/__screenshots__/linux/`: `showcase-tokens-ops.png`, `showcase-tokens-day.png`, `showcase-components-ops.png`, `showcase-components-day.png`, `showcase-floating-ops.png`, `showcase-floating-day.png`. Review fixes applied: deterministic glass-on-glass CSS assertions, ui-kit exports all token groups, `Alert` named by its title, sample strings in messages, h1/h2/h3 headings. Screenshot suite ran 5 times in a row without a diff after the fixes.
