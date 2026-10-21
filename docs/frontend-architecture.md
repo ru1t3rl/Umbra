@@ -13,6 +13,7 @@ Milestone column (A-002, D-36): M5b (live map) is the first GUI slice and delive
 | Package | Type | Tier | Purpose | Milestone |
 |---|---|---|---|---|
 | `@umbra/ui-kit` | feature | foundation | Design tokens, primitives (Button, Panel, Table, Toast), i18n helper | M5b (minimum: i18n helper, Panel); rest M8 |
+| `@umbra/runtime-config` | feature | foundation | `RuntimeConfig`, `loadRuntimeConfig`, `parseRuntimeConfig`, `RuntimeConfigProvider`, `useRuntimeConfig` | M5b (WI-7) |
 | `@umbra/data` | feature | foundation | The REST data layer: orval-generated client and TanStack Query `useQuery`/`useMutation` hooks for every operation in `api/openapi.json`, query keys, the fetch mutator (runtime base URL, `ApiProblem` from problem+json), `DataProvider` (QueryClient); the only package features use for REST data (human decision 2026-10-20) | M5b |
 | `@umbra/engine-stream` | feature | foundation | WebSocket connection, encoding negotiation (json/msgpack), subscription filters, entity store | M5b (JSON encoding with the negotiation hook) |
 | `@umbra/map-view` | feature | domain | `MapView` interface + implementation (library chosen at M5b by ADR), entity layer | M5b |

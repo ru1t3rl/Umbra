@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test:e2e": "playwright test",
     "typecheck": "tsc -b",
     "lint": "biome check .",
     "format": "biome check --write .",
@@ -21,15 +22,19 @@
     "check:contrast": "bun scripts/check-contrast.mjs",
     "check:licenses": "bun scripts/check-licenses.ts",
     "check:deps": "depcruise --config .dependency-cruiser.cjs . && bun scripts/check-plain-requests.ts",
-    "verify": "bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run check:deps && bun run test && bun run build"
+    "verify": "bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run check:deps && bun run test && bun run build && bun run test:e2e"
   },
   "dependencies": {
+    "@umbra/runtime-config": "workspace:*",
+    "@umbra/ui-kit": "workspace:*",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "react-router": "7.18.4"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@happy-dom/global-registrator": "20.14.6",
+    "@playwright/test": "1.64.1",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "6.10.0",
     "@testing-library/react": "16.3.3",

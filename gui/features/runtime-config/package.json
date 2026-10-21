@@ -1,0 +1,14 @@
+{
+  "name": "@umbra/runtime-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "feature",
+    "tier": "foundation"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
+  }
+}

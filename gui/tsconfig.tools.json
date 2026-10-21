@@ -5,6 +5,6 @@
     "outDir": ".tsbuild/tools",
     "tsBuildInfoFile": ".tsbuild/tools.tsbuildinfo"
   },
-  "include": ["vite.config.ts", "scripts/**/*.ts", "test"],
+  "include": ["vite.config.ts", "playwright.config.ts", "e2e", "scripts/**/*.ts", "test"],
   "exclude": ["test/arch-fixtures"]
 }

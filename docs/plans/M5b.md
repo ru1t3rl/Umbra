@@ -106,13 +106,14 @@ Each criterion in `docs/milestones.md` (M5b), with the tests that prove it.
 | Package | Type | Tier | Public API (`src/index.ts`) | Depends on | WI |
 |---|---|---|---|---|---|
 | `@umbra/ui-kit` | feature | foundation | the 14 components `Button`, `Chip`, `Panel`, `Card`, `TextField`, `Toggle`, `Slider`, `Tabs`, `CommandBar`, `Readout`, `Badge`, `AffiliationTag`, `EntityRow`, `Alert`; helpers `Icon`, `ChipGroup`, `EntityList`; `ThemeProvider`, `useTheme`, `ThemeToggle`; `defineMessages`; token lists and types re-exported from `tokens.ts` (`colorTokens`, `spacingTokens`, `radiusTokens`, `typeStyles`, `cssVar`, `Affiliation`, `ColorToken`, ...); prop types `<Name>Props`, `Tone`, `ThemePreference`, `ResolvedTheme`. Second entry `./styles.css` (fonts, tokens, base, all component CSS) | (none; npm: react, fonts, icons) | 1, 3-6 |
+| `@umbra/runtime-config` | feature | foundation | `RuntimeConfig`, `DEFAULT_CONFIG`, `ConfigError`, `parseRuntimeConfig`, `loadRuntimeConfig(fetchImpl, baseUrl)`, `RuntimeConfigProvider`, `useRuntimeConfig` (ASM-339) | (none; npm: react peer) | 7 |
 | `@umbra/data` | feature | foundation | `DataProvider`, `configureEngineUrl`, `ApiProblem`, `isApiProblem`; re-export of the orval output: `use<Op>` hooks, `get<Op>QueryKey`, model types, and plain request functions (e2e and scripts only, ADR 0045) | npm: @tanstack/react-query | 9 |
 | `@umbra/engine-stream` | feature | foundation | `connectEngineStream`, `EngineStreamProvider`, `useStreamStatus`, `useRunStatus`, `useEntitySource`; types `EngineStreamConnection`, `EngineStreamOptions`, `Subscription`, `StreamStatus`, `EntityFrame`, `EntitySource`, `EntitySummary`, `RunStatus`, `WebSocketLike` | npm: zustand | 9 (skeleton), 10 |
 | `@umbra/map-view` | feature | domain | `LiveMap`, `LiveMapProps`; second entry `./styles.css` (MapLibre CSS + container) | ui-kit, engine-stream (types and `EntitySource`); npm: maplibre-gl | 11, 12, 13 |
 | `@umbra/scenario-control` | feature | domain | M5b read-only slice: `RunStatusBar` (sim-time Readout, tick Readout, entity-count Readout, run-state Badge), `ConnectionAlert`. M8 adds the controls | ui-kit, engine-stream | 14 |
 | `@umbra/shell-showcase` | shell | | `route` (`/showcase`, "Design system", lazy `ShowcasePage`) | ui-kit | 8 |
 | `@umbra/shell-dashboard` | shell | | `route` (`/`, "Live map", lazy `DashboardPage`) | ui-kit, engine-stream, map-view, scenario-control | 15 |
-| app (`src/`) | app | | none (root package) | the shells, ui-kit, data, engine-stream (providers only) | 7 |
+| app (`src/`) | app | | none (root package) | the shells, ui-kit, runtime-config, data, engine-stream (bootstrap and providers only) | 7 |
 
 Two changes to the planned inventory (in `docs/frontend-architecture.md`, WI-17):
 1. **ui-kit is complete in M5b** (A-003 human decision), not "minimum".
@@ -761,7 +762,7 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
   `../umbra-m5b` (branch `m5b`, not yet merged into `develop`); M6 is in `../umbra-m6` (branch `m6`).
 
 ### In progress
-- Nothing. The working tree is clean at the WI-3 commit.
+- Nothing. WI-7 is done in the working tree (not committed).
 
 ### Next
 - WI-7..WI-8
@@ -771,6 +772,7 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
+- WI-7 (2026-10-21, not committed, not yet reviewed): app shell in `gui/src` (`main`, `App`, `router`, `config` with `RuntimeConfigContext`, `messages`), `public/config.json`, `index.html` icon link, `umbra-icon` Vite plugin (dev, preview, build; byte-identical, no copy), `/api` proxy with `ws: true`, Playwright `ui` project with global setup/teardown (build `--mode e2e`, `vite preview`), `e2e/app.spec.ts` (5 tests), unit tests `config.test.ts`, `index-html.test.ts`, `App.test.tsx`; `test:e2e` added to `verify`; verify-frontend skill updated. ASM-338..343.
 - WI-6 (2026-10-21, reviewed GO-with-fixes, fixes applied (dead biome-ignores removed, U+00A0 echelon, paused needs a visible word, WI-8 glass screenshot item, roving tab stop deferred to M8)): ui-kit components C: `CommandBar`, `Readout`, `EntityRow`/`EntityList` (tsx, css, tests each), shared `VisuallyHidden.css`, `props.test-d.ts` cases, README and `index.ts` updated; `bun run verify` passes (179 tests); EntityList virtualization not built (M8). ASM-337 (incl. the glass-on-glass CSS guard for a floating CommandBar).
 - WI-5 (2026-10-21, reviewed GO-with-fixes, fixes applied (Tabs label/id/aria-controls, count separator and tabular figures, TextField aria-invalid and empty id; Slider arrow-key e2e scheduled in WI-8)): ui-kit components B: `Panel`, `Card`, `TextField`, `Toggle`, `Slider`, `Tabs`, `ThemeToggle` (tsx, css, tests each), shared `Label.css`, new type-level cases in `props.test-d.ts`, README and `index.ts` updated. `bun run verify` passes (151 tests). ASM-336 (incl. the glass-on-glass note for the WI-8 review).
 - WI-4 (2026-10-21, reviewed GO-with-fixes, fixes applied (aria-labelledby variant, NonNullable children, shared `gui/test/jest-dom.d.ts`, README exports)): ui-kit components A: `Button`, `Chip`/`ChipGroup`, `Badge`, `AffiliationTag`, `Alert` (tsx, css, tests each), `props.test-d.ts` (type-level icon-only `aria-label` rule), `gui/test/jest-dom.d.ts`, CSS in `styles.css`, exports in `index.ts`. `bun run verify` passes (107 tests). ASM-335.
@@ -790,7 +792,7 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
 - Later ADR: `milsymbol` once the contract has entity types.
 
 ### Assumed
-See `docs/assumptions/M5b.md` (ASM-300..ASM-337 so far). Added during implementation: ASM-322..326
+See `docs/assumptions/M5b.md` (ASM-300..ASM-343 so far). Added during implementation: ASM-322..326
 (exact pins, licence rules incl. OFL-1.1 only for `@fontsource/*`, tsconfig layout, `gui/**/node_modules`,
 biome preset), ASM-327..331 (dependency-cruiser details, app root exempt from the workspace-dep rule,
 plain-request allow-list until WI-9), ASM-332..334 (remaining `umbra-allow` lines, own-keys i18n lookup,

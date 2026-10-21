@@ -5,7 +5,7 @@ Source of truth: `docs/SPEC.md` (export of the "Umbra: Software Specification").
 ## Ground rules
 1. Build strictly in milestone order (spec section 17). Never start Mn+1 before Mn's acceptance criteria pass. The mandatory engine milestones are M0-M7 and M9; the optional M3b and the GUI-track M5b follow the A-002 ordering rules (see Amendments).
 2. MUST/SHOULD/MAY in the spec carry their RFC meaning. Do not silently reverse a decision (D-*). If you think one is wrong, stop and write an ADR proposal in `docs/adr/` and ask the human.
-3. Ambiguity: pick the simplest option consistent with KISS/SOLID/DRY, record it in the current milestone's file under `docs/assumptions/` (index and numbering rule: `docs/assumptions.md`), continue.
+3. Ambiguity: pick the recommended, best and most future-proof option consistent with the spec, accepted ADRs and SOLID/DRY (human decision 2026-10-21: not merely the simplest), record it with the alternatives considered in the current milestone's file under `docs/assumptions/` (index and numbering rule: `docs/assumptions.md`), continue.
 4. Dependencies point inward (REQ-A-1..4). `umbra-core` depends on no workspace crate. `umbra-sdk` depends only on `umbra-plugin-api`.
 5. `unsafe` only in `umbra-plugin-api`, `umbra-plugin-host`, `umbra-sdk`; every block has `// SAFETY:` and a test. Everywhere else `#![forbid(unsafe_code)]`.
 6. No `unwrap`/`expect` on external input. `thiserror` in libraries, `anyhow` only in binaries.

@@ -3,6 +3,7 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.tools.json" },
+    { "path": "./features/runtime-config" },
     { "path": "./features/ui-kit" }
   ]
 }

@@ -23,9 +23,9 @@ bun run verify                   # the ordered list below, stops at the first fa
 8. `check:deps`: dependency-cruiser layering, tiers, no deep imports, no cycles (added in M5b WI-2; also runs the ADR 0045 plain-request scan)
 9. `test`: bun test, unit + component + shell tests
 10. `build`: vite production build
-11. `test:e2e`: playwright (added in M5b WI-7; needs the release `umbra` binary and Chromium)
+11. `test:e2e`: playwright (added in M5b WI-7; the `ui` project needs Chromium and builds and serves the app itself; the `engine` project, WI-16, also needs the release `umbra` binary)
 
-Currently active (M5b WI-2): steps 2 to 10 (all but 1 and 11). Then, on a Windows runner only (M8): `bun run tauri build`.
+Currently active (M5b WI-7): steps 2 to 11 (all but 1). Then, on a Windows runner only (M8): `bun run tauri build`.
 
 ## Report
 Pass/fail per step, first failure with message and probable cause, and the owner: layering or structure -> `frontend-architect`; implementation -> `frontend-engineer`; contract mismatch -> `api-engineer`; flaky test -> `frontend-test-engineer`; pipeline/tooling -> `build-engineer`.

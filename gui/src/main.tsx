@@ -1,8 +1,29 @@
+import "@umbra/ui-kit/styles.css";
+import { loadRuntimeConfig, RuntimeConfigProvider } from "@umbra/runtime-config";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { App, ConfigErrorApp } from "./App.tsx";
+import { createAppRouter } from "./router.tsx";
 
 const container = document.getElementById("root");
 if (!container) throw new Error("missing #root element");
+const root = createRoot(container);
 
-// Placeholder: providers, router and the shells arrive in M5b WI-7.
-createRoot(container).render(<StrictMode />);
+loadRuntimeConfig(fetch.bind(globalThis), import.meta.env.BASE_URL).then(
+  (config) =>
+    root.render(
+      <StrictMode>
+        <RuntimeConfigProvider config={config}>
+          <App router={createAppRouter()} />
+        </RuntimeConfigProvider>
+      </StrictMode>,
+    ),
+  (error: unknown) => {
+    console.error(error);
+    root.render(
+      <StrictMode>
+        <ConfigErrorApp />
+      </StrictMode>,
+    );
+  },
+);

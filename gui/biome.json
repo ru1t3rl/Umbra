@@ -30,7 +30,12 @@
   },
   "overrides": [
     {
-      "includes": ["feature-shells/*/src/*Page.tsx", "vite.config.ts", "playwright.config.ts"],
+      "includes": [
+        "feature-shells/*/src/*Page.tsx",
+        "vite.config.ts",
+        "playwright.config.ts",
+        "e2e/global-*.ts"
+      ],
       "linter": { "rules": { "style": { "noDefaultExport": "off" } } }
     }
   ]
