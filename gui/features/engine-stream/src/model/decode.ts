@@ -109,7 +109,8 @@ export function runOf(v: unknown): RunStatus | undefined {
   const source = oneOf(RATE_SOURCES, v.tick_rate_source);
   if (source !== undefined) run.tick_rate_source = source;
   const reason = oneOf(STOP_REASONS, v.stop_reason);
-  if (reason !== undefined) run.stop_reason = reason; // an unknown reason is left out
+  if (reason !== undefined) run.stop_reason = reason;
+  else if (v.stop_reason !== undefined && v.stop_reason !== null) run.stop_reason = "unknown"; // a reason this client does not know (ASM-359)
   const fault = pluginFault(v.fault);
   if (fault) run.fault = fault;
   return run;

@@ -85,6 +85,17 @@
         "react": "^19.3.1",
       },
     },
+    "features/scenario-control": {
+      "name": "@umbra/scenario-control",
+      "version": "0.0.0",
+      "dependencies": {
+        "@umbra/engine-stream": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
+      },
+    },
     "features/ui-kit": {
       "name": "@umbra/ui-kit",
       "version": "0.0.0",
@@ -460,6 +471,8 @@
     "@umbra/map-view": ["@umbra/map-view@workspace:features/map-view"],
 
     "@umbra/runtime-config": ["@umbra/runtime-config@workspace:features/runtime-config"],
+
+    "@umbra/scenario-control": ["@umbra/scenario-control@workspace:features/scenario-control"],
 
     "@umbra/shell-showcase": ["@umbra/shell-showcase@workspace:feature-shells/showcase"],
 

@@ -18,7 +18,7 @@ Milestone column (A-002, D-36): M5b (live map) is the first GUI slice and delive
 | `@umbra/engine-stream` | feature | foundation | WebSocket connection, encoding negotiation (json/msgpack), subscription filters, entity store | M5b (JSON encoding with the negotiation hook) |
 | `@umbra/map-view` | feature | domain | `MapView` interface + implementation (library chosen at M5b by ADR), entity layer; public API `LiveMap`, `LiveMapProps`, `./styles.css` | M5b |
 | `@umbra/entity-inspector` | feature | domain | Entity list/detail panel | M8 |
-| `@umbra/scenario-control` | feature | domain | Load scenario, start/pause/step/stop, clock mode | M8 |
+| `@umbra/scenario-control` | feature | domain | M5b read-only slice (WI-14, ASM-316): `RunStatusBar` (sim-time, tick and entity-count Readouts, run-state Badge as CommandBar children), `ConnectionAlert`; M8 adds load scenario, start/pause/step/stop, clock mode | M5b (read-only), M8 |
 | `@umbra/template-browser` | feature | domain | Browse templates, render param forms from JSON Schema | M8 |
 | `@umbra/plugin-status` | feature | domain | Plugins, capabilities, adapters, faults | M8 |
 | `@umbra/log-view` | feature | domain | Engine log stream | M8 |

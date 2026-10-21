@@ -98,7 +98,7 @@ describe("decodeJson", () => {
     if (d.kind !== "frame") throw new Error("expected a frame");
     expect(d.run).toBeUndefined();
   });
-  test("an unknown stop_reason is left out, a known one kept", () => {
+  test("an unknown stop_reason becomes unknown, a known one is kept, null stays absent", () => {
     const unknown = dec(
       frame(0, 1, [], { run: run(1, { state: "stopped", stop_reason: "meteor" }) }),
     );
@@ -107,7 +107,10 @@ describe("decodeJson", () => {
     );
     if (unknown.kind !== "frame" || known.kind !== "frame") throw new Error("expected frames");
     expect(unknown.run?.state).toBe("stopped");
-    expect(unknown.run?.stop_reason).toBeUndefined();
+    expect(unknown.run?.stop_reason).toBe("unknown");
+    const none = dec(frame(0, 1, [], { run: run(1, { state: "stopped", stop_reason: null }) }));
+    if (none.kind !== "frame") throw new Error("expected frame");
+    expect(none.run?.stop_reason).toBeUndefined();
     expect(known.run?.stop_reason).toBe("duration");
   });
   test("a scaled clock keeps its scale; null optional run fields are tolerated", () => {

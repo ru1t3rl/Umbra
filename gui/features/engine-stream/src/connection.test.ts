@@ -66,7 +66,7 @@ describe("subscribe and decode", () => {
     r.clock.paint();
     expect(c.getState().frame?.entities[0]?.ownership).toBe("unknown");
     expect(c.getState().run?.state).toBe("stopped");
-    expect(c.getState().run?.stop_reason).toBeUndefined();
+    expect(c.getState().run?.stop_reason).toBe("unknown");
   });
   test("error messages are counted and the connection stays open", () => {
     const { r, c } = open();

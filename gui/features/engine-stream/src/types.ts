@@ -29,7 +29,11 @@ export type Clock = WireRunStatus["clock"] | { mode: "unknown" };
 
 /** The run status; `tick` and `time_s` are always kept, even when `state` or `clock` is unknown. */
 export type RunStatus = Readonly<
-  Omit<WireRunStatus, "state" | "clock"> & { state: RunState; clock: Clock }
+  Omit<WireRunStatus, "state" | "clock" | "stop_reason"> & {
+    state: RunState;
+    clock: Clock;
+    stop_reason?: NonNullable<WireRunStatus["stop_reason"]> | "unknown" | null;
+  }
 >;
 
 /** Connection lifecycle as the UI sees it. `open` means the server's `hello` arrived. */
