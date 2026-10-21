@@ -6,7 +6,9 @@
 //! own layout; [`written_size`] is the one place a later minor adds its size table.
 //!
 //! **Plugin-written structs** (intents, output values) are read like the descriptor: pointer
-//! non-null and 8-byte aligned, the major equal and the minor not newer than the host's,
+//! non-null and 8-byte aligned, the major equal and the minor not newer than the host's nor than the
+//! plugin's declared minor (the ceiling: a struct written during a capability's call carries at most
+//! the capability's minor, ADR 0033 clarified 2026-10-21),
 //! `struct_size` within `[minor-0 size, size of the declared minor]` and a multiple of 8, only
 //! `struct_size` bytes read, every value checked (finite numbers, non-zero entities, UTF-8, ADR
 //! 0002 id grammar, JSON payloads).
@@ -46,11 +48,13 @@ use crate::tokens::BatchCall;
 /// Number of minors this host knows.
 const HOST_MINORS: usize = UMBRA_ABI_VERSION_MINOR as usize + 1;
 /// Sizes of the plugin-written structs per minor (append-only, R-B3).
-const INTENT_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraIntent>()];
-const VALUE_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraValue>()];
+/// Minor 1 (ADR 0033) changed neither struct.
+const INTENT_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraIntent>(), size_of::<UmbraIntent>()];
+const VALUE_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraValue>(), size_of::<UmbraValue>()];
 
-/// `struct_size` of a host-written struct `T` for a plugin of minor `minor`: ABI v0 has one minor,
-/// so it is the host's own size (R-B3; a later minor adds a size table here).
+/// `struct_size` of a host-written struct `T` for a plugin of minor `minor`: no host-written 0.0 struct
+/// changed in minor 1 (ADR 0033), so it is the host's own size (R-B3; a minor that grows one adds a
+/// size table here).
 pub(crate) const fn written_size<T>(_minor: u32) -> u32 {
     abi_size::<T>()
 }
@@ -230,17 +234,25 @@ pub(crate) fn status(value: UmbraStatus) -> Result<Status, String> {
     }
 }
 
-/// Checks the header of a plugin-written struct; returns the number of bytes to read.
+/// Checks the header of a plugin-written struct of a plugin declaring minor `ceiling`; returns the
+/// number of bytes to read.
 fn header(
     what: &str,
     (abi_version, struct_size): (u32, u32),
     sizes: [usize; HOST_MINORS],
+    ceiling: u32,
 ) -> Result<usize, String> {
     let (major, minor) = (abi_version >> 16, abi_version & 0xFFFF);
     if major != UMBRA_ABI_VERSION_MAJOR || minor > UMBRA_ABI_VERSION_MINOR {
         return Err(format!(
             "{what}.abi_version {major}.{minor} is not loadable by host ABI \
              {UMBRA_ABI_VERSION_MAJOR}.{UMBRA_ABI_VERSION_MINOR}"
+        ));
+    }
+    if minor > ceiling {
+        return Err(format!(
+            "{what}.abi_version {major}.{minor} is newer than the plugin's declared ABI \
+             {major}.{ceiling}"
         ));
     }
     let size = struct_size as usize;
@@ -262,6 +274,7 @@ unsafe fn read<T: Headed>(
     ptr: *const T,
     what: &str,
     sizes: &[usize; HOST_MINORS],
+    ceiling: u32,
 ) -> Result<T, String> {
     if ptr.is_null() {
         return Err(format!("{what} pointer is null"));
@@ -270,7 +283,7 @@ unsafe fn read<T: Headed>(
         return Err(format!("{what} pointer is not 8-byte aligned"));
     }
     // SAFETY: non-null and aligned (checked); a headed struct starts with its header (caller).
-    let size = header(what, unsafe { read_header(ptr) }, *sizes)?;
+    let size = header(what, unsafe { read_header(ptr) }, *sizes, ceiling)?;
     // SAFETY: `size` bytes are readable (caller) and `size <= size_of::<T>()` (checked).
     Ok(unsafe { read_prefix(ptr, size) })
 }
@@ -299,14 +312,28 @@ unsafe fn id_text(s: UmbraStr, what: &str) -> Result<String, String> {
     unsafe { string(s, what) }
 }
 
-/// The core intent of a plugin-written `UmbraIntent` (ADR 0016 set v1); `Err` names the problem.
+/// [`intent_within`] with the host's own minor as the ceiling (unit tests).
+///
+/// # Safety
+/// As [`intent_within`].
+#[cfg(test)]
+pub(crate) unsafe fn intent(ptr: *const UmbraIntent) -> Result<Intent, String> {
+    // SAFETY: forwarded caller contract.
+    unsafe { intent_within(ptr, UMBRA_ABI_VERSION_MINOR) }
+}
+
+/// The core intent of a plugin-written `UmbraIntent` (ADR 0016 set v1) of a plugin declaring minor
+/// `ceiling`; `Err` names the problem.
 ///
 /// # Safety
 /// `ptr` is what the plugin passed to the intent sink: null, or valid for the call with its
 /// strings.
-pub(crate) unsafe fn intent(ptr: *const UmbraIntent) -> Result<Intent, String> {
+pub(crate) unsafe fn intent_within(
+    ptr: *const UmbraIntent,
+    ceiling: u32,
+) -> Result<Intent, String> {
     // SAFETY: forwarded caller contract.
-    let i = unsafe { read(ptr, "intent", &INTENT_SIZES) }?;
+    let i = unsafe { read(ptr, "intent", &INTENT_SIZES, ceiling) }?;
     let finite = |v: f64, what: &str| {
         if v.is_finite() {
             Ok(v)
@@ -358,17 +385,30 @@ pub(crate) unsafe fn intent(ptr: *const UmbraIntent) -> Result<Intent, String> {
     })
 }
 
-/// The core value of a plugin-written `UmbraValue` (`None` for null = unset); checks the `BbValue`
-/// invariants (ADR 0019).
+/// [`value_within`] with the host's own minor as the ceiling (unit tests).
+///
+/// # Safety
+/// As [`value_within`].
+#[cfg(test)]
+pub(crate) unsafe fn value_in(ptr: *const UmbraValue) -> Result<Option<BbValue>, String> {
+    // SAFETY: forwarded caller contract.
+    unsafe { value_within(ptr, UMBRA_ABI_VERSION_MINOR) }
+}
+
+/// The core value of a plugin-written `UmbraValue` (`None` for null = unset) of a plugin declaring
+/// minor `ceiling`; checks the `BbValue` invariants (ADR 0019).
 ///
 /// # Safety
 /// `ptr` is null or valid for the call with its string.
-pub(crate) unsafe fn value_in(ptr: *const UmbraValue) -> Result<Option<BbValue>, String> {
+pub(crate) unsafe fn value_within(
+    ptr: *const UmbraValue,
+    ceiling: u32,
+) -> Result<Option<BbValue>, String> {
     if ptr.is_null() {
         return Ok(None);
     }
     // SAFETY: forwarded caller contract.
-    let v = unsafe { read(ptr, "value", &VALUE_SIZES) }?;
+    let v = unsafe { read(ptr, "value", &VALUE_SIZES, ceiling) }?;
     Ok(Some(match v.ty {
         UMBRA_VALUE_BOOL => match v.boolean {
             0 => BbValue::Bool(false),

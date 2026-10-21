@@ -70,6 +70,7 @@ Option 1 (ABI **0.1**; final layout by the plugin-abi-engineer under ADR 0019 ru
   **amended ADR 0019 rule:** the descriptor declares the lowest minor that defines every capability kind
   it exports (behavior 0, network adapter 1), and each vtable header carries the minor of its own layout.
   A plugin built with a newer SDK no longer needs a newer host unless it uses a newer kind.
+- **Clarified 2026-10-21 (human-approved):** structs written during a capability's calls carry the capability's minor.
 - **M4 test edits (human decision):** the three "newer minor" tests change their literal minor 1 to
   `UMBRA_ABI_VERSION_MINOR + 1` (manifest text `"0.2"`), and `examples/plugins/c-circle/plugin.toml`
   (and its README line) change `abi = "0.0"` to `"0.1"`. No struct, field or behavior of ABI 0.0 changes;

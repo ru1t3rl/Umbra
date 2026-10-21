@@ -74,14 +74,26 @@ fn entry_returns_the_same_pointer_twice() {
 #[test]
 fn sdk_writes_its_own_minor() {
     let d = descriptor();
-    assert_eq!(d.abi_version, UMBRA_ABI_VERSION);
+    assert_eq!(
+        d.abi_version,
+        UMBRA_ABI_VERSION & 0xFFFF_0000,
+        "behavior-only: the descriptor declares minor 0 (ADR 0033)"
+    );
     assert_eq!(d.struct_size as usize, size_of::<UmbraPluginDescriptor>());
     let c = capability(0);
-    assert_eq!(c.abi_version, UMBRA_ABI_VERSION);
+    assert_eq!(
+        c.abi_version,
+        UMBRA_ABI_VERSION & 0xFFFF_0000,
+        "behavior-only: the capability declares minor 0 (ADR 0033)"
+    );
     assert_eq!(c.struct_size as usize, size_of::<UmbraCapability>());
     // SAFETY: the vtable is a static of the descriptor.
     let vt = unsafe { &*(c.vtable.cast::<UmbraBehaviorVTable>()) };
-    assert_eq!(vt.abi_version, UMBRA_ABI_VERSION);
+    assert_eq!(
+        vt.abi_version,
+        UMBRA_ABI_VERSION & 0xFFFF_0000,
+        "behavior-only: the vtable declares minor 0 (ADR 0033)"
+    );
     assert_eq!(vt.struct_size as usize, size_of::<UmbraBehaviorVTable>());
     let _ = s("");
 }

@@ -195,8 +195,13 @@ REQ-P-2 applies in full (`docs/plugin-abi-changelog.md`).
 - **Versions.** `UMBRA_ABI_VERSION = major << 16 | minor`. Major 0 is a real major: a different major
   is incompatible. A plugin whose required minor is newer than the host's is rejected (REQ-P-9).
   Every appended field, vtable entry or kind bumps the minor and is optional, with a documented meaning
-  when absent. The SDK writes its own minor, so a plugin built with a newer SDK needs a host of at least
-  that minor even if it uses nothing new.
+  when absent. A descriptor declares the lowest minor that defines every capability kind it exports
+  (behavior 0, network adapter 1; ADR 0033, amending ADR 0019's "the SDK writes its own minor"). A
+  kind's minor is the newest minor that changed a struct on its call surface; a capability, its vtable
+  and every struct written during its calls (intents, values) carry that minor, never one above the
+  descriptor's (the host refuses them otherwise). So a behavior-only plugin built with a newer SDK
+  still runs in an older host. A capability of a kind newer than the descriptor's minor is rejected
+  naming `capabilities[<i>].kind`. The current ABI is 0.1 (`docs/plugin-abi-changelog.md`).
 - **Header and padding.** Every struct that can grow starts with `uint32_t abi_version; uint32_t
   struct_size;`. No struct has implicit padding, internal or trailing: every gap is a named
   `reserved_N` field that writers zero and readers ignore, and every headed size is a multiple of 8.
@@ -394,8 +399,10 @@ scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Load
 `POST /api/v1/scenario` over a running session) starts a new plugin lifecycle: `init` runs again.
 
 ## Not in v0
-- Kinds other than `behavior`: motion model, network adapter, sensor, component, condition, action
-  (M6/M7). Their kind numbers are reserved; a capability of such a kind is rejected as unsupported.
+- Kinds other than `behavior`: motion model, sensor, component, condition, action (M7). Their kind
+  numbers are reserved; a capability of such a kind is rejected as unsupported. The network adapter
+  kind (3) is defined in ABI 0.1 (ADR 0033): its structs are in the header, and the host validates its
+  descriptor entries; loading one through the host bridge comes with M6 WI-11, the SDK trait with WI-12.
 - Host API beyond `log` and RNG: terrain queries and event emit come with M7 (REQ-P-5 is staged);
   there is no memory helper and no runtime registration call (the descriptor is the only registration).
 - Saving and restoring instance state (replay, M7); hot reload; plugin-level configuration in scenarios;

@@ -2,7 +2,8 @@
 //! (REQ-P-2, REQ-P-6, R-M2): own major, `struct_size` at least the minor-0 size, at most the SDK's own
 //! size for a struct that declares a minor the SDK knows, a multiple of 8; non-null and aligned
 //! pointers; `len <= isize::MAX` and `checked_mul` before any slice; UTF-8; known enum values and the
-//! `BbValue` invariants. Structs the SDK writes carry the SDK's own `UMBRA_ABI_VERSION` and size.
+//! `BbValue` invariants. Structs the SDK writes during a behavior's calls (intents, values) carry the
+//! behavior kind's minor (`BEHAVIOR_MINOR`, ADR 0033) and its size.
 #![expect(
     unsafe_code,
     reason = "turns host pointers into references after checking them (ADR 0019)"
@@ -11,17 +12,18 @@
 use std::mem::size_of;
 
 use crate::abi::{
-    UMBRA_ABI_VERSION, UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_INTENT_CUSTOM,
-    UMBRA_INTENT_DESPAWN, UMBRA_INTENT_FIRE, UMBRA_INTENT_FOLLOW_ROUTE, UMBRA_INTENT_HOLD,
-    UMBRA_INTENT_MOVE_TO, UMBRA_INTENT_SET_HEADING, UMBRA_INTENT_SET_SPEED, UMBRA_INTENT_SPAWN,
-    UMBRA_STATUS_FAILURE, UMBRA_STATUS_RUNNING, UMBRA_STATUS_SUCCESS, UMBRA_VALUE_BOOL,
-    UMBRA_VALUE_ENTITY, UMBRA_VALUE_INTEGER, UMBRA_VALUE_NUMBER, UMBRA_VALUE_POSITION,
-    UMBRA_VALUE_STRING, UmbraBehaviorBatch, UmbraBehaviorItem, UmbraCode, UmbraContact,
-    UmbraEntityView, UmbraErrorSink, UmbraHostApi, UmbraIntent, UmbraIntentSink, UmbraStatus,
-    UmbraStr, UmbraToken, UmbraValue, UmbraValueSink, UmbraVec3,
+    UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_INTENT_CUSTOM, UMBRA_INTENT_DESPAWN,
+    UMBRA_INTENT_FIRE, UMBRA_INTENT_FOLLOW_ROUTE, UMBRA_INTENT_HOLD, UMBRA_INTENT_MOVE_TO,
+    UMBRA_INTENT_SET_HEADING, UMBRA_INTENT_SET_SPEED, UMBRA_INTENT_SPAWN, UMBRA_STATUS_FAILURE,
+    UMBRA_STATUS_RUNNING, UMBRA_STATUS_SUCCESS, UMBRA_VALUE_BOOL, UMBRA_VALUE_ENTITY,
+    UMBRA_VALUE_INTEGER, UMBRA_VALUE_NUMBER, UMBRA_VALUE_POSITION, UMBRA_VALUE_STRING,
+    UmbraBehaviorBatch, UmbraBehaviorItem, UmbraCode, UmbraContact, UmbraEntityView,
+    UmbraErrorSink, UmbraHostApi, UmbraIntent, UmbraIntentSink, UmbraStatus, UmbraStr, UmbraToken,
+    UmbraValue, UmbraValueSink, UmbraVec3,
 };
 use crate::behavior::{Contact, Intent, Route, Status, Value};
 use crate::error::Error;
+use crate::minor::{BEHAVIOR_MINOR, abi_version};
 
 // ---------------------------------------------------------------- headers
 
@@ -178,7 +180,7 @@ pub(crate) struct IntentSink {
 }
 
 impl IntentSink {
-    /// Pushes `intent` (in the SDK's own minor) for batch item `item`; returns the host's code.
+    /// Pushes `intent` (in the behavior kind's minor) for batch item `item`; returns the host's code.
     pub(crate) fn push(&self, item: usize, intent: &Intent<'_>) -> UmbraCode {
         let raw = intent_out(intent);
         // SAFETY: `push` comes from the sink validated by `batch_in` for the current call; `raw` and
@@ -345,11 +347,11 @@ pub(crate) fn status_code(status: Status) -> UmbraStatus {
     }
 }
 
-/// An intent in the SDK's own minor, its strings borrowed from `intent` (ADR 0016 table).
+/// An intent in the behavior kind's minor, its strings borrowed from `intent` (ADR 0016 table).
 pub(crate) fn intent_out(intent: &Intent<'_>) -> UmbraIntent {
     let empty = umbra_str("");
     let mut out = UmbraIntent {
-        abi_version: UMBRA_ABI_VERSION,
+        abi_version: abi_version(BEHAVIOR_MINOR),
         struct_size: size_of_u32::<UmbraIntent>(),
         kind: 0,
         reserved_0: 0,
@@ -472,10 +474,10 @@ pub(crate) unsafe fn value_in(value: *const UmbraValue) -> Result<Option<Value>,
     Ok(Some(out))
 }
 
-/// A value in the SDK's own minor, its string borrowed from `value`.
+/// A value in the behavior kind's minor, its string borrowed from `value`.
 pub(crate) fn value_out(value: &Value) -> UmbraValue {
     let mut out = UmbraValue {
-        abi_version: UMBRA_ABI_VERSION,
+        abi_version: abi_version(BEHAVIOR_MINOR),
         struct_size: size_of_u32::<UmbraValue>(),
         ty: 0,
         boolean: 0,

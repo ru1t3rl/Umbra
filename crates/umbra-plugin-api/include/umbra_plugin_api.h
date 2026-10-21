@@ -11,6 +11,7 @@
 /* Opaque plugin-owned handles: incomplete types, the host never dereferences them. */
 typedef struct UmbraBehavior UmbraBehavior;
 typedef struct UmbraInstance UmbraInstance;
+typedef struct UmbraNetAdapter UmbraNetAdapter;
 
 /* Umbra plugin ABI v0 supports 64-bit targets only (ADR 0019). */
 #if defined(__cplusplus)
@@ -40,8 +41,11 @@ extern "C" {
 
 /**
  * ABI minor version: bumped for every appended field, vtable entry or kind (append-only, REQ-P-2).
+ * History (`docs/plugin-abi-changelog.md`): 0 (M4), 1 (M6: the network adapter kind, ADR 0033).
+ * A plugin declares in its descriptor the lowest minor that defines every capability kind it exports
+ * (behavior 0, network adapter 1; ADR 0033), not necessarily this one.
  */
-#define UMBRA_ABI_VERSION_MINOR 0
+#define UMBRA_ABI_VERSION_MINOR 1
 
 /**
  * Packed ABI version written into every `abi_version` field: `major << 16 | minor`.
@@ -85,15 +89,27 @@ extern "C" {
 #define UMBRA_MAX_INTENTS_PER_ITEM 64
 
 /**
+ * At most this many messages per network `poll` call, whatever `max` the host passes (ABI 0.1,
+ * ADR 0033); one more push is refused and faults the capability.
+ */
+#define UMBRA_MAX_NET_POLL 4096
+
+/**
+ * At most this many counters a network adapter's `counters` entry is asked for (ABI 0.1, ADR 0033).
+ */
+#define UMBRA_MAX_NET_COUNTERS 8
+
+/**
  * Result of a fallible call (ADR 0019). Written by the callee; [`UMBRA_OK`] or one of `UMBRA_ERR_*`.
  * Any other value is treated by the host as [`UMBRA_ERR_INTERNAL`].
  */
 typedef int32_t UmbraCode;
 
 /**
- * Kind of a capability in the descriptor. Written by the plugin. Only [`UMBRA_CAPABILITY_BEHAVIOR`] is
- * supported in v0; the other numbers are reserved and rejected as unsupported; `0` and unknown values
- * are invalid.
+ * Kind of a capability in the descriptor. Written by the plugin. Supported: [`UMBRA_CAPABILITY_BEHAVIOR`]
+ * (minor 0) and, for descriptors declaring minor 1 or newer, [`UMBRA_CAPABILITY_NETWORK_ADAPTER`]
+ * (ADR 0033); the other numbers are reserved and rejected as unsupported; `0` and unknown values are
+ * invalid.
  */
 typedef uint32_t UmbraCapabilityKind;
 
@@ -120,6 +136,23 @@ typedef uint32_t UmbraValueType;
  * refused with [`UMBRA_ERR_INVALID_ARGUMENT`].
  */
 typedef uint32_t UmbraLogLevel;
+
+/**
+ * Kind of a `UmbraNetMessage`, written by its producer (host for `publish`, plugin for `poll`); `0` and
+ * unknown values are invalid.
+ */
+typedef uint32_t UmbraNetKind;
+
+/**
+ * Dead-reckoning model of an entity state, in the order of ADR 0032's models
+ * (`umbra_core::dead_reckoning::DeadReckoning`); `0` and unknown values are invalid.
+ */
+typedef uint32_t UmbraDeadReckoning;
+
+/**
+ * Simulation-control action of a [`UMBRA_NET_CONTROL`] message; `0` and unknown values are invalid.
+ */
+typedef uint32_t UmbraNetControl;
 
 /**
  * Opaque host token (`host_ctx`, sink contexts, RNG tokens; ADR 0019 R-B4). Written by the host, only
@@ -736,6 +769,221 @@ typedef struct {
 typedef const UmbraPluginDescriptor *(*UmbraPluginEntry)(const UmbraHostApi *host);
 
 /**
+ * One network message (the canonical `umbra_core::net::NetMessage`, ADR 0030). Written by the host
+ * (in a `publish` batch, in the plugin's declared minor) or by the plugin (passed to
+ * [`UmbraNetSink::push`], which copies it); borrowed by the reader during the call. Writers zero the
+ * fields unused by `kind`; readers ignore them, even when non-zero, and check only the fields the kind
+ * uses: known `kind`, `dead_reckoning` and `control` where used, finite numbers, UTF-8 strings of at
+ * most `UMBRA_MAX_ID_LEN` bytes.
+ */
+typedef struct {
+  /**
+   * ABI version the writer was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct as the writer knows it (host-written: the plugin's declared minor).
+   */
+  uint32_t struct_size;
+  /**
+   * Message kind (`UMBRA_NET_*`).
+   */
+  UmbraNetKind kind;
+  /**
+   * `ENTITY_STATE`: the dead-reckoning model (`UMBRA_DR_*`).
+   */
+  UmbraDeadReckoning dead_reckoning;
+  /**
+   * The subject's network key: the entity (`ENTITY_STATE`, `ENTITY_REMOVED`), the shooter (`FIRE`;
+   * `DETONATION`, 0 = none). Keys are never 0 otherwise.
+   */
+  uint64_t key;
+  /**
+   * The target's network key (`FIRE`, `DETONATION`); 0 = none.
+   */
+  uint64_t other_key;
+  /**
+   * ECEF position (m): entity (`ENTITY_STATE`), launch point (`FIRE`), burst point (`DETONATION`).
+   */
+  UmbraVec3 position;
+  /**
+   * `ENTITY_STATE`: ECEF velocity (m/s).
+   */
+  UmbraVec3 velocity;
+  /**
+   * `ENTITY_STATE`: ECEF acceleration (m/s^2).
+   */
+  UmbraVec3 acceleration;
+  /**
+   * `ENTITY_STATE`: body-axis angular velocity (rad/s).
+   */
+  UmbraVec3 angular_velocity;
+  /**
+   * `ENTITY_STATE`: world-frame orientation as `x` = yaw, `y` = pitch, `z` = roll (rad, ADR 0032).
+   */
+  UmbraVec3 orientation;
+  /**
+   * `ENTITY_STATE`: the adapter-normalised entity type token (UTF-8); empty = none. Opaque: the
+   * host passes it through unchanged and never parses it.
+   */
+  UmbraStr entity_type;
+  /**
+   * `ENTITY_STATE`: force ID (UTF-8); empty = none.
+   */
+  UmbraStr force;
+  /**
+   * `ENTITY_STATE`: display name (UTF-8); empty = none.
+   */
+  UmbraStr name;
+  /**
+   * `FIRE`: weapon ID (UTF-8, ADR 0002); required (non-empty) for `FIRE`.
+   */
+  UmbraStr weapon;
+  /**
+   * `CONTROL`: the action (`UMBRA_NET_CONTROL_*`).
+   */
+  UmbraNetControl control;
+  /**
+   * Reserved: written as 0, ignored by readers.
+   */
+  uint32_t reserved_0;
+} UmbraNetMessage;
+
+/**
+ * One `publish` call's outbound messages (ADR 0033). Written by the host in the plugin's declared
+ * minor; valid only during the call, like the array it points to.
+ */
+typedef struct {
+  /**
+   * ABI version the host was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor.
+   */
+  uint32_t struct_size;
+  /**
+   * Current tick number (simulation time = `tick / rate_hz`, REQ-K-4).
+   */
+  uint64_t tick;
+  /**
+   * Tick rate in Hz.
+   */
+  uint32_t rate_hz;
+  /**
+   * Reserved: written as 0, ignored by readers.
+   */
+  uint32_t reserved_0;
+  /**
+   * Array of `count` messages (stride: the plugin's own `sizeof(UmbraNetMessage)`), read-only; null
+   * only when `count` is 0.
+   */
+  const UmbraNetMessage *messages;
+  /**
+   * Number of messages.
+   */
+  size_t count;
+} UmbraNetBatch;
+
+/**
+ * Host-provided sink for the inbound messages of one `poll` call. Written by the host in the plugin's
+ * declared minor; valid only during the call. The host copies every pushed message.
+ */
+typedef struct {
+  /**
+   * ABI version the host was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor.
+   */
+  uint32_t struct_size;
+  /**
+   * Opaque host token of this sink, passed back to `push`.
+   */
+  UmbraToken ctx;
+  /**
+   * Appends `*message` (borrowed during the call). Required. At most `max` (and
+   * `UMBRA_MAX_NET_POLL`) pushes per call; a refused message returns an error code and faults the
+   * capability.
+   */
+  UmbraCode (*push)(UmbraToken ctx, const UmbraNetMessage *message);
+} UmbraNetSink;
+
+/**
+ * Function table of a network adapter capability (ABI 0.1, ADR 0033). Written by the plugin as a
+ * static with the descriptor's lifetime; the host copies the prefix it knows (`min(struct_size, own
+ * size)`) at load. Its header carries the network kind's minor (1), never above the descriptor's.
+ * Calls into one
+ * plugin are never concurrent. Every entry is a nullable pointer; the required ones are checked by the
+ * host at load.
+ */
+typedef struct {
+  /**
+   * ABI version the plugin was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct as the plugin knows it.
+   */
+  uint32_t struct_size;
+  /**
+   * Builds a configured adapter into `*out` from `params`: JSON text, borrowed during the call, the
+   * wrapper `{"name", "params", "templates"}` (ADR 0030; the capability's param schema applies to
+   * `params`, errors point at `/params/<key>`). No I/O. Required. `UMBRA_OK` with a null `*out` is a
+   * fault.
+   */
+  UmbraCode (*configure)(UmbraStr params, UmbraNetAdapter **out, const UmbraErrorSink *err);
+  /**
+   * Destroys an adapter, after joining every thread it started. Required; cannot report errors.
+   * Valid after `configure` in every state (also without `start` or `stop`, and after a fault).
+   */
+  void (*destroy)(UmbraNetAdapter *adapter);
+  /**
+   * Writes the adapter's own key space (`base < key <= base + count`) into `*base` and `*count`.
+   * Required. `count >= 1` and `base + count` must not overflow `u64` (the host checks both).
+   */
+  UmbraCode (*key_space)(UmbraNetAdapter *adapter, uint64_t *base, uint64_t *count);
+  /**
+   * Starts the adapter's I/O at tick `tick` of a run at `rate_hz`; at most once. Required entry; an
+   * optional lifecycle step (a dry-run build never starts).
+   */
+  UmbraCode (*start)(UmbraNetAdapter *adapter,
+                     uint64_t tick,
+                     uint32_t rate_hz,
+                     const UmbraErrorSink *err);
+  /**
+   * Hands `batch`'s outbound messages to the adapter without blocking. Required. Transient I/O
+   * problems are counted and return `UMBRA_OK`; a non-`UMBRA_OK` result faults the capability.
+   */
+  UmbraCode (*publish)(UmbraNetAdapter *adapter,
+                       const UmbraNetBatch *batch,
+                       const UmbraErrorSink *err);
+  /**
+   * Pushes at most `max` received messages to `sink` without blocking. Required. Transient I/O
+   * problems (an undecodable datagram, a full queue) are counted and return `UMBRA_OK`; a
+   * non-`UMBRA_OK` result faults the capability and discards the call's messages whole.
+   */
+  UmbraCode (*poll)(UmbraNetAdapter *adapter,
+                    uint64_t tick,
+                    size_t max,
+                    const UmbraNetSink *sink,
+                    const UmbraErrorSink *err);
+  /**
+   * Stops the adapter's I/O and joins its threads; idempotent, also valid when never started.
+   * Required entry; an optional lifecycle step (`destroy` also joins).
+   */
+  UmbraCode (*stop)(UmbraNetAdapter *adapter);
+  /**
+   * Writes counters into `out[0..n]` (`n` at most `UMBRA_MAX_NET_COUNTERS`), in the order tx
+   * dropped, rx dropped, decode errors, I/O errors. The host zero-fills `out[0..n]` before the call;
+   * the plugin writes at most `min(n, the counters it knows)` entries. Optional: null means all
+   * counters are 0. A non-`UMBRA_OK` result faults the capability.
+   */
+  UmbraCode (*counters)(UmbraNetAdapter *adapter, uint64_t *out, size_t n);
+} UmbraNetworkVTable;
+
+/**
  * The call succeeded.
  */
 #define UMBRA_OK 0
@@ -781,7 +1029,8 @@ typedef const UmbraPluginDescriptor *(*UmbraPluginEntry)(const UmbraHostApi *hos
 #define UMBRA_CAPABILITY_MOTION_MODEL 2
 
 /**
- * Reserved: network adapter (M6).
+ * A network adapter (vtable `UmbraNetworkVTable`, ABI 0.1, ADR 0033); needs a descriptor of minor 1 or
+ * newer.
  */
 #define UMBRA_CAPABILITY_NETWORK_ADAPTER 3
 
@@ -924,6 +1173,96 @@ typedef const UmbraPluginDescriptor *(*UmbraPluginEntry)(const UmbraHostApi *hos
  * Trace.
  */
 #define UMBRA_LOG_TRACE 5
+
+/**
+ * The state of one entity (`key`), with its dead-reckoning basis.
+ */
+#define UMBRA_NET_ENTITY_STATE 1
+
+/**
+ * Entity `key` left the exercise.
+ */
+#define UMBRA_NET_ENTITY_REMOVED 2
+
+/**
+ * Entity `key` fired `weapon` at `other_key` (0 = no target) from `position`.
+ */
+#define UMBRA_NET_FIRE 3
+
+/**
+ * A detonation at `position`; shooter `key` and target `other_key`, 0 = none.
+ */
+#define UMBRA_NET_DETONATION 4
+
+/**
+ * Simulation control `control`.
+ */
+#define UMBRA_NET_CONTROL 5
+
+/**
+ * Does not move.
+ */
+#define UMBRA_DR_STATIC 1
+
+/**
+ * Constant velocity (world frame).
+ */
+#define UMBRA_DR_VELOCITY 2
+
+/**
+ * Constant velocity, orientation turning at the angular velocity.
+ */
+#define UMBRA_DR_VELOCITY_ROTATION 3
+
+/**
+ * Constant acceleration, orientation turning at the angular velocity.
+ */
+#define UMBRA_DR_ACCELERATION_ROTATION 4
+
+/**
+ * Constant acceleration (world frame).
+ */
+#define UMBRA_DR_ACCELERATION 5
+
+/**
+ * Body-frame form of [`UMBRA_DR_VELOCITY`].
+ */
+#define UMBRA_DR_BODY_VELOCITY 6
+
+/**
+ * Body-frame form of [`UMBRA_DR_VELOCITY_ROTATION`].
+ */
+#define UMBRA_DR_BODY_VELOCITY_ROTATION 7
+
+/**
+ * Body-frame form of [`UMBRA_DR_ACCELERATION_ROTATION`].
+ */
+#define UMBRA_DR_BODY_ACCELERATION_ROTATION 8
+
+/**
+ * Body-frame form of [`UMBRA_DR_ACCELERATION`].
+ */
+#define UMBRA_DR_BODY_ACCELERATION 9
+
+/**
+ * Start the exercise.
+ */
+#define UMBRA_NET_CONTROL_START 1
+
+/**
+ * Pause (freeze) the exercise.
+ */
+#define UMBRA_NET_CONTROL_PAUSE 2
+
+/**
+ * Resume a paused exercise.
+ */
+#define UMBRA_NET_CONTROL_RESUME 3
+
+/**
+ * Stop the exercise.
+ */
+#define UMBRA_NET_CONTROL_STOP 4
 
 /* The one exported symbol of a plugin (REQ-P-1): define it with UMBRA_EXPORT. Declared here so the
    compiler checks a C plugin's definition against the ABI's entry type. */

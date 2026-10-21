@@ -176,12 +176,15 @@ impl LoadedImage {
         };
         state.generation = tokens::next_generation(state.generation);
         let generation = state.generation;
-        let record = ActiveCall::push(CallRecord::new(
-            self.host_ctx,
-            generation,
-            self.descriptor.id.clone(),
-            Arc::clone(log),
-        ));
+        let record = ActiveCall::push(
+            CallRecord::new(
+                self.host_ctx,
+                generation,
+                self.descriptor.id.clone(),
+                Arc::clone(log),
+            )
+            .with_minor(self.descriptor.abi.1),
+        );
         let scope = CallScope {
             image: self.host_ctx,
             generation,

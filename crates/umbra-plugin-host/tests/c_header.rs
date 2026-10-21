@@ -189,7 +189,8 @@ fn header_compiles_as_strict_c11() {
 fn generated_offset_and_size_asserts_compile() {
     let (source, offsets, types) = generated_asserts();
     // Pinned: the M4 layout table has 112 fields (ABI 0.0); an appended field changes this number.
-    assert_eq!(offsets, 112);
+    // ABI 0.1 (M6, ADR 0033) appends four structs with 38 fields: 150.
+    assert_eq!(offsets, 150);
     assert!(types >= 90, "only {types} field types checked");
 
     if let Err(e) = compile("layout_asserts", &source) {
@@ -223,6 +224,7 @@ fn header_declares_exactly_the_abi_types() {
         .collect();
     expected.extend(abi_layout::typedefs().iter().map(|(n, _)| (*n).to_string()));
     expected.extend(["UmbraBehavior".to_string(), "UmbraInstance".to_string()]);
+    expected.insert("UmbraNetAdapter".to_string());
 
     assert_eq!(declared, expected);
 }

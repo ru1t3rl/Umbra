@@ -6,8 +6,11 @@
 //! macro, plugin crates keep `#![forbid(unsafe_code)]` (ASM-116, amended 2026-10-19 after the WI-7
 //! review). Everything that needs `unsafe` lives here: the static descriptor and its capabilities and
 //! vtables, and the generic `extern "C"` trampolines that turn each vtable call into a call of the safe
-//! traits. Every trampoline runs its body under a panic guard (`guard::catch`), validates every input
-//! before any trait call, and writes the SDK's own minor into every struct it produces.
+//! traits. Every trampoline runs its body under a panic guard (`guard::catch`) and validates every
+//! input before any trait call. Every struct the SDK writes carries the minor of the capability kind it
+//! belongs to (ADR 0033, `minor.rs`): a capability, its vtable and the structs of its calls the kind's
+//! minor (behavior 0), the descriptor the highest of its capabilities' minors, so a behavior-only plugin
+//! built with this SDK still loads and runs in an ABI 0.0 host.
 //!
 //! Handles: a configured behavior and an instance are each one `Box<Handle<T>>`, whose first field is
 //! the `TypeId` of a per-capability tag. Every call checks the tag before touching the value, so a
@@ -22,8 +25,8 @@ use std::marker::PhantomData;
 use std::sync::{Mutex, OnceLock, PoisonError};
 
 use crate::abi::{
-    UMBRA_ABI_VERSION, UMBRA_CAPABILITY_BEHAVIOR, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_PANIC,
-    UMBRA_OK, UmbraBehavior, UmbraBehaviorBatch, UmbraBehaviorVTable, UmbraCapability, UmbraCode,
+    UMBRA_CAPABILITY_BEHAVIOR, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_PANIC, UMBRA_OK,
+    UmbraBehavior, UmbraBehaviorBatch, UmbraBehaviorVTable, UmbraCapability, UmbraCode,
     UmbraErrorSink, UmbraHostApi, UmbraInstance, UmbraPluginDescriptor, UmbraStr, UmbraValue,
     UmbraValueSink,
 };
@@ -34,6 +37,7 @@ use crate::behavior::{
 use crate::convert::{batch_in, size_of_u32, str_from, umbra_str, value_in, value_sink, view_in};
 use crate::error::Error;
 use crate::guard::{catch, with_error_sink};
+use crate::minor::{BEHAVIOR_MINOR, abi_version};
 
 /// Support items the macro expands to; not public API.
 #[doc(hidden)]
@@ -112,8 +116,9 @@ use __private::{Capabilities, Plugin};
 
 // ---------------------------------------------------------------- the static descriptor
 
-/// One capability before it is laid out: its strings and its vtable.
+/// One capability before it is laid out: its strings, its vtable and the minor of its kind.
 pub(crate) struct Cap {
+    minor: u32,
     id: &'static str,
     version: &'static str,
     schema: &'static str,
@@ -147,30 +152,34 @@ impl Built {
         let mut list = Capabilities::default();
         P::capabilities(&mut list);
         let (mut vtables, mut metadata, mut texts) = (Vec::new(), Vec::new(), Vec::new());
+        // ADR 0033: the descriptor declares the lowest minor that defines every exported kind.
+        let minor = list.caps.iter().map(|cap| cap.minor).max().unwrap_or(0);
         for cap in list.caps {
             vtables.push(cap.vtable);
             metadata.push(cap.metadata);
-            texts.push((cap.id, cap.version, cap.schema));
+            texts.push((cap.minor, cap.id, cap.version, cap.schema));
         }
         let vtables = vtables.into_boxed_slice();
         let metadata = metadata.into_boxed_slice();
         let capabilities: Box<[UmbraCapability]> = texts
             .iter()
             .zip(vtables.iter().zip(metadata.iter()))
-            .map(|(&(id, version, schema), (vtable, meta))| UmbraCapability {
-                abi_version: UMBRA_ABI_VERSION,
-                struct_size: size_of_u32::<UmbraCapability>(),
-                kind: UMBRA_CAPABILITY_BEHAVIOR,
-                reserved_0: 0,
-                id: umbra_str(id),
-                version: umbra_str(version),
-                param_schema: umbra_str(schema),
-                metadata: umbra_str(meta),
-                vtable: std::ptr::from_ref(vtable).cast(),
-            })
+            .map(
+                |(&(minor, id, version, schema), (vtable, meta))| UmbraCapability {
+                    abi_version: abi_version(minor),
+                    struct_size: size_of_u32::<UmbraCapability>(),
+                    kind: UMBRA_CAPABILITY_BEHAVIOR,
+                    reserved_0: 0,
+                    id: umbra_str(id),
+                    version: umbra_str(version),
+                    param_schema: umbra_str(schema),
+                    metadata: umbra_str(meta),
+                    vtable: std::ptr::from_ref(vtable).cast(),
+                },
+            )
             .collect();
         let descriptor = UmbraPluginDescriptor {
-            abi_version: UMBRA_ABI_VERSION,
+            abi_version: abi_version(minor),
             struct_size: size_of_u32::<UmbraPluginDescriptor>(),
             id: umbra_str(P::ID),
             name: umbra_str(P::NAME),
@@ -199,7 +208,7 @@ impl Built {
 fn behavior_cap<F: BehaviorFactory>() -> Cap {
     let interface = F::interface();
     let vtable = UmbraBehaviorVTable {
-        abi_version: UMBRA_ABI_VERSION,
+        abi_version: abi_version(BEHAVIOR_MINOR),
         struct_size: size_of_u32::<UmbraBehaviorVTable>(),
         configure: Some(configure::<F>),
         destroy_behavior: Some(destroy_behavior::<F>),
@@ -220,6 +229,7 @@ fn behavior_cap<F: BehaviorFactory>() -> Cap {
         },
     };
     Cap {
+        minor: BEHAVIOR_MINOR,
         id: F::ID,
         version: F::VERSION.unwrap_or(""),
         schema: F::PARAM_SCHEMA,

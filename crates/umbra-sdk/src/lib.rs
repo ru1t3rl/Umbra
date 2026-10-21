@@ -81,7 +81,8 @@
 //!   `BbValue` invariants. Malformed input is `UMBRA_ERR_INVALID_ARGUMENT` (R-M2).
 //! - **Batches** (`tick_batch`) are validated completely first, then each item is ticked in order and
 //!   gets its status; the first host refusal or panic ends the call with its code (REQ-B-4).
-//! - **Output** structs carry the SDK's own `UMBRA_ABI_VERSION` and size.
+//! - **Output** structs (descriptor, capabilities, vtables, intents, values) carry the minor of the
+//!   capability kind they belong to (behavior 0; ADR 0033, `minor.rs`) and that minor's size.
 //! - **Determinism** (REQ-K-4): time arrives in [`TickContext`]; randomness only through
 //!   [`TickContext::rng`], with the batch item's own host token. The SDK has no clock and no RNG.
 //! - **Handles** are plugin-owned boxes tagged per capability; a handle of another capability is
@@ -120,6 +121,7 @@ mod error;
 mod export;
 mod guard;
 mod host;
+mod minor;
 
 pub use behavior::{
     Behavior, BehaviorFactory, BehaviorInstance, Contact, EntityView, Intent, Intents, Interface,

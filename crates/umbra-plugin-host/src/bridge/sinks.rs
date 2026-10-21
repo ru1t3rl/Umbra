@@ -46,7 +46,7 @@ pub(crate) fn value_sink(ctx: UmbraToken, minor: u32) -> UmbraValueSink {
 const MAX: usize = UMBRA_MAX_INTENTS_PER_ITEM;
 
 /// Refuses with `code` and records `why` as the call's breach.
-fn refuse(r: &mut CallRecord, code: UmbraCode, why: String) -> Result<(), UmbraCode> {
+fn refuse<T>(r: &mut CallRecord, code: UmbraCode, why: String) -> Result<T, UmbraCode> {
     r.breach(|| why);
     Err(code)
 }
@@ -76,17 +76,17 @@ unsafe extern "C" fn intent_push(
                     format!("intent sink: item index {item} >= count {count}"),
                 );
             }
-            Ok(())
+            Ok(r.minor)
         });
-        match checked {
+        let minor = match checked {
             None => return UMBRA_ERR_STATE,
             Some(Err(code)) => return code,
-            Some(Ok(())) => {}
-        }
+            Some(Ok(minor)) => minor,
+        };
         // Phase 2: copy and check the intent (no stack borrow while reading plugin memory).
         // SAFETY: the plugin passes the intent (null is refused) and its strings borrowed for the
         // duration of this call (ADR 0019).
-        let converted = unsafe { marshal::intent(intent) };
+        let converted = unsafe { marshal::intent_within(intent, minor) };
         // Phase 3: store it.
         tokens::with_top(|r| {
             let intent = match converted {
@@ -136,15 +136,15 @@ unsafe extern "C" fn value_set(ctx: UmbraToken, value: *const UmbraValue) -> Umb
                     "value sink called twice in one output call".to_owned(),
                 );
             }
-            Ok(())
+            Ok(r.minor)
         });
-        match checked {
+        let minor = match checked {
             None => return UMBRA_ERR_STATE,
             Some(Err(code)) => return code,
-            Some(Ok(())) => {}
-        }
+            Some(Ok(minor)) => minor,
+        };
         // SAFETY: the plugin passes the value (or null) and its string borrowed for this call.
-        let converted = unsafe { marshal::value_in(value) };
+        let converted = unsafe { marshal::value_within(value, minor) };
         tokens::with_top(|r| match converted {
             Ok(v) => {
                 if let Some(output) = r.output.as_mut() {

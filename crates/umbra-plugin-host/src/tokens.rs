@@ -110,6 +110,8 @@ pub(crate) struct CallRecord {
     pub(crate) image: UmbraToken,
     /// The image's call generation of this call (high half of its call-scoped tokens).
     pub(crate) generation: u32,
+    /// The plugin's declared ABI minor: the ceiling for structs it writes during the call (ADR 0033).
+    pub(crate) minor: u32,
     /// The plugin messages are attributed to.
     pub(crate) plugin: PluginId,
     /// The log of the host that made the call.
@@ -135,6 +137,7 @@ impl CallRecord {
         Self {
             image,
             generation,
+            minor: umbra_plugin_api::UMBRA_ABI_VERSION_MINOR,
             plugin,
             log,
             error: None,
@@ -142,6 +145,13 @@ impl CallRecord {
             batch: None,
             output: None,
         }
+    }
+
+    /// The record with the plugin's declared minor (the ceiling for plugin-written structs; without
+    /// it the host's own minor).
+    pub(crate) const fn with_minor(mut self, minor: u32) -> Self {
+        self.minor = minor;
+        self
     }
 
     /// The token of `sink` in this call.
