@@ -1,0 +1,49 @@
+.vt-readout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 140px;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+}
+.vt-readout dt,
+.vt-readout dd {
+  margin: 0;
+}
+.vt-readout-value {
+  font-family: var(--font-mono);
+  font-size: 32px; /* umbra-allow: reference size, equals .type-readout (ASM-337) */
+  line-height: 36px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.vt-readout-live .vt-readout-value {
+  color: var(--cyan);
+}
+.vt-readout-unit {
+  font-size: 16px; /* umbra-allow: reference size, equals .type-body-lg (ASM-337) */
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+.vt-readout-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 11px; /* umbra-allow: reference size, equals .type-data-sm (ASM-337) */
+  line-height: 14px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.vt-readout-delta .vt-icon {
+  font-size: 14px; /* umbra-allow: trend glyph sized to the 14px delta line (ASM-337) */
+}
+.vt-readout-delta.is-up {
+  color: var(--success);
+}
+.vt-readout-delta.is-down {
+  color: var(--danger);
+}

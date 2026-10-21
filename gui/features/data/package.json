@@ -1,0 +1,20 @@
+{
+  "name": "@umbra/data",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "feature",
+    "tier": "foundation"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.104.5"
+  },
+  "devDependencies": {
+    "orval": "7.21.0"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
+  }
+}

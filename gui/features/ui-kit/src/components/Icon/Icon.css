@@ -1,0 +1,13 @@
+.vt-icon {
+  /* biome-ignore lint/a11y/useGenericFontNames: icon font, the reference stack has no generic family */
+  font-family: "Material Symbols Rounded"; /* umbra-allow */
+  font-weight: 400;
+  font-size: 20px; /* umbra-allow: icon size is fixed by the reference (ASM-332) */
+  line-height: 1;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
+  display: inline-block;
+}

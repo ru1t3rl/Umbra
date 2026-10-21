@@ -1,0 +1,12 @@
+{
+  "name": "@umbra/shell-other",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@umbra/ui-kit": "workspace:*"
+  }
+}

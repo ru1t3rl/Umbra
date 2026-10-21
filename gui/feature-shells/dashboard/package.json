@@ -1,0 +1,20 @@
+{
+  "name": "@umbra/shell-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "shell"
+  },
+  "dependencies": {
+    "@umbra/engine-stream": "workspace:*",
+    "@umbra/map-view": "workspace:*",
+    "@umbra/runtime-config": "workspace:*",
+    "@umbra/scenario-control": "workspace:*",
+    "@umbra/ui-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
+  }
+}

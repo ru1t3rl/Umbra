@@ -1,3 +1,9 @@
 /target
 **/*.rs.bk
 xtask/tests/fixtures/**/target/
+gui/**/node_modules
+gui/dist
+gui/dist-e2e
+gui/test-results
+gui/playwright-report
+gui/**/.tsbuild

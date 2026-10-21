@@ -1,0 +1,44 @@
+.vt-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 240px;
+}
+.vt-field input {
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-1);
+  color: var(--ink);
+  font: inherit;
+}
+.vt-field input::placeholder {
+  color: var(--ink-faint);
+}
+.vt-field input:hover {
+  border-color: var(--ink-muted);
+}
+.vt-field input:focus {
+  border-color: var(--cyan);
+  outline-offset: 0;
+}
+.vt-field input:disabled {
+  opacity: var(--opacity-disabled);
+}
+.vt-field-mono input {
+  font-family: var(--font-mono);
+  font-size: 13px; /* umbra-allow: reference size, equals .type-data (ASM-336) */
+  font-variant-numeric: tabular-nums;
+}
+.vt-field-invalid input {
+  border-color: var(--danger);
+}
+.vt-help {
+  font-size: 12px; /* umbra-allow: reference size, equals .type-caption (ASM-336) */
+  line-height: 16px;
+  color: var(--ink-muted);
+}
+.vt-field-invalid .vt-help {
+  color: var(--danger);
+}

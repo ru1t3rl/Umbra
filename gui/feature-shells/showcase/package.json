@@ -1,0 +1,16 @@
+{
+  "name": "@umbra/shell-showcase",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "shell"
+  },
+  "dependencies": {
+    "@umbra/ui-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
+  }
+}

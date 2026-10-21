@@ -26,3 +26,5 @@ You implement the GUI. Authority: `gui/CLAUDE.md`, `docs/frontend-architecture.m
 5. Report: packages changed, public API changes, tests added, deviations or assumptions (append to the current milestone's file under `docs/assumptions/`; see `docs/assumptions.md`).
 
 If the API contract is missing something, ask `api-engineer` rather than hand-writing types. If the structure rules block you, escalate to `frontend-architect`.
+
+Always use the apply-design-system skill for UI; run gen:tokens --check, check:tokens, check:contrast before finishing.

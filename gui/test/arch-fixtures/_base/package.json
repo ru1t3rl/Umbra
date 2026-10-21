@@ -1,0 +1,1 @@
+{ "name": "fixture-gui", "private": true, "workspaces": ["features/*", "feature-shells/*"] }

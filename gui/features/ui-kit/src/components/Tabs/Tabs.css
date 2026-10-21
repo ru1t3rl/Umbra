@@ -1,0 +1,41 @@
+.vt-tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--line);
+}
+.vt-tab {
+  position: relative;
+  height: 40px;
+  padding: 0 var(--space-3);
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.vt-tab:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+.vt-tab[aria-selected="true"] {
+  color: var(--ink);
+}
+.vt-tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: -1px;
+  height: 3px;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: var(--azure);
+}
+.vt-tab-count {
+  font-family: var(--font-mono);
+  font-size: 12px; /* umbra-allow: reference size; mono 12px has no .type-* class (ASM-336) */
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}

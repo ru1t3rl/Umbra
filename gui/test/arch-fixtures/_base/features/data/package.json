@@ -1,0 +1,1 @@
+{ "name": "@umbra/data", "version": "0.0.0", "private": true, "type": "module", "umbra": { "tier": "foundation" }, "exports": { ".": "./src/index.ts" } }

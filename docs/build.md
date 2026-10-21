@@ -21,6 +21,13 @@ Which gates need what (from M4):
 | C compiler | 3 (`c_header.rs`, `c_example.rs`, the no-entry and null-entry fixtures of `plugin_failures.rs`), 12 (`c-circle`), 13 |
 | Offline cargo cache (`cargo fetch --locked` once online) | 3, 4, 13: tests build plugin libraries with a nested `cargo build --locked --offline` into `CARGO_TARGET_TMPDIR` (ADR 0023 item 4) |
 
+GUI gate 15 (from M5b WI-1, ADR 0043/0044) needs, only when run with `scripts/gates.sh --gui` (plain `scripts/gates.sh` skips it, so the engine track needs none of this):
+- Bun at the version pinned by `gui/package.json` `packageManager` (`bun@1.4.2`);
+- Node.js LTS (22 or 24) for the Node-launched tools (Playwright, orval, dependency-cruiser; Playwright does not support Bun);
+- `cd gui && bunx playwright install chromium` once, online (from WI-7, when `test:e2e` is added);
+- the release binary `target/release/umbra` (or `UMBRA_BIN`), only for the Playwright `engine` project: `cargo build -p umbra-cli --release --locked`. `scripts/gates.sh` builds it in gate 9, before gate 15. `test:e2e` never builds it; when it is missing the engine tests fail with that hint (ASM-311), while `--project ui` needs no binary. The engine is started per worker by a fixture (ASM-514).
+The first `bun install` is online; afterwards `bun install --frozen-lockfile` works from the cache.
+
 Plugin builds inside tests use about 630 MB under `target/tmp/plugin-build` (M4 WI-10). Windows (MSVC)
 and macOS paths of gates 3, 12 and 13 were not run in M4 (NFR-3 unverified, human decision 2026-10-19).
 
@@ -45,7 +52,7 @@ There is no CI gate: this list, run in this order, is the definition of done (CL
 | 12 | Plugin build | `cargo xtask build-plugins --release` | from M4 (active from WI-13); packages `wander` and `c-circle` (C compiler) |
 | 13 | Plugin failure matrix (REQ-P-7..9) | `cargo test -p umbra-plugin-host --test plugin_failures --locked` | from M4 (active from WI-10); builds the `umbra-test-plugin` variants and two C fixtures |
 | 14 | Benchmarks compile | `cargo bench -p umbra-kernel --bench tick --no-run --locked` | from M1 |
-| 15 | GUI | `(cd gui && bun install --frozen-lockfile && bun run gen:api --check && bun run typecheck && bun run lint && bun run check:deps && bun test && bun run build)`, then `bun run tauri build` on Windows | from M8 (see the `verify-frontend` skill) |
+| 15 | GUI (ADR 0044, D-60) | `(cd gui && bun install --frozen-lockfile && bun run verify)`; `verify` is the ordered list in the `verify-frontend` skill and grows work item by work item; then `bun run tauri build` on Windows | from M5b (WI-1); run by `scripts/gates.sh --gui`, mandatory for any change under `gui/` or `api/`; plain `scripts/gates.sh` prints `skip 15-gui (pass --gui)`; needs the GUI prerequisites below |
 | 16 | Engine-only CLI (REQ-S-1, REQ-G-1, D-1, D-10) | `cargo build -p umbra-cli --no-default-features --locked` and `cargo clippy -p umbra-cli --no-default-features --all-targets --locked -- -D warnings` | from M5 (WI-17, ASM-218) |
 
 Rows marked "from Mn" are skipped, and reported as skipped, before that milestone exists. `--locked` is used on every cargo command that supports it (`cargo deny` and `cargo audit` read the lockfile as is; the `cargo xtask` alias builds with `--locked`, and `check-deps` runs `cargo metadata --locked`). Any non-zero exit fails the gate; in particular exit 2 from `cargo xtask check-deps` (load error, for example no resolved graph) fails it and is not a skip. `--locked` requires `Cargo.lock` to be committed and current. Text files use LF (`.gitattributes`, ASM-014).

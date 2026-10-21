@@ -1,0 +1,59 @@
+{
+  "name": "umbra-gui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "features/*",
+    "feature-shells/*"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc -b",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "bun test",
+    "gen:api": "bun scripts/gen-api.mjs",
+    "gen:tokens": "bun scripts/gen-tokens.mjs",
+    "check:tokens": "bun scripts/check-tokens.mjs",
+    "check:contrast": "bun scripts/check-contrast.mjs",
+    "check:licenses": "bun scripts/check-licenses.ts",
+    "check:layout": "bun scripts/check-layout.ts",
+    "check:deps": "depcruise --config .dependency-cruiser.cjs . && bun scripts/check-plain-requests.ts",
+    "verify": "bun run gen:api --check && bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run check:layout && bun run check:deps && bun run test && bun run build && bun run test:e2e"
+  },
+  "dependencies": {
+    "@umbra/data": "workspace:*",
+    "@umbra/engine-stream": "workspace:*",
+    "@umbra/map-view": "workspace:*",
+    "@umbra/runtime-config": "workspace:*",
+    "@umbra/shell-dashboard": "workspace:*",
+    "@umbra/shell-showcase": "workspace:*",
+    "@umbra/ui-kit": "workspace:*",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-router": "7.18.4"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@biomejs/biome": "2.5.15",
+    "@happy-dom/global-registrator": "20.14.6",
+    "@playwright/test": "1.64.1",
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "6.10.0",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@types/bun": "1.4.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "dependency-cruiser": "17.4.3",
+    "json-schema-to-typescript": "15.0.4",
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  }
+}
