@@ -47,7 +47,8 @@ pub enum KernelError {
     /// No entity with this id exists (never spawned, or already removed; ADR 0028).
     #[error("unknown entity {0}")]
     UnknownEntity(umbra_core::EntityId),
-    /// `update_remote` was called for an Owned entity (REQ-K-5, ADR 0032).
-    #[error("entity {0} is not a remote entity")]
+    /// `update_remote` was called for an entity that has no remote track, an Owned one (REQ-K-5,
+    /// ADR 0032).
+    #[error("entity {0} has no remote track")]
     NotRemote(umbra_core::EntityId),
 }

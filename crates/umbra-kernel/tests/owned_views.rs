@@ -1,6 +1,6 @@
 //! AT-11 (publish side): `Kernel::owned_views`. Requirements: REQ-K-5, ASM-253.
 //!
-//! Step 4 of M6: written before WI-4; `owned_views` and `spawn_remote` are `todo!()` stubs.
+//! Written before WI-4 (M6 step 4), run against the implementation since.
 
 #![forbid(unsafe_code)]
 
@@ -29,7 +29,6 @@ fn remote_at(y_m: f64, model: &Arc<Stub>) -> RemoteInit {
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_owned_and_remote_entities_when_owned_views_then_only_owned_in_id_order() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);
@@ -68,7 +67,6 @@ fn given_owned_and_remote_entities_when_owned_views_then_only_owned_in_id_order(
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_a_filled_buffer_when_owned_views_then_it_is_cleared_first() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);
@@ -87,7 +85,6 @@ fn given_a_filled_buffer_when_owned_views_then_it_is_cleared_first() {
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_removed_owned_entity_when_owned_views_then_it_is_gone() {
     let model = Stub::new("test.model.still", Motion::Stationary);
     let mut k = kernel(1);

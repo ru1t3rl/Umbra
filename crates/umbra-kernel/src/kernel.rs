@@ -16,7 +16,7 @@ use crate::clock::{Clock, ClockMode, WallClock};
 use crate::error::KernelError;
 use crate::pipeline::{PHASE_COUNT, Phase, TickContext, TickReport};
 use crate::state;
-use crate::systems::{behavior, events, motion, perception};
+use crate::systems::{behavior, events, ingest, motion, perception};
 use crate::world::{BehaviorSlot, World};
 
 /// Kernel construction parameters.
@@ -297,7 +297,7 @@ impl Kernel {
 }
 
 /// A remote entity to mirror: who owns it, how its identity is built and its first basis
-/// (ADR 0032, REQ-K-5). Stub of M6 step 4; `Kernel::spawn_remote` is filled by WI-4.
+/// (ADR 0032, REQ-K-5).
 #[derive(Clone)]
 pub struct RemoteInit {
     /// Where the entity comes from (the adapter's name, ASM-227).
@@ -311,49 +311,42 @@ pub struct RemoteInit {
 }
 
 impl Kernel {
-    /// Adds a Remote entity (no behavior, no sensors) under the next id (ADR 0032, ASM-242).
+    /// Adds a Remote entity (no behavior, no sensors) under the next id (ADR 0032, ASM-242). Its
+    /// state is the basis; the basis is taken at the current time (ASM-267).
     ///
     /// # Errors
-    /// The errors of [`Kernel::spawn`]. The kernel is unchanged on error.
-    #[expect(
-        clippy::todo,
-        clippy::needless_pass_by_value,
-        unused_variables,
-        reason = "M6 step-4 stub, body from WI-4"
-    )]
+    /// [`KernelError::InvalidState`] for a non-finite basis state and
+    /// [`KernelError::IdsExhausted`] when ids run out. The kernel is unchanged on error.
     pub fn spawn_remote(&mut self, init: RemoteInit) -> Result<EntityId, KernelError> {
-        todo!("WI-4: spawn_remote")
+        self.world.spawn_remote(init, self.clock.now(), self.rng)
     }
 
     /// Replaces a Remote entity's dead-reckoning basis with `remote`, taken at the current time.
     ///
     /// # Errors
     /// [`KernelError::NotRemote`] for an Owned entity, [`KernelError::UnknownEntity`] for an
-    /// unknown id. The kernel is unchanged on error.
-    #[expect(
-        clippy::todo,
-        unused_variables,
-        reason = "M6 step-4 stub, body from WI-4"
-    )]
+    /// unknown id, [`KernelError::InvalidState`] for a non-finite basis state. The kernel is
+    /// unchanged on error.
     pub fn update_remote(&mut self, id: EntityId, remote: RemoteState) -> Result<(), KernelError> {
-        todo!("WI-4: update_remote")
+        self.world.update_remote(id, remote, self.clock.now())
     }
 
     /// Clears `out` and fills it with the Owned entities in id order (ASM-253).
-    #[expect(
-        clippy::todo,
-        clippy::ptr_arg,
-        unused_variables,
-        reason = "M6 step-4 stub, body from WI-4"
-    )]
     pub fn owned_views(&self, out: &mut Vec<OwnedView>) {
-        todo!("WI-4: owned_views")
+        out.clear();
+        self.world.for_each_owned(|id, state, force| {
+            out.push(OwnedView {
+                id,
+                state: *state,
+                force: force.cloned(),
+            });
+        });
     }
 }
 
 /// Runs the systems of one phase. Perception, Behavior and Motion act for `Owned` entities only
 /// (REQ-K-5), and so does Events, which turns `Fire` and `Custom` intents into `events` (ADR 0028);
-/// Ingest and Publish have no systems yet.
+/// Ingest dead-reckons Remote entities (ADR 0032); Publish has no systems yet.
 fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>, events: &mut Vec<SimEvent>) {
     match phase {
         Phase::Perception => perception::run(world, ctx),
@@ -364,7 +357,8 @@ fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>, events: &mu
             }
         }),
         Phase::Events => events::run(world, events),
-        Phase::Ingest | Phase::Publish => {}
+        Phase::Ingest => ingest::run(world, ctx),
+        Phase::Publish => {}
     }
 }
 

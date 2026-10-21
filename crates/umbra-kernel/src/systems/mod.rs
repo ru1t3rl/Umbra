@@ -3,6 +3,7 @@
 
 pub(crate) mod behavior;
 pub(crate) mod events;
+pub(crate) mod ingest;
 pub(crate) mod motion;
 pub(crate) mod perception;
 pub(crate) mod route;

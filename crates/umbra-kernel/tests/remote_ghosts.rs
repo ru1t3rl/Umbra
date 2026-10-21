@@ -1,8 +1,7 @@
 //! AT-11: remote tracks in the kernel. Requirements: REQ-K-2, REQ-K-4, REQ-K-5, D-16, ADR 0032,
 //! ASM-230, ASM-242, ASM-253, ASM-267.
 //!
-//! Step 4 of M6: written before WI-4. `Kernel::spawn_remote` and `Kernel::update_remote` are
-//! `todo!()` stubs; every test that reaches them is ignored with that work item. The time rule the
+//! Written before WI-4 (M6 step 4), run against the implementation since. The time rule the
 //! tests pin (ASM-267): a basis given between ticks is taken at the kernel's current time `T`; the
 //! tick that runs at `T + k` ticks leaves the entity at `extrapolate(basis, k / hz)`.
 
@@ -87,7 +86,6 @@ fn ghost_state(k: &Kernel, index: usize) -> KinematicState {
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_spawned_remote_then_it_is_remote_without_behavior_sensors_or_intents() {
     let model = still();
     let mut k = kernel(1);
@@ -109,7 +107,6 @@ fn given_spawned_remote_then_it_is_remote_without_behavior_sensors_or_intents() 
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_remote_spawned_when_not_yet_ticked_then_its_state_is_the_basis() {
     let model = still();
     let mut k = kernel(1);
@@ -120,7 +117,6 @@ fn given_remote_spawned_when_not_yet_ticked_then_its_state_is_the_basis() {
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_remote_in_each_model_when_ticked_then_state_is_the_extrapolated_basis_at_that_tick() {
     let models = [
         DeadReckoning::Static,
@@ -149,7 +145,6 @@ fn given_remote_in_each_model_when_ticked_then_state_is_the_extrapolated_basis_a
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_ticks_run_when_update_remote_then_the_next_tick_shows_the_new_basis_exactly() {
     let model = still();
     let mut k = kernel(1);
@@ -179,7 +174,20 @@ fn given_ticks_run_when_update_remote_then_the_next_tick_shows_the_new_basis_exa
 }
 
 #[test]
-#[ignore = "WI-4"]
+fn given_update_remote_when_not_yet_ticked_then_the_state_is_the_new_basis() {
+    let model = still();
+    let mut k = kernel(1);
+    let id = k
+        .spawn_remote(init(&model, basis(0.0, Vec3::ZERO, DeadReckoning::Static)))
+        .expect("spawn_remote");
+    let fresh = basis(77.0, Vec3::new(0.0, 4.0, 0.0), DeadReckoning::Velocity);
+
+    k.update_remote(id, fresh).expect("update_remote");
+
+    assert_eq!(ghost_state(&k, 0), fresh.state);
+}
+
+#[test]
 fn given_owned_entity_when_update_remote_then_not_remote_and_kernel_unchanged() {
     let model = still();
     let mut k = kernel(1);
@@ -195,7 +203,6 @@ fn given_owned_entity_when_update_remote_then_not_remote_and_kernel_unchanged() 
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_unknown_or_removed_id_when_update_remote_then_unknown_entity() {
     let model = still();
     let mut k = kernel(1);
@@ -216,7 +223,6 @@ fn given_unknown_or_removed_id_when_update_remote_then_unknown_entity() {
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_remote_with_a_moving_motion_model_when_ticked_then_the_model_is_never_stepped() {
     let drifting = Stub::new(
         "test.model.drift",
@@ -238,7 +244,6 @@ fn given_remote_with_a_moving_motion_model_when_ticked_then_the_model_is_never_s
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_owned_shooter_next_to_a_ghost_when_ticked_then_no_event_names_the_ghost_as_source() {
     let model = still();
     let mut k = kernel(1);
@@ -279,7 +284,6 @@ fn given_owned_shooter_next_to_a_ghost_when_ticked_then_no_event_names_the_ghost
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_owned_sensor_when_ghost_approaches_then_it_is_perceived_at_its_dead_reckoned_position() {
     let model = still();
     let mut k = kernel(1);
@@ -320,7 +324,6 @@ fn given_owned_sensor_when_ghost_approaches_then_it_is_perceived_at_its_dead_rec
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_world_with_a_ghost_when_ticked_then_owned_entities_are_unaffected() {
     let model = still();
     let run = |with_ghost: bool| {
@@ -344,7 +347,6 @@ fn given_world_with_a_ghost_when_ticked_then_owned_entities_are_unaffected() {
 }
 
 #[test]
-#[ignore = "WI-4"]
 fn given_a_non_finite_basis_when_spawn_remote_then_invalid_state_and_the_kernel_is_unchanged() {
     let model = still();
     let mut k = kernel(1);
@@ -365,10 +367,87 @@ fn given_a_non_finite_basis_when_spawn_remote_then_invalid_state_and_the_kernel_
     assert_eq!(next, id(2), "the failed spawn consumed no id");
 }
 
-/// A world without Remote entities hashes as in M5 (ASM-230): the per-tick state hashes of a fixed
-/// three-entity world are pinned. They were taken from the M5 tree (goldens unchanged since), so a
-/// kernel change that alters how Owned entities are hashed, or that makes the Ingest phase touch a
-/// world without Remote entities, fails here. The gate-4 goldens cover the walking skeleton.
+fn moving_ghost(model: &Arc<Stub>, y_m: f64) -> RemoteInit {
+    init(
+        model,
+        basis(y_m, Vec3::new(0.0, 10.0, 0.0), DeadReckoning::Velocity),
+    )
+}
+
+#[test]
+fn given_an_owned_entity_removed_next_to_a_moving_ghost_then_the_ghost_keeps_dead_reckoning() {
+    let model = still();
+    let mut k = kernel(1);
+    let owned_id = k.spawn(owned(at(0.0), &model)).expect("spawn");
+    let remote = basis(50.0, Vec3::new(0.0, 10.0, 0.0), DeadReckoning::Velocity);
+    k.spawn_remote(init(&model, remote)).expect("spawn_remote");
+    k.remove(owned_id).expect("remove");
+
+    for n in 0..5_u32 {
+        k.tick().expect("tick");
+        let want = extrapolate(&remote, Seconds(f64::from(n) / HZ));
+        assert_state_close(&ghost_state(&k, 0), &want, "ghost after the owned removal");
+    }
+}
+
+#[test]
+fn given_two_ghosts_when_one_is_removed_then_the_other_keeps_moving() {
+    let model = still();
+    let mut k = kernel(1);
+    let first = k
+        .spawn_remote(moving_ghost(&model, 0.0))
+        .expect("spawn_remote");
+    let remote = basis(50.0, Vec3::new(0.0, 10.0, 0.0), DeadReckoning::Velocity);
+    k.spawn_remote(init(&model, remote)).expect("spawn_remote");
+    k.remove(first).expect("remove");
+
+    for n in 0..5_u32 {
+        k.tick().expect("tick");
+        let want = extrapolate(&remote, Seconds(f64::from(n) / HZ));
+        assert_state_close(&ghost_state(&k, 0), &want, "remaining ghost");
+    }
+}
+
+#[test]
+fn given_non_finite_basis_parts_when_spawn_or_update_remote_then_invalid_state_and_unchanged() {
+    let model = still();
+    let mut k = kernel(1);
+    let owned_id = k.spawn(owned(at(0.0), &model)).expect("spawn");
+    let ghost = k
+        .spawn_remote(moving_ghost(&model, 10.0))
+        .expect("spawn_remote");
+    for _ in 0..3 {
+        k.tick().expect("tick");
+    }
+    let (hash, snapshot) = (k.state_hash(), k.snapshot());
+    let good = basis(1.0, Vec3::ZERO, DeadReckoning::Velocity);
+    let mut bad_velocity = good;
+    bad_velocity.state.velocity = Vec3::new(0.0, f64::NAN, 0.0);
+    let mut bad_acceleration = good;
+    bad_acceleration.acceleration = Vec3::new(f64::INFINITY, 0.0, 0.0);
+    let mut bad_rate = good;
+    bad_rate.angular_velocity = Vec3::new(0.0, 0.0, f64::NAN);
+
+    for bad in [bad_velocity, bad_acceleration, bad_rate] {
+        assert_eq!(k.update_remote(ghost, bad), Err(KernelError::InvalidState));
+        assert_eq!(
+            k.spawn_remote(init(&model, bad)),
+            Err(KernelError::InvalidState)
+        );
+        // ASM-283: the Owned check comes before the state check.
+        assert_eq!(
+            k.update_remote(owned_id, bad),
+            Err(KernelError::NotRemote(owned_id))
+        );
+    }
+
+    assert_eq!(k.state_hash(), hash);
+    assert_eq!(k.snapshot(), snapshot);
+}
+
+/// Pins how Owned entities are hashed (ASM-230): the per-tick state hashes of a fixed three-entity
+/// world without Remote entities, taken from the M5 tree (goldens unchanged since). The gate-4
+/// goldens cover the walking skeleton.
 #[test]
 fn given_a_world_without_remote_entities_then_per_tick_hashes_are_the_m5_values() {
     let drift = Stub::new("test.model.drift", Motion::Drift(Vec3::new(0.0, 3.0, 0.0)));

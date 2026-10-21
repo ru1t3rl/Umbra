@@ -11,7 +11,8 @@ pub const PHASE_COUNT: usize = 6;
 /// that order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Phase {
-    /// Network and command input (empty in M1).
+    /// Dead reckoning of Remote entities (ADR 0032); network input is applied by the engine
+    /// between ticks.
     Ingest,
     /// Sensors produce each Owned entity's contacts from pre-tick state (ADR 0015).
     Perception,
