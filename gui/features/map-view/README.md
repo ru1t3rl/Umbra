@@ -21,6 +21,10 @@ const source = useEntitySource();
 <LiveMap source={source} />
 ```
 
+## Basemap
+- Offline by default: background, Natural Earth 1:50m land (its outline is the coast) and land boundary lines, and a graticule, all coloured from tokens. The two GeoJSON files (about 1.16 MB in total) are in `assets/`, with their provenance in `assets/README.md`; `src/maplibre/basemapAssets.ts` references them with `new URL(..., import.meta.url)` so Vite bundles them as hashed assets that MapLibre fetches from the app's own origin.
+- Regenerate with `bun scripts/simplify-basemap.ts` (in `gui/`, deterministic; command in `assets/README.md`).
+
 ## Internals
 - `src/model/` is pure and tested without WebGL: `affiliationOf`, `resolveMapColors`, `symbolSvg` (APP-6D frames, remote ring), `buildMapStyle`, `toFeatureCollection`, `fitOptionsFrom`.
 - `src/maplibre/createMapLibreView.ts` implements `MapView`: one `setData` per animation frame from a reused buffer. Never call `getData()` or `updateData` on the entity source (ASM-366).

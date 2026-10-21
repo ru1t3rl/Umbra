@@ -68,10 +68,13 @@ describe("buildMapStyle", () => {
   test("coast and borders are line layers in the line colour; the Day theme keeps them", () => {
     for (const theme of ["dark", "light"] as const) {
       const { layers } = inline(theme);
-      for (const id of ["coast", "borders"]) {
+      for (const [id, source] of [
+        ["coast", "land"],
+        ["borders", "borders"],
+      ] as const) {
         expect(layer(layers, id)).toMatchObject({
           type: "line",
-          source: id,
+          source,
           paint: { "line-color": "LINE" },
         });
       }
@@ -102,19 +105,47 @@ describe("buildMapStyle", () => {
     expect(JSON.stringify(direction.layout?.["icon-size"])).toBe(JSON.stringify(size));
   });
 
-  test("basemap geometry is passed through to land, coast and borders", () => {
+  test("basemap geometry is passed through to land and borders (the coast reuses the land source)", () => {
     const mk = (lon: number): GeoJsonData => ({
       type: "FeatureCollection",
       features: [
         { type: "Feature", properties: null, geometry: { type: "Point", coordinates: [lon, 0] } },
       ],
     });
-    const [land, coast, borders] = [mk(1), mk(2), mk(3)];
-    const { sources } = inline("dark", { data: { land, coast, borders } });
+    const [land, borders] = [mk(1), mk(3)];
+    const { sources } = inline("dark", { data: { land, borders } });
     expect(sources.land).toEqual({ type: "geojson", data: land });
-    expect(sources.coast).toEqual({ type: "geojson", data: coast });
     expect(sources.borders).toEqual({ type: "geojson", data: borders });
-    expect(sources.land).not.toBe(sources.coast);
+    expect(Object.keys(sources)).not.toContain("coast");
+  });
+
+  test("basemap assets can be URLs (the bundled Natural Earth files)", () => {
+    const data = { land: "/a/land.geojson", borders: "/a/borders.geojson" };
+    const { sources } = inline("dark", { data });
+    expect(sources.land).toEqual({ type: "geojson", data: data.land });
+    expect(sources.borders).toEqual({ type: "geojson", data: data.borders });
+  });
+
+  test("land, coast and borders keep their token colours in both themes with data present", () => {
+    const data = { land: "/l", borders: "/b" };
+    for (const theme of ["dark", "light"] as const) {
+      const { layers } = inline(theme, { data });
+      expect(layer(layers, "land")).toMatchObject({
+        type: "fill",
+        source: "land",
+        paint: { "fill-color": "S1" },
+      });
+      expect(layer(layers, "coast")).toMatchObject({
+        type: "line",
+        source: "land",
+        paint: { "line-color": "LINE" },
+      });
+      expect(layer(layers, "borders")).toMatchObject({
+        type: "line",
+        source: "borders",
+        paint: { "line-color": "LINE" },
+      });
+    }
   });
 
   test("the graticule does not repeat the antimeridian", () => {

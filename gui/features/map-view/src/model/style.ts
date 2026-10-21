@@ -15,6 +15,8 @@ import { DIRECTION_IMAGE_ID, IMAGE_PREFIX, SYMBOL_FRAME_PX } from "./symbols.ts"
 
 type SymbolLayer = Extract<LayerSpecification, { type: "symbol" }>;
 export type GeoJsonData = Exclude<GeoJSONSourceSpecification["data"], string>;
+/** Inline GeoJSON or a URL MapLibre fetches (the bundled assets are URLs, WI-13). */
+export type GeoJsonInput = GeoJSONSourceSpecification["data"];
 type GeoJsonCollection = Extract<GeoJsonData, { type: "FeatureCollection" }>;
 type IconSize = NonNullable<NonNullable<SymbolLayer["layout"]>["icon-size"]>;
 type IconImage = NonNullable<NonNullable<SymbolLayer["layout"]>["icon-image"]>;
@@ -24,11 +26,10 @@ export interface StyleOverlay {
   layers: LayerSpecification[];
 }
 
-/** The offline basemap geometry (Natural Earth, WI-13). Omitted pieces are empty collections. */
+/** The offline basemap geometry (Natural Earth, WI-13), inline or by URL; the coast is the land outline (ASM-500). Omitted pieces are empty collections. */
 export interface BasemapData {
-  readonly land?: GeoJsonData;
-  readonly coast?: GeoJsonData;
-  readonly borders?: GeoJsonData;
+  readonly land?: GeoJsonInput;
+  readonly borders?: GeoJsonInput;
 }
 
 export interface BasemapOptions {
@@ -153,10 +154,10 @@ export function buildMapStyle(
   }
   const data = basemap.data ?? {};
   const day = theme === "light";
-  const thin = (id: string, color: string, opacity: number): LayerSpecification => ({
+  const thin = (id: string, color: string, opacity: number, source = id): LayerSpecification => ({
     id,
     type: "line",
-    source: id,
+    source,
     paint: { "line-color": color, "line-width": 1, "line-opacity": opacity },
   });
   return {
@@ -165,7 +166,6 @@ export function buildMapStyle(
       version: 8,
       sources: {
         land: { type: "geojson", data: data.land ?? emptyCollection() },
-        coast: { type: "geojson", data: data.coast ?? emptyCollection() },
         borders: { type: "geojson", data: data.borders ?? emptyCollection() },
         graticule: { type: "geojson", data: graticule() },
         ...overlay.sources,
@@ -173,7 +173,7 @@ export function buildMapStyle(
       layers: [
         { id: "background", type: "background", paint: { "background-color": colors.surface0 } },
         { id: "land", type: "fill", source: "land", paint: { "fill-color": colors.surface1 } },
-        thin("coast", colors.line, 1),
+        thin("coast", colors.line, 1, "land"),
         thin("borders", colors.line, 1),
         day
           ? thin("graticule", colors.lineStrong, colors.opacityTrack)

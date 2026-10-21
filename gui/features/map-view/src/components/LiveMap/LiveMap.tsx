@@ -4,6 +4,7 @@ import { type ReactElement, useContext, useEffect, useRef, useState } from "reac
 import { AnnounceTimersContext } from "../../context/AnnounceTimersContext.ts";
 import { registerE2eHook } from "../../e2eHook.ts";
 import type { MapView } from "../../MapView.ts";
+import { BASEMAP_ASSETS } from "../../maplibre/basemapAssets.ts";
 import { createMapLibreView } from "../../maplibre/createMapLibreView.ts";
 import { t } from "../../messages.ts";
 import { createAnnouncer } from "../../model/announce.ts";
@@ -68,7 +69,7 @@ export function LiveMap({ source, label, basemapStyleUrl }: LiveMapProps): React
       view = createMapLibreView(container, {
         colors,
         theme: themeRef.current,
-        basemap: { styleUrl: basemapStyleUrl },
+        basemap: { styleUrl: basemapStyleUrl, data: BASEMAP_ASSETS },
         pixelRatio: window.devicePixelRatio,
         onError: (e) => console.error("map:", e),
         // A lost context shows the error state until MapLibre has it back; it does not clobber a worse error.

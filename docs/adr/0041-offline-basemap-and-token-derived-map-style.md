@@ -41,4 +41,5 @@ Option 2 as the default style, with option 1 as the automatic fallback if the hu
 - Easier: works offline, deterministic tests, theme switch without reload, no new token.
 - Harder: coarse coastlines at tactical zooms; real tactical basemaps (MBTiles/PMTiles, terrain) are a
   later item through the same `styleUrl` option or a bundled-tiles ADR.
+- Amendment (WI-13, H-2 accepted): coast drawn from the land outline, WI-13, ASM-500.
 - Revisit when an operator needs street-level context offline (bundle PMTiles) or labels on the map.

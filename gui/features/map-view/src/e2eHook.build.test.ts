@@ -17,7 +17,10 @@ async function bundle(e2e: boolean): Promise<string> {
       write: false,
       minify: true,
       lib: { entry: resolve(import.meta.dirname, "index.ts"), formats: ["es"], fileName: "out" },
-      rollupOptions: { external: ["maplibre-gl", "react", "react/jsx-runtime", "react-dom"] },
+      rollupOptions: {
+        // The basemap module is external: a lib build inlines assets, which would add ~1.2 MB of data URLs.
+        external: ["maplibre-gl", "react", "react/jsx-runtime", "react-dom", /basemapAssets/],
+      },
     },
   });
   const outputs = (Array.isArray(result) ? result : [result]).flatMap((r) =>

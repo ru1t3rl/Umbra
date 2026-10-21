@@ -114,6 +114,21 @@ function themeSwitch() {
 }
 
 describe("LiveMap", () => {
+  test("the offline style carries the bundled Natural Earth land and borders by URL", () => {
+    renderMap(new FakeEntitySource());
+    const style = map().options.style as {
+      sources: Record<string, { data: unknown }>;
+      layers: { id: string; source?: string }[];
+    };
+    const land = style.sources.land?.data;
+    const borders = style.sources.borders?.data;
+    expect(typeof land === "string" && land.endsWith("ne_50m_land.geojson")).toBe(true);
+    expect(typeof borders === "string" && borders.endsWith("ne_50m_admin0_lines.geojson")).toBe(
+      true,
+    );
+    expect(style.layers.find((l) => l.id === "coast")?.source).toBe("land");
+  });
+
   test("creates one view per mount and destroys it on unmount", () => {
     const { unmount } = renderMap(new FakeEntitySource());
     expect(FakeMap.instances).toHaveLength(1);
