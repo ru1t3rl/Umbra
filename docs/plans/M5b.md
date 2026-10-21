@@ -762,17 +762,16 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
   `../umbra-m5b` (branch `m5b`, not yet merged into `develop`); M6 is in `../umbra-m6` (branch `m6`).
 
 ### In progress
-- Nothing. WI-7 is done in the working tree (not committed).
+- Nothing. The working tree is clean at the WI-7 commit.
 
 ### Next
-- WI-7..WI-8
-  (rest of the A-003 block: components B and C, app shell with favicon, showcase with Ops/Day
-  screenshots for the human to review), then WI-9..WI-17.
+- WI-8 (showcase shell and screenshot tests, closes A-003; baselines committed and marked "pending human review"
+  per the human's 2026-10-21 away instruction), then WI-9..WI-17.
 - Open nit from the WI-2 review: the `scripts/` entry of the second `no-deep-import` rule has no fixture.
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
-- WI-7 (2026-10-21, not committed, not yet reviewed): app shell in `gui/src` (`main`, `App`, `router`, `config` with `RuntimeConfigContext`, `messages`), `public/config.json`, `index.html` icon link, `umbra-icon` Vite plugin (dev, preview, build; byte-identical, no copy), `/api` proxy with `ws: true`, Playwright `ui` project with global setup/teardown (build `--mode e2e`, `vite preview`), `e2e/app.spec.ts` (5 tests), unit tests `config.test.ts`, `index-html.test.ts`, `App.test.tsx`; `test:e2e` added to `verify`; verify-frontend skill updated. ASM-338..343.
+- WI-7 (2026-10-21, commit `616cdaf`, reviewed GO-with-fixes, fixes applied incl. the new foundation feature `@umbra/runtime-config` (ASM-339), Playwright as a dev dependency, router created once in `main.tsx`, `--port 0` preview, `/api/` proxy key): app shell in `gui/src` (`main`, `App`, `router`, `messages`), `public/config.json`, `index.html` icon link, `umbra-icon` Vite plugin (dev, preview, build; byte-identical, no copy), `/api` proxy with `ws: true`, Playwright `ui` project with global setup/teardown (build `--mode e2e`, `vite preview`), `e2e/app.spec.ts` (5 tests; 202 bun tests), unit tests in `runtime-config` (model, provider), `index-html.test.ts`, `App.test.tsx`; `test:e2e` added to `verify`; verify-frontend skill updated. ASM-338..343.
 - WI-6 (2026-10-21, reviewed GO-with-fixes, fixes applied (dead biome-ignores removed, U+00A0 echelon, paused needs a visible word, WI-8 glass screenshot item, roving tab stop deferred to M8)): ui-kit components C: `CommandBar`, `Readout`, `EntityRow`/`EntityList` (tsx, css, tests each), shared `VisuallyHidden.css`, `props.test-d.ts` cases, README and `index.ts` updated; `bun run verify` passes (179 tests); EntityList virtualization not built (M8). ASM-337 (incl. the glass-on-glass CSS guard for a floating CommandBar).
 - WI-5 (2026-10-21, reviewed GO-with-fixes, fixes applied (Tabs label/id/aria-controls, count separator and tabular figures, TextField aria-invalid and empty id; Slider arrow-key e2e scheduled in WI-8)): ui-kit components B: `Panel`, `Card`, `TextField`, `Toggle`, `Slider`, `Tabs`, `ThemeToggle` (tsx, css, tests each), shared `Label.css`, new type-level cases in `props.test-d.ts`, README and `index.ts` updated. `bun run verify` passes (151 tests). ASM-336 (incl. the glass-on-glass note for the WI-8 review).
 - WI-4 (2026-10-21, reviewed GO-with-fixes, fixes applied (aria-labelledby variant, NonNullable children, shared `gui/test/jest-dom.d.ts`, README exports)): ui-kit components A: `Button`, `Chip`/`ChipGroup`, `Badge`, `AffiliationTag`, `Alert` (tsx, css, tests each), `props.test-d.ts` (type-level icon-only `aria-label` rule), `gui/test/jest-dom.d.ts`, CSS in `styles.css`, exports in `index.ts`. `bun run verify` passes (107 tests). ASM-335.
