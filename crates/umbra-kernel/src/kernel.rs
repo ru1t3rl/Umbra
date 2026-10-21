@@ -4,10 +4,12 @@
 use core::time::Duration;
 use std::sync::Arc;
 
+use umbra_core::dead_reckoning::RemoteState;
+pub use umbra_core::net::OwnedView;
 use umbra_core::{
     Behavior, BehaviorId, Contact, Ecef, EntityId, Force, Intent, KinematicState, Meters,
-    MetersPerSecond, MotionModel, MotionModelId, Ownership, Sensor, SimEvent, SimRng, SimTime,
-    StateHash, Status, TerrainProvider, TickRate,
+    MetersPerSecond, MotionModel, MotionModelId, Ownership, RemoteSource, Sensor, SimEvent, SimRng,
+    SimTime, StateHash, Status, TerrainProvider, TickRate,
 };
 
 use crate::clock::{Clock, ClockMode, WallClock};
@@ -291,6 +293,61 @@ impl Kernel {
     #[must_use]
     pub fn behavior_scratch_capacity(&self) -> usize {
         self.world.batch.capacity()
+    }
+}
+
+/// A remote entity to mirror: who owns it, how its identity is built and its first basis
+/// (ADR 0032, REQ-K-5). Stub of M6 step 4; `Kernel::spawn_remote` is filled by WI-4.
+#[derive(Clone)]
+pub struct RemoteInit {
+    /// Where the entity comes from (the adapter's name, ASM-227).
+    pub source: RemoteSource,
+    /// Motion model for identity only; never stepped for a Remote entity (ASM-241).
+    pub motion: Arc<dyn MotionModel>,
+    /// Its force, if the peer sent one (ASM-242).
+    pub force: Option<Force>,
+    /// The first dead-reckoning basis, taken at the kernel's current time.
+    pub remote: RemoteState,
+}
+
+impl Kernel {
+    /// Adds a Remote entity (no behavior, no sensors) under the next id (ADR 0032, ASM-242).
+    ///
+    /// # Errors
+    /// The errors of [`Kernel::spawn`]. The kernel is unchanged on error.
+    #[expect(
+        clippy::todo,
+        clippy::needless_pass_by_value,
+        unused_variables,
+        reason = "M6 step-4 stub, body from WI-4"
+    )]
+    pub fn spawn_remote(&mut self, init: RemoteInit) -> Result<EntityId, KernelError> {
+        todo!("WI-4: spawn_remote")
+    }
+
+    /// Replaces a Remote entity's dead-reckoning basis with `remote`, taken at the current time.
+    ///
+    /// # Errors
+    /// [`KernelError::NotRemote`] for an Owned entity, [`KernelError::UnknownEntity`] for an
+    /// unknown id. The kernel is unchanged on error.
+    #[expect(
+        clippy::todo,
+        unused_variables,
+        reason = "M6 step-4 stub, body from WI-4"
+    )]
+    pub fn update_remote(&mut self, id: EntityId, remote: RemoteState) -> Result<(), KernelError> {
+        todo!("WI-4: update_remote")
+    }
+
+    /// Clears `out` and fills it with the Owned entities in id order (ASM-253).
+    #[expect(
+        clippy::todo,
+        clippy::ptr_arg,
+        unused_variables,
+        reason = "M6 step-4 stub, body from WI-4"
+    )]
+    pub fn owned_views(&self, out: &mut Vec<OwnedView>) {
+        todo!("WI-4: owned_views")
     }
 }
 

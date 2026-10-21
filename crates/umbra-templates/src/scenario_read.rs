@@ -209,6 +209,8 @@ impl Loader<'_> {
             graphs: loaded.graphs.clone(),
             plugin_paths: settings.plugin_paths.iter().map(|p| base.join(p)).collect(),
             on_plugin_fault: settings.on_plugin_fault,
+            // M6 step 4 stub: the `[[network_adapters]]` reader arrives with WI-8.
+            network_adapters: Vec::new(),
         })
     }
 

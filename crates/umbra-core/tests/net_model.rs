@@ -195,6 +195,34 @@ mod dyn_config {
     );
 }
 
+/// A configuration whose `start` always fails, so every generated contract test fails.
+struct NeverStarts;
+
+impl NetworkAdapterConfig for NeverStarts {
+    fn key_space(&self) -> KeySpace {
+        KeySpace { base: 0, count: 1 }
+    }
+    fn start(&self, _: &AdapterStart) -> Result<Box<dyn NetworkAdapter>, NetError> {
+        Err(NetError::Start("never".to_owned()))
+    }
+}
+
+/// The `attrs = [..]` form puts its attributes on every generated test (ASM-280): these tests
+/// all fail inside, so they pass only because `#[should_panic]` was applied to each.
+mod attributes_are_applied {
+    use super::*;
+    umbra_core::network_adapter_contract_tests!(attrs = [#[should_panic(expected = "start")]], NeverStarts);
+}
+
+mod attributes_are_applied_with_a_feed {
+    use super::*;
+    umbra_core::network_adapter_contract_tests!(
+        attrs = [#[should_panic(expected = "start")]],
+        NeverStarts,
+        feed = feed
+    );
+}
+
 /// Runs the four checks on a fresh config with `flaw`; `None` where the check passed.
 fn failures(flaw: Flaw) -> [Option<String>; 4] {
     let cfg = || StubConfig::new(flaw);

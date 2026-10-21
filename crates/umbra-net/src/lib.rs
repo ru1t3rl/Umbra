@@ -2,13 +2,29 @@
 //!
 //! Responsibility (from M6): the network manager, publish policy, ghost lifecycle, identity map,
 //! echo suppression and the adapter interface. It knows no protocol vocabulary; protocols live in
-//! adapter crates, outside the engine side. This scaffold (M6 WI-1) holds no logic yet.
+//! adapter crates, outside the engine side. The modules below are signature stubs (M6 step 4);
+//! their bodies arrive with WI-5 (`identity`, `typemap`), WI-6 (`policy`) and WI-7 (`ghosts`,
+//! `manager`, `loopback`).
 //!
 //! Dependency rule (section 4): depends on `umbra-core` only among workspace crates, and on no
 //! protocol crate (`cargo xtask check-deps`, `tests/protocol_neutral.rs`). It contains no `unsafe`
 //! code.
 
 #![forbid(unsafe_code)]
+
+pub mod ghosts;
+pub mod identity;
+pub mod loopback;
+pub mod manager;
+pub mod policy;
+pub mod typemap;
+
+pub use ghosts::{GhostError, GhostSpec, GhostWorld};
+pub use identity::{IdentityError, IdentityMap, Role};
+pub use loopback::LoopbackHub;
+pub use manager::{AdapterSlot, AdapterStatus, ManagerError, NetworkManager, OwnedMeta};
+pub use policy::{AdapterSettings, GhostPolicy, PublishPolicy, PublishTracker};
+pub use typemap::{TypeMap, TypeMapWarning};
 
 /// Name of this crate, as the registry and diagnostics spell it.
 pub const NAME: &str = "umbra-net";

@@ -19,6 +19,7 @@ pub mod display;
 pub mod engine;
 pub mod error;
 pub mod handle;
+pub mod net;
 pub mod plugins;
 pub mod scenario;
 pub mod session;
@@ -31,6 +32,7 @@ pub use engine::{
     AgentInit, Engine, EngineConfig, Pumped, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView,
 };
 pub use error::{EngineError, SpawnParam};
+pub use net::NetLink;
 pub use plugins::{
     CapabilityInfo, HostOptions, LoadedScenario, PluginError, PluginFault, PluginFaultPolicy,
     PluginHost, PluginInfo, PluginLog, instantiate_with_plugins, load_plugins,

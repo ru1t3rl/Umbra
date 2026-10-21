@@ -1396,6 +1396,7 @@ dependencies = [
  "umbra-core",
  "umbra-kernel",
  "umbra-motion",
+ "umbra-net",
  "umbra-plugin-host",
  "umbra-templates",
 ]
@@ -1425,6 +1426,12 @@ dependencies = [
 [[package]]
 name = "umbra-net"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+ "serde_json",
+ "thiserror",
+ "umbra-core",
+]
 
 [[package]]
 name = "umbra-plugin-api"

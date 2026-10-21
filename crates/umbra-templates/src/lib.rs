@@ -34,7 +34,10 @@ pub use discover::{ScenarioInputs, io_diagnostic, scenario_inputs, scenario_plug
 pub use graph_resolve::GraphSet;
 pub use loader::{Loader, LoaderError, LoaderOptions, ValidationReport};
 pub use resolve::{ComponentRef, ResolvedTemplate, TemplateSet};
-pub use scenario::{ClockSetting, Placement, RoutePlan, Scenario, TickRateSource};
+pub use scenario::{
+    ClockSetting, GhostSettings, NetworkAdapterSpec, Placement, PublishSettings, RoutePlan,
+    Scenario, TickRateSource,
+};
 pub use scenario_read::graph_document_id;
 pub use schema::{CompiledSchema, SchemaError};
 pub use source::SourceFile;

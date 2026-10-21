@@ -15,6 +15,7 @@ use crate::geo::{Vec3, WorldEuler};
 use crate::id::WeaponId;
 use crate::perception::Force;
 use crate::time::SimTime;
+use crate::units::{Radians, Seconds};
 
 /// The identity of an entity as the network knows it, unique within one network exercise.
 /// Adapters allocate and interpret the number; the engine only compares and orders it.
@@ -80,6 +81,49 @@ pub struct NetEntityState {
     pub orientation: WorldEuler,
     /// How receivers extrapolate this state.
     pub dead_reckoning: DeadReckoning,
+}
+
+/// One Owned entity as the publish phase sees it (ASM-253, ASM-268): what the kernel hands out
+/// and the network manager consumes. It lives here so `umbra-net` needs no kernel dependency.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OwnedView {
+    /// The entity.
+    pub id: crate::id::EntityId,
+    /// Its kinematic state after the last tick.
+    pub state: crate::motion::KinematicState,
+    /// Its force, if any.
+    pub force: Option<Force>,
+}
+
+/// When an owned entity's state is published (`[network_adapters.publish]`, ADR 0030, ADR 0032).
+/// One type for the scenario reader and the publish policy (ASM-275).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PublishSettings {
+    /// Send when the receiver's extrapolation is this far off, metres; `> 0`.
+    pub position_threshold_m: f64,
+    /// Send when the orientation moved by more than this; `> 0`.
+    pub orientation_threshold: Radians,
+    /// Send at least this often; `> 0`.
+    pub heartbeat: Seconds,
+    /// Never send an entity more often than this; `>= 0`.
+    pub min_interval: Seconds,
+    /// The model receivers extrapolate with: static, velocity or acceleration (ASM-231).
+    pub model: DeadReckoning,
+    /// Whether run-control actions are published (ASM-244).
+    pub control: bool,
+}
+
+impl Default for PublishSettings {
+    fn default() -> Self {
+        Self {
+            position_threshold_m: 1.0,
+            orientation_threshold: Radians(3.0_f64.to_radians()),
+            heartbeat: Seconds(5.0),
+            min_interval: Seconds(0.0),
+            model: DeadReckoning::Velocity,
+            control: false,
+        }
+    }
 }
 
 /// A message crossing the network boundary, in either direction.

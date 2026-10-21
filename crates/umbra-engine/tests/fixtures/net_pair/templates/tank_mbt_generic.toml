@@ -1,0 +1,13 @@
+schema_version = 1
+id = "tank.mbt_generic"
+extends = "ground_vehicle.base"
+description = "Generic main battle tank, mappable on every adapter of these fixtures"
+
+[network.lb]
+entity_type = "tank"
+
+[network.left]
+entity_type = "tank"
+
+[network.right]
+entity_type = "tank"

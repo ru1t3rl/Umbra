@@ -152,24 +152,32 @@ impl AsAdapterConfig for Arc<dyn NetworkAdapterConfig> {
 /// messages to `poll`; the poll test then checks `max` exactly instead of loosely. Adapters
 /// with an inbound path must use it.
 ///
-/// The generated test names are fixed, so each call needs its own `mod`.
+/// The `attrs = [#[ignore = "reason"]], ...` form puts the attributes on every generated test
+/// (ASM-280). The generated test names are fixed, so each call needs its own `mod`.
 ///
 /// ```ignore
 /// mod loopback { umbra_core::network_adapter_contract_tests!(MyConfig::new()); }
 /// ```
 #[macro_export]
 macro_rules! network_adapter_contract_tests {
-    ($make:expr) => {
-        $crate::network_adapter_contract_tests!(@tests $make, |c| {
+    (attrs = [$(#[$m:meta])*], $make:expr) => {
+        $crate::network_adapter_contract_tests!(@tests [$(#[$m])*] $make, |c| {
             $crate::net::contract::check_poll_max(c)
         });
     };
-    ($make:expr, feed = $feed:expr) => {
-        $crate::network_adapter_contract_tests!(@tests $make, |c| {
+    (attrs = [$(#[$m:meta])*], $make:expr, feed = $feed:expr) => {
+        $crate::network_adapter_contract_tests!(@tests [$(#[$m])*] $make, |c| {
             $crate::net::contract::check_poll_max_fed(c, &$feed)
         });
     };
-    (@tests $make:expr, $poll:expr) => {
+    ($make:expr) => {
+        $crate::network_adapter_contract_tests!(attrs = [], $make);
+    };
+    ($make:expr, feed = $feed:expr) => {
+        $crate::network_adapter_contract_tests!(attrs = [], $make, feed = $feed);
+    };
+    (@tests [$(#[$m:meta])*] $make:expr, $poll:expr) => {
+        $(#[$m])*
         #[test]
         fn contract_start_twice_is_already_started() {
             let config = $make;
@@ -177,6 +185,7 @@ macro_rules! network_adapter_contract_tests {
             assert_eq!($crate::net::contract::check_start_once(c), Ok(()));
         }
 
+        $(#[$m])*
         #[test]
         fn contract_publish_and_poll_after_stop_error() {
             let config = $make;
@@ -184,6 +193,7 @@ macro_rules! network_adapter_contract_tests {
             assert_eq!($crate::net::contract::check_after_stop(c), Ok(()));
         }
 
+        $(#[$m])*
         #[test]
         fn contract_poll_respects_max() {
             let config = $make;
