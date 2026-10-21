@@ -11,7 +11,7 @@ Run from `gui/`. Owner: `frontend-engineer`; plan approved by `frontend-architec
 2. **Scaffold** `feature-shells/<name>/`:
    ```
    package.json  tsconfig.json
-   src/index.ts  src/<Name>Page.tsx  src/<Name>Page.test.tsx
+   src/index.ts  src/components/<Name>Page/<Name>Page.tsx  src/components/<Name>Page/<Name>Page.test.tsx
    ```
    `package.json`:
    ```json
@@ -31,10 +31,10 @@ Run from `gui/`. Owner: `frontend-engineer`; plan approved by `frontend-architec
    export const route = {
      path: "/<path>",
      label: "<Nav label>",
-     lazy: async () => ({ Component: (await import("./<Name>Page.tsx")).default }),
+     lazy: async () => ({ Component: (await import("./components/<Name>Page/<Name>Page.tsx")).default }),
    } as const;
    ```
-   The page component is the default export of `<Name>Page.tsx` (the only allowed default export). The app builds its `RouteObject` as `{ path: route.path, lazy: route.lazy }`.
+   The page component is the default export of `components/<Name>Page/<Name>Page.tsx` (the only allowed default export; the biome override glob is `feature-shells/*/src/components/*Page/*Page.tsx`). Page parts are further components, one per file under `src/components/<Part>/<Part>.tsx`, and hooks go in `src/hooks/` (ADR 0046, `bun run check:layout`). The app builds its `RouteObject` as `{ path: route.path, lazy: route.lazy }`.
 4. **Compose**: layout and wiring only. Connect features through props, callbacks and selectors from the stream store. No `fetch`, no generated-client calls, no business logic, no importing other shells.
 5. **Register** the route in `src/` where routes are composed; that is the only place `src` references the shell.
 6. **Tests first**: render the page with a mocked engine client; assert features appear and wiring works (e.g. selecting an entity on the map updates the inspector).

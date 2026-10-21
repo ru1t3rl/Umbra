@@ -40,16 +40,24 @@ gui/
 6. No cyclic dependencies. No `any`, no `@ts-ignore` without a linked reason.
 7. Generated code is never hand-edited and is produced by `bun run gen:api`: the REST client and its TanStack Query hooks by **orval** from `../api/openapi.json` into `features/data/src/generated/` (config `features/data/orval.config.ts`: `client: 'react-query'`, `httpClient: 'fetch'`, a custom mutator in `features/data/src/fetcher.ts` that applies the runtime base URL and turns `application/problem+json` into a typed `ApiProblem`), and the stream types from `../api/stream.schema.json` into `features/engine-stream/src/generated/` (`json-schema-to-typescript`; orval does not cover WebSocket/JSON Schema). Other features import REST data only from `@umbra/data`'s `src/index.ts` (re-exported hooks, query keys, `ApiProblem`, the `DataProvider`), never from `generated/`.
 
+## File layout (ADR 0046, enforced by `bun run check:layout`)
+Every component and every hook lives in its own file, in a directory named for its kind, so it is easy to find by name. `src` below is a package's `src/` (the app's `gui/src`, `features/<x>/src`, `feature-shells/<x>/src`).
+- Component (including providers, pages and private subcomponents): `src/components/<Name>/<Name>.tsx`, one per file, with `<Name>.css` and `<Name>.test.tsx` beside it. Shell pages: `src/components/<Name>Page/<Name>Page.tsx`.
+- Hook: `src/hooks/use<Name>.ts(x)`, one per file, file name = hook name, with `use<Name>.test.ts(x)` beside it. Generated orval hooks in `features/data/src/generated/` are exempt.
+- React context object shared by a provider and its hook: `src/context/<Name>Context.ts`.
+- Pure logic stays in `model/`; other modules (`messages.ts`, `types.ts`, shared constants) stay plain files. `src/main.tsx` is the bootstrap and defines no component.
+- Exempt: tests (`*.test.*`), `testing.ts(x)` test doubles, `generated/`, `reference/`.
+
 ## Code standards
 - Components are small and presentational where possible; logic in hooks and pure functions in `model/`.
-- Props typed explicitly; no default exports except route components that shells lazy-load.
+- Props typed explicitly; no default exports except route components that shells lazy-load (`components/<Name>Page/<Name>Page.tsx`).
 - The live entity layer must not re-render React per entity: keep entity state in a store, render the map layer imperatively, batch updates per animation frame; virtualize long lists.
 - All user-visible text through one place (`ui-kit` i18n helper) even if only English at first.
 - Accessibility: semantic HTML, keyboard navigation, labelled controls; check with Testing Library role queries.
 - The GUI never contains engine logic. It only calls the generated client and decodes the stream.
 
 ## Scripts (root package.json, run with bun)
-`dev`, `build`, `preview`, `typecheck` (tsc -b), `lint` (biome check), `format`, `test` (bun test), `test:e2e` (playwright), `check:deps`, `gen:api`, `gen:tokens`, `check:tokens`, `check:contrast`, `check:licenses`, `verify` (the ordered list of the `verify-frontend` skill; gate 15), `tauri`. Scripts are added by the work item that creates their input.
+`dev`, `build`, `preview`, `typecheck` (tsc -b), `lint` (biome check), `format`, `test` (bun test), `test:e2e` (playwright), `check:layout`, `check:deps`, `gen:api`, `gen:tokens`, `check:tokens`, `check:contrast`, `check:licenses`, `verify` (the ordered list of the `verify-frontend` skill; gate 15), `tauri`. Scripts are added by the work item that creates their input.
 
 ## Design system (Vantage, amendment A-003)
 All UI follows docs/design-system/ (README.md, tactical-display.md, UMBRA-IMPLEMENTATION.md). Use the apply-design-system skill for any UI work.

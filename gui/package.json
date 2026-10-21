@@ -22,8 +22,9 @@
     "check:tokens": "bun scripts/check-tokens.mjs",
     "check:contrast": "bun scripts/check-contrast.mjs",
     "check:licenses": "bun scripts/check-licenses.ts",
+    "check:layout": "bun scripts/check-layout.ts",
     "check:deps": "depcruise --config .dependency-cruiser.cjs . && bun scripts/check-plain-requests.ts",
-    "verify": "bun run gen:api --check && bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run check:deps && bun run test && bun run build && bun run test:e2e"
+    "verify": "bun run gen:api --check && bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run check:layout && bun run check:deps && bun run test && bun run build && bun run test:e2e"
   },
   "dependencies": {
     "@umbra/data": "workspace:*",

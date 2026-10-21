@@ -20,3 +20,5 @@
 @import "./components/CommandBar/CommandBar.css";
 @import "./components/Readout/Readout.css";
 @import "./components/EntityRow/EntityRow.css";
+@import "./components/EntityList/EntityList.css";
+@import "./components/ChipGroup/ChipGroup.css";

@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
-import { EntityList, EntityRow, type EntityRowProps } from "./EntityRow.tsx";
+import { EntityList } from "../EntityList/EntityList.tsx";
+import { EntityRow, type EntityRowProps } from "./EntityRow.tsx";
 
 afterEach(cleanup);
 
@@ -24,15 +24,6 @@ function renderRow(props: Partial<EntityRowProps> = {}, from: EntityRowProps = b
     </EntityList>,
   );
 }
-
-test("EntityList is a labelled listbox and rows are options in it", () => {
-  renderRow();
-  const list = screen.getByRole("listbox", { name: "Entities" });
-  expect(list).toHaveClass("vt-list");
-  const option = screen.getByRole("option");
-  expect(list).toContainElement(option);
-  expect(option).toHaveClass("vt-entity");
-});
 
 test("aria-selected reflects selected", () => {
   const { rerender } = renderRow();
@@ -91,50 +82,4 @@ test("click and Enter and Space call onSelect", async () => {
   await user.keyboard("{Enter}");
   await user.keyboard(" ");
   expect(n).toBe(3);
-});
-
-function Harness() {
-  const [sel, setSel] = useState("a");
-  return (
-    <EntityList label="Entities">
-      {["a", "b", "c"].map((k) => (
-        <EntityRow
-          key={k}
-          {...base}
-          name={`Unit ${k}`}
-          selected={sel === k}
-          onSelect={() => setSel(k)}
-        />
-      ))}
-    </EntityList>
-  );
-}
-
-test("arrow keys, Home and End move focus between rows without selecting", async () => {
-  const user = userEvent.setup();
-  render(<Harness />);
-  const names = (n: string) => screen.getByRole("option", { name: new RegExp(`Unit ${n}`) });
-  names("a").focus();
-  await user.keyboard("{ArrowDown}");
-  expect(names("b")).toHaveFocus();
-  expect(names("a")).toHaveAttribute("aria-selected", "true");
-  await user.keyboard("{End}");
-  expect(names("c")).toHaveFocus();
-  await user.keyboard("{ArrowDown}");
-  expect(names("c")).toHaveFocus();
-  await user.keyboard("{ArrowUp}");
-  expect(names("b")).toHaveFocus();
-  await user.keyboard("{Home}");
-  expect(names("a")).toHaveFocus();
-  await user.keyboard("{Enter}");
-  expect(names("a")).toHaveAttribute("aria-selected", "true");
-});
-
-test("EntityList className is appended", () => {
-  render(
-    <EntityList label="E" className="extra">
-      <EntityRow {...base} />
-    </EntityList>,
-  );
-  expect(screen.getByRole("listbox")).toHaveClass("vt-list", "extra");
 });

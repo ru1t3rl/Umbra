@@ -4,6 +4,8 @@
 - **Requirement IDs**: ADR 0004 / D-19 (no CI, local gate list), REQ-A-4, REQ-X-4, A-002 (M5b acceptance 1-2), A-003 (acceptance), NFR-3 (Linux only, human decision 2026-10-19)
 - **Affected**: `docs/build.md` (row 15, prerequisites), `scripts/gates.sh`, skill `verify-frontend`, `gui/package.json` (`verify`), `gui/playwright.config.ts`, `gui/e2e/`, decision row D-60
 
+> Amendment: amended by ADR 0046: `check:layout` runs after lint (step 8 of the `verify-frontend` list).
+
 ## Context
 `docs/build.md` row 15 is "from M8" and runs only with `scripts/gates.sh --gui`; its command lacks
 `gen:tokens --check`, `check:tokens`, `check:contrast` (A-003), licences (ADR 0043) and `test:e2e`

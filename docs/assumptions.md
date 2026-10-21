@@ -14,6 +14,8 @@ and update that file's range in the table below. Do not add entries to this inde
 numbers from its own reserved block instead of the next free number:
 - M6: ASM-224..ASM-299, ADR 0030..0039, decision rows D-49..D-55;
 - M5b: ASM-300..ASM-379, ADR 0040..0049, decision rows D-56..D-62.
+- Overflow blocks (coordinator decision 2026-10-21, when the first blocks were nearly used up): M6 continues at
+  ASM-400..ASM-499, M5b at ASM-500..ASM-599. ADR and decision-row blocks are unchanged.
 Gaps left in a block stay unused. After both close, numbering continues after the highest number used.
 
 | Milestone | File | IDs | Entries |
@@ -24,4 +26,4 @@ Gaps left in a block stay unused. After both close, numbering continues after th
 | M3 | [`docs/assumptions/M3.md`](assumptions/M3.md) | ASM-070..ASM-110 | 41 |
 | M4 | [`docs/assumptions/M4.md`](assumptions/M4.md) | ASM-111..ASM-148 | 38 |
 | M5 | [`docs/assumptions/M5.md`](assumptions/M5.md) | ASM-149..ASM-223 | 75 |
-| M5b | [`docs/assumptions/M5b.md`](assumptions/M5b.md) | ASM-300..ASM-334 (block ASM-300..ASM-379) | 35 |
+| M5b | [`docs/assumptions/M5b.md`](assumptions/M5b.md) | ASM-300..ASM-378 (block ASM-300..ASM-379; overflow ASM-500..ASM-599) | 79 |

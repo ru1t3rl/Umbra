@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
+import { useTheme } from "../../hooks/useTheme.ts";
 import { defineMessages } from "../../i18n/defineMessages.ts";
-import { useTheme } from "../../theme/ThemeProvider.tsx";
 import { Toggle } from "../Toggle/Toggle.tsx";
 
 const t = defineMessages({ label: "Day theme" });

@@ -3,5 +3,7 @@
 export const route = {
   path: "/showcase",
   label: "Design system",
-  lazy: async () => ({ Component: (await import("./ShowcasePage.tsx")).default }),
+  lazy: async () => ({
+    Component: (await import("./components/ShowcasePage/ShowcasePage.tsx")).default,
+  }),
 } as const;

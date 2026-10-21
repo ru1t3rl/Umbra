@@ -45,16 +45,19 @@ features/<name>/
   tsconfig.json       # extends ../../tsconfig.base.json
   README.md           # purpose, public API, example
   src/index.ts        # the ONLY public surface
-  src/components/  src/hooks/  src/model/   # model = pure logic/types
-  src/*.test.ts(x)    # colocated tests
+  src/components/<Name>/<Name>.tsx          # one component per file (+ <Name>.css, <Name>.test.tsx beside it)
+  src/hooks/use<Name>.ts(x)                 # one hook per file (+ use<Name>.test.ts(x) beside it)
+  src/context/<Name>Context.ts              # React context objects shared by a provider and its hook
+  src/model/                                # pure logic/types
 ```
+Components, hooks and contexts follow the file layout of ADR 0046, enforced by `bun run check:layout` (see `gui/CLAUDE.md`, "File layout").
 Shell:
 ```
 feature-shells/<name>/
   package.json        # name @umbra/shell-<name>
   src/index.ts        # exports `route` (path, lazy page, nav metadata)
-  src/<Name>Page.tsx  # layout + wiring only
-  src/*.test.tsx
+  src/components/<Name>Page/<Name>Page.tsx  # layout + wiring only (+ <Name>Page.test.tsx; default export, lazy-loaded)
+  src/components/<Part>/<Part>.tsx          # page parts, one component per file (ADR 0046)
 ```
 
 ## 5. Data flow

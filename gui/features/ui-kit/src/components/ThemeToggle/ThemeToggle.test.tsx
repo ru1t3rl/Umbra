@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ThemeProvider } from "../../theme/ThemeProvider.tsx";
+import { ThemeProvider } from "../ThemeProvider/ThemeProvider.tsx";
 import { ThemeToggle } from "./ThemeToggle.tsx";
 
 afterEach(() => {
   cleanup();
-  delete document.documentElement.dataset["theme"];
+  delete document.documentElement.dataset.theme;
 });
 
 const memory = () => {
@@ -25,7 +25,7 @@ test("is a switch labelled Day theme, off in the dark default", () => {
   );
   const sw = screen.getByRole("switch", { name: "Day theme" });
   expect(sw).toHaveAttribute("aria-checked", "false");
-  expect(document.documentElement.dataset["theme"]).toBe("dark");
+  expect(document.documentElement.dataset.theme).toBe("dark");
 });
 
 test("toggling sets data-theme to light and back", async () => {
@@ -37,10 +37,10 @@ test("toggling sets data-theme to light and back", async () => {
   );
   const sw = screen.getByRole("switch", { name: "Day theme" });
   await user.click(sw);
-  expect(document.documentElement.dataset["theme"]).toBe("light");
+  expect(document.documentElement.dataset.theme).toBe("light");
   expect(sw).toHaveAttribute("aria-checked", "true");
   await user.keyboard(" ");
-  expect(document.documentElement.dataset["theme"]).toBe("dark");
+  expect(document.documentElement.dataset.theme).toBe("dark");
   expect(sw).toHaveAttribute("aria-checked", "false");
 });
 

@@ -3,8 +3,8 @@
 // (getStatus, stepRun, ...) are for gui/e2e and scripts only; `check:deps` rejects them in features,
 // shells and the app.
 
-export type { DataProviderProps } from "./DataProvider.tsx";
-export { DataProvider } from "./DataProvider.tsx";
+export type { DataProviderProps } from "./components/DataProvider/DataProvider.tsx";
+export { DataProvider } from "./components/DataProvider/DataProvider.tsx";
 export { configureEngineUrl } from "./fetcher.ts";
 export * from "./generated/api.ts";
 export type { ApiProblemInit } from "./problem.ts";

@@ -5,7 +5,8 @@ import { connectEngineStream, streamUrl } from "@umbra/engine-stream";
 import { loadRuntimeConfig, RuntimeConfigProvider } from "@umbra/runtime-config";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { App, ConfigErrorApp } from "./App.tsx";
+import { App } from "./components/App/App.tsx";
+import { ConfigErrorApp } from "./components/ConfigErrorApp/ConfigErrorApp.tsx";
 import { createAppRouter } from "./router.tsx";
 
 const container = document.getElementById("root");

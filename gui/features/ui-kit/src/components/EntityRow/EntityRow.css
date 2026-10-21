@@ -42,15 +42,3 @@
 .vt-entity-stale {
   opacity: var(--opacity-track);
 }
-.vt-list {
-  display: flex;
-  flex-direction: column;
-  width: 480px;
-  padding: var(--space-1);
-  background: var(--surface-1);
-  border-radius: var(--radius-md);
-}
-.vt-list > .vt-entity + .vt-entity {
-  border-top: 1px solid var(--line);
-  border-radius: 0;
-}

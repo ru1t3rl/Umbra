@@ -31,7 +31,7 @@
   "overrides": [
     {
       "includes": [
-        "feature-shells/*/src/*Page.tsx",
+        "feature-shells/*/src/components/*Page/*Page.tsx",
         "vite.config.ts",
         "features/data/orval.config.ts",
         "playwright.config.ts",

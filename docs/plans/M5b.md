@@ -7,7 +7,7 @@ five GUI rule changes, the A-003 agent/skill edits, self-drawn APP-6D symbols, L
 baselines reviewed by the human at WI-8 and WI-15.
 
 - ADRs 0040-0045 are Accepted (2026-10-20).
-- Decision rows D-56..D-61 are proposed (D-62 unused).
+- Decision rows D-56..D-62 are proposed (D-62 added by WI-12b, ADR 0046).
 - Assumptions are ASM-300..ASM-321 in `docs/assumptions/M5b.md`.
 
 Base: branch `m5b` (worktree `/home/ru1t3rl/Documents/cgf/umbra-m5b`) from `develop` at `ac9e01e`, tag
@@ -758,7 +758,7 @@ showcase and dashboard baselines once, in WI-8 and WI-15.
 - D-59 GUI dependencies and licence policy (0043);
 - D-60 gate 15 and e2e harness (0044);
 - D-61 live data flow (0045);
-- D-62 unused.
+- D-62 GUI file layout: one component or hook per file in `components/` and `hooks/` (0046, human decision 2026-10-21).
 
 ## Assumptions
 ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; final at WI-17).
@@ -775,15 +775,16 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
   `../umbra-m5b` (branch `m5b`, not yet merged into `develop`); M6 is in `../umbra-m6` (branch `m6`).
 
 ### In progress
-- Nothing. The working tree is clean at the WI-12 commit.
+- Nothing. The working tree is clean at the WI-12b commit.
 
 ### Next
-- WI-12b (human decision 2026-10-21): GUI file layout — every component and hook in its own file under `components/` or `hooks/`, enforced by a verify check; then WI-13 (offline basemap assets, H-2) and WI-14..WI-17.
+- WI-13 (offline basemap assets, H-2), then WI-14..WI-17. New components and hooks follow the file layout of ADR 0046 (`bun run check:layout`).
 - **Pending human review (H-10):** the six showcase baselines in `gui/e2e/__screenshots__/linux/` (ASM-347).
 - Open nit from the WI-2 review: the `scripts/` entry of the second `no-deep-import` rule has no fixture.
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
+- WI-12b (2026-10-21, reviewed GO-with-fixes, fixes applied: checker covers anonymous defaults, wrappers, createElement, nested declarations, .js/.jsx and contexts; D-62; 431 bun + 15 e2e tests; human decision: every component and hook in its own file under `components/` or `hooks/`): ADR 0046, `gui/scripts/check-layout.ts` + `check:layout` in `verify` (after `lint`), failing fixtures `gui/test/arch-fixtures/layout/` + `gui/test/layout.test.ts`; all components moved to `src/components/<Name>/<Name>.tsx`, hooks to `src/hooks/`, contexts to `src/context/` in ui-kit, engine-stream, data, runtime-config, map-view, shell-showcase and the app; `ChipGroup`, `EntityList`, `Shape`, the showcase demos, `Placeholder`, `NotFound`, `ConfigErrorApp` split into their own files; skills and docs updated; ASM-375..378.
 - WI-12 (2026-10-21, reviewed GO-with-fixes, fixes applied: separate colour/WebGL/context-lost errors, throttled count announcement, style-ready gating, images before the first flush, fit only on success; flush median 3.4 ms, p95 10.2 ms on SwiftShader (ASM-372); 404 bun + 15 e2e tests): `@umbra/map-view` MapLibre implementation: `src/maplibre/{createMapLibreView,rasterize,testing}.ts`, `src/LiveMap.tsx` (public `LiveMap`, `LiveMapProps`, `./styles.css`), `src/e2eHook.ts`, `src/model/camera.ts`, `paintUpdates`, `main.tsx` imports the styles, `scripts/measure-map.ts`; tests incl. a build-output test for the e2e hook; review fixes applied (error kinds incl. WebGL and context loss, throttled count announcement, style readiness and images before the first flush, boolean `fitTo`, recoverable colour error, `umbra-` image ids, sized SVG); ASM-367..374. Measurement (SwiftShader, 10,000 entities): main-thread flush median 3.4 ms, p95 10.2 ms; `setData`-to-idle median 475 ms (ASM-372).
 - WI-11 (2026-10-21, reviewed GO-with-fixes, fixes applied: ring keyed on `ownership !== "owned"`, MapLibre 5.9.0 types (no local style types), ring clearance and 1.5x direction line under the symbol, DOM-free colours, 343 bun + 15 e2e tests): `@umbra/map-view` (domain) pure model: `src/model/{affiliation,colors,symbols,style,features}.ts`, internal `src/MapView.ts`, tests (affiliation, colors, symbols, style, features), remote-entity rule in `tactical-display.md` (H-8), ASM-362..366 (ring for remote and unknown; `maplibre-gl` 5.9.0 installed for types; ring clears every frame; direction below symbols).
 - WI-10 (2026-10-21, reviewed GO-with-fixes, fixes applied: close code 4002, engine URL validated, throwing socket factory retried, GUI domain types with "unknown" values (ASM-359), route validation, render-count 10k test, listener isolation; 302 bun + 15 e2e tests): `@umbra/engine-stream` runtime: `model/{decode,store,backoff,url}.ts`, `connection.ts` (`connectEngineStream`, injectable socket/scheduler/timers), `EngineStreamProvider`, `hooks.ts`; `main.tsx` creates the connection (`streamUrl` from the config), `App` takes it as a prop and nests `ThemeProvider > DataProvider > EngineStreamProvider > RouterProvider`. zustand 5.0.15 pinned. Subprotocol finding: the server negotiates none, so the client sends none; protocol is checked in `hello` (ASM-356). Measured: decoding a 10,000-entity frame (1.5 MB) takes about 3.7 ms (JSON.parse alone 1.7 ms) in Bun, within the 16 ms budget. All WI-10 test rows incl. the two forward-compat rows and the 10,000-entity rows, plus an App-level provider test. Mutation checks: 10 mutants, all caught. Review fixes applied: close code 4002, engineUrl validation, throwing socket factory retried, domain types with `unknown` values and a `skipped` counter, route validation, listener isolation, render-count rows. ASM-356..361.
@@ -809,7 +810,7 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
 - Later ADR: `milsymbol` once the contract has entity types.
 
 ### Assumed
-See `docs/assumptions/M5b.md` (ASM-300..ASM-347 so far). Added during implementation: ASM-322..326
+See `docs/assumptions/M5b.md` (ASM-300..ASM-378 so far). Added during implementation: ASM-322..326
 (exact pins, licence rules incl. OFL-1.1 only for `@fontsource/*`, tsconfig layout, `gui/**/node_modules`,
 biome preset), ASM-327..331 (dependency-cruiser details, app root exempt from the workspace-dep rule,
 plain-request allow-list until WI-9), ASM-332..334 (remaining `umbra-allow` lines, own-keys i18n lookup,
