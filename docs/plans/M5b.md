@@ -6,9 +6,9 @@ Earth (option a), the full npm dependency set, licence allow-list and prerequisi
 five GUI rule changes, the A-003 agent/skill edits, self-drawn APP-6D symbols, Linux-only screenshot
 baselines reviewed by the human at WI-8 and WI-15.
 
-- ADRs 0040-0045 are Accepted (2026-10-20).
-- Decision rows D-56..D-62 are proposed (D-62 added by WI-12b, ADR 0046).
-- Assumptions are ASM-300..ASM-321 in `docs/assumptions/M5b.md`.
+- ADRs 0040-0045 are Accepted (2026-10-20), ADR 0046 (2026-10-21).
+- Decision rows D-56..D-62 are in `docs/SPEC.md` (accepted with their ADRs; D-62 added by WI-12b, ADR 0046; WI-17).
+- Assumptions are ASM-300..ASM-378 and ASM-500..ASM-517 (97, final at WI-17) in `docs/assumptions/M5b.md`.
 
 Base: branch `m5b` (worktree `/home/ru1t3rl/Documents/cgf/umbra-m5b`) from `develop` at `ac9e01e`, tag
 `m5-done`.
@@ -54,18 +54,18 @@ becomes active in this milestone (ADR 0044).
 ## Acceptance mapping
 Each criterion in `docs/milestones.md` (M5b), with the tests that prove it.
 
-| # | Criterion | Evidence (tests, commands) | WI |
-|---|---|---|---|
-| 1 | Playwright against a real headless `umbra` serving `walking_skeleton` in stepped mode: all entities appear; after `step(n)` the layer positions equal the engine's list within tolerance, and the markers have moved | `gui/e2e/engine/live-map.spec.ts` (ASM-514): `all walking_skeleton entities appear on the map`, `after step(600) the entity layer equals the engine list for that tick and every marker moved`, `a reload of the scenario replaces the entities` (tolerances below) | WI-16 |
-| 2 | `typecheck`, `lint`, `test`, `check:deps`, `test:e2e` pass; `gen:api` gives no diff | `bun run verify` (ADR 0044), run by `scripts/gates.sh --gui` as gate 15; `gen:api --check` is its first step | WI-1 (script), WI-17 (evidence) |
-| 3 | No engine source imported (REQ-A-4) | dependency-cruiser rule `no-engine-source` (nothing resolves outside `gui/` except `node_modules`); `gui/test/architecture.test.ts` `engine source import is rejected` (fixture imports `../../crates/...` and `../api/openapi.json`) | WI-2 |
-| 4 | No engine crate behavior or acceptance criterion changed | `git diff m5-done -- crates xtask examples api Cargo.toml Cargo.lock` is empty at close-out (allowed: `scripts/gates.sh` and `docs/`); the full engine gate `scripts/gates.sh` passes with goldens unchanged | WI-17 |
-| 5 | Umbra icon: `index.html` links `umbra_icon.svg`; the served asset is byte-identical to the root file | `gui/e2e/app.spec.ts`: `the page links umbra_icon.svg as an svg icon`, `the served icon is byte-identical to the repository root file`; `gui/src/index-html.test.ts` (the `<link rel="icon" type="image/svg+xml" href="/umbra_icon.svg">` tag) | WI-7 |
-| 6a | A-003: `gen:tokens --check`, `check:tokens`, `check:contrast` in verify, passing | `bun run verify` steps 2-4 | WI-1 |
-| 6b | All 14 reference components with the reference props, and tests | `gui/features/ui-kit/src/components/<Name>/<Name>.test.tsx` for each of the 14, plus `props.test-d.ts` (type-level check that each component's props are assignable to and from the reference `index.d.ts`) | WI-4, WI-5, WI-6 |
-| 6c | The showcase renders every token and component in Ops and Day (screenshots) | `gui/e2e/showcase.spec.ts`: `showcase tokens (ops|day)`, `showcase components (ops|day)` with committed baselines | WI-8 |
-| 6d | A hex literal in a feature fails `check:tokens` (tested) | `gui/scripts/check-tokens.test.ts` `a hex literal in a feature fails` (temporary fixture file under a temp copy of the roots, or the `--root` argument added in WI-1) and `umbra-allow suppresses one line` | WI-1 |
-| 6e | The app starts in Ops and switches to Day without a reload | `gui/e2e/app.spec.ts` `starts in ops and switches to day without a reload` (asserts `data-theme`, and that the navigation count and a `window` marker survive); `ThemeProvider.test.tsx` | WI-3, WI-8 |
+| # | Criterion | Evidence (tests, commands) | WI | Result at close-out (WI-17, 2026-10-21) |
+|---|---|---|---|---|
+| 1 | Playwright against a real headless `umbra` serving `walking_skeleton` in stepped mode: all entities appear; after `step(n)` the layer positions equal the engine's list within tolerance, and the markers have moved | `gui/e2e/engine/live-map.spec.ts` (ASM-514): `all walking_skeleton entities appear on the map`, `after step(600) the entity layer equals the engine list for that tick and every marker moved`, `a reload of the scenario replaces the entities` (tolerances below) | WI-16 | passing at close-out: `bunx playwright test --project=engine` 3 of 3 (gate 15 run 2026-10-21; WI-16 ran it three times in a row) |
+| 2 | `typecheck`, `lint`, `test`, `check:deps`, `test:e2e` pass; `gen:api` gives no diff | `bun run verify` (ADR 0044), run by `scripts/gates.sh --gui` as gate 15; `gen:api --check` is its first step | WI-1 (script), WI-17 (evidence) | passing: `scripts/gates.sh --gui` all gates, gate 15 `bun run verify` 32 s: 526 bun tests (70 files), 23 Playwright tests (20 `ui`, 3 `engine`), `gen:api --check` no diff |
+| 3 | No engine source imported (REQ-A-4) | dependency-cruiser rule `no-engine-source` (nothing resolves outside `gui/` except `node_modules`); `gui/test/architecture.test.ts` `engine source import is rejected` (fixture imports `../../crates/...` and `../api/openapi.json`) | WI-2 | passing: `architecture.test.ts` (in the 523) and `check:deps` in gate 15 |
+| 4 | No engine crate behavior or acceptance criterion changed | `git diff m5-done -- crates xtask examples api Cargo.toml Cargo.lock` is empty at close-out (allowed: `scripts/gates.sh` and `docs/`); the full engine gate `scripts/gates.sh` passes with goldens unchanged | WI-17 | passing: `git diff --stat m5-done...HEAD -- crates/ api/ examples/ Cargo.toml Cargo.lock xtask/` is empty (the only file outside `gui/` and `docs/` that changed is `scripts/gates.sh` plus `.gitignore`, `CLAUDE.md`, `.claude/`); gates 1-14, 16, `m2-compat` and the four goldens pass (`849026656b7b42d2`, `3a7bfda0a76111b9`, `88954c5dc6b52b48`, `3cc077a4c83c4a63`) |
+| 5 | Umbra icon: `index.html` links `umbra_icon.svg`; the served asset is byte-identical to the root file | `gui/e2e/app.spec.ts`: `the page links umbra_icon.svg as an svg icon`, `the served icon is byte-identical to the repository root file`; `gui/src/index-html.test.ts` (the `<link rel="icon" type="image/svg+xml" href="/umbra_icon.svg">` tag) | WI-7 | passing (e2e `app.spec.ts` 2 tests, `index-html.test.ts`) |
+| 6a | A-003: `gen:tokens --check`, `check:tokens`, `check:contrast` in verify, passing | `bun run verify` steps 2-4 | WI-1 | passing: `verify` steps `gen:tokens --check`, `check:tokens`, `check:contrast` (0 failures, 3 informational warnings) |
+| 6b | All 14 reference components with the reference props, and tests | `gui/features/ui-kit/src/components/<Name>/<Name>.test.tsx` for each of the 14, plus `props.test-d.ts` (type-level check that each component's props are assignable to and from the reference `index.d.ts`) | WI-4, WI-5, WI-6 | passing: 21 component directories under `features/ui-kit/src/components/`, 19 of them with a `<Name>.test.tsx` (all 14 reference components included); `Shape` is covered through its users and `shared` holds CSS only; `props.test-d.ts` is compiled by `tsc -b` |
+| 6c | The showcase renders every token and component in Ops and Day (screenshots) | `gui/e2e/showcase.spec.ts`: `showcase tokens (ops|day)`, `showcase components (ops|day)` with committed baselines | WI-8 | tests pass against the committed baselines; the baselines themselves are PENDING the human visual review (H-10, ASM-347) |
+| 6d | A hex literal in a feature fails `check:tokens` (tested) | `gui/scripts/check-tokens.test.ts` `a hex literal in a feature fails` (temporary fixture file under a temp copy of the roots, or the `--root` argument added in WI-1) and `umbra-allow suppresses one line` | WI-1 | passing (`gui/scripts/check-tokens.test.ts`: `a hex literal in a feature fails`, `umbra-allow suppresses one line`) |
+| 6e | The app starts in Ops and switches to Day without a reload | `gui/e2e/app.spec.ts` `starts in ops and switches to day without a reload` (asserts `data-theme`, and that the navigation count and a `window` marker survive); `ThemeProvider.test.tsx` | WI-3, WI-8 | passing (`e2e/app.spec.ts` `starts in ops and switches to day without a reload`; `ThemeProvider.test.tsx`) |
 
 **e2e tolerances (ASM-310):**
 - *Data layer.* MapView's source positions (what was handed to MapLibre) equal the engine's
@@ -763,7 +763,7 @@ showcase and dashboard baselines once, in WI-8 and WI-15.
 - D-62 GUI file layout: one component or hook per file in `components/` and `hooks/` (0046, human decision 2026-10-21).
 
 ## Assumptions
-ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; final at WI-17).
+ASM-300..ASM-378 and ASM-500..ASM-517 (97) are in `docs/assumptions/M5b.md` (final at WI-17).
 
 ## Running log
 ### Status
@@ -775,18 +775,19 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
   the Bun project lives in this repository as the monorepo workspace under `gui/` (no separate repo).
 - 2026-10-20: **paused by the human** after WI-3. M5b runs in parallel with M6 in the worktree
   `../umbra-m5b` (branch `m5b`, not yet merged into `develop`); M6 is in `../umbra-m6` (branch `m6`).
+- 2026-10-21: WI-17 (close-out) done by frontend-engineer, NOT committed. **M5b complete pending human screenshot review and tag.**
 
 ### In progress
-- Nothing. The working tree is clean at the WI-16 commit.
+- Nothing. WI-17 changes are in the working tree of `../umbra-m5b`, uncommitted (docs, `gui/README.md`).
 
 ### Next
-- WI-17 (close-out).
+- Human/coordinator: review the Linux screenshot baselines (H-10), code-reviewer review of WI-17, commit, tag `m5b-done`, merge `m5b` into `develop`.
 - **Pending human review (H-10, WI-15):** the dashboard baselines `gui/e2e/__screenshots__/linux/dashboard-ops.png` and `dashboard-day.png`, and the regenerated `showcase-floating-ops.png` and `showcase-floating-day.png` (ASM-512). New components and hooks follow the file layout of ADR 0046 (`bun run check:layout`).
 - **Pending human review (H-10):** the six showcase baselines in `gui/e2e/__screenshots__/linux/` (ASM-347).
-- Open nit from the WI-2 review: the `scripts/` entry of the second `no-deep-import` rule has no fixture.
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
+- WI-17 (2026-10-21, not committed): close-out. `scripts/gates.sh --gui` all gates passed (gates 1-14, 16, gate 15 `bun run verify` 32 s with 523 bun tests and 23 Playwright tests, `m2-compat`, four goldens unchanged); engine-isolation diff empty; docs: `frontend-architecture.md` (inventory, data flow, `./styles.css` entry rule, layout), `test-matrix.md` (M5b table, REQ-A-4), acceptance mapping results above, `assumptions/M5b.md` final (97 rows, revisit triggers refreshed, index row), SPEC D-56..D-62 and open question 6 resolved, `gui/README.md`, `milestones.md` (criteria ticked with evidence; baselines, tag and merge pending). ASM-517.
 - WI-16 (2026-10-21, reviewed GO-with-fixes, fixes applied: fixture-started engine, diagnostic waits, `zoom()`, `e2e/engine/**`; 523 bun + 23 e2e tests (20 ui + 3 engine), three consecutive full e2e runs green): live-map e2e against a real headless `umbra serve`: `gui/e2e/engine/live-map.spec.ts` (`all walking_skeleton entities appear on the map`, `after step(600) the entity layer equals the engine list for that tick and every marker moved`, `a reload of the scenario replaces the entities`), `e2e/support/{engine,geo,children,processes,fixtures}.ts`, projects `ui` and `engine`, `MapInspection` gains `sourcePositions`/`renderedPositions`/`frameTick`/`zoom`; `docs/build.md` and the `verify-frontend` skill document the release binary (engine project only); ASM-513..516.
 - WI-15 (2026-10-21, reviewed GO-with-fixes, fixes applied: `LiveMap` `insets` drive fit padding and the error banner, entry and dashboard chunk budgets enforced by the build test, `--vt-cmdbar-height`, narrow axe exclusion; 522 bun + 20 e2e tests): `@umbra/shell-dashboard` (`DashboardPage`, route `/`), `src/router.tsx` registers `/` and `/showcase` (placeholder removed), compact Readout in the CommandBar (ui-kit), `--umbra-map-inset-top` for the map error banner, `e2eHook.build.test.ts` moved to the app and run against the real build in production and e2e mode, `e2e/dashboard.spec.ts` (screenshots Ops/Day, axe, landmarks), `@axe-core/playwright` 4.10.2; ASM-507..512. Review fixes: `insets` prop on `LiveMap`, `--vt-cmdbar-height`, bundle budgets, compact Readout in the showcase sample, READMEs. Baselines pending human review (H-10, WI-15), see Next.
 - WI-14 (2026-10-21, reviewed GO-with-fixes, fixes applied: live only while connected, unknown stop reasons are danger (decoder maps them to "unknown"), run-state status announcement, count isolation proven; 497 bun + 15 e2e tests): `@umbra/scenario-control` (domain, read-only slice, ASM-316): `RunStatusBar()` (sim-time, tick, entity-count Readouts, run-state Badge; fragment of CommandBar children), `ConnectionAlert()`; model `formatSimTime`, `runStateLabel`, `connectionMessage`; hook `useEntityCount`; 40 bun tests; 9 mutants all caught; ASM-503..506.

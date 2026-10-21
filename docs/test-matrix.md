@@ -19,7 +19,7 @@ Files: `xtask/tests/check_rules.rs` (R), `xtask/tests/check_deps.rs` (D), `crate
 | AT-10 | REQ-C-4 | unit + proptest | all tests in `units.rs` incl. `degrees_to_radians_and_back_round_trips`; 3 `compile_fail` doctests | passing (14 tests + 3 doctests, WI-5) |
 | AT-11 | NFR-2, NFR-4, REQ-K-4 | manual mutation | clippy fails on `Instant::now`/`HashMap` (WI-1, done); `cargo deny` fails on GPL dep (WI-4); ~~fmt job fails on bad format (WI-2)~~ dropped (ADR 0004) | done; evidence in the M0 running log (incl. dev-dep GPL with `include-dev`) |
 
-Uncovered in M0 (by design): REQ-A-4 (M8, ASM-021), REQ-K-4 determinism gate (M1, ASM-019), NFR-1 benchmarks (later).
+Uncovered in M0 (by design): REQ-A-4 (covered in M5b, see the M5b table; was M8, ASM-021), REQ-K-4 determinism gate (M1, ASM-019), NFR-1 benchmarks (later).
 
 ## M1
 
@@ -149,3 +149,27 @@ Plan: `docs/plans/M5.md`, "Acceptance tests". Step 4 wrote the tests against the
 | AT-20 | NFR-5, REQ-X-8, M5 WI-19 | integration | `umbra-server/tests/docs_api.rs` (`every_endpoint_and_operation_id_matches_the_openapi_file_both_ways`, `every_problem_code_and_status_matches_problem_code_all_both_ways`, `every_run_state_matches_the_openapi_enum_both_ways`, `every_configuration_key_matches_the_config_schema_both_ways`, `the_row_reader_ignores_other_sections_and_non_code_rows`): `docs/api.md` against `api/openapi.json`, `ProblemCode::ALL` and `config.v1.schema.json`; mutated by renaming an endpoint, an operation id, a status, a state and dropping a code and a config key (each fails) | passing (WI-19) |
 
 Gaps and notes: `docs/build.md` gate 4 and `scripts/gates.sh` gain `--test handle_determinism` in WI-10 (ASM-155). `poisoned_registry_recovers` pins from outside only that a panic in a subscriber's `notify` leaves the bus usable; poisoning the registry lock itself is reachable only from inside `bus.rs`, so WI-7 adds the unit test there (ASM-176). `replace_with_same_plugin_without_unload` and `validate_path_with_plugins_reuses_a_live_session_image_without_init` observe the plugin lifecycle through the `shutdown` log message of the fixture plugin (read with a global `tracing` capture); `init` itself does not log, so "no second `init`" is inferred from "no `shutdown`" (ASM-176). Not covered by an engine test: `plugin_c_circle` in the golden hashes (needs the C example plugin; gate 5 and the gates.sh goldens cover it, ASM-178).
+
+## M5b (GUI track; plan `docs/plans/M5b.md`, evidence at WI-17 on 2026-10-21)
+
+Run by `bun run verify` in `gui/` (gate 15 of `scripts/gates.sh --gui`): 526 bun tests in 70 files and 23 Playwright tests (20 project `ui`, 3 project `engine`). Paths are relative to `gui/`. Status as of the WI-17 close-out; "pending human" rows pass but wait for the visual review of the screenshot baselines (H-10).
+
+| AT | REQ-ID / criterion | Type | Test file(s) and names | Status |
+|---|---|---|---|---|
+| AT-1 | M5b acceptance 1, REQ-X-4..7, REQ-K-5, REQ-A-4 (client only) | e2e against the real `umbra serve` | `e2e/engine/live-map.spec.ts`: `all walking_skeleton entities appear on the map`, `after step(600) the entity layer equals the engine list for that tick and every marker moved`, `a reload of the scenario replaces the entities` (ASM-310 tolerances, ASM-514) | passing |
+| AT-2 | M5b acceptance 2, D-60 | process | `bun run verify` in gate 15 (`gen:api --check` first); `scripts/gates.sh --gui` | passing |
+| AT-3 | REQ-A-4, M5b acceptance 3 (was "M8, ASM-021" in M0) | architecture | `test/architecture.test.ts`: `engine source import is rejected (REQ-A-4: ../../crates and ../api/openapi.json)`, one failing fixture per rule (`test/arch-fixtures/`), the meta test that every rule has a fixture; rule `no-engine-source` in `.dependency-cruiser.cjs`; `scripts/check-plain-requests.ts` (ADR 0045) | passing |
+| AT-4 | M5b acceptance 4, D-13 | process | `git diff --stat m5-done...HEAD -- crates/ api/ examples/ Cargo.toml Cargo.lock xtask/` is empty; gates 1-14, 16, `scripts/m2-compat.sh` and the four goldens pass | passing |
+| AT-5 | M5b acceptance 5 (icon) | e2e + unit | `e2e/app.spec.ts`: `the page links umbra_icon.svg as an svg icon`, `the served icon is byte-identical to the repository root file`; `src/index-html.test.ts` | passing |
+| AT-6 | A-003 (acceptance 6a, 6d) | script tests | `scripts/design-scripts.test.ts`; `scripts/check-tokens.test.ts`: `a hex literal in a feature fails`, `umbra-allow suppresses one line`; `check:contrast` (0 failures) | passing |
+| AT-7 | A-003 (acceptance 6b) | component + type | `features/ui-kit/src/components/<Name>/<Name>.test.tsx` for all 14 reference components, `props.test-d.ts` (compiled by `tsc -b`) | passing |
+| AT-8 | A-003 (acceptance 6c), D-36 | e2e screenshots | `e2e/showcase.spec.ts`: `showcase tokens (ops|day)`, `showcase components (ops|day)`, `showcase floating command bar (ops|day)`, `showcase floating bar has no glass on glass (ops|day)`, `showcase slider arrow keys`; `e2e/dashboard.spec.ts`: `dashboard (ops|day)`, `dashboard has no accessibility violations (ops|day)`, `the dashboard has one banner, one main and no glass on glass` | passing; baselines pending human (H-10, ASM-347, ASM-512) |
+| AT-9 | A-003 (acceptance 6e) | e2e + component | `e2e/app.spec.ts`: `starts in ops and switches to day without a reload`; `features/ui-kit/src/components/ThemeProvider/ThemeProvider.test.tsx` | passing |
+| AT-10 | REQ-X-4, REQ-X-5 | unit + process | `features/data/src/fetcher.test.ts`, `features/data/src/components/DataProvider/DataProvider.test.tsx`, `scripts/gen-api.test.ts`; `gen:api --check` (no drift) | passing |
+| AT-11 | REQ-X-6, REQ-X-7, NFR-1, D-61 | unit | `features/engine-stream/src/connection.test.ts`, `features/engine-stream/src/model/{decode,backoff,url}.test.ts`, `features/engine-stream/src/hooks/use*.test.tsx`, incl. the 10,000-entity and render-count rows | passing |
+| AT-12 | REQ-K-5, NFR-1, D-56..D-58 | unit + browser | `features/map-view/src/model/*.test.ts` (affiliation, colors, symbols, style, features), `features/map-view/src/maplibre/*.test.ts`, `features/map-view/src/e2eHook.test.ts`; `src/e2eHook.build.test.ts` in the app (the production bundle has no `__UMBRA_E2E__`), `scripts/measure-map.ts` (SwiftShader: flush median 3.4 ms, p95 10.2 ms, ASM-372, manual) | passing; measurement manual |
+| AT-13 | NFR-4, D-59, D-62 | script tests | `scripts/check-licenses.test.ts`; `test/layout.test.ts` (`check:layout` fixtures) | passing |
+| AT-14 | D-57 | build + script tests | `scripts/simplify-basemap.test.ts`; `features/map-view/src/maplibre/basemapAssets.build.test.ts`, `basemapAssets.test.ts` (ASM-500..502) | passing |
+
+Not provable by the suite: the visual correctness of the screenshot baselines (human review), the rendering cost on a real GPU (ASM-372 measured on SwiftShader only), Windows and macOS (NFR-3, Linux-only by human decision 2026-10-19), a real online basemap style (option off by default, untested by design, ADR 0041).
+
