@@ -775,16 +775,14 @@ ASM-300..ASM-378 and ASM-500..ASM-517 (97) are in `docs/assumptions/M5b.md` (fin
   the Bun project lives in this repository as the monorepo workspace under `gui/` (no separate repo).
 - 2026-10-20: **paused by the human** after WI-3. M5b runs in parallel with M6 in the worktree
   `../umbra-m5b` (branch `m5b`, not yet merged into `develop`); M6 is in `../umbra-m6` (branch `m6`).
-- 2026-10-21: WI-17 (close-out) done by frontend-engineer, NOT committed. **M5b complete pending human screenshot review and tag.**
+- 2026-10-21: WI-17 (close-out) done by frontend-engineer, committed `f5bfdef`. **M5b complete.**
+- 2026-10-21: the human reviewed and approved the eight screenshot baselines (H-10) and asked to tag `m5b-done` and merge `m5b` into `develop`; done by the coordinator.
 
 ### In progress
-- Nothing. WI-17 changes are in the working tree of `../umbra-m5b`, uncommitted (docs, `gui/README.md`).
+- Nothing. M5b is closed (tag `m5b-done`, merged into `develop`).
 
 ### Next
-- Human/coordinator: review the Linux screenshot baselines (H-10), code-reviewer review of WI-17, commit, tag `m5b-done`, merge `m5b` into `develop`.
-- **Pending human review (H-10, WI-15):** the dashboard baselines `gui/e2e/__screenshots__/linux/dashboard-ops.png` and `dashboard-day.png`, and the regenerated `showcase-floating-ops.png` and `showcase-floating-day.png` (ASM-512). New components and hooks follow the file layout of ADR 0046 (`bun run check:layout`).
-- **Pending human review (H-10):** the six showcase baselines in `gui/e2e/__screenshots__/linux/` (ASM-347).
-- Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
+- M8 extends this GUI; it starts only after M7 and M5b (A-002).
 
 ### Done
 - WI-17 (2026-10-21, not committed): close-out. `scripts/gates.sh --gui` all gates passed (gates 1-14, 16, gate 15 `bun run verify` 32 s with 523 bun tests and 23 Playwright tests, `m2-compat`, four goldens unchanged); engine-isolation diff empty; docs: `frontend-architecture.md` (inventory, data flow, `./styles.css` entry rule, layout), `test-matrix.md` (M5b table, REQ-A-4), acceptance mapping results above, `assumptions/M5b.md` final (97 rows, revisit triggers refreshed, index row), SPEC D-56..D-62 and open question 6 resolved, `gui/README.md`, `milestones.md` (criteria ticked with evidence; baselines, tag and merge pending). ASM-517.
