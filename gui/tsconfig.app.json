@@ -3,6 +3,7 @@
   "compilerOptions": { "outDir": ".tsbuild/app", "tsBuildInfoFile": ".tsbuild/app.tsbuildinfo" },
   "include": ["src"],
   "references": [
+    { "path": "./feature-shells/dashboard" },
     { "path": "./feature-shells/showcase" },
     { "path": "./features/data" },
     { "path": "./features/engine-stream" },

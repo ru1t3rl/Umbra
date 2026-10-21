@@ -36,5 +36,6 @@ export default defineConfig(({ mode }) => ({
   define: mode === "e2e" ? { "import.meta.env.VITE_UMBRA_E2E": JSON.stringify("1") } : {},
   server: { proxy: proxy() },
   preview: { proxy: proxy() },
-  ...(mode === "e2e" ? { build: { outDir: "dist-e2e" } } : {}),
+  // 1050 kB is the dashboard chunk budget (MapLibre, lazy); src/e2eHook.build.test.ts enforces it and the entry budget.
+  build: { chunkSizeWarningLimit: 1050, ...(mode === "e2e" ? { outDir: "dist-e2e" } : {}) },
 }));

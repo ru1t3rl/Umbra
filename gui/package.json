@@ -31,6 +31,7 @@
     "@umbra/engine-stream": "workspace:*",
     "@umbra/map-view": "workspace:*",
     "@umbra/runtime-config": "workspace:*",
+    "@umbra/shell-dashboard": "workspace:*",
     "@umbra/shell-showcase": "workspace:*",
     "@umbra/ui-kit": "workspace:*",
     "react": "19.3.1",
@@ -38,6 +39,7 @@
     "react-router": "7.18.4"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
     "@biomejs/biome": "2.5.15",
     "@happy-dom/global-registrator": "20.14.6",
     "@playwright/test": "1.64.1",

@@ -7,6 +7,7 @@ import {
   useStreamStatus,
   type WebSocketLike,
 } from "@umbra/engine-stream";
+import { route as dashboard } from "@umbra/shell-dashboard";
 import { useTheme } from "@umbra/ui-kit";
 import type { ReactElement } from "react";
 import { createMemoryRouter } from "react-router";
@@ -39,9 +40,16 @@ function idleConnection(): EngineStreamConnection {
 
 const at = (path: string) => createMemoryRouter(routes, { initialEntries: [path] });
 
-test("the placeholder route renders", () => {
-  render(<App router={at("/")} connection={idleConnection()} />);
-  expect(screen.getByRole("heading", { name: "Umbra" })).toBeTruthy();
+test("the showcase route renders", async () => {
+  render(<App router={at("/showcase")} connection={idleConnection()} />);
+  expect(await screen.findByRole("heading", { name: "Design system", level: 1 })).toBeTruthy();
+});
+
+test("/ resolves lazily to the dashboard route and /showcase is kept", () => {
+  const root = routes.find((r) => r.path === "/");
+  expect(root?.lazy).toBe(dashboard.lazy);
+  expect(root?.element).toBeUndefined();
+  expect(routes.some((r) => r.path === "/showcase")).toBe(true);
 });
 
 test("an unknown route shows page not found", () => {

@@ -16,6 +16,7 @@
 
 .umbra-live-map-error {
   position: absolute;
+  /* The `insets` prop overrides top and left with an inline style (bannerPosition). */
   top: var(--space-4);
   left: 50%;
   z-index: 1;

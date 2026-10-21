@@ -24,7 +24,7 @@ Milestone column (A-002, D-36): M5b (live map) is the first GUI slice and delive
 | `@umbra/log-view` | feature | domain | Engine log stream | M8 |
 | `@umbra/behavior-editor` | feature | domain | Node-and-arrow graph canvas (xyflow/React Flow behind an interface), property forms from catalog JSON Schemas, validation display, subgraph library panel, convert-selection-to-subgraph, `[editor]` layout persistence (A-001, M8b) | M8b |
 | `@umbra/shell-showcase` | shell | | Design-system reference page at `/showcase` (tokens and all components, screenshot target) | M5b (WI-8) |
-| `@umbra/shell-dashboard` | shell | | Map + controls + inspector | M5b (map only); M8 adds controls and inspector |
+| `@umbra/shell-dashboard` | shell | | Map + controls + inspector. M5b (WI-15, ASM-507): `route` (`/`, "Live map", lazy `DashboardPage`): full-viewport `LiveMap`, floating CommandBar with `RunStatusBar` and `ThemeToggle`, `ConnectionAlert`; composes ui-kit, engine-stream, runtime-config, map-view, scenario-control | M5b (map only); M8 adds controls and inspector |
 | `@umbra/shell-templates` | shell | | Template browser page | M8 |
 | `@umbra/shell-plugins` | shell | | Plugin/adapter status page | M8 |
 | `@umbra/shell-settings` | shell | | Engine connection and app settings | M8 |

@@ -83,6 +83,7 @@ describe("ShowcasePage components", () => {
     const bar = container.querySelector("#showcase-floating .vt-cmdbar");
     expect(bar?.querySelector(".vt-chip-glass")).toBeTruthy();
     expect(bar?.querySelector(".vt-panel")).toBeTruthy();
+    expect(bar?.querySelector(".vt-readout-value")).toHaveTextContent("128");
   });
 });
 

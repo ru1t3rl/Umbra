@@ -1,8 +1,10 @@
 .vt-cmdbar {
+  /* The bar's height, public for shells that place things below it (the dashboard measures it, WI-15). */
+  --vt-cmdbar-height: 48px;
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  height: 48px;
+  height: var(--vt-cmdbar-height);
   padding: 0 var(--space-4);
   background: var(--surface-1);
   border-bottom: 1px solid var(--line);
@@ -64,4 +66,15 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+/* A Readout in the bar is compact (label over a data-lg value, no tile) so it fits the 48px height (WI-15). */
+.vt-cmdbar .vt-readout {
+  min-width: 0;
+  gap: 0;
+  padding: 0 var(--space-2);
+  background: none;
+}
+.vt-cmdbar .vt-readout-value {
+  font-size: 20px; /* umbra-allow: equals .type-data-lg, as the bar clock (ASM-337) */
+  line-height: 24px;
 }

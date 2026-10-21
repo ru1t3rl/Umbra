@@ -2,3 +2,4 @@
 // The app imports `@umbra/map-view/styles.css` once (ADR 0043).
 export type { LiveMapProps } from "./components/LiveMap/LiveMap.tsx";
 export { LiveMap } from "./components/LiveMap/LiveMap.tsx";
+export type { MapInsets } from "./model/camera.ts";

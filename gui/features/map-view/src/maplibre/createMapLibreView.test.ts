@@ -145,14 +145,21 @@ describe("createMapLibreView", () => {
 
   test("fitTo passes bounds, padding and max zoom without animation", () => {
     const { view, map } = setup();
-    view.fitTo({ west: 1, south: 2, east: 3, north: 4 }, { padding: 64, maxZoom: 15 });
+    view.fitTo(
+      { west: 1, south: 2, east: 3, north: 4 },
+      { padding: { top: 64, right: 64, bottom: 64, left: 64 }, maxZoom: 15 },
+    );
     expect(map.fits).toEqual([
       {
         bounds: [
           [1, 2],
           [3, 4],
         ],
-        options: { padding: 64, maxZoom: 15, animate: false },
+        options: {
+          padding: { top: 64, right: 64, bottom: 64, left: 64 },
+          maxZoom: 15,
+          animate: false,
+        },
       },
     ]);
   });
@@ -316,10 +323,14 @@ describe("createMapLibreView", () => {
     const { view, map } = setup();
     const bounds = { west: 1, south: 2, east: 3, north: 4 };
     map.camera = undefined;
-    expect(view.fitTo(bounds, { padding: 64, maxZoom: 15 })).toBe(false);
+    expect(
+      view.fitTo(bounds, { padding: { top: 64, right: 64, bottom: 64, left: 64 }, maxZoom: 15 }),
+    ).toBe(false);
     expect(map.fits).toHaveLength(0);
     map.camera = { center: [2, 3], zoom: 6 };
-    expect(view.fitTo(bounds, { padding: 64, maxZoom: 15 })).toBe(true);
+    expect(
+      view.fitTo(bounds, { padding: { top: 64, right: 64, bottom: 64, left: 64 }, maxZoom: 15 }),
+    ).toBe(true);
     expect(map.fits).toHaveLength(1);
   });
 

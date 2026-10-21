@@ -24,9 +24,9 @@ test("unknown route shows page not found", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Page not found." })).toBeVisible();
 });
 
-test("the placeholder route renders under the dark theme", async ({ page }) => {
+test("the dashboard route renders under the dark theme", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Umbra" })).toBeVisible();
+  await expect(page.getByRole("banner")).toContainText("Live map");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 

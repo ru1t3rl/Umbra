@@ -9,6 +9,7 @@
         "@umbra/engine-stream": "workspace:*",
         "@umbra/map-view": "workspace:*",
         "@umbra/runtime-config": "workspace:*",
+        "@umbra/shell-dashboard": "workspace:*",
         "@umbra/shell-showcase": "workspace:*",
         "@umbra/ui-kit": "workspace:*",
         "react": "19.3.1",
@@ -16,6 +17,7 @@
         "react-router": "7.18.4",
       },
       "devDependencies": {
+        "@axe-core/playwright": "4.10.2",
         "@biomejs/biome": "2.5.15",
         "@happy-dom/global-registrator": "20.14.6",
         "@playwright/test": "1.64.1",
@@ -31,6 +33,20 @@
         "json-schema-to-typescript": "15.0.4",
         "typescript": "5.9.3",
         "vite": "7.3.7",
+      },
+    },
+    "feature-shells/dashboard": {
+      "name": "@umbra/shell-dashboard",
+      "version": "0.0.0",
+      "dependencies": {
+        "@umbra/engine-stream": "workspace:*",
+        "@umbra/map-view": "workspace:*",
+        "@umbra/runtime-config": "workspace:*",
+        "@umbra/scenario-control": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
       },
     },
     "feature-shells/showcase": {
@@ -121,6 +137,8 @@
     "@apidevtools/swagger-parser": ["@apidevtools/swagger-parser@12.1.0", "", { "dependencies": { "@apidevtools/json-schema-ref-parser": "14.0.1", "@apidevtools/openapi-schemas": "^2.1.0", "@apidevtools/swagger-methods": "^3.0.2", "ajv": "^8.17.1", "ajv-draft-04": "^1.0.0", "call-me-maybe": "^1.0.2" }, "peerDependencies": { "openapi-types": ">=7" } }, "sha512-e5mJoswsnAX0jG+J09xHFYQXb/bUc5S3pLpMxUuRUA2H8T2kni3yEoyz2R3Dltw5f4A6j6rPNMpWTK+iVDFlng=="],
 
     "@asyncapi/specs": ["@asyncapi/specs@6.11.1", "", { "dependencies": { "@types/json-schema": "^7.0.11" } }, "sha512-A3WBLqAKGoJ2+6FWFtpjBlCQ1oFCcs4GxF7zsIGvNqp/klGUHjlA3aAcZ9XMMpLGE8zPeYDz2x9FmO6DSuKraQ=="],
+
+    "@axe-core/playwright": ["@axe-core/playwright@4.10.2", "", { "dependencies": { "axe-core": "~4.10.3" }, "peerDependencies": { "playwright-core": ">= 1.0.0" } }, "sha512-6/b5BJjG6hDaRNtgzLIfKr5DfwyiLHO4+ByTLB0cJgWSM8Ll7KqtdblIS6bEkwSF642/Ex91vNqIl3GLXGlceg=="],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 
@@ -474,6 +492,8 @@
 
     "@umbra/scenario-control": ["@umbra/scenario-control@workspace:features/scenario-control"],
 
+    "@umbra/shell-dashboard": ["@umbra/shell-dashboard@workspace:feature-shells/dashboard"],
+
     "@umbra/shell-showcase": ["@umbra/shell-showcase@workspace:feature-shells/showcase"],
 
     "@umbra/ui-kit": ["@umbra/ui-kit@workspace:features/ui-kit"],
@@ -519,6 +539,8 @@
     "async-function": ["async-function@1.0.0", "", {}, "sha512-hsU18Ae8CDTR6Kgu9DYf0EbCr/a5iGL0rytQDobUcdpYOKokk8LEjVphnXkDkgpi0wYVsqrXuP0bZxJaTqdgoA=="],
 
     "available-typed-arrays": ["available-typed-arrays@1.0.7", "", { "dependencies": { "possible-typed-array-names": "^1.0.0" } }, "sha512-wvUjBtSGN7+7SjNpq/9M2Tg350UZD3q62IFZLbRAR1bSMlCo1ZaeW+BJ+D090e4hIIZLBcTDWe4Mh4jvUDajzQ=="],
+
+    "axe-core": ["axe-core@4.10.3", "", {}, "sha512-Xm7bpRXnDSX2YE2YFfBk2FnF0ep6tmG7xPh8iHee8MIcrgq762Nkce856dYtJYLkuIoYZvGfTs/PbZhideTcEg=="],
 
     "balanced-match": ["balanced-match@4.0.4", "", {}, "sha512-BLrgEcRTwX2o6gGxGOCNyMvGSp35YofuYzw9h1IMTRmKqttAZZVU67bdb9Pr2vUHA8+j3i2tJfjO6C6+4myGTA=="],
 

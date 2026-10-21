@@ -11,6 +11,7 @@ Domain feature (tier `domain`): the live map. MapLibre GL JS 5.9.0 behind an int
   - Three error states in an `Alert` (details are logged): unreadable token colours (retried on the next theme change), no WebGL on the device, and a lost WebGL context (cleared when it is restored).
   - The entity count is announced at most every 2 s.
   - `basemapStyleUrl` replaces the offline basemap (`/config.json` `basemap.styleUrl`, ADR 0041).
+  - `insets` (`MapInsets`: `{ top?, right?, bottom?, left? }`, px) is the screen space a shell covers with floating UI. The camera fit padding is `space-16` plus the inset on each side, so fitted entities never sit under the overlay, and the error banner is placed below the top inset and centred in the free width. Missing, negative or non-finite sides count as 0. The latest value is read when the camera fits; changing it never remounts the map (ASM-508).
 - `@umbra/map-view/styles.css`: MapLibre CSS and the container rules; imported once by the app (ADR 0043).
 
 ```tsx
@@ -19,6 +20,7 @@ import "@umbra/map-view/styles.css";
 // a shell
 const source = useEntitySource();
 <LiveMap source={source} />
+// with a floating bar of 80px (margins plus height): <LiveMap source={source} insets={{ top: 80 }} />
 ```
 
 ## Basemap
@@ -28,5 +30,5 @@ const source = useEntitySource();
 ## Internals
 - `src/model/` is pure and tested without WebGL: `affiliationOf`, `resolveMapColors`, `symbolSvg` (APP-6D frames, remote ring), `buildMapStyle`, `toFeatureCollection`, `fitOptionsFrom`.
 - `src/maplibre/createMapLibreView.ts` implements `MapView`: one `setData` per animation frame from a reused buffer. Never call `getData()` or `updateData` on the entity source (ASM-366).
-- `src/e2eHook.ts` registers `window.__UMBRA_E2E__.map` only when `import.meta.env.VITE_UMBRA_E2E` is set (the e2e build); a build test proves the production bundle has no trace of it.
+- `src/e2eHook.ts` registers `window.__UMBRA_E2E__.map` only when `import.meta.env.VITE_UMBRA_E2E` is set (the e2e build); `gui/src/e2eHook.build.test.ts` builds the real app and proves the production bundle has no trace of it.
 - `bun scripts/measure-map.ts [frames]` (in `gui/`, not a gate) times `setData`-to-idle for 10,000 entities in headless Chromium.

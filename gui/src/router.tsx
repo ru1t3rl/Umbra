@@ -1,15 +1,14 @@
+import { route as dashboard } from "@umbra/shell-dashboard";
 import { route as showcase } from "@umbra/shell-showcase";
 import { createBrowserRouter, type RouteObject } from "react-router";
 import { NotFound } from "./components/NotFound/NotFound.tsx";
-import { Placeholder } from "./components/Placeholder/Placeholder.tsx";
 
 /**
  * Routes come from shell `route` objects: each shell exports `{ path, label, lazy }` and the page is
- * code-split (`lazy`). The showcase (WI-8) is the first; WI-15 adds the dashboard at `/` and replaces the
- * placeholder.
+ * code-split (`lazy`): the dashboard (WI-15) at `/` and the showcase (WI-8) at `/showcase`.
  */
 export const routes: RouteObject[] = [
-  { path: "/", element: <Placeholder /> },
+  { path: dashboard.path, lazy: dashboard.lazy },
   { path: showcase.path, lazy: showcase.lazy },
   { path: "*", element: <NotFound /> },
 ];

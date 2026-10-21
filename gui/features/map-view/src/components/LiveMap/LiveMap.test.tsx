@@ -285,7 +285,11 @@ describe("LiveMap", () => {
     renderMap(source);
     act(() => source.push(frameWith(2, 1, 0)));
     expect(map().fits).toHaveLength(1);
-    expect(map().fits[0]?.options).toEqual({ padding: 64, maxZoom: 15, animate: false });
+    expect(map().fits[0]?.options).toEqual({
+      padding: { top: 64, right: 64, bottom: 64, left: 64 },
+      maxZoom: 15,
+      animate: false,
+    });
     act(() => source.push(frameWith(3, 1, 1)));
     expect(map().fits).toHaveLength(1);
     act(() => source.push(frameWith(0, 2, 0)));
@@ -308,6 +312,36 @@ describe("LiveMap", () => {
     expect(map().fits).toHaveLength(1);
     act(() => source.push(frameWith(2, 1, 3)));
     expect(map().fits).toHaveLength(1); // fitted once it worked
+  });
+
+  test("insets add to the fit padding on each side", () => {
+    const source = new FakeEntitySource();
+    renderMap(source, <LiveMap source={source} insets={{ top: 80, left: 12 }} />);
+    act(() => source.push(frameWith(2, 1, 0)));
+    expect(map().fits[0]?.options).toEqual({
+      padding: { top: 144, right: 64, bottom: 64, left: 76 },
+      maxZoom: 15,
+      animate: false,
+    });
+  });
+
+  test("the latest insets are used at fit time without remounting the map", () => {
+    const source = new FakeEntitySource();
+    const view = renderMap(source, <LiveMap source={source} insets={{ top: 10 }} />);
+    view.rerender(wrap(<LiveMap source={source} insets={{ top: 90 }} />));
+    expect(FakeMap.instances).toHaveLength(1);
+    act(() => source.push(frameWith(2, 1, 0)));
+    expect(map().fits[0]?.options).toMatchObject({ padding: { top: 154 } });
+  });
+
+  test("the error banner sits below the top inset", () => {
+    console.error = () => undefined;
+    setTokens("affil-hostile");
+    const source = new FakeEntitySource();
+    renderMap(source, <LiveMap source={source} insets={{ top: 80 }} />);
+    const banner = screen.getByRole("alert").parentElement;
+    expect(banner).toHaveClass("umbra-live-map-error");
+    expect(banner?.style.top).toBe("calc(80px + var(--space-4))");
   });
 
   test("unreadable colours show the colour error and create no map", () => {

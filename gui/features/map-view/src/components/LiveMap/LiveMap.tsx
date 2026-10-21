@@ -8,7 +8,13 @@ import { BASEMAP_ASSETS } from "../../maplibre/basemapAssets.ts";
 import { createMapLibreView } from "../../maplibre/createMapLibreView.ts";
 import { t } from "../../messages.ts";
 import { createAnnouncer } from "../../model/announce.ts";
-import { fitOptionsFrom, needsFit } from "../../model/camera.ts";
+import {
+  bannerPosition,
+  fitOptionsFrom,
+  type MapInsets,
+  needsFit,
+  withInsets,
+} from "../../model/camera.ts";
 import { resolveMapColors } from "../../model/colors.ts";
 import { frameBounds } from "../../model/features.ts";
 
@@ -19,6 +25,12 @@ export interface LiveMapProps {
   label?: string;
   /** A MapLibre style URL that replaces the offline basemap (`/config.json` `basemap.styleUrl`). */
   basemapStyleUrl?: string;
+  /**
+   * Screen space (px) a shell covers with floating UI. Added to the fit padding (`space-16` per side) and
+   * used to place the error banner, so entities and errors never sit under the overlay. Read when the
+   * camera fits, so changing it never remounts the map.
+   */
+  insets?: MapInsets;
 }
 
 /** What is wrong, which decides the message and whether a theme change retries (ASM-369). */
@@ -28,7 +40,7 @@ type MapError = "colors" | "webgl" | "lost";
  * The live map. One MapLibre view per mount; frames go from `source` straight to the view (imperative), so
  * React re-renders only when the error state or the announced count changes, never per frame or per entity.
  */
-export function LiveMap({ source, label, basemapStyleUrl }: LiveMapProps): ReactElement {
+export function LiveMap({ source, label, basemapStyleUrl, insets }: LiveMapProps): ReactElement {
   const { resolved } = useTheme();
   const timers = useContext(AnnounceTimersContext);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -36,6 +48,8 @@ export function LiveMap({ source, label, basemapStyleUrl }: LiveMapProps): React
   const appliedThemeRef = useRef(resolved);
   const themeRef = useRef(resolved);
   themeRef.current = resolved;
+  const insetsRef = useRef(insets);
+  insetsRef.current = insets;
   const [announced, setAnnounced] = useState(0);
   const [error, setError] = useState<MapError | null>(null);
   const errorRef = useRef<MapError | null>(null);
@@ -100,7 +114,8 @@ export function LiveMap({ source, label, basemapStyleUrl }: LiveMapProps): React
       if (needsFit(fittedSession, frame)) {
         const bounds = frameBounds(frame);
         // Fitted only when the camera really moved: a zero-size container is retried on the next frame.
-        if (bounds && view.fitTo(bounds, fit)) fittedSession = frame.session;
+        if (bounds && view.fitTo(bounds, withInsets(fit, insetsRef.current)))
+          fittedSession = frame.session;
       }
     };
     const current = source.getFrame();
@@ -142,17 +157,18 @@ export function LiveMap({ source, label, basemapStyleUrl }: LiveMapProps): React
   return (
     <section className="umbra-live-map" aria-label={name}>
       {error === null ? null : (
-        <Alert
-          tone="danger"
-          title={error === "lost" ? t("map.error.lostTitle") : t("map.error.title")}
-          className="umbra-live-map-error"
-        >
-          {error === "colors"
-            ? t("map.error.colors")
-            : error === "webgl"
-              ? t("map.error.webgl")
-              : t("map.error.lostBody")}
-        </Alert>
+        <div className="umbra-live-map-error" style={bannerPosition(insets)}>
+          <Alert
+            tone="danger"
+            title={error === "lost" ? t("map.error.lostTitle") : t("map.error.title")}
+          >
+            {error === "colors"
+              ? t("map.error.colors")
+              : error === "webgl"
+                ? t("map.error.webgl")
+                : t("map.error.lostBody")}
+          </Alert>
+        </div>
       )}
       <div ref={containerRef} className="umbra-live-map-canvas" />
       <p className="vt-visually-hidden" aria-live="polite">

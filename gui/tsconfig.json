@@ -3,6 +3,7 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.tools.json" },
+    { "path": "./feature-shells/dashboard" },
     { "path": "./feature-shells/showcase" },
     { "path": "./features/data" },
     { "path": "./features/engine-stream" },

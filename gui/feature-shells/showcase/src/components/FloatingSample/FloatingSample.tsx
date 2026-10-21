@@ -1,4 +1,4 @@
-import { Badge, Chip, CommandBar, Panel } from "@umbra/ui-kit";
+import { Badge, Chip, CommandBar, Panel, Readout } from "@umbra/ui-kit";
 import type { ReactElement } from "react";
 import { t } from "../../messages.ts";
 import { Section } from "../Section/Section.tsx";
@@ -18,6 +18,7 @@ export function FloatingSample(): ReactElement {
           clock={t("sample.clock-review")}
           paused
         >
+          <Readout label={t("sample.entities")} value={128} />
           <Badge tone="info">{t("sample.paused")}</Badge>
           <Chip glass icon="timeline" selected>
             {t("sample.tracks")}

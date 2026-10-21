@@ -1,0 +1,27 @@
+/* The map fills the viewport; the bar and the connection banner float over it (tokens only). */
+.dashboard-map {
+  position: fixed;
+  inset: 0;
+}
+
+.dashboard-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.dashboard-bar > * {
+  pointer-events: auto;
+}
+
+.dashboard-alert {
+  position: absolute;
+  /* set inline from the measured bar (useBarInset): ui-kit height plus the bar margins */
+  top: var(--dashboard-inset-top, 0px);
+  left: var(--space-4);
+  z-index: 1;
+  width: min(420px, calc(100% - 2 * var(--space-4)));
+}
