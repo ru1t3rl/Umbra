@@ -10,6 +10,7 @@ use umbra_core::{
     TemplateId, TickRate,
 };
 
+use crate::diagnostic::Diagnostic;
 use crate::graph_resolve::GraphSet;
 use crate::resolve::{ComponentRef, TemplateSet};
 
@@ -150,4 +151,7 @@ pub struct Scenario {
     pub on_plugin_fault: umbra_core::PluginFaultPolicy,
     /// The `[[network_adapters]]` entries in file order; empty when the key is absent (M6, ADR 0030).
     pub network_adapters: Vec<NetworkAdapterSpec>,
+    /// Warnings of a successful load, in the order found (ASM-290). Empty for a scenario without
+    /// anything suspicious; a load with errors returns the errors only.
+    pub warnings: Vec<Diagnostic>,
 }

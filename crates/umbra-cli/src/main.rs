@@ -13,6 +13,8 @@
 mod args;
 mod config;
 mod output;
+#[cfg(test)]
+mod output_warnings_tests;
 #[cfg(feature = "server")]
 mod serve;
 
@@ -259,6 +261,7 @@ fn validate(args: &ValidateArgs, config_flag: Option<&Path>) -> Result<ExitCode>
     let settings = config::load_settings(&configuration.config);
     let mut files = Vec::new();
     let mut diagnostics = Vec::new();
+    let mut warnings = Vec::new();
     for path in &args.paths {
         let report =
             validate_path_with_plugins_and_settings(&registry, path, &plugin_paths, &settings)
@@ -266,6 +269,7 @@ fn validate(args: &ValidateArgs, config_flag: Option<&Path>) -> Result<ExitCode>
         for (file, rate) in &report.defaulted_tick_rates {
             note_default_tick_rate(file, *rate);
         }
+        warnings.extend(report.warnings);
         files.extend(report.files_checked);
         diagnostics.extend(report.diagnostics);
     }
@@ -273,9 +277,21 @@ fn validate(args: &ValidateArgs, config_flag: Option<&Path>) -> Result<ExitCode>
     files.sort();
     files.dedup();
     let diagnostics = Diagnostics::new(diagnostics).map_or_else(Vec::new, Diagnostics::into_vec);
+    let warnings = Diagnostics::new(warnings).map_or_else(Vec::new, Diagnostics::into_vec);
+    if !args.json {
+        // Warnings never fail the check and stay off stdout, like the default-rate note; in
+        // `--json` mode they are in the document only (ASM-290).
+        for warning in &warnings {
+            let _ = writeln!(io::stderr(), "{warning}");
+        }
+    }
     let mut out = io::stdout().lock();
     if args.json {
-        writeln!(out, "{}", output::validation_json(&files, &diagnostics))
+        writeln!(
+            out,
+            "{}",
+            output::validation_json(&files, &diagnostics, &warnings)
+        )
     } else {
         diagnostics
             .iter()

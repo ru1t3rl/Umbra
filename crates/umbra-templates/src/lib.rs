@@ -18,6 +18,7 @@ pub(crate) mod discover;
 pub(crate) mod graph_read;
 pub mod graph_resolve;
 pub mod loader;
+pub(crate) mod network_read;
 pub(crate) mod overlay;
 pub(crate) mod position;
 pub(crate) mod reader;
@@ -29,7 +30,7 @@ pub mod source;
 pub mod template;
 pub mod value;
 
-pub use diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, Location, Note};
+pub use diagnostic::{Diagnostic, DiagnosticCode, Diagnostics, Location, Note, Severity};
 pub use discover::{ScenarioInputs, io_diagnostic, scenario_inputs, scenario_plugin_paths};
 pub use graph_resolve::GraphSet;
 pub use loader::{Loader, LoaderError, LoaderOptions, ValidationReport};

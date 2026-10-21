@@ -1,10 +1,9 @@
 //! AT-15: the scenario key `[[network_adapters]]`. Requirements: REQ-T-2, REQ-T-4, REQ-T-5,
 //! ADR 0010, ADR 0030, ASM-227, ASM-271.
 //!
-//! Step 4 of M6: written before WI-8. The types exist (`NetworkAdapterSpec`, `PublishSettings`,
-//! `GhostSettings`, `Scenario::network_adapters`) and the field is always empty until WI-8 adds the
-//! reader, so the rows that need the reader are ignored with that work item. Diagnostics follow the
-//! existing M2 conventions: a value problem is located at the value (`pos_after(text, "key = ")`).
+//! Written in step 4 of M6, run against the reader of WI-8. Diagnostics follow the existing M2
+//! conventions: a value problem is located at the value. The warning channel (ASM-290) is
+//! `Scenario::warnings` and `ValidationReport::warnings`.
 
 #![forbid(unsafe_code)]
 
@@ -15,11 +14,11 @@ use std::sync::Arc;
 use umbra_core::dead_reckoning::DeadReckoning;
 use umbra_core::net::{KeySpace, NetEntityType, NetworkAdapterConfig};
 use umbra_core::{BuildError, ComponentId, Factory, ParamSchema, ParamValue, Registry, Seconds};
-use umbra_templates::{Scenario, SourceFile};
+use umbra_templates::{Scenario, Severity, SourceFile};
 
 use common::{
-    alpha_template, cid, errors, lines, loader, ok, pos_after, pos_of, pos_of_nth, registry, row,
-    rows, src, tid,
+    alpha_template, cid, errors, fixture_path, lines, loader, ok, pos_after, pos_of, pos_of_nth,
+    registry, row, rows, src, tid,
 };
 
 const SCN: &str = "scn/scenario.toml";
@@ -37,7 +36,10 @@ impl Factory<dyn NetworkAdapterConfig> for Fac {
     fn param_schema(&self) -> &ParamSchema {
         &self.schema
     }
-    fn build(&self, _: &ParamValue) -> Result<Arc<dyn NetworkAdapterConfig>, BuildError> {
+    fn build(&self, params: &ParamValue) -> Result<Arc<dyn NetworkAdapterConfig>, BuildError> {
+        if params["port"] == 13 {
+            return Err(BuildError::new("port 13 is reserved"));
+        }
         Ok(Arc::new(Cfg))
     }
 }
@@ -128,6 +130,13 @@ fn failing(text: &str) -> Vec<common::Row> {
     rows(&errors(load(text)))
 }
 
+/// The column just after `key` on the (unique) line `line`: the value, not the earlier
+/// `[scenario] name = ` that `pos_after(text, "name = ")` would find.
+fn value_after_key(text: &str, line: &str, key: &str) -> (u32, u32) {
+    let (l, c) = pos_of(text, line);
+    (l, c + u32::try_from(key.len()).unwrap_or(u32::MAX))
+}
+
 #[test]
 fn a_scenario_without_the_key_has_an_empty_adapter_list() {
     let scenario = ok(load(&base()));
@@ -158,7 +167,6 @@ fn the_template_file_schema_is_byte_identical_to_m5() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn the_scenario_file_schema_declares_the_optional_property() {
     let schema: serde_json::Value =
         serde_json::from_str(umbra_templates::SCENARIO_FILE_SCHEMA).expect("schema is json");
@@ -173,7 +181,6 @@ fn the_scenario_file_schema_declares_the_optional_property() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn a_minimal_entry_gets_every_default() {
     let scenario = ok(load(&entry(&[])));
 
@@ -197,7 +204,6 @@ fn a_minimal_entry_gets_every_default() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn every_key_is_read() {
     let text = entry(&[
         "enabled = false",
@@ -241,7 +247,6 @@ fn every_key_is_read() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn several_entries_keep_file_order() {
     let text = with(&[
         "[[network_adapters]]",
@@ -263,7 +268,6 @@ fn several_entries_keep_file_order() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn a_timeout_not_above_the_heartbeat_is_a_warning_not_an_error() {
     let text = entry(&[
         "[network_adapters.publish]",
@@ -275,13 +279,19 @@ fn a_timeout_not_above_the_heartbeat_is_a_warning_not_an_error() {
     let scenario = ok(load(&text));
 
     assert_eq!(scenario.network_adapters[0].ghosts.timeout, Seconds(1.0));
-    // TODO(WI-8): the loader has no warning severity yet. WI-8 chooses the channel (a `warnings`
-    // list on the scenario, or a severity on `Diagnostic` shown by `validate`) and extends this row
-    // to assert the warning's code, path, line and column at `timeout_s`; ASM-282.
+    // The warning is a `Severity::Warning` diagnostic on the scenario, at the value (ASM-290).
+    assert_eq!(
+        rows(&scenario.warnings),
+        vec![row(
+            "suspicious_value",
+            SCN,
+            pos_after(&text, "timeout_s = ")
+        )]
+    );
+    assert_eq!(scenario.warnings[0].severity, Severity::Warning);
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn unknown_keys_are_located_in_each_of_the_three_tables() {
     for (table, key) in [
         (None, "speed = 1"),
@@ -302,7 +312,6 @@ fn unknown_keys_are_located_in_each_of_the_three_tables() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn missing_adapter_or_name_is_missing_key_at_the_table() {
     let no_name = with(&["[[network_adapters]]", "adapter = \"test.net.loopback\""]);
     let no_adapter = with(&["[[network_adapters]]", "name = \"lb\""]);
@@ -321,7 +330,6 @@ fn missing_adapter_or_name_is_missing_key_at_the_table() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn a_duplicate_name_is_located_at_the_second_name() {
     let text = with(&[
         "[[network_adapters]]",
@@ -339,7 +347,6 @@ fn a_duplicate_name_is_located_at_the_second_name() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn a_name_outside_the_grammar_is_invalid_value_at_the_value() {
     for bad in ["Dis", "1st", "a-b", ""] {
         let text = with(&[
@@ -350,14 +357,17 @@ fn a_name_outside_the_grammar_is_invalid_value_at_the_value() {
 
         assert_eq!(
             failing(&text),
-            vec![row("invalid_value", SCN, pos_after(&text, "name = "))],
+            vec![row(
+                "invalid_value",
+                SCN,
+                value_after_key(&text, &format!("name = \"{bad}\""), "name = ")
+            )],
             "{bad:?}"
         );
     }
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn an_adapter_id_that_is_unknown_or_not_a_network_adapter_is_unknown_id() {
     for bad in ["test.net.missing", "stub.motion.alpha"] {
         let text = with(&[
@@ -375,7 +385,6 @@ fn an_adapter_id_that_is_unknown_or_not_a_network_adapter_is_unknown_id() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn params_that_are_not_a_table_are_wrong_type() {
     let text = entry(&["params = 3"]);
 
@@ -386,7 +395,6 @@ fn params_that_are_not_a_table_are_wrong_type() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn params_are_checked_against_the_adapters_schema() {
     let text = entry(&["params = { port = \"seven\" }"]);
 
@@ -397,7 +405,6 @@ fn params_are_checked_against_the_adapters_schema() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn numbers_out_of_range_are_invalid_value_at_the_value() {
     let cases = [
         ("[network_adapters.publish]", "position_threshold_m = 0.0"),
@@ -429,7 +436,6 @@ fn numbers_out_of_range_are_invalid_value_at_the_value() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn a_dead_reckoning_model_that_is_not_published_is_invalid_value() {
     for bad in ["velocity_rotation", "fast"] {
         let text = entry(&[
@@ -450,7 +456,6 @@ fn a_dead_reckoning_model_that_is_not_published_is_invalid_value() {
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn unknown_template_ids_in_type_map_and_default_template_are_unknown_template() {
     let in_map = entry(&[
         "[network_adapters.ghosts]",
@@ -480,7 +485,6 @@ fn unknown_template_ids_in_type_map_and_default_template_are_unknown_template() 
 }
 
 #[test]
-#[ignore = "WI-8"]
 fn wrong_typed_values_are_wrong_type_at_the_value() {
     for (table, line, key) in [
         (None, "name = 5", "name = "),
@@ -502,8 +506,298 @@ fn wrong_typed_values_are_wrong_type_at_the_value() {
 
         assert_eq!(
             failing(&text),
-            vec![row("wrong_type", SCN, pos_after(&text, key))],
+            vec![row("wrong_type", SCN, value_after_key(&text, line, key))],
             "{line}"
         );
+    }
+}
+
+#[test]
+fn a_timeout_above_the_heartbeat_gives_no_warning() {
+    let text = entry(&[
+        "[network_adapters.publish]",
+        "heartbeat_s = 5.0",
+        "[network_adapters.ghosts]",
+        "timeout_s = 5.5",
+    ]);
+
+    assert_eq!(ok(load(&text)).warnings, vec![]);
+}
+
+#[test]
+fn a_timeout_equal_to_the_heartbeat_warns_and_names_the_written_heartbeat() {
+    let text = entry(&[
+        "[network_adapters.publish]",
+        "heartbeat_s = 3",
+        "[network_adapters.ghosts]",
+        "timeout_s = 3",
+    ]);
+
+    let warnings = ok(load(&text)).warnings;
+
+    assert_eq!(warnings.len(), 1);
+    assert!(
+        warnings[0].message.contains("`heartbeat_s` of 3"),
+        "{}",
+        warnings[0]
+    );
+}
+
+#[test]
+fn a_timeout_against_the_default_heartbeat_says_so() {
+    let text = entry(&["[network_adapters.ghosts]", "timeout_s = 1.0"]);
+
+    let warnings = ok(load(&text)).warnings;
+
+    assert!(
+        warnings[0].message.contains("default `heartbeat_s` of 5"),
+        "{}",
+        warnings[0]
+    );
+}
+
+#[test]
+fn a_warning_prints_as_a_warning_not_an_error() {
+    let text = entry(&["[network_adapters.ghosts]", "timeout_s = 1.0"]);
+
+    let shown = ok(load(&text)).warnings[0].to_string();
+
+    assert!(shown.starts_with("scn/scenario.toml:"), "{shown}");
+    assert!(shown.contains(": warning[suspicious_value]: "), "{shown}");
+}
+
+#[test]
+fn errors_win_over_warnings_in_a_load() {
+    let text = entry(&["[network_adapters.ghosts]", "timeout_s = 1.0", "max = 0"]);
+
+    assert_eq!(
+        failing(&text),
+        vec![row("invalid_value", SCN, pos_after(&text, "max = "))]
+    );
+}
+
+#[test]
+fn params_absent_are_checked_as_an_empty_table() {
+    // `port` is optional in the test schema, so an absent `params` loads as `{}`.
+    let scenario = ok(load(&entry(&[])));
+
+    assert_eq!(scenario.network_adapters[0].params, serde_json::json!({}));
+}
+
+#[test]
+fn an_unknown_param_is_located_at_the_key() {
+    let text = entry(&["params = { colour = 1 }"]);
+
+    assert_eq!(
+        failing(&text),
+        vec![row("unknown_param", SCN, pos_of(&text, "colour"))]
+    );
+}
+
+#[test]
+fn a_type_map_template_that_is_defined_in_a_parent_chain_is_known() {
+    let text = entry(&[
+        "[network_adapters.ghosts]",
+        "type_map = { \"9.9.9.9.9.9.9\" = \"tank.mbt\", \"1.1.1.1.1.1.1\" = \"veh.base\" }",
+    ]);
+
+    let scenario = ok(load(&text));
+
+    // Ascending by token.
+    let tokens: Vec<&str> = scenario.network_adapters[0]
+        .ghosts
+        .type_map
+        .iter()
+        .map(|(t, _)| t.as_str())
+        .collect();
+    assert_eq!(tokens, ["1.1.1.1.1.1.1", "9.9.9.9.9.9.9"]);
+}
+
+#[test]
+fn the_scenario_file_schema_checks_the_network_entries() {
+    let schema: serde_json::Value =
+        serde_json::from_str(umbra_templates::SCENARIO_FILE_SCHEMA).expect("schema is json");
+    let entry = &schema["$defs"]["network_adapter"];
+
+    assert_eq!(entry["required"], serde_json::json!(["adapter", "name"]));
+    assert_eq!(
+        entry["properties"]["publish"]["properties"]["dead_reckoning"]["enum"],
+        serde_json::json!(["static", "velocity", "acceleration"])
+    );
+    assert_eq!(entry["additionalProperties"], serde_json::json!(false));
+}
+
+fn validate_fixture(rel: &str) -> umbra_templates::ValidationReport {
+    let registry = registry_with_adapter();
+    loader(&registry).validate_path(&fixture_path(rel))
+}
+
+#[test]
+fn validate_reports_the_warning_of_a_valid_scenario_file() {
+    let report = validate_fixture("scenarios/network/warning/scenario.toml");
+
+    assert_eq!(report.diagnostics, vec![]);
+    assert_eq!(
+        report
+            .warnings
+            .iter()
+            .map(|w| (w.code.as_str(), w.location.as_ref().map(|l| l.line)))
+            .collect::<Vec<_>>(),
+        [("suspicious_value", Some(20))]
+    );
+}
+
+#[test]
+fn validate_reports_the_warning_for_a_directory_too() {
+    let report = validate_fixture("scenarios/network");
+
+    assert_eq!(report.diagnostics, vec![]);
+    assert_eq!(report.warnings.len(), 1);
+    let path = &report.warnings[0].location.as_ref().expect("located").path;
+    assert!(
+        path.ends_with("warning/scenario.toml"),
+        "{}",
+        path.display()
+    );
+}
+
+#[test]
+fn validate_of_a_clean_network_scenario_has_no_warnings() {
+    let report = validate_fixture("scenarios/network/clean/scenario.toml");
+
+    assert_eq!((report.diagnostics, report.warnings), (vec![], vec![]));
+    assert_eq!(report.files_checked.len(), 2);
+}
+
+#[test]
+fn a_factory_that_rejects_the_params_gives_param_invalid() {
+    let text = entry(&["params = { port = 13 }"]);
+
+    let found = failing(&text);
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].0, "param_invalid");
+    assert_eq!(found[0].1, std::path::PathBuf::from(SCN));
+}
+
+#[test]
+fn an_empty_type_map_token_is_invalid_value_at_the_key() {
+    let text = entry(&[
+        "[network_adapters.ghosts]",
+        "type_map = { \"\" = \"veh.base\" }",
+    ]);
+
+    assert_eq!(
+        failing(&text),
+        vec![row("invalid_value", SCN, pos_of(&text, "\"\" ="))]
+    );
+}
+
+#[test]
+fn network_adapters_that_is_not_an_array_of_tables_is_wrong_type() {
+    // A top-level key must come before the first table.
+    let scalar = base().replacen(
+        "schema_version = 1\n",
+        "schema_version = 1\nnetwork_adapters = 3\n",
+        1,
+    );
+    let table = with(&["[network_adapters]", "adapter = \"test.net.loopback\""]);
+
+    for (text, at) in [
+        (&scalar, pos_after(&scalar, "network_adapters = ")),
+        (&table, pos_of(&table, "[network_adapters]")),
+    ] {
+        let found = failing(text);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].0, "wrong_type");
+        assert_eq!((found[0].2, found[0].3), at, "{text}");
+    }
+}
+
+#[test]
+fn messages_name_the_key_the_user_wrote() {
+    let default = entry(&["[network_adapters.ghosts]", "default_template = \"Bad Id\""]);
+    let in_map = entry(&[
+        "[network_adapters.ghosts]",
+        "type_map = { \"1.1.1.1.1.1.1\" = \"Bad Id\" }",
+    ]);
+
+    let messages: Vec<String> = [default, in_map]
+        .iter()
+        .flat_map(|t| errors(load(t)))
+        .map(|d| d.message)
+        .collect();
+
+    assert_eq!(messages.len(), 2, "{messages:?}");
+    assert!(
+        messages[0].contains("`default_template`"),
+        "{}",
+        messages[0]
+    );
+    assert!(
+        messages[1].contains("`type_map.\"1.1.1.1.1.1.1\"`"),
+        "{}",
+        messages[1]
+    );
+}
+
+#[test]
+fn a_written_heartbeat_is_pointed_at_by_a_note_of_the_warning() {
+    let text = entry(&[
+        "[network_adapters.publish]",
+        "heartbeat_s = 3",
+        "[network_adapters.ghosts]",
+        "timeout_s = 2",
+    ]);
+
+    let warning = &ok(load(&text)).warnings[0];
+
+    assert_eq!(warning.notes.len(), 1);
+    let at = warning.notes[0].location.as_ref().expect("located");
+    assert_eq!((at.line, at.column), pos_after(&text, "heartbeat_s = "));
+}
+
+#[test]
+fn the_schema_states_the_name_grammar_without_inventing_a_length_limit() {
+    let schema: serde_json::Value =
+        serde_json::from_str(umbra_templates::SCENARIO_FILE_SCHEMA).expect("schema is json");
+    let name = &schema["$defs"]["network_adapter"]["properties"]["name"];
+
+    assert_eq!(name["type"], "string");
+    assert!(
+        name.get("maxLength").is_none(),
+        "the reader has no length limit"
+    );
+    assert!(
+        name["description"]
+            .as_str()
+            .is_some_and(|d| d.contains("[a-z][a-z0-9_]*")),
+        "{name}"
+    );
+}
+
+#[test]
+fn an_invalid_scenario_contributes_no_warnings_to_validate() {
+    // One error next to a short timeout: errors win, in file and in directory mode. The scenario
+    // itself is valid in `network_template_error` (the error is in its template set).
+    for rel in [
+        "scenarios/network_errors/scenario.toml",
+        "scenarios/network_errors",
+        "scenarios/network_template_error/scenario.toml",
+        "scenarios/network_template_error",
+    ] {
+        let report = validate_fixture(rel);
+
+        assert_eq!(
+            report.diagnostics.len(),
+            1,
+            "{rel}: {:?}",
+            report.diagnostics
+        );
+        assert!(
+            ["invalid_value", "unknown_id"].contains(&report.diagnostics[0].code.as_str()),
+            "{rel}"
+        );
+        assert_eq!(report.warnings, vec![], "{rel}");
     }
 }

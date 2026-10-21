@@ -27,6 +27,41 @@
         }
       ]
     },
+    "network_adapter": {
+      "description": "One `[[network_adapters]]` entry (ADR 0030). `adapter` must be a registered network adapter and `params` follow its schema; `name` is `[a-z][a-z0-9_]*`, unique, and selects the templates' `[network.<name>]` table. `timeout_s` not above `heartbeat_s` is accepted with a warning. The reader is authoritative.",
+      "type": "object",
+      "properties": {
+        "adapter": { "$ref": "#/$defs/id" },
+        "name": { "type": "string", "minLength": 1, "description": "`[a-z][a-z0-9_]*`, no length limit; the grammar is checked by the reader (the ADR 0009 subset has no `pattern`)" },
+        "enabled": { "type": "boolean" },
+        "params": { "type": "object" },
+        "publish": {
+          "type": "object",
+          "properties": {
+            "position_threshold_m": { "type": "number", "exclusiveMinimum": 0 },
+            "orientation_threshold_deg": { "type": "number", "exclusiveMinimum": 0 },
+            "heartbeat_s": { "type": "number", "exclusiveMinimum": 0 },
+            "min_interval_s": { "type": "number", "minimum": 0 },
+            "dead_reckoning": { "enum": ["static", "velocity", "acceleration"] },
+            "control": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "ghosts": {
+          "type": "object",
+          "properties": {
+            "timeout_s": { "type": "number", "exclusiveMinimum": 0 },
+            "max": { "type": "integer", "minimum": 1 },
+            "max_inbound_per_tick": { "type": "integer", "minimum": 1 },
+            "default_template": { "$ref": "#/$defs/id" },
+            "type_map": { "type": "object", "description": "Entity type token to template id; the reader rejects an empty token (the ADR 0009 subset has no `propertyNames`)", "additionalProperties": { "$ref": "#/$defs/id" } }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["adapter", "name"],
+      "additionalProperties": false
+    },
     "entity": {
       "type": "object",
       "properties": {
@@ -93,7 +128,8 @@
       },
       "additionalProperties": false
     },
-    "entities": { "type": "array", "items": { "$ref": "#/$defs/entity" } }
+    "entities": { "type": "array", "items": { "$ref": "#/$defs/entity" } },
+    "network_adapters": { "type": "array", "items": { "$ref": "#/$defs/network_adapter" } }
   },
   "required": ["schema_version", "scenario"],
   "additionalProperties": false,

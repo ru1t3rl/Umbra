@@ -1,0 +1,19 @@
+schema_version = 1
+
+[scenario]
+name = "network_template_error"
+seed = 7
+tick_rate_hz = 30
+duration_s = 10.0
+template_paths = ["templates"]
+
+[[entities]]
+template = "veh.err"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+
+[[network_adapters]]
+adapter = "test.net.loopback"
+name = "lb"
+
+[network_adapters.ghosts]
+timeout_s = 2.0

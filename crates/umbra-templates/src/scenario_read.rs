@@ -18,7 +18,13 @@ use crate::template::{RawComponent, Version, check_version, component};
 use crate::value::{LEntry, LKind, LTable, LValue, Origin, parse};
 use umbra_core::{PluginFaultPolicy, Position};
 
-const TOP_KEYS: [&str; 4] = ["schema_version", "scenario", "terrain", "entities"];
+const TOP_KEYS: [&str; 5] = [
+    "schema_version",
+    "scenario",
+    "terrain",
+    "entities",
+    "network_adapters",
+];
 const SCENARIO_KEYS: [&str; 9] = [
     "name",
     "seed",
@@ -193,7 +199,8 @@ impl Loader<'_> {
         let fallback = section.map_or(table.origin(), LValue::origin);
         let terrain = self.read_terrain(reader, table, fallback);
         let entities = self.read_entities(reader, table, loaded, unread);
-        let settings = settings?;
+        let network = self.read_network_adapters(reader, table, loaded, unread);
+        let (settings, network) = (settings?, network?);
         let base = file.path().parent().unwrap_or_else(|| Path::new(""));
         Some(Scenario {
             name: settings.name,
@@ -209,8 +216,8 @@ impl Loader<'_> {
             graphs: loaded.graphs.clone(),
             plugin_paths: settings.plugin_paths.iter().map(|p| base.join(p)).collect(),
             on_plugin_fault: settings.on_plugin_fault,
-            // M6 step 4 stub: the `[[network_adapters]]` reader arrives with WI-8.
-            network_adapters: Vec::new(),
+            network_adapters: network.adapters,
+            warnings: network.warnings,
         })
     }
 
@@ -463,7 +470,7 @@ fn read_force(reader: &mut Reader<'_>, value: &LValue) -> Option<Force> {
 }
 
 /// A number that must be finite and not negative.
-fn non_negative(reader: &mut Reader<'_>, name: &str, value: &LValue) -> Option<f64> {
+pub(crate) fn non_negative(reader: &mut Reader<'_>, name: &str, value: &LValue) -> Option<f64> {
     let n = reader.number(name, value)?;
     if n.is_finite() && n >= 0.0 {
         Some(n)
@@ -475,7 +482,7 @@ fn non_negative(reader: &mut Reader<'_>, name: &str, value: &LValue) -> Option<f
 }
 
 /// A number that must be finite and greater than zero.
-fn positive(reader: &mut Reader<'_>, name: &str, value: &LValue) -> Option<f64> {
+pub(crate) fn positive(reader: &mut Reader<'_>, name: &str, value: &LValue) -> Option<f64> {
     let n = reader.number(name, value)?;
     if n.is_finite() && n > 0.0 {
         Some(n)
@@ -549,7 +556,11 @@ fn read_settings(reader: &mut Reader<'_>, table: &LTable) -> Option<Settings> {
     })
 }
 
-fn required<'t>(reader: &mut Reader<'_>, table: &'t LTable, key: &str) -> Option<&'t LValue> {
+pub(crate) fn required<'t>(
+    reader: &mut Reader<'_>,
+    table: &'t LTable,
+    key: &str,
+) -> Option<&'t LValue> {
     let value = table.get(key);
     if value.is_none() {
         let message = format!("missing required key `{key}`");

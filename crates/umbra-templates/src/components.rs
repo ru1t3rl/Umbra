@@ -152,6 +152,10 @@ impl Loader<'_> {
             ComponentKind::Sensor => registry
                 .sensor(id)
                 .map_or(Ok(()), |f| f.build(params).map(drop)),
+            // Building a network adapter configuration opens nothing (ASM-291 a).
+            ComponentKind::NetworkAdapter => registry
+                .network_adapter(id)
+                .map_or(Ok(()), |f| f.build(params).map(drop)),
             // `ComponentKind` is `non_exhaustive`: a kind added later must get a dry run here.
             _ => Err(BuildError::new("component kind not supported")),
         }

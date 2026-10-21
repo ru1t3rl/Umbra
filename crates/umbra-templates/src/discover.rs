@@ -242,22 +242,37 @@ impl Loader<'_> {
         let mut diagnostics = Vec::new();
         let mut files = Vec::new();
         let mut defaulted = Vec::new();
+        let mut warnings = Vec::new();
         match fs::metadata(path) {
             Err(error) => diagnostics.push(io_diagnostic(path, &error)),
             Ok(meta) if meta.is_dir() => {
-                self.validate_directory(path, &mut files, &mut diagnostics, &mut defaulted);
+                self.validate_directory(
+                    path,
+                    &mut files,
+                    &mut diagnostics,
+                    &mut defaulted,
+                    &mut warnings,
+                );
             }
-            Ok(_) => self.validate_file(path, &mut files, &mut diagnostics, &mut defaulted),
+            Ok(_) => self.validate_file(
+                path,
+                &mut files,
+                &mut diagnostics,
+                &mut defaulted,
+                &mut warnings,
+            ),
         }
         files.sort();
         files.dedup();
         defaulted.sort();
         defaulted.dedup();
         sort_and_dedup(&mut diagnostics);
+        sort_and_dedup(&mut warnings);
         ValidationReport {
             files_checked: files,
             defaulted_tick_rates: defaulted,
             diagnostics,
+            warnings,
         }
     }
 
@@ -267,6 +282,7 @@ impl Loader<'_> {
         files: &mut Vec<PathBuf>,
         diagnostics: &mut Vec<Diagnostic>,
         defaulted: &mut Vec<(PathBuf, TickRate)>,
+        warnings: &mut Vec<Diagnostic>,
     ) {
         let file = match read_source(path) {
             Ok(file) => file,
@@ -285,6 +301,13 @@ impl Loader<'_> {
                 defaulted,
                 load.scenario.as_ref(),
                 load.diagnostics.is_empty(),
+            );
+            let clean = load.diagnostics.is_empty();
+            warnings.extend(
+                load.scenario
+                    .iter()
+                    .filter(|_| clean)
+                    .flat_map(|s| s.warnings.clone()),
             );
             files.extend(load.files);
             diagnostics.extend(load.diagnostics);
@@ -327,6 +350,7 @@ impl Loader<'_> {
         files: &mut Vec<PathBuf>,
         diagnostics: &mut Vec<Diagnostic>,
         defaulted: &mut Vec<(PathBuf, TickRate)>,
+        warnings: &mut Vec<Diagnostic>,
     ) {
         let paths = toml_files(dir, diagnostics);
         files.extend(paths.iter().cloned());
@@ -360,6 +384,11 @@ impl Loader<'_> {
             let clean =
                 own.is_empty() && loaded.diagnostics.is_empty() && diagnostics.len() == before;
             note_default(defaulted, read.as_ref(), clean);
+            warnings.extend(
+                read.iter()
+                    .filter(|_| clean)
+                    .flat_map(|s| s.warnings.clone()),
+            );
             diagnostics.extend(own);
         }
     }
