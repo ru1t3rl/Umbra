@@ -4,6 +4,8 @@
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.tools.json" },
     { "path": "./feature-shells/showcase" },
+    { "path": "./features/data" },
+    { "path": "./features/engine-stream" },
     { "path": "./features/runtime-config" },
     { "path": "./features/ui-kit" }
   ]

@@ -1,5 +1,6 @@
 // ADR 0045: @umbra/data re-exports orval's plain request functions for e2e/ and scripts only.
-// Features and shells may import hooks (use*), query-key/option getters, types and the data-layer helpers.
+// Features and shells may import hooks (use*), query-key/option getters, types and isApiProblem;
+// configureEngineUrl is for src/ (the bootstrap) only.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
@@ -12,8 +13,10 @@ const ALLOWED = [
   /^use[A-Z]/,
   /^get\w+Query(Key|Options)$/,
   /^[A-Z]/, // components, classes and types
-  /^(configureEngineUrl|isApiProblem)$/,
+  /^isApiProblem$/,
 ];
+// The engine URL is process-wide state: only the app bootstrap (src/) may set it.
+const APP_ONLY = /^configureEngineUrl$/;
 const SPECIFIER = `["']@umbra/data["']`;
 // import/export clauses are limited to braces, `* as x` or one identifier, so a semicolon-less
 // `import type` cannot swallow the next statement.
@@ -68,7 +71,9 @@ export function findPlainRequestImports(root: string): PlainRequestImport[] {
     for (const m of text.matchAll(STATIC)) {
       if (m[2]) continue; // `import type` / `export type`
       for (const name of [...namesOf(m[3] ?? ""), ...namesOf(m[4] ?? "")]) {
-        if (name !== "" && !ALLOWED.some((re) => re.test(name))) found.push({ file: rel, name });
+        const allowed =
+          ALLOWED.some((re) => re.test(name)) || (rel.startsWith("src/") && APP_ONLY.test(name));
+        if (name !== "" && !allowed) found.push({ file: rel, name });
       }
     }
     for (const _ of text.matchAll(DYNAMIC))

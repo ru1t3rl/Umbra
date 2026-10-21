@@ -4,6 +4,7 @@
   "include": ["src"],
   "references": [
     { "path": "./feature-shells/showcase" },
+    { "path": "./features/data" },
     { "path": "./features/runtime-config" },
     { "path": "./features/ui-kit" }
   ]

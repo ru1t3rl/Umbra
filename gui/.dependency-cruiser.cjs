@@ -183,7 +183,7 @@ module.exports = {
     enhancedResolveOptions: {
       exportsFields: ["exports"],
       conditionNames: ["import", "require", "node", "default"],
-      extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".css"],
+      extensions: [".ts", ".d.ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json", ".css"],
     },
     tsConfig: { fileName: "tsconfig.base.json" },
     reporterOptions: { text: { highlightFocused: true } },

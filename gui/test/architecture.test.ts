@@ -176,6 +176,7 @@ describe("plain request functions (ADR 0045)", () => {
     const found = findPlainRequestImports(join(FIXTURES, "plain-request/gui"));
     expect(found).toEqual([
       { file: "feature-shells/dashboard/src/index.ts", name: "* as data" },
+      { file: "features/map-view/src/config.ts", name: "configureEngineUrl" },
       { file: "features/map-view/src/dynamic.ts", name: DYNAMIC_NAME },
       { file: "features/map-view/src/index.ts", name: "getHealth" },
       { file: "features/map-view/src/reexport.ts", name: "getHealth" },

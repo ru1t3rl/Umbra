@@ -33,6 +33,7 @@
       "includes": [
         "feature-shells/*/src/*Page.tsx",
         "vite.config.ts",
+        "features/data/orval.config.ts",
         "playwright.config.ts",
         "e2e/global-*.ts"
       ],

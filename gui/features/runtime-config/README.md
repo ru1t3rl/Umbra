@@ -12,7 +12,7 @@ Foundation feature (tier `foundation`, no workspace dependencies): the runtime c
 
 ## Who reads what
 - The dashboard shell (WI-15) reads `basemap.styleUrl` through `useRuntimeConfig` and passes it to the map as a prop.
-- The `DataProvider` and `EngineStreamProvider` (WI-9, WI-10) get the engine URL from the app (`src/App.tsx`, from the same config) or `useRuntimeConfig`.
+- The engine URL reaches `@umbra/data` through `configureEngineUrl(config.engineUrl)`, called once in `src/main.tsx` after the config loads (ASM-353); `DataProvider` does not take it. The `EngineStreamProvider` (WI-10) gets it from the app the same way.
 
 ```tsx
 const config = await loadRuntimeConfig(fetch.bind(globalThis), import.meta.env.BASE_URL);

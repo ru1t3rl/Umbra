@@ -1,3 +1,4 @@
+import { DataProvider } from "@umbra/data";
 import { Alert, ThemeProvider } from "@umbra/ui-kit";
 import type { ReactElement } from "react";
 import { type DataRouter, RouterProvider } from "react-router";
@@ -11,7 +12,9 @@ export interface AppProps {
 export function App({ router }: AppProps): ReactElement {
   return (
     <ThemeProvider>
-      <RouterProvider router={router} />
+      <DataProvider>
+        <RouterProvider router={router} />
+      </DataProvider>
     </ThemeProvider>
   );
 }

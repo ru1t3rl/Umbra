@@ -1,0 +1,11 @@
+{
+  "name": "@umbra/engine-stream",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "feature",
+    "tier": "foundation"
+  }
+}

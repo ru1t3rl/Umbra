@@ -17,14 +17,16 @@
     "lint": "biome check .",
     "format": "biome check --write .",
     "test": "bun test",
+    "gen:api": "bun scripts/gen-api.mjs",
     "gen:tokens": "bun scripts/gen-tokens.mjs",
     "check:tokens": "bun scripts/check-tokens.mjs",
     "check:contrast": "bun scripts/check-contrast.mjs",
     "check:licenses": "bun scripts/check-licenses.ts",
     "check:deps": "depcruise --config .dependency-cruiser.cjs . && bun scripts/check-plain-requests.ts",
-    "verify": "bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run check:deps && bun run test && bun run build && bun run test:e2e"
+    "verify": "bun run gen:api --check && bun run gen:tokens --check && bun run check:tokens && bun run check:contrast && bun run check:licenses && bun run typecheck && bun run lint && bun run check:deps && bun run test && bun run build && bun run test:e2e"
   },
   "dependencies": {
+    "@umbra/data": "workspace:*",
     "@umbra/runtime-config": "workspace:*",
     "@umbra/shell-showcase": "workspace:*",
     "@umbra/ui-kit": "workspace:*",
@@ -45,6 +47,7 @@
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.2.0",
     "dependency-cruiser": "17.4.3",
+    "json-schema-to-typescript": "15.0.4",
     "typescript": "5.9.3",
     "vite": "7.3.7"
   }

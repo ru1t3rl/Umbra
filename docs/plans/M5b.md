@@ -484,6 +484,11 @@ and come before `map-view` and the dashboard shell (human decision 2026-10-19).
 - **Tests (fake socket, fake scheduler, fake timers):**
   - `sends subscribe after hello`;
   - `unknown message types and fields are ignored`;
+  - `an unknown message type is ignored`: the decoder parses into `unknown` and narrows (no cast);
+    an unknown message `type` is dropped and counted, never cast to a known type;
+  - `a frame with an unknown cause or ownership is handled`: unknown enum values (`state`, `cause`,
+    `ownership`, `stop_reason`, `StreamError.code`) map to an explicit fallback or are skipped, and
+    every `switch` over them has a `default` (docs/api.md: clients ignore unknown enum values);
   - `error messages are counted and the connection stays open`;
   - `latest frame wins within one animation frame`;
   - `a new session replaces all entities`;
@@ -762,15 +767,16 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
   `../umbra-m5b` (branch `m5b`, not yet merged into `develop`); M6 is in `../umbra-m6` (branch `m6`).
 
 ### In progress
-- Nothing. The working tree is clean at the WI-8 commit.
+- Nothing. The working tree is clean at the WI-9 commit.
 
 ### Next
-- WI-9: `@umbra/data` and `gen:api` (both outputs), engine-stream skeleton; then WI-10..WI-17.
+- WI-10: `@umbra/engine-stream` (decoder, store, backoff, connection, provider, hooks); then WI-11..WI-17.
 - **Pending human review (H-10):** the six showcase baselines in `gui/e2e/__screenshots__/linux/` (ASM-347).
 - Open nit from the WI-2 review: the `scripts/` entry of the second `no-deep-import` rule has no fixture.
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
+- WI-9 (2026-10-21, reviewed GO-with-fixes, fixes applied: `--check` generates in a temp copy and never writes under `gui/`, `configureEngineUrl` once in `main.tsx` (src-only, arch fixture), App-level provider test, AbortError rethrown; 240 bun + 15 e2e tests): `@umbra/data` (`features/data`: `fetcher.ts` mutator, `problem.ts`, `DataProvider.tsx`, `orval.config.ts`, generated `api.ts`), `@umbra/engine-stream` skeleton (generated `stream.d.ts`, type-only index), `scripts/gen-api.mjs` (`gen:api`, `--check`), `App` wraps the router in `DataProvider`, `verify` starts with `gen:api --check`. First-use check passed for all four items (type arrays, `oneOf` with null, `ids` repeated style, `application/problem+json`). Pins: orval 7.21.0, @tanstack/react-query 5.104.5, json-schema-to-typescript 15.0.4. Tests: `fetcher.test.ts` (14), `DataProvider.test.tsx` (3), `gen-api.test.ts` (6), App-level `useGetStatus` test (1), plus an arch fixture for `configureEngineUrl`; see the final count in the report. ASM-348..355.
 - WI-8 (2026-10-21, reviewed GO-with-fixes, fixes applied: computed-style glass-on-glass guard (mutations proven), all token groups exported by ui-kit, per-platform baseline dir, Alert named by its title, sample strings via messages, one h1, threshold 0.05, 216 bun + 15 e2e tests): `@umbra/shell-showcase` (`feature-shells/showcase`, route `/showcase`, lazy `ShowcasePage`: docked CommandBar with `ThemeToggle`, token sections, all 14 components in reference states, floating CommandBar sample), router uses the shell route; tests `ShowcasePage.test.tsx` (10), `e2e/showcase.spec.ts` (7), `app.spec.ts` theme switch. ASM-344..347. **Baselines pending human review (H-10)**, Linux-generated, in `gui/e2e/__screenshots__/linux/`: `showcase-tokens-ops.png`, `showcase-tokens-day.png`, `showcase-components-ops.png`, `showcase-components-day.png`, `showcase-floating-ops.png`, `showcase-floating-day.png`. Review fixes applied: deterministic glass-on-glass CSS assertions, ui-kit exports all token groups, `Alert` named by its title, sample strings in messages, h1/h2/h3 headings. Screenshot suite ran 5 times in a row without a diff after the fixes.
 - WI-7 (2026-10-21, commit `616cdaf`, reviewed GO-with-fixes, fixes applied incl. the new foundation feature `@umbra/runtime-config` (ASM-339), Playwright as a dev dependency, router created once in `main.tsx`, `--port 0` preview, `/api/` proxy key): app shell in `gui/src` (`main`, `App`, `router`, `messages`), `public/config.json`, `index.html` icon link, `umbra-icon` Vite plugin (dev, preview, build; byte-identical, no copy), `/api` proxy with `ws: true`, Playwright `ui` project with global setup/teardown (build `--mode e2e`, `vite preview`), `e2e/app.spec.ts` (5 tests; 202 bun tests), unit tests in `runtime-config` (model, provider), `index-html.test.ts`, `App.test.tsx`; `test:e2e` added to `verify`; verify-frontend skill updated. ASM-338..343.
 - WI-6 (2026-10-21, reviewed GO-with-fixes, fixes applied (dead biome-ignores removed, U+00A0 echelon, paused needs a visible word, WI-8 glass screenshot item, roving tab stop deferred to M8)): ui-kit components C: `CommandBar`, `Readout`, `EntityRow`/`EntityList` (tsx, css, tests each), shared `VisuallyHidden.css`, `props.test-d.ts` cases, README and `index.ts` updated; `bun run verify` passes (179 tests); EntityList virtualization not built (M8). ASM-337 (incl. the glass-on-glass CSS guard for a floating CommandBar).
