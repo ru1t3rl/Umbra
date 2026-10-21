@@ -18,6 +18,11 @@ const t = defineMessages({
   unknown: "Unknown",
 });
 
+/** The default word for an affiliation ("Friend"), for places that show only the symbol. */
+export function affiliationLabel(affiliation: Affiliation): string {
+  return t(affiliation);
+}
+
 const DIAMOND = "M10 1.5 L18.5 10 L10 18.5 L1.5 10 Z";
 const QUATREFOIL =
   "M6 2.5 h8 a4 4 0 0 1 4 4 v8 a4 4 0 0 1 -4 4 h-8 a4 4 0 0 1 -4 -4 v-8 a4 4 0 0 1 4 -4 z";

@@ -1,7 +1,10 @@
 // Type-level tests, checked by `tsc -b` (bun test does not run this file). Each @ts-expect-error
 // line must keep failing to compile; if the prop contract loosens, tsc reports "unused directive".
 import type { ButtonProps } from "./Button/Button.tsx";
+import type { CommandBarProps } from "./CommandBar/CommandBar.tsx";
+import type { EntityRowProps } from "./EntityRow/EntityRow.tsx";
 import type { PanelProps } from "./Panel/Panel.tsx";
+import type { ReadoutProps } from "./Readout/Readout.tsx";
 import type { SliderProps } from "./Slider/Slider.tsx";
 import type { TextFieldProps } from "./TextField/TextField.tsx";
 import type { ToggleProps } from "./Toggle/Toggle.tsx";
@@ -53,3 +56,41 @@ export const sliderType: SliderProps = { label: "Rate", value: 4, type: "text" }
 
 // @ts-expect-error Panel requires a title
 export const panelNoTitle: PanelProps = {};
+
+// CommandBar: paused needs a clock.
+export const barOk: CommandBarProps[] = [
+  { title: "T" },
+  { title: "T", clock: "14:32:07Z" },
+  { title: "T", clock: "14:32:07Z", paused: true, floating: true },
+];
+
+// @ts-expect-error paused without a clock has nothing to pause
+export const barPausedNoClock: CommandBarProps = { title: "T", paused: true };
+
+// @ts-expect-error title is required
+export const barNoTitle: CommandBarProps = {};
+
+// Readout: a trend describes a delta.
+export const readoutOk: ReadoutProps[] = [
+  { label: "A", value: 1 },
+  { label: "A", value: "1", unit: "Hz", live: true },
+  { label: "A", value: 1, delta: "+3", trend: "up" },
+  { label: "A", value: 1, delta: "+3" },
+];
+
+// @ts-expect-error a trend without a delta shows nothing
+export const readoutTrendNoDelta: ReadoutProps = { label: "A", value: 1, trend: "up" };
+
+export const readoutBadTrend: ReadoutProps = {
+  label: "A",
+  value: 1,
+  delta: "x",
+  // @ts-expect-error unknown trend
+  trend: "sideways",
+};
+
+// @ts-expect-error EntityRow needs name and affiliation
+export const rowMissing: EntityRowProps = { id: "1" };
+
+// @ts-expect-error unknown affiliation
+export const rowBadAffiliation: EntityRowProps = { name: "A", affiliation: "ally" };

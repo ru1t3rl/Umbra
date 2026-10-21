@@ -1,4 +1,4 @@
-// Public API of @umbra/ui-kit. Components arrive in WI-6.
+// Public API of @umbra/ui-kit: tokens, theme, i18n helper and the 14 Vantage components plus ThemeToggle.
 
 export type {
   Affiliation,
@@ -15,10 +15,16 @@ export type { CardProps } from "./components/Card/Card.tsx";
 export { Card } from "./components/Card/Card.tsx";
 export type { ChipGroupProps, ChipProps } from "./components/Chip/Chip.tsx";
 export { Chip, ChipGroup } from "./components/Chip/Chip.tsx";
+export type { CommandBarProps } from "./components/CommandBar/CommandBar.tsx";
+export { CommandBar } from "./components/CommandBar/CommandBar.tsx";
+export type { EntityListProps, EntityRowProps } from "./components/EntityRow/EntityRow.tsx";
+export { EntityList, EntityRow } from "./components/EntityRow/EntityRow.tsx";
 export type { IconProps } from "./components/Icon/Icon.tsx";
 export { Icon } from "./components/Icon/Icon.tsx";
 export type { PanelProps } from "./components/Panel/Panel.tsx";
 export { Panel } from "./components/Panel/Panel.tsx";
+export type { ReadoutProps } from "./components/Readout/Readout.tsx";
+export { Readout } from "./components/Readout/Readout.tsx";
 export type { SliderProps } from "./components/Slider/Slider.tsx";
 export { Slider } from "./components/Slider/Slider.tsx";
 export type { TabItem, TabsProps } from "./components/Tabs/Tabs.tsx";

@@ -436,6 +436,8 @@ and come before `map-view` and the dashboard shell (human decision 2026-10-19).
   - `e2e/showcase.spec.ts` `showcase slider arrow keys`: focus the showcase Slider, press ArrowRight,
     assert its `.vt-slider-value` text and `aria-valuetext` change (native arrow keys are not
     reproducible in happy-dom, ASM-336 (3)).
+  - screenshot item `showcase floating command bar (ops|day)`: a floating CommandBar with a glass Chip
+    and a Panel inside, both themes, no second blur (guards the glass-on-glass CSS rule, ASM-337 (2)).
 - **Baselines** are generated on Linux and committed under `gui/e2e/__screenshots__/`. The human looks
   at them once (H-10).
 - **Risks:** screenshot flakiness from font loading. Wait for `document.fonts.ready`, and disable caret
@@ -762,13 +764,14 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
 - Nothing. The working tree is clean at the WI-3 commit.
 
 ### Next
-- WI-6..WI-8
+- WI-7..WI-8
   (rest of the A-003 block: components B and C, app shell with favicon, showcase with Ops/Day
   screenshots for the human to review), then WI-9..WI-17.
 - Open nit from the WI-2 review: the `scripts/` entry of the second `no-deep-import` rule has no fixture.
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
+- WI-6 (2026-10-21, reviewed GO-with-fixes, fixes applied (dead biome-ignores removed, U+00A0 echelon, paused needs a visible word, WI-8 glass screenshot item, roving tab stop deferred to M8)): ui-kit components C: `CommandBar`, `Readout`, `EntityRow`/`EntityList` (tsx, css, tests each), shared `VisuallyHidden.css`, `props.test-d.ts` cases, README and `index.ts` updated; `bun run verify` passes (179 tests); EntityList virtualization not built (M8). ASM-337 (incl. the glass-on-glass CSS guard for a floating CommandBar).
 - WI-5 (2026-10-21, reviewed GO-with-fixes, fixes applied (Tabs label/id/aria-controls, count separator and tabular figures, TextField aria-invalid and empty id; Slider arrow-key e2e scheduled in WI-8)): ui-kit components B: `Panel`, `Card`, `TextField`, `Toggle`, `Slider`, `Tabs`, `ThemeToggle` (tsx, css, tests each), shared `Label.css`, new type-level cases in `props.test-d.ts`, README and `index.ts` updated. `bun run verify` passes (151 tests). ASM-336 (incl. the glass-on-glass note for the WI-8 review).
 - WI-4 (2026-10-21, reviewed GO-with-fixes, fixes applied (aria-labelledby variant, NonNullable children, shared `gui/test/jest-dom.d.ts`, README exports)): ui-kit components A: `Button`, `Chip`/`ChipGroup`, `Badge`, `AffiliationTag`, `Alert` (tsx, css, tests each), `props.test-d.ts` (type-level icon-only `aria-label` rule), `gui/test/jest-dom.d.ts`, CSS in `styles.css`, exports in `index.ts`. `bun run verify` passes (107 tests). ASM-335.
 - WI-1 (2026-10-20, commit `09cc8b6`, reviewed GO-with-fixes, fixes applied): `gui/` Bun workspace (root `gui/package.json`, `gui/bun.lock`, `features/ui-kit`), tsconfig/biome/vite/bunfig/test setup, `check-licenses.ts`, `check-tokens.mjs --root` with the vacuous-pass guard, the three design-system scripts wired, gate 15 in `scripts/gates.sh` and `docs/build.md`, A-003 apply steps 1-3 (H-9), `verify-frontend` skill. `bun run verify` (WI-1 steps 2-7, 9, 10) passes. ASM-322..ASM-326.
@@ -781,12 +784,13 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
   - force-to-affiliation overrides in settings;
   - viewport `bbox` subscription;
   - EntityList virtualization;
+  - any EntityList shown with live entities first gets a single roving tab stop (APG listbox);
   - Tauri origins and bundle icons from `umbra_icon.svg`;
   - Windows screenshots.
 - Later ADR: `milsymbol` once the contract has entity types.
 
 ### Assumed
-See `docs/assumptions/M5b.md` (ASM-300..ASM-336 so far). Added during implementation: ASM-322..326
+See `docs/assumptions/M5b.md` (ASM-300..ASM-337 so far). Added during implementation: ASM-322..326
 (exact pins, licence rules incl. OFL-1.1 only for `@fontsource/*`, tsconfig layout, `gui/**/node_modules`,
 biome preset), ASM-327..331 (dependency-cruiser details, app root exempt from the workspace-dep rule,
 plain-request allow-list until WI-9), ASM-332..334 (remaining `umbra-allow` lines, own-keys i18n lookup,
