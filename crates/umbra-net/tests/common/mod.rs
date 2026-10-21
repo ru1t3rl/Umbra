@@ -218,8 +218,10 @@ pub fn config(
     base: u64,
     params: &serde_json::Value,
 ) -> Arc<dyn NetworkAdapterConfig> {
+    // The factory input is the ADR 0030 wrapper; `params` is the adapter's own table.
+    let input = serde_json::json!({"name": "test", "params": params, "templates": {}});
     hub.factory(cid(id), KeySpace { base, count: 100 })
-        .build(params)
+        .build(&input)
         .unwrap()
 }
 

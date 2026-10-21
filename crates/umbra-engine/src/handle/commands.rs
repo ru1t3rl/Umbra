@@ -4,6 +4,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use umbra_core::ControlAction;
 use umbra_kernel::ClockMode;
 
 use super::thread::{EndingStep, Run, StepEnd, Worker};
@@ -106,7 +107,7 @@ impl Worker {
         need(run, &[RunState::Ready], "start")?;
         run.session.engine_mut().resume();
         run.state = RunState::Running;
-        Ok(None)
+        Ok(self.control_or_stop(ControlAction::Start))
     }
 
     fn pause(&mut self) -> Result<Option<EndingStep>, HandleError> {
@@ -114,7 +115,9 @@ impl Worker {
         need(run, &[RunState::Running], "pause")?;
         run.session.engine_mut().pause();
         run.state = RunState::Paused;
-        Ok(run.take_step(StepEnd::Cancel))
+        let ending = run.take_step(StepEnd::Cancel);
+        let stopped = self.control_or_stop(ControlAction::Pause);
+        Ok(ending.or(stopped))
     }
 
     fn resume(&mut self) -> Result<Option<EndingStep>, HandleError> {
@@ -122,7 +125,7 @@ impl Worker {
         need(run, &[RunState::Paused], "resume")?;
         run.session.engine_mut().resume();
         run.state = RunState::Running;
-        Ok(None)
+        Ok(self.control_or_stop(ControlAction::Resume))
     }
 
     fn stop(&mut self) -> Result<Option<EndingStep>, HandleError> {
@@ -197,7 +200,8 @@ impl Worker {
         };
         self.bus.set_tick_rate(Some(info.tick_rate));
         self.run = Some(Run {
-            directory: Arc::new(session.entities().clone()),
+            directory: Arc::new(session.directory()),
+            directory_ghosts: 0,
             session,
             info: info.clone(),
             state: RunState::Ready,

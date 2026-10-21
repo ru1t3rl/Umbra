@@ -96,7 +96,8 @@ impl Loader<'_> {
             Some(v) => reader.boolean("enabled", v),
             None => Some(true),
         };
-        let params = self.read_adapter_params(reader, table, adapter.as_ref());
+        let params =
+            self.read_adapter_params(reader, table, adapter.as_ref(), name.as_deref(), templates);
         let publish = table
             .get("publish")
             .map_or(Some(PublishSettings::default()), |v| {
@@ -129,6 +130,8 @@ impl Loader<'_> {
         reader: &mut Reader<'_>,
         table: &LTable,
         adapter: Option<&(ComponentId, &Origin)>,
+        name: Option<&str>,
+        templates: &Templates<'_>,
     ) -> Option<umbra_core::ParamValue> {
         let params = match table.get("params") {
             Some(v) => reader.table("params", v).cloned(),
@@ -145,7 +148,25 @@ impl Loader<'_> {
             reader.extend(out);
             return None;
         };
-        let json = self.check_component(ComponentKind::NetworkAdapter, id, at, &params, &mut out);
+        // The trial build gets the input the engine will give the factory (ADR 0030, REQ-T-4).
+        let name = name.unwrap_or_default();
+        let tables: Vec<_> = templates
+            .loaded
+            .set
+            .iter()
+            .filter_map(|t| t.network.get(name).map(|table| (&t.id, table)))
+            .collect();
+        let wrap = |p: &umbra_core::ParamValue| {
+            umbra_core::net::configure_input(name, p, tables.iter().copied())
+        };
+        let json = self.check_component_wrapped(
+            ComponentKind::NetworkAdapter,
+            id,
+            at,
+            &params,
+            &mut out,
+            Some(&wrap),
+        );
         reader.extend(out);
         json
     }

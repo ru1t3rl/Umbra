@@ -77,7 +77,7 @@ gate 1-fmt cargo fmt --all -- --check
 gate 2-clippy cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 gate 3-test cargo test --workspace --locked --offline
 gate 4-determinism cargo test -p umbra-engine --test determinism --test behavior_determinism \
-    --test plugin_determinism --test handle_determinism --locked --offline
+    --test plugin_determinism --test handle_determinism --test net_determinism --locked --offline
 gate 5-deps cargo xtask check-deps
 gate 6-deny cargo deny check
 gate 7-audit cargo audit

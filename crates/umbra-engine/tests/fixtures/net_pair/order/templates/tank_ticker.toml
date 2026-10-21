@@ -1,0 +1,7 @@
+schema_version = 1
+id = "tank.ticker"
+extends = "ground_vehicle.base"
+description = "Owned entity whose behavior emits one Custom event per tick"
+
+[behavior]
+ref = "test.behavior.ticker"

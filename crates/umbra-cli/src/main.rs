@@ -33,10 +33,10 @@ use output::Format;
 use umbra_engine::builtins::standard_registry;
 use umbra_engine::scenario::{Diagnostic, Diagnostics, RunOptions, ScenarioError, TickRateSource};
 use umbra_engine::{
-    BEHAVIOR_FILE_SCHEMA, CONFIG_FILE_SCHEMA, ComponentId, ComponentKind, HostOptions, PluginInfo,
-    SCENARIO_FILE_SCHEMA, StdWallClock, TEMPLATE_FILE_SCHEMA, TickRate, instantiate_with_plugins,
-    load_plugins, load_scenario_with_plugins_and_settings, resolve_plugin_paths,
-    validate_path_with_plugins_and_settings,
+    BEHAVIOR_FILE_SCHEMA, CONFIG_FILE_SCHEMA, ComponentId, ComponentKind, ControlAction,
+    HostOptions, PluginInfo, SCENARIO_FILE_SCHEMA, StdWallClock, TEMPLATE_FILE_SCHEMA, TickRate,
+    instantiate_with_plugins, load_plugins, load_scenario_with_plugins_and_settings,
+    resolve_plugin_paths, validate_path_with_plugins_and_settings,
 };
 
 /// Stack of the thread that runs the command. Behavior graphs are ticked by recursion and need up
@@ -153,6 +153,10 @@ fn run(args: &RunArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
     if loaded.scenario.tick_rate_source == TickRateSource::Default {
         note_default_tick_rate(&loaded.scenario.source, loaded.scenario.tick_rate);
     }
+    for warning in &loaded.scenario.warnings {
+        // Warnings never fail the run and stay off stdout, like the default-rate note (ASM-290).
+        let _ = writeln!(io::stderr(), "{warning}");
+    }
     log_plugins(log_level, loaded.plugins.plugins());
     let mut run = instantiate_with_plugins(&loaded, options).context("instantiating")?;
     let ticks = args.ticks.unwrap_or(run.duration_ticks);
@@ -169,27 +173,35 @@ fn run(args: &RunArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
     let due = |tick: u64, every: u64| every != 0 && tick.is_multiple_of(every);
     let names = output::name_map(&run.entities);
     // A write error (for example a closed pipe) stops the run (ControlFlow::Break).
-    run.engine
-        .step(ticks, |view| {
-            let tick = view.report.time.tick();
-            let mut write = || -> io::Result<()> {
-                if due(tick, print_every) {
-                    output::write_entities(&mut out, format, &view.snapshot(), &names)?;
-                }
-                if due(tick, hash_every) {
-                    output::write_tick_hash(&mut out, format, tick, view.state_hash())?;
-                }
-                Ok(())
-            };
-            match write() {
-                Ok(()) => ControlFlow::Continue(()),
-                Err(e) => {
-                    write_error = Some(e);
-                    ControlFlow::Break(())
-                }
+    // Run control reaches the network around the run (ASM-295); a fault under `abort` ends it.
+    if let Some(fault) = run.engine.publish_control(ControlAction::Start) {
+        return Err(anyhow!(fault.to_string())).context("starting the run");
+    }
+    let stepped = run.engine.step(ticks, |view| {
+        let tick = view.report.time.tick();
+        let mut write = || -> io::Result<()> {
+            if due(tick, print_every) {
+                output::write_entities(&mut out, format, &view.snapshot(), &names)?;
             }
-        })
-        .context("running the scenario")?;
+            if due(tick, hash_every) {
+                output::write_tick_hash(&mut out, format, tick, view.state_hash())?;
+            }
+            Ok(())
+        };
+        match write() {
+            Ok(()) => ControlFlow::Continue(()),
+            Err(e) => {
+                write_error = Some(e);
+                ControlFlow::Break(())
+            }
+        }
+    });
+    let stop_fault = run.engine.publish_control(ControlAction::Stop);
+    log_net(log_level, &run.engine);
+    stepped.context("running the scenario")?;
+    if let Some(fault) = stop_fault {
+        return Err(anyhow!(fault.to_string())).context("stopping the run");
+    }
     if let Some(e) = write_error {
         return Err(e).context("writing output");
     }
@@ -218,6 +230,23 @@ fn log_plugins(level: LevelFilter, plugins: &[PluginInfo]) {
             "info: loaded plugin {} {} (abi {}.{}) from {}",
             p.id, p.version, p.abi.0, p.abi.1, p.origin
         );
+    }
+}
+
+/// One stderr line per network adapter when the log level admits info (ASM-250). Nothing is printed
+/// without adapters, and stdout is never touched.
+fn log_net(level: LevelFilter, engine: &umbra_engine::Engine) {
+    if level < LevelFilter::INFO {
+        return;
+    }
+    let mut err = io::stderr().lock();
+    for status in engine
+        .network()
+        .map(umbra_engine::NetLink::status)
+        .unwrap_or_default()
+    {
+        // Nothing sensible remains to do if stderr is gone.
+        let _ = writeln!(err, "{}", umbra_engine::net_summary(&status));
     }
 }
 

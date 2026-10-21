@@ -36,9 +36,13 @@ impl Factory<dyn NetworkAdapterConfig> for Fac {
     fn param_schema(&self) -> &ParamSchema {
         &self.schema
     }
-    fn build(&self, params: &ParamValue) -> Result<Arc<dyn NetworkAdapterConfig>, BuildError> {
-        if params["port"] == 13 {
+    fn build(&self, input: &ParamValue) -> Result<Arc<dyn NetworkAdapterConfig>, BuildError> {
+        // The input is the ADR 0030 wrapper `{"name", "params", "templates"}`.
+        if input["params"]["port"] == 13 {
             return Err(BuildError::new("port 13 is reserved"));
+        }
+        if input["params"]["port"] == 14 {
+            return Err(BuildError::new("port 14 is reserved").at("/params/port"));
         }
         Ok(Arc::new(Cfg))
     }
@@ -678,6 +682,16 @@ fn a_factory_that_rejects_the_params_gives_param_invalid() {
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].0, "param_invalid");
     assert_eq!(found[0].1, std::path::PathBuf::from(SCN));
+}
+
+#[test]
+fn a_build_error_under_params_is_located_at_that_parameter() {
+    let text = entry(&["params = { port = 14 }"]);
+
+    assert_eq!(
+        failing(&text),
+        vec![row("param_invalid", SCN, pos_of(&text, "14"))]
+    );
 }
 
 #[test]

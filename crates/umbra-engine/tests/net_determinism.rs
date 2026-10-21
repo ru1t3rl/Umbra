@@ -2,7 +2,7 @@
 //! engines across runs, across every clock mode, and with a mid-run pause. Requirements: REQ-K-4,
 //! D-5, ADR 0030, ASM-224, ASM-240. The first divergent tick names the engine.
 //!
-//! Step 4 of M6: written before WI-9; ignored with it (`Engine::attach_network` is a stub).
+//! Step 4 of M6, passing since WI-9.
 
 #![forbid(unsafe_code)]
 
@@ -85,7 +85,6 @@ fn assert_same(label: &str, got: &Trace, want: &Trace) {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn two_engines_over_loopback_are_identical_across_runs() {
     let (first, ghosts) = run(None, false);
     let (second, _) = run(None, false);
@@ -102,7 +101,6 @@ fn two_engines_over_loopback_are_identical_across_runs() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn two_engines_over_loopback_are_identical_in_every_clock_mode() {
     let (baseline, _) = run(Some(ClockMode::Stepped), false);
     let modes = [
@@ -122,7 +120,6 @@ fn two_engines_over_loopback_are_identical_in_every_clock_mode() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn two_engines_over_loopback_are_identical_with_a_mid_run_pause() {
     let (baseline, _) = run(None, false);
 

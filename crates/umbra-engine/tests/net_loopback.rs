@@ -1,9 +1,8 @@
 //! AT-12 (engine level), AT-13 (engine level) and AT-5 (end to end): engines over loopback
 //! hubs. Requirements: REQ-N-2..5, REQ-K-5, ADR 0030..0032, ASM-224, ASM-248, ASM-267, ASM-272.
 //!
-//! Step 4 of M6: written before WI-9. Engines are driven in lockstep on one thread: each round
-//! ticks A, then B (then the bridge). `Engine::attach_network` is a `todo!()` stub, so the tests
-//! that need a link are ignored with that work item.
+//! Step 4 of M6, passing since WI-9. Engines are driven in lockstep on one thread: each round
+//! ticks A, then B (then the bridge).
 
 #![forbid(unsafe_code)]
 
@@ -37,7 +36,6 @@ fn round(a: &mut Peer, b: &mut Peer) {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn ghosts_appear_with_mapped_template() {
     let (mut a, mut b, _) = pair();
 
@@ -70,8 +68,28 @@ fn ghosts_appear_with_mapped_template() {
     );
 }
 
+/// ASM-240: a paused engine neither polls nor publishes; what its peers send waits in the queue
+/// and is read after the resume.
 #[test]
-#[ignore = "WI-9"]
+fn a_paused_engine_does_not_poll_its_adapters() {
+    let (mut a, mut b, _) = pair();
+    a.engine.pause();
+
+    b.ticks(5);
+    a.tick();
+
+    let status = a.engine.network().expect("link").status();
+    assert_eq!(status[0].received, 0, "{status:?}");
+    assert_eq!(status[0].published, 0, "{status:?}");
+    assert_eq!(a.engine.now().tick(), 0, "no tick while paused");
+    a.engine.resume();
+    a.tick();
+    let status = a.engine.network().expect("link").status();
+    assert!(status[0].received > 0, "read after the resume: {status:?}");
+    assert_eq!(a.ghosts().len(), 1);
+}
+
+#[test]
 fn unmapped_types_are_not_mirrored() {
     let (mut a, mut b, _) = pair();
 
@@ -87,7 +105,6 @@ fn unmapped_types_are_not_mirrored() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn receiver_error_stays_within_threshold_every_tick() {
     let (mut a, mut b, b_infos) = pair();
     let b_tank = id_of(&b_infos, "b-tank");
@@ -129,7 +146,6 @@ fn receiver_error_stays_within_threshold_every_tick() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn stale_ghosts_are_removed_after_timeout() {
     let (mut a, mut b, _) = pair();
     b.ticks(0);
@@ -157,7 +173,6 @@ fn stale_ghosts_are_removed_after_timeout() {
 }
 
 #[test]
-#[ignore = "WI-9"]
 fn removed_owner_removes_ghost() {
     let (mut a, mut b, b_infos) = pair();
     for _ in 0..10 {
@@ -183,7 +198,6 @@ fn removed_owner_removes_ghost() {
 /// AT-5 end to end: C bridges hub 1 (A) and hub 2 (B) and owns one tank. It mirrors A's and B's
 /// tanks but must never republish them, so A never sees B's entities nor the reverse.
 #[test]
-#[ignore = "WI-9"]
 fn bridge_engine_never_republishes_ghosts() {
     let (hub1, hub2) = (
         LoopbackHub::with_capture(4096),

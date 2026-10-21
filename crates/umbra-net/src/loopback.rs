@@ -55,6 +55,8 @@ pub struct LoopbackHub {
     /// Open endpoints in start order.
     endpoints: Mutex<Vec<Arc<Endpoint>>>,
     started: AtomicUsize,
+    /// The inputs the factories were built with, in order (a debugging aid for tests).
+    built: Mutex<Vec<ParamValue>>,
 }
 
 impl LoopbackHub {
@@ -64,6 +66,7 @@ impl LoopbackHub {
             capture: capture.then(|| Mutex::new(Vec::new())),
             endpoints: Mutex::new(Vec::new()),
             started: AtomicUsize::new(0),
+            built: Mutex::new(Vec::new()),
         })
     }
 
@@ -105,6 +108,13 @@ impl LoopbackHub {
         self.capture
             .as_ref()
             .map_or_else(Vec::new, |c| lock(c).clone())
+    }
+
+    /// Every input the hub's factories were built with, in order: what the scenario reader's
+    /// trial build and the engine handed to `build` (`{"name", "params", "templates"}`).
+    #[must_use]
+    pub fn built_inputs(&self) -> Vec<ParamValue> {
+        lock(&self.built).clone()
     }
 
     /// How many endpoints have been started (the validate dry run keeps this at 0).
@@ -161,19 +171,23 @@ impl Factory<dyn NetworkAdapterConfig> for LoopbackFactory {
         &self.schema
     }
 
-    fn build(&self, params: &ParamValue) -> Result<Arc<dyn NetworkAdapterConfig>, BuildError> {
+    fn build(&self, input: &ParamValue) -> Result<Arc<dyn NetworkAdapterConfig>, BuildError> {
+        // The input is `{"name", "params", "templates"}` (ADR 0030); the loopback reads `params`
+        // and keeps the whole input for tests (`LoopbackHub::built_inputs`).
+        lock(&self.hub.built).push(input.clone());
+        let params = input.get("params").unwrap_or(&ParamValue::Null);
         let key_space = match params.get("key_space") {
             None => self.key_space,
             Some(v) => parse_key_space(v).ok_or_else(|| {
                 BuildError::new("key_space must be [base, count], two non-negative integers")
-                    .at("/key_space")
+                    .at("/params/key_space")
             })?,
         };
         let echo = match params.get("echo") {
             None => false,
             Some(v) => v
                 .as_bool()
-                .ok_or_else(|| BuildError::new("echo must be a boolean").at("/echo"))?,
+                .ok_or_else(|| BuildError::new("echo must be a boolean").at("/params/echo"))?,
         };
         Ok(Arc::new(LoopbackConfig {
             hub: Arc::clone(&self.hub),
@@ -288,7 +302,8 @@ mod tests {
             serde_json::json!({"key_space": "x"}),
             serde_json::json!({"echo": 1}),
         ] {
-            assert!(factory.build(&bad).is_err(), "{bad}");
+            let input = serde_json::json!({"name": "lb", "params": bad, "templates": {}});
+            assert!(factory.build(&input).is_err(), "{bad}");
         }
     }
 }

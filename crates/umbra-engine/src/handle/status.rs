@@ -44,6 +44,9 @@ impl Worker {
         self.seq += 1;
         self.shared.builds.fetch_add(1, Ordering::Relaxed);
         let mut frame = Frame::new(seq, cause, self.run_status());
+        if let Some(run) = self.run.as_mut() {
+            run.sync_directory();
+        }
         if let Some(run) = &self.run {
             let engine = run.session.engine();
             frame.snapshot = Some(engine.snapshot());

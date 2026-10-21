@@ -93,9 +93,10 @@ fn the_key_space_param_overrides_the_factory_default() {
     let hub = LoopbackHub::new(16);
     let factory = hub.factory(cid("test.net.loopback"), KeySpace { base: 5, count: 6 });
 
-    let default = factory.build(&serde_json::json!({})).unwrap();
+    let input = |params| serde_json::json!({"name": "lb", "params": params, "templates": {}});
+    let default = factory.build(&input(serde_json::json!({}))).unwrap();
     let overridden = factory
-        .build(&serde_json::json!({"key_space": [100, 20]}))
+        .build(&input(serde_json::json!({"key_space": [100, 20]})))
         .unwrap();
 
     assert_eq!(default.key_space(), KeySpace { base: 5, count: 6 });

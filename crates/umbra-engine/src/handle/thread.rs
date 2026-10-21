@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
 
-use umbra_core::{EntityId, Registry, SimEvent, SimTime};
+use umbra_core::{ControlAction, EntityId, Registry, SimEvent, SimTime};
 use umbra_kernel::{ClockMode, TickReport, WallClock};
 use umbra_plugin_host::PluginLog;
 
@@ -18,6 +18,7 @@ use super::{HandleConfig, SessionInfo, StepOutcome};
 use crate::bus::{Bus, FrameCause, RunState, StopReason};
 use crate::engine::Pumped;
 use crate::error::EngineError;
+use crate::net::NetFault;
 use crate::plugins::PluginFault;
 use crate::scenario::{EntityInfo, LoadSettings};
 use crate::session::Session;
@@ -67,6 +68,8 @@ pub(super) struct Run {
     pub(super) info: SessionInfo,
     /// Shared between frames while the entity set is unchanged.
     pub(super) directory: Arc<BTreeMap<EntityId, EntityInfo>>,
+    /// The ghost generation `directory` was built at (0 without a network link).
+    pub(super) directory_ghosts: u64,
     pub(super) state: RunState,
     pub(super) stop_reason: Option<StopReason>,
     pub(super) step: Option<PendingStep>,
@@ -81,6 +84,32 @@ pub(super) struct Run {
 const HELD_EVENTS_CAP: usize = 65_536;
 
 impl Run {
+    /// Rebuilds the directory frames share from the session (owned entities and ghosts).
+    pub(super) fn refresh_directory(&mut self) {
+        self.directory = Arc::new(self.session.directory());
+        self.directory_ghosts = self.ghost_generation();
+    }
+
+    /// The one place a run-control action reaches the network (ASM-295). Adapters that publish
+    /// control may echo it back to peers; acting on inbound control stays ignored (ASM-235).
+    pub(super) fn send_control(&mut self, action: ControlAction) -> Option<NetFault> {
+        self.session.engine_mut().publish_control(action)
+    }
+
+    fn ghost_generation(&self) -> u64 {
+        self.session
+            .engine()
+            .network()
+            .map_or(0, crate::NetLink::ghost_generation)
+    }
+
+    /// Rebuilds the directory if ghosts appeared or went since it was built.
+    pub(super) fn sync_directory(&mut self) {
+        if self.ghost_generation() != self.directory_ghosts {
+            self.refresh_directory();
+        }
+    }
+
     /// Takes the pending step, unanswered, with the time reached now. The ticks it still had
     /// queued in the clock are dropped, so a later `resume` does not run them.
     pub(super) fn take_step(&mut self, end: StepEnd) -> Option<EndingStep> {
@@ -233,6 +262,7 @@ impl Worker {
         match run.session.engine_mut().pump(max_wait) {
             Ok(Pumped::Ticked(report)) => self.after_tick(report),
             Ok(Pumped::Aborted { report, fault }) => self.after_abort(report, &fault),
+            Ok(Pumped::NetAborted { report, fault }) => self.after_net_abort(report, &fault),
             Ok(Pumped::Waited) => {}
             Ok(Pumped::Idle) => return self.wait_for_command(),
             Err(error) => self.after_error(&error),
@@ -273,6 +303,18 @@ impl Worker {
         self.publish_tick(report, true);
         let ending = self.stop_with(
             self.shown_stop_reason(StopReason::PluginFault(fault.clone())),
+            StepEnd::Cancel,
+        );
+        self.publish_control_then(Vec::new(), ending);
+    }
+
+    /// A network adapter fault under `abort` (ASM-252): the faulting tick's frame is kept, then
+    /// the run stops with the existing `error` reason (no new wire value).
+    fn after_net_abort(&mut self, report: TickReport, fault: &crate::net::NetFault) {
+        trace_tick(&report);
+        self.publish_tick(report, true);
+        let ending = self.stop_with(
+            self.shown_stop_reason(StopReason::NetworkFault(fault.clone())),
             StepEnd::Cancel,
         );
         self.publish_control_then(Vec::new(), ending);
@@ -332,9 +374,27 @@ impl Worker {
     pub(super) fn stop_with(&mut self, reason: StopReason, end: StepEnd) -> Option<EndingStep> {
         let run = self.run.as_mut()?;
         run.session.engine_mut().pause();
+        // A fault while sending Stop is the final status (ASM-295), unless the run stopped for
+        // a fault already.
+        let stop_fault = run.send_control(ControlAction::Stop);
         run.state = RunState::Stopped;
-        run.stop_reason = Some(reason);
+        run.stop_reason = Some(match (reason, stop_fault) {
+            (StopReason::Command | StopReason::Duration, Some(fault)) => {
+                StopReason::NetworkFault(fault)
+            }
+            (reason, _) => reason,
+        });
         run.take_step(end)
+    }
+
+    /// Sends a run-control action to the network; a fault under `abort` stops the run at once with
+    /// that fault (ASM-295). The caller publishes the control frame and answers the step it gets.
+    pub(super) fn control_or_stop(&mut self, action: ControlAction) -> Option<EndingStep> {
+        let fault = self.run.as_mut()?.send_control(action)?;
+        self.stop_with(
+            self.shown_stop_reason(StopReason::NetworkFault(fault)),
+            StepEnd::Cancel,
+        )
     }
 
     /// Publishes a control frame (with the events of the command that caused it), then answers the

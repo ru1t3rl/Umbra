@@ -1,0 +1,26 @@
+# net_order. See ../README.md.
+schema_version = 1
+
+[scenario]
+name = "net_order"
+seed = 4
+tick_rate_hz = 30
+clock = "stepped"
+duration_s = 60.0
+template_paths = ["../templates", "templates"]
+
+[[network_adapters]]
+adapter = "test.net.loopback"
+name = "lb"
+[network_adapters.publish]
+heartbeat_s = 1.0
+[network_adapters.ghosts]
+timeout_s = 3.0
+
+[[entities]]
+template = "tank.ticker"
+name = "o-ticker"
+force = "blue"
+position = { lat_deg = 52.02, lon_deg = 4.0 }
+heading_deg = 0.0
+speed_mps = 0.0

@@ -23,6 +23,21 @@ impl Loader<'_> {
         params: &LTable,
         out: &mut Vec<Diagnostic>,
     ) -> Option<ParamValue> {
+        self.check_component_wrapped(kind, id, id_at, params, out, None)
+    }
+
+    /// [`check_component`](Self::check_component) where the factory's input is `wrap(params)`
+    /// (a network adapter gets `{"name", "params", "templates"}`, ADR 0030). The schema applies to
+    /// `params` alone; a `BuildError` pointer under `/params` is located in the parameter table.
+    pub(crate) fn check_component_wrapped(
+        &self,
+        kind: ComponentKind,
+        id: &ComponentId,
+        id_at: &Origin,
+        params: &LTable,
+        out: &mut Vec<Diagnostic>,
+        wrap: Option<&dyn Fn(&ParamValue) -> ParamValue>,
+    ) -> Option<ParamValue> {
         if !self.check_registered(kind, id, id_at, out) {
             return None;
         }
@@ -34,10 +49,18 @@ impl Loader<'_> {
             return None;
         }
         let json = params.to_param();
-        match self.trial_build(kind, id, &json) {
+        let input = wrap.map_or_else(|| json.clone(), |w| w(&json));
+        match self.trial_build(kind, id, &input) {
             Ok(()) => Some(json),
             Err(error) => {
-                let at = locate(params, error.param.as_deref());
+                let pointer = match wrap {
+                    Some(_) => error
+                        .param
+                        .as_deref()
+                        .and_then(|p| p.strip_prefix(umbra_core::net::PARAMS_POINTER)),
+                    None => error.param.as_deref(),
+                };
+                let at = locate(params, pointer);
                 let message = format!("{context}: {}", error.message);
                 out.push(Diagnostic::new(
                     DiagnosticCode::ParamInvalid,

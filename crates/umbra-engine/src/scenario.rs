@@ -19,6 +19,7 @@ use umbra_plugin_host::PluginHost;
 use crate::confine::Confinement;
 use crate::engine::{AgentInit, Engine, EngineConfig, RouteSpec, SpawnSpec};
 use crate::error::EngineError;
+use crate::net::NetLink;
 
 /// Overrides and the wall clock for one run.
 pub struct RunOptions {
@@ -242,7 +243,15 @@ pub(crate) fn spawn_placement(
             cruise_speed: r.cruise_speed,
         }),
     };
-    engine.spawn_with(spec, agent)
+    let id = engine.spawn_with(spec, agent)?;
+    if let Some(link) = engine.network.as_mut() {
+        link.note_owned(
+            id,
+            Some(placement.template.clone()),
+            placement.name.as_deref(),
+        );
+    }
+    Ok(id)
 }
 
 /// Builds terrain, motion models, behaviors and sensors through the registry and spawns in file
@@ -297,6 +306,10 @@ pub(crate) fn instantiate_in(
         }
         None => None,
     };
+    // The link starts before the first spawn, so every placement records its metadata (M6).
+    if let Some(link) = NetLink::connect(registry, scenario, engine.now())? {
+        engine.attach_network(link);
+    }
     let mut entities = Vec::with_capacity(scenario.entities.len());
     for (index, placement) in scenario.entities.iter().enumerate() {
         let id = spawn_placement(&mut engine, registry, index, placement)?;

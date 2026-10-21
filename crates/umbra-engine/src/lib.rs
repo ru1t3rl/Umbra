@@ -32,7 +32,7 @@ pub use engine::{
     AgentInit, Engine, EngineConfig, Pumped, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView,
 };
 pub use error::{EngineError, SpawnParam};
-pub use net::NetLink;
+pub use net::{GhostInfo, NetFault, NetLink, net_summary};
 pub use plugins::{
     CapabilityInfo, HostOptions, LoadedScenario, PluginError, PluginFault, PluginFaultPolicy,
     PluginHost, PluginInfo, PluginLog, instantiate_with_plugins, load_plugins,
@@ -53,6 +53,7 @@ pub use umbra_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, StdWallClock, TickReport,
     TimeScale, WallClock,
 };
+pub use umbra_net::AdapterStatus;
 pub use umbra_templates::config::{
     Config, ConfigError, LogLevel, ServerConfig, StreamConfig, load_config,
 };

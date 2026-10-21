@@ -725,6 +725,13 @@ impl NetworkManager {
         self.runners.iter().map(Runner::status).collect()
     }
 
+    /// How many adapters a fault has disabled so far (never decreases). The engine compares it
+    /// before and after `ingest` and `publish` to see a new fault within the tick (ASM-252).
+    #[must_use]
+    pub fn faulted_count(&self) -> usize {
+        self.runners.iter().filter(|r| r.faulted).count()
+    }
+
     /// Stops every adapter. Idempotent; also done on drop.
     pub fn stop(&mut self) {
         self.runners.iter_mut().for_each(Runner::stop);

@@ -12,7 +12,9 @@ use crate::coords::Ecef;
 use crate::dead_reckoning::DeadReckoning;
 use crate::event::ControlAction;
 use crate::geo::{Vec3, WorldEuler};
+use crate::id::TemplateId;
 use crate::id::WeaponId;
+use crate::params::ParamValue;
 use crate::perception::Force;
 use crate::time::SimTime;
 use crate::units::{Radians, Seconds};
@@ -244,4 +246,30 @@ pub trait NetworkAdapter: Send {
 
     /// Stops the adapter and joins its I/O threads. Idempotent.
     fn stop(&mut self);
+}
+
+/// The JSON pointer of the adapter's own parameters inside the factory input of [`configure_input`].
+/// A [`crate::BuildError`] from a network adapter factory points into that input, so a parameter
+/// at fault is `/params/<key>`; the scenario reader strips this prefix to locate it.
+pub const PARAMS_POINTER: &str = "/params";
+
+/// The input a network adapter factory's `build` receives (ADR 0030, REQ-T-4):
+/// `{"name": <adapter name>, "params": <the scenario's params>, "templates": {<template id>:
+/// <that template's network.<name> table>}}`. The adapter's parameter schema applies to the
+/// `params` member only; the engine never reads the template tables.
+#[must_use]
+pub fn configure_input<'a>(
+    name: &str,
+    params: &ParamValue,
+    templates: impl IntoIterator<Item = (&'a TemplateId, &'a ParamValue)>,
+) -> ParamValue {
+    let tables: serde_json::Map<String, ParamValue> = templates
+        .into_iter()
+        .map(|(id, table)| (id.to_string(), table.clone()))
+        .collect();
+    let mut input = serde_json::Map::new();
+    input.insert("name".to_owned(), ParamValue::from(name));
+    input.insert("params".to_owned(), params.clone());
+    input.insert("templates".to_owned(), ParamValue::Object(tables));
+    ParamValue::Object(input)
 }

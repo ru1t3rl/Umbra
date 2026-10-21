@@ -1,8 +1,6 @@
 //! `spawn` and `remove` (REQ-X-5, ADR 0026): applied between ticks, each followed by a control
 //! frame that carries the `EntityCreated` or `EntityRemoved` event, then the reply.
 
-use std::sync::Arc;
-
 use umbra_core::{EntityId, SimEvent};
 
 use super::commands::need;
@@ -59,5 +57,5 @@ impl Worker {
 
 /// Rebuilds the directory frames share: the entity set changed.
 fn refresh_directory(run: &mut Run) {
-    run.directory = Arc::new(run.session.entities().clone());
+    run.refresh_directory();
 }

@@ -234,16 +234,22 @@ impl Engine {
             }
             match self.kernel.clock_mut().poll() {
                 Pace::Tick => {
-                    let report = self.kernel.tick()?;
+                    let Ticked {
+                        report,
+                        plugin_fault,
+                        net_fault,
+                    } = self.tick_once()?;
                     ticks_run += 1;
-                    let fault = self.plugins.as_ref().and_then(|h| h.take_abort());
                     let view = TickView {
                         report: &report,
                         kernel: &self.kernel,
                     };
                     let flow = on_tick(&view);
-                    if let Some(fault) = fault {
+                    if let Some(fault) = plugin_fault {
                         return Err(EngineError::PluginFault(fault));
+                    }
+                    if let Some(fault) = net_fault {
+                        return Err(EngineError::NetworkFault(fault));
                     }
                     if flow.is_break() {
                         stopped_early = true;
@@ -321,6 +327,13 @@ impl Engine {
     }
 }
 
+/// What one tick produced, with the faults that end the run.
+struct Ticked {
+    report: TickReport,
+    plugin_fault: Option<PluginFault>,
+    net_fault: Option<crate::net::NetFault>,
+}
+
 /// Checks the user-supplied numbers of a spawn (kernel checks cover the route and the state).
 fn validate_spawn(spec: &SpawnSpec, position: umbra_core::Ecef) -> Result<(), EngineError> {
     let p = position.0;
@@ -350,6 +363,14 @@ pub enum Pumped {
         /// The fault.
         fault: PluginFault,
     },
+    /// One tick ran and a network adapter faulted under the `abort` policy in it (M6, ASM-252).
+    /// Like [`Pumped::Aborted`]: the report is kept and the driver stops the run.
+    NetAborted {
+        /// The report of the faulting tick.
+        report: TickReport,
+        /// The fault.
+        fault: crate::net::NetFault,
+    },
     /// No tick was due; the call waited, at most `max_wait` and never past the next deadline.
     Waited,
     /// Nothing to do: the clock is paused, or stepped with no pending steps.
@@ -371,11 +392,15 @@ impl Engine {
     pub fn pump(&mut self, max_wait: Duration) -> Result<Pumped, EngineError> {
         match self.kernel.clock_mut().poll() {
             Pace::Tick => {
-                let report = self.kernel.tick()?;
-                let fault = self.plugins.as_ref().and_then(|h| h.take_abort());
-                Ok(match fault {
-                    Some(fault) => Pumped::Aborted { report, fault },
-                    None => Pumped::Ticked(report),
+                let Ticked {
+                    report,
+                    plugin_fault,
+                    net_fault,
+                } = self.tick_once()?;
+                Ok(match (plugin_fault, net_fault) {
+                    (Some(fault), _) => Pumped::Aborted { report, fault },
+                    (None, Some(fault)) => Pumped::NetAborted { report, fault },
+                    (None, None) => Pumped::Ticked(report),
                 })
             }
             Pace::WaitUntil(deadline) => {
@@ -418,6 +443,35 @@ impl Engine {
     /// # Errors
     /// [`EngineError::Kernel`] wrapping `KernelError::UnknownEntity`; nothing changes then.
     pub fn remove(&mut self, id: EntityId) -> Result<(), EngineError> {
-        Ok(self.kernel.remove(id)?)
+        self.kernel.remove(id)?;
+        if let Some(link) = self.network.as_mut() {
+            link.entity_removed(id);
+        }
+        Ok(())
+    }
+
+    /// One tick with the network around it (ASM-224): ingest, tick, publish, then the abort checks.
+    /// The ghost events are prepended to the report's (ASM-248). Without a link it is a plain tick.
+    fn tick_once(&mut self) -> Result<Ticked, EngineError> {
+        let ingested = match self.network.as_mut() {
+            Some(link) => link.ingest(&mut self.kernel),
+            None => Vec::new(),
+        };
+        // If the tick fails (the tick counter is exhausted), the ghost events of this ingest are
+        // lost with it: the ghosts exist in the kernel but no report announces them. That is the
+        // end of the run in any case, so nothing is kept for a retry.
+        let mut report = self.kernel.tick()?;
+        let mut net_fault = None;
+        if let Some(link) = self.network.as_mut() {
+            report.events.splice(0..0, ingested);
+            link.publish(&self.kernel, &report.events);
+            net_fault = link.take_abort();
+        }
+        let plugin_fault = self.plugins.as_ref().and_then(|h| h.take_abort());
+        Ok(Ticked {
+            report,
+            plugin_fault,
+            net_fault,
+        })
     }
 }

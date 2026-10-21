@@ -117,6 +117,9 @@ pub enum SessionError {
     /// There is no such entity.
     #[error("no entity {0}")]
     EntityNotFound(EntityId),
+    /// The entity is a ghost of a network peer; only its owner can remove it (M6).
+    #[error("entity {0} belongs to a network peer and cannot be removed here")]
+    EntityRemote(EntityId),
 }
 
 /// One loaded scenario.
@@ -261,10 +264,47 @@ impl Session {
         &self.plugins
     }
 
-    /// The entities by id: those of the scenario, plus spawns, minus removals.
+    /// The entities this engine owns by id: those of the scenario, plus spawns, minus removals.
+    /// Ghosts of network peers are not in it; see [`Session::directory`].
     #[must_use]
     pub fn entities(&self) -> &BTreeMap<EntityId, EntityInfo> {
         &self.directory
+    }
+
+    /// Every entity by id: [`Session::entities`] plus the ghosts of the network link, with their
+    /// template and the peer's name (`group` is `None`). An owned map, so it reflects the ghosts
+    /// of the moment (ASM-400).
+    #[must_use]
+    pub fn directory(&self) -> BTreeMap<EntityId, EntityInfo> {
+        let mut all = self.directory.clone();
+        if let Some(link) = self.engine.network() {
+            all.extend(link.ghosts().map(|(id, ghost)| {
+                (
+                    id,
+                    EntityInfo {
+                        id,
+                        template: ghost.template.clone(),
+                        name: ghost.name.as_deref().map(str::to_owned),
+                        group: None,
+                    },
+                )
+            }));
+        }
+        all
+    }
+
+    /// The directory entry of `id`, owned entities and ghosts alike.
+    #[must_use]
+    pub fn entity_info(&self, id: EntityId) -> Option<EntityInfo> {
+        self.directory.get(&id).cloned().or_else(|| {
+            let ghost = self.engine.network()?.ghosts().find(|(g, _)| *g == id)?.1;
+            Some(EntityInfo {
+                id,
+                template: ghost.template.clone(),
+                name: ghost.name.as_deref().map(str::to_owned),
+                group: None,
+            })
+        })
     }
 
     /// The scenario's run length in ticks.
@@ -331,8 +371,12 @@ impl Session {
     /// publish.
     ///
     /// # Errors
-    /// [`SessionError::EntityNotFound`]; nothing changes then.
+    /// [`SessionError::EntityNotFound`]; [`SessionError::EntityRemote`] for a ghost of a network
+    /// peer. Nothing changes then.
     pub fn remove(&mut self, id: EntityId) -> Result<SimEvent, SessionError> {
+        if self.engine.network().is_some_and(|n| n.is_ghost(id)) {
+            return Err(SessionError::EntityRemote(id));
+        }
         if !self.directory.contains_key(&id) {
             return Err(SessionError::EntityNotFound(id));
         }
