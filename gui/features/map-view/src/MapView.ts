@@ -4,6 +4,12 @@ import type { FitOptions } from "./model/camera.ts";
 import type { MapColors } from "./model/colors.ts";
 import type { GeoBounds } from "./model/features.ts";
 
+export interface EntityPosition {
+  readonly id: number;
+  readonly lon: number;
+  readonly lat: number;
+}
+
 /**
  * What tests and the e2e hook (WI-12) read back from a view without touching the map library. The names
  * are the plan's WI-12 `inspect()` list; the exact return types are WI-12's to settle (ASM-366).
@@ -13,6 +19,14 @@ export interface MapInspection {
   sourceEntities(): number;
   /** Entity features the map actually drew (`queryRenderedFeatures`). */
   renderedEntities(): number;
+  /** Positions of the features last handed to the entity source, by entity id (e2e, ASM-310). */
+  sourcePositions(): readonly EntityPosition[];
+  /** Positions of the entity features the map drew (tile-quantized geometry), unique by id (e2e, ASM-310). */
+  renderedPositions(): readonly EntityPosition[];
+  /** Tick and session of the frame last handed to the entity source; null before the first flush. */
+  frameTick(): { readonly session: number; readonly tick: number } | null;
+  /** Current camera zoom level (e2e asserts the zoom behind the rendered-position tolerance, ASM-310). */
+  zoom(): number;
   /** Pixel position of a coordinate, or null when it is off the map. */
   project(lon: number, lat: number): { readonly x: number; readonly y: number } | null;
   isIdle(): boolean;

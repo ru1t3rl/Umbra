@@ -5,6 +5,10 @@ import type { MapInspection, MapView } from "./MapView.ts";
 const inspection: MapInspection = {
   sourceEntities: () => 3,
   renderedEntities: () => 3,
+  sourcePositions: () => [],
+  renderedPositions: () => [],
+  frameTick: () => null,
+  zoom: () => 12,
   project: () => null,
   isIdle: () => true,
   lastFlushMs: () => 0,

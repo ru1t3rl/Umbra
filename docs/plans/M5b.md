@@ -56,7 +56,7 @@ Each criterion in `docs/milestones.md` (M5b), with the tests that prove it.
 
 | # | Criterion | Evidence (tests, commands) | WI |
 |---|---|---|---|
-| 1 | Playwright against a real headless `umbra` serving `walking_skeleton` in stepped mode: all entities appear; after `step(n)` the layer positions equal the engine's list within tolerance, and the markers have moved | `gui/e2e/live-map.spec.ts`: `all walking_skeleton entities appear on the map`, `after step(600) the entity layer equals the engine list for that tick and every marker moved`, `a reload of the scenario replaces the entities` (tolerances below) | WI-16 |
+| 1 | Playwright against a real headless `umbra` serving `walking_skeleton` in stepped mode: all entities appear; after `step(n)` the layer positions equal the engine's list within tolerance, and the markers have moved | `gui/e2e/engine/live-map.spec.ts` (ASM-514): `all walking_skeleton entities appear on the map`, `after step(600) the entity layer equals the engine list for that tick and every marker moved`, `a reload of the scenario replaces the entities` (tolerances below) | WI-16 |
 | 2 | `typecheck`, `lint`, `test`, `check:deps`, `test:e2e` pass; `gen:api` gives no diff | `bun run verify` (ADR 0044), run by `scripts/gates.sh --gui` as gate 15; `gen:api --check` is its first step | WI-1 (script), WI-17 (evidence) |
 | 3 | No engine source imported (REQ-A-4) | dependency-cruiser rule `no-engine-source` (nothing resolves outside `gui/` except `node_modules`); `gui/test/architecture.test.ts` `engine source import is rejected` (fixture imports `../../crates/...` and `../api/openapi.json`) | WI-2 |
 | 4 | No engine crate behavior or acceptance criterion changed | `git diff m5-done -- crates xtask examples api Cargo.toml Cargo.lock` is empty at close-out (allowed: `scripts/gates.sh` and `docs/`); the full engine gate `scripts/gates.sh` passes with goldens unchanged | WI-17 |
@@ -225,6 +225,7 @@ umbra serve ──REST──> @umbra/data (orval hooks; M5b UI uses none yet, e2
 
   The server publishes the frame of the last stepped tick before it replies (docs/api.md, "Step"), so
   the poll is bounded (10 s timeout).
+- As built (WI-16): the engine and its proxied preview are started by a worker-scoped fixture, not by global setup; engine specs live in `e2e/engine/**` (ASM-514..516).
 - The hook `window.__UMBRA_E2E__` exists only in the e2e build (ASM-309). `e2e/app.spec.ts`
   `production build has no e2e hook` builds normally and greps `dist/`.
 
@@ -607,6 +608,7 @@ and come before `map-view` and the dashboard shell (human decision 2026-10-19).
     started with `detached: false`.
   - The Vite preview proxy and the WebSocket `Origin`/`Host` checks.
   - A slow software renderer: idle timeouts are 10 s.
+  - As built: lifecycle, file location and waits are in ASM-514..516 (fixture-started engine, `e2e/engine/live-map.spec.ts`).
 
 ### WI-17: Close-out
 - **Docs:**
@@ -775,16 +777,17 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
   `../umbra-m5b` (branch `m5b`, not yet merged into `develop`); M6 is in `../umbra-m6` (branch `m6`).
 
 ### In progress
-- Nothing. The working tree is clean at the WI-15 commit.
+- Nothing. The working tree is clean at the WI-16 commit.
 
 ### Next
-- WI-16 (e2e live map against a real headless `umbra serve`), then WI-17.
+- WI-17 (close-out).
 - **Pending human review (H-10, WI-15):** the dashboard baselines `gui/e2e/__screenshots__/linux/dashboard-ops.png` and `dashboard-day.png`, and the regenerated `showcase-floating-ops.png` and `showcase-floating-day.png` (ASM-512). New components and hooks follow the file layout of ADR 0046 (`bun run check:layout`).
 - **Pending human review (H-10):** the six showcase baselines in `gui/e2e/__screenshots__/linux/` (ASM-347).
 - Open nit from the WI-2 review: the `scripts/` entry of the second `no-deep-import` rule has no fixture.
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
+- WI-16 (2026-10-21, reviewed GO-with-fixes, fixes applied: fixture-started engine, diagnostic waits, `zoom()`, `e2e/engine/**`; 523 bun + 23 e2e tests (20 ui + 3 engine), three consecutive full e2e runs green): live-map e2e against a real headless `umbra serve`: `gui/e2e/engine/live-map.spec.ts` (`all walking_skeleton entities appear on the map`, `after step(600) the entity layer equals the engine list for that tick and every marker moved`, `a reload of the scenario replaces the entities`), `e2e/support/{engine,geo,children,processes,fixtures}.ts`, projects `ui` and `engine`, `MapInspection` gains `sourcePositions`/`renderedPositions`/`frameTick`/`zoom`; `docs/build.md` and the `verify-frontend` skill document the release binary (engine project only); ASM-513..516.
 - WI-15 (2026-10-21, reviewed GO-with-fixes, fixes applied: `LiveMap` `insets` drive fit padding and the error banner, entry and dashboard chunk budgets enforced by the build test, `--vt-cmdbar-height`, narrow axe exclusion; 522 bun + 20 e2e tests): `@umbra/shell-dashboard` (`DashboardPage`, route `/`), `src/router.tsx` registers `/` and `/showcase` (placeholder removed), compact Readout in the CommandBar (ui-kit), `--umbra-map-inset-top` for the map error banner, `e2eHook.build.test.ts` moved to the app and run against the real build in production and e2e mode, `e2e/dashboard.spec.ts` (screenshots Ops/Day, axe, landmarks), `@axe-core/playwright` 4.10.2; ASM-507..512. Review fixes: `insets` prop on `LiveMap`, `--vt-cmdbar-height`, bundle budgets, compact Readout in the showcase sample, READMEs. Baselines pending human review (H-10, WI-15), see Next.
 - WI-14 (2026-10-21, reviewed GO-with-fixes, fixes applied: live only while connected, unknown stop reasons are danger (decoder maps them to "unknown"), run-state status announcement, count isolation proven; 497 bun + 15 e2e tests): `@umbra/scenario-control` (domain, read-only slice, ASM-316): `RunStatusBar()` (sim-time, tick, entity-count Readouts, run-state Badge; fragment of CommandBar children), `ConnectionAlert()`; model `formatSimTime`, `runStateLabel`, `connectionMessage`; hook `useEntityCount`; 40 bun tests; 9 mutants all caught; ASM-503..506.
 - WI-13 (2026-10-21, H-2 (a) accepted; reviewed request-changes, fixes applied: coast drawn from the land outline, tolerance 0.01° and 3 decimals (1.16 MB), build test proves hashed asset emission for base / and ./, 451 bun + 15 e2e tests): Natural Earth v5.1.2 1:50m land and land boundary lines simplified (tolerance 0.01, 3 decimals) to 1,159,532 B in `gui/features/map-view/assets/` with `README.md` (URLs, SHA-256, command, known limits); the coast is the land outline; `gui/scripts/simplify-basemap.ts` (deterministic, keeps antimeridian and Antarctic edge vertices); `src/maplibre/basemapAssets.ts` wires the bundled URLs into `LiveMap`; build, README-table and LiveMap wiring tests; ASM-500..502; ADR 0041 note.

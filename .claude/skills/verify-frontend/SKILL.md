@@ -24,7 +24,7 @@ bun run verify                   # the ordered list below, stops at the first fa
 9. `check:deps`: dependency-cruiser layering, tiers, no deep imports, no cycles (added in M5b WI-2; also runs the ADR 0045 plain-request scan)
 10. `test`: bun test, unit + component + shell tests
 11. `build`: vite production build
-12. `test:e2e`: playwright (added in M5b WI-7; the `ui` project needs Chromium and builds and serves the app itself; the `engine` project, WI-16, also needs the release `umbra` binary)
+12. `test:e2e`: playwright, two projects (`ui` in M5b WI-7, `engine` in WI-16). Prerequisites: Chromium (`bunx playwright install chromium`); for the `engine` project only, the release binary `target/release/umbra` or `UMBRA_BIN` (`cargo build -p umbra-cli --release --locked`; gate 9 of `scripts/gates.sh` builds it before gate 15; e2e never builds it, ASM-311). Global setup builds the e2e bundle and serves it engine-free for `ui`; the worker-scoped `engineServer` fixture (`e2e/support/fixtures.ts`) starts `umbra serve` and a proxied preview for `e2e/engine/**` (ASM-514)
 
 Currently active (M5b WI-12b): steps 2 to 12 (all but 1). Then, on a Windows runner only (M8): `bun run tauri build`.
 

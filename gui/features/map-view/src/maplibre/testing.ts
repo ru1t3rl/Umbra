@@ -38,7 +38,7 @@ export class FakeMap {
     [];
   readonly paint: { layer: string; property: string; value: unknown }[] = [];
   readonly fits: { bounds: unknown; options: unknown }[] = [];
-  rendered: { id: number }[] = [];
+  rendered: { id: number; geometry?: { type: string; coordinates: number[] } }[] = [];
   removed = false;
   styleLoaded = false;
   /** What `cameraForBounds` returns; undefined simulates a zero-size container. */
@@ -96,8 +96,12 @@ export class FakeMap {
   fitBounds(bounds: unknown, options: unknown): void {
     this.fits.push({ bounds, options });
   }
-  queryRenderedFeatures(): { id: number }[] {
+  queryRenderedFeatures(): { id: number; geometry?: { type: string; coordinates: number[] } }[] {
     return this.rendered;
+  }
+  zoom = 12;
+  getZoom(): number {
+    return this.zoom;
   }
   project([lon, lat]: [number, number]): { x: number; y: number } {
     return { x: lon * 10, y: lat * 10 };

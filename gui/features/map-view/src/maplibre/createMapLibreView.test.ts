@@ -177,6 +177,27 @@ describe("createMapLibreView", () => {
     expect(scheduler.pending).toBe(0);
   });
 
+  test("inspect: source positions, rendered positions and the flushed frame tick", async () => {
+    const { view, map, scheduler } = setup();
+    const inspect = view.inspect();
+    await loadMap(map);
+    expect(inspect.frameTick()).toBeNull();
+    view.setEntities(frameOf([entity(1), entity(2)]));
+    scheduler.run();
+    expect(inspect.frameTick()).toEqual({ session: 1, tick: 1 });
+    expect(inspect.zoom()).toBe(map.zoom);
+    expect(inspect.sourcePositions()).toEqual([
+      { id: 1, lon: 20.001, lat: 10.001 },
+      { id: 2, lon: 20.002, lat: 10.002 },
+    ]);
+    map.rendered = [
+      { id: 1, geometry: { type: "Point", coordinates: [20.0011, 10.0011] } },
+      { id: 1, geometry: { type: "Point", coordinates: [20.0011, 10.0011] } },
+      { id: 3, geometry: { type: "LineString", coordinates: [0, 0] } },
+    ];
+    expect(inspect.renderedPositions()).toEqual([{ id: 1, lon: 20.0011, lat: 10.0011 }]);
+  });
+
   test("inspect: unique rendered ids, project inside the canvas only, idle and tick", async () => {
     const { view, map, scheduler } = setup();
     const inspect = view.inspect();

@@ -25,7 +25,7 @@ GUI gate 15 (from M5b WI-1, ADR 0043/0044) needs, only when run with `scripts/ga
 - Bun at the version pinned by `gui/package.json` `packageManager` (`bun@1.4.2`);
 - Node.js LTS (22 or 24) for the Node-launched tools (Playwright, orval, dependency-cruiser; Playwright does not support Bun);
 - `cd gui && bunx playwright install chromium` once, online (from WI-7, when `test:e2e` is added);
-- a release build of `umbra` (`cargo build --workspace --release --locked`, gate 9) before `test:e2e`, needed from WI-16 (the `engine` project; the WI-7 `ui` project does not start the engine).
+- the release binary `target/release/umbra` (or `UMBRA_BIN`), only for the Playwright `engine` project: `cargo build -p umbra-cli --release --locked`. `scripts/gates.sh` builds it in gate 9, before gate 15. `test:e2e` never builds it; when it is missing the engine tests fail with that hint (ASM-311), while `--project ui` needs no binary. The engine is started per worker by a fixture (ASM-514).
 The first `bun install` is online; afterwards `bun install --frozen-lockfile` works from the cache.
 
 Plugin builds inside tests use about 630 MB under `target/tmp/plugin-build` (M4 WI-10). Windows (MSVC)

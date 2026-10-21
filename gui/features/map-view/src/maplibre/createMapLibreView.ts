@@ -1,7 +1,7 @@
 import type { EntityFrame } from "@umbra/engine-stream";
 import type { ResolvedTheme } from "@umbra/ui-kit";
 import { type GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
-import type { MapInspection, MapView } from "../MapView.ts";
+import type { EntityPosition, MapInspection, MapView } from "../MapView.ts";
 import { affiliationOf } from "../model/affiliation.ts";
 import type { FitOptions } from "../model/camera.ts";
 import type { MapColors } from "../model/colors.ts";
@@ -76,6 +76,8 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
   let idle = false;
   let destroyed = false;
   let sourceCount = 0;
+  let flushedSession = 0;
+  let flushedTick = -1;
   let renders = 0;
   let flushMs = 0;
   let missing = 0;
@@ -92,6 +94,8 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
     source.setData(buffer);
     flushMs = now() - start;
     sourceCount = buffer.features.length;
+    flushedSession = latest.session;
+    flushedTick = latest.tick;
     idle = false;
   }
 
@@ -172,6 +176,24 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
     sourceEntities: () => sourceCount,
     renderedEntities: () =>
       new Set(map.queryRenderedFeatures({ layers: [ENTITY_LAYER] }).map((f) => f.id)).size,
+    sourcePositions: () =>
+      buffer.features.map((f) => ({
+        id: f.id,
+        lon: f.geometry.coordinates[0],
+        lat: f.geometry.coordinates[1],
+      })),
+    renderedPositions: () => {
+      const unique = new Map<number, EntityPosition>();
+      for (const f of map.queryRenderedFeatures({ layers: [ENTITY_LAYER] })) {
+        if (typeof f.id !== "number" || f.geometry.type !== "Point") continue;
+        const [lon, lat] = f.geometry.coordinates;
+        if (lon !== undefined && lat !== undefined) unique.set(f.id, { id: f.id, lon, lat });
+      }
+      return [...unique.values()];
+    },
+    frameTick: () =>
+      flushedTick < 0 ? null : Object.freeze({ session: flushedSession, tick: flushedTick }),
+    zoom: () => map.getZoom(),
     project: (lon, lat) => {
       const { x, y } = map.project([lon, lat]);
       const canvas = map.getCanvas();
