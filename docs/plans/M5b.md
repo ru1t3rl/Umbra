@@ -759,13 +759,14 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
 - Nothing. The working tree is clean at the WI-3 commit.
 
 ### Next
-- WI-4: ui-kit components A (Button, Chip/ChipGroup, Badge, AffiliationTag, Alert), then WI-5..WI-8
+- WI-5..WI-8
   (rest of the A-003 block: components B and C, app shell with favicon, showcase with Ops/Day
   screenshots for the human to review), then WI-9..WI-17.
 - Open nit from the WI-2 review: the `scripts/` entry of the second `no-deep-import` rule has no fixture.
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
+- WI-4 (2026-10-21, reviewed GO-with-fixes, fixes applied (aria-labelledby variant, NonNullable children, shared `gui/test/jest-dom.d.ts`, README exports)): ui-kit components A: `Button`, `Chip`/`ChipGroup`, `Badge`, `AffiliationTag`, `Alert` (tsx, css, tests each), `props.test-d.ts` (type-level icon-only `aria-label` rule), `gui/test/jest-dom.d.ts`, CSS in `styles.css`, exports in `index.ts`. `bun run verify` passes (107 tests). ASM-335.
 - WI-1 (2026-10-20, commit `09cc8b6`, reviewed GO-with-fixes, fixes applied): `gui/` Bun workspace (root `gui/package.json`, `gui/bun.lock`, `features/ui-kit`), tsconfig/biome/vite/bunfig/test setup, `check-licenses.ts`, `check-tokens.mjs --root` with the vacuous-pass guard, the three design-system scripts wired, gate 15 in `scripts/gates.sh` and `docs/build.md`, A-003 apply steps 1-3 (H-9), `verify-frontend` skill. `bun run verify` (WI-1 steps 2-7, 9, 10) passes. ASM-322..ASM-326.
 - WI-2 (2026-10-20, commit `445f46f`, reviewed GO-with-fixes, fixes applied incl. `no-undeclared-workspace-dep`): `gui/.dependency-cruiser.cjs` (all rules of the WI list, tiers read from `umbra.tier`), `gui/test/architecture.test.ts` with `gui/test/arch-fixtures/` (one failing fixture per rule, REQ-A-4 `../crates` and `../api/openapi.json` cases, meta test that every rule has a fixture), `gui/scripts/check-plain-requests.ts` (ADR 0045), `check:deps` in `verify` (after lint, ADR 0044), dependency-cruiser 17.4.3 recorded in ADR 0043. ASM-327..ASM-331.
 - WI-3 (2026-10-20, commit `e287d89`, reviewed GO-with-fixes, fixes applied incl. the `check-tokens` `var()` false positive and the happy-dom preload): `@umbra/ui-kit` foundations: `styles.css` entry, `base.css`, `ThemeProvider`/`useTheme` (`src/theme/`), `defineMessages` (`src/i18n/`), `Icon`, token re-exports; tests `ThemeProvider.test.tsx`, `defineMessages.test.ts`, `Icon.test.tsx`; `bun run verify` passes. ASM-332..ASM-334.
@@ -781,7 +782,7 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
 - Later ADR: `milsymbol` once the contract has entity types.
 
 ### Assumed
-See `docs/assumptions/M5b.md` (ASM-300..ASM-334 so far). Added during implementation: ASM-322..326
+See `docs/assumptions/M5b.md` (ASM-300..ASM-335 so far). Added during implementation: ASM-322..326
 (exact pins, licence rules incl. OFL-1.1 only for `@fontsource/*`, tsconfig layout, `gui/**/node_modules`,
 biome preset), ASM-327..331 (dependency-cruiser details, app root exempt from the workspace-dep rule,
 plain-request allow-list until WI-9), ASM-332..334 (remaining `umbra-allow` lines, own-keys i18n lookup,

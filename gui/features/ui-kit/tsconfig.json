@@ -5,5 +5,5 @@
     "tsBuildInfoFile": ".tsbuild/ui-kit.tsbuildinfo",
     "types": ["bun"]
   },
-  "include": ["src"]
+  "include": ["src", "../../test/jest-dom.d.ts"]
 }

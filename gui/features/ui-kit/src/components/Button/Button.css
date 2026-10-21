@@ -1,0 +1,72 @@
+.vt-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 36px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.vt-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  transition: background-color var(--duration-fast) var(--ease-standard);
+  pointer-events: none;
+}
+.vt-btn:hover::after {
+  background: var(--state-hover);
+}
+.vt-btn:active::after {
+  background: var(--state-pressed);
+}
+.vt-btn-sm {
+  height: 28px;
+  padding: 0 var(--space-3);
+  font-size: 13px; /* umbra-allow: reference size for the sm button (ASM-335) */
+}
+.vt-btn-filled {
+  background: var(--azure);
+  color: var(--on-azure);
+}
+.vt-btn-tonal {
+  background: var(--azure-dim);
+  color: var(--azure);
+}
+.vt-btn-outline {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.vt-btn-ghost {
+  background: transparent;
+  color: var(--ink);
+}
+.vt-btn-danger {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+.vt-btn-icon {
+  width: 36px;
+  padding: 0;
+}
+.vt-btn-sm.vt-btn-icon {
+  width: 28px;
+}
+.vt-btn:disabled {
+  cursor: default;
+  opacity: var(--opacity-disabled);
+}
+.vt-btn:disabled::after {
+  display: none;
+}

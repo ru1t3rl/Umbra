@@ -4,3 +4,8 @@
 @import "./tokens/tokens.css";
 @import "./base.css";
 @import "./components/Icon/Icon.css";
+@import "./components/Button/Button.css";
+@import "./components/Chip/Chip.css";
+@import "./components/Badge/Badge.css";
+@import "./components/AffiliationTag/AffiliationTag.css";
+@import "./components/Alert/Alert.css";
