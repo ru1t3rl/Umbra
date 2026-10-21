@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@umbra/runtime-config": "workspace:*",
+    "@umbra/shell-showcase": "workspace:*",
     "@umbra/ui-kit": "workspace:*",
     "react": "19.3.1",
     "react-dom": "19.3.1",

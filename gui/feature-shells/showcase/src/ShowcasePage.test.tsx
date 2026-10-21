@@ -1,0 +1,106 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  colorTokens,
+  radiusTokens,
+  shadowTokens,
+  spacingTokens,
+  ThemeProvider,
+  typeStyles,
+} from "@umbra/ui-kit";
+import { route } from "./index.ts";
+import ShowcasePage from "./ShowcasePage.tsx";
+
+afterEach(cleanup);
+
+function renderPage() {
+  return render(
+    <ThemeProvider>
+      <ShowcasePage />
+    </ThemeProvider>,
+  );
+}
+
+describe("ShowcasePage tokens", () => {
+  test.each([
+    ["colour", colorTokens],
+    ["type", typeStyles],
+    ["spacing", spacingTokens],
+    ["radius", radiusTokens],
+    ["shadow", shadowTokens],
+  ])("lists every %s token by name", (_group, names) => {
+    renderPage();
+    for (const name of names) expect(screen.getAllByText(name).length).toBeGreaterThan(0);
+  });
+});
+
+describe("ShowcasePage components", () => {
+  test("has the page banner with the theme switch", () => {
+    const { container } = renderPage();
+    // only the first (docked) bar is a direct child of the page root, hence the page banner
+    expect(container.firstElementChild?.matches("header.vt-cmdbar")).toBe(true);
+    expect(container.querySelectorAll(".vt-cmdbar").length).toBe(4);
+    expect(screen.getByRole("switch", { name: "Day theme" })).toBeTruthy();
+  });
+
+  test("every component is present by its accessible name", () => {
+    renderPage();
+    const byRole = (role: string, name: string | RegExp) =>
+      expect(screen.getAllByRole(role, { name }).length).toBeGreaterThan(0);
+    byRole("button", "Start exercise"); // Button
+    byRole("button", "Settings"); // icon-only Button
+    byRole("group", "Time rate"); // ChipGroup
+    byRole("button", "1:4"); // Chip
+    byRole("region", "Movement orders"); // Panel
+    expect(screen.getByText("2nd Mechanised Brigade")).toBeTruthy(); // Card
+    byRole("textbox", "Callsign"); // TextField
+    byRole("switch", "Show historic tracks"); // Toggle
+    byRole("slider", "Update rate"); // Slider
+    byRole("tablist", "Sidebar"); // Tabs
+    byRole("tab", /Order of battle/);
+    byRole("timer", /Scenario clock/);
+    expect(screen.getAllByText("Scenario clock").length).toBeGreaterThan(0); // Readout
+    expect(screen.getAllByText("Running").length).toBeGreaterThan(0); // Badge
+    expect(screen.getAllByText("2 MECH BDE").length).toBeGreaterThan(0); // AffiliationTag
+    byRole("listbox", "Entities"); // EntityList
+    byRole("option", /Alpha 1-1/); // EntityRow
+    byRole("alert", "Route rejected"); // Alert
+    byRole("alert", "Federate latency 480 ms");
+    byRole("status", "Recording started");
+  });
+
+  test("every section has at most one filled azure button", () => {
+    const { container } = renderPage();
+    for (const section of container.querySelectorAll("section.showcase-section")) {
+      const filled = section.querySelectorAll("button.vt-btn-filled");
+      expect(filled.length).toBeLessThanOrEqual(1);
+    }
+    expect(within(container).getAllByRole("heading", { level: 3 }).length).toBeGreaterThan(8);
+  });
+
+  test("the floating sample has a glass chip and a panel inside the bar", () => {
+    const { container } = renderPage();
+    const bar = container.querySelector("#showcase-floating .vt-cmdbar");
+    expect(bar?.querySelector(".vt-chip-glass")).toBeTruthy();
+    expect(bar?.querySelector(".vt-panel")).toBeTruthy();
+  });
+});
+
+describe("headings", () => {
+  test("one page h1, Tokens and Components as h2", () => {
+    renderPage();
+    expect(screen.getAllByRole("heading", { level: 1 }).map((h) => h.textContent)).toEqual([
+      "Design system",
+    ]);
+    expect(screen.getByRole("heading", { level: 2, name: "Tokens" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Components" })).toBeTruthy();
+  });
+});
+
+describe("route", () => {
+  test("is /showcase and lazy-loads the page", async () => {
+    expect(route.path).toBe("/showcase");
+    const loaded = await route.lazy();
+    expect(loaded.Component).toBe(ShowcasePage);
+  });
+});

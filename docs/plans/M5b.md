@@ -111,7 +111,7 @@ Each criterion in `docs/milestones.md` (M5b), with the tests that prove it.
 | `@umbra/engine-stream` | feature | foundation | `connectEngineStream`, `EngineStreamProvider`, `useStreamStatus`, `useRunStatus`, `useEntitySource`; types `EngineStreamConnection`, `EngineStreamOptions`, `Subscription`, `StreamStatus`, `EntityFrame`, `EntitySource`, `EntitySummary`, `RunStatus`, `WebSocketLike` | npm: zustand | 9 (skeleton), 10 |
 | `@umbra/map-view` | feature | domain | `LiveMap`, `LiveMapProps`; second entry `./styles.css` (MapLibre CSS + container) | ui-kit, engine-stream (types and `EntitySource`); npm: maplibre-gl | 11, 12, 13 |
 | `@umbra/scenario-control` | feature | domain | M5b read-only slice: `RunStatusBar` (sim-time Readout, tick Readout, entity-count Readout, run-state Badge), `ConnectionAlert`. M8 adds the controls | ui-kit, engine-stream | 14 |
-| `@umbra/shell-showcase` | shell | | `route` (`/showcase`, "Design system", lazy `ShowcasePage`) | ui-kit | 8 |
+| `@umbra/shell-showcase` | shell | | `route` (`/showcase`, "Design system", lazy `ShowcasePage`; `lazy` returns `{ Component }`, ASM-344) | ui-kit | 8 |
 | `@umbra/shell-dashboard` | shell | | `route` (`/`, "Live map", lazy `DashboardPage`) | ui-kit, engine-stream, map-view, scenario-control | 15 |
 | app (`src/`) | app | | none (root package) | the shells, ui-kit, runtime-config, data, engine-stream (bootstrap and providers only) | 7 |
 
@@ -430,8 +430,8 @@ and come before `map-view` and the dashboard shell (human decision 2026-10-19).
 - **Tests:**
   - `ShowcasePage.test.tsx`: every token name and every component's accessible name are present;
   - `e2e/showcase.spec.ts`: `showcase tokens (ops)`, `showcase tokens (day)`,
-    `showcase components (ops)`, `showcase components (day)`, full-page screenshots with
-    `maxDiffPixelRatio: 0.001`;
+    `showcase components (ops)`, `showcase components (day)`, element screenshots of the three
+    sections (tokens, components, floating bar; ASM-346) with `maxDiffPixelRatio: 0.001`, `threshold: 0.05`;
   - `e2e/app.spec.ts` `starts in ops and switches to day without a reload` (a `window` marker survives,
     `navigation` entries unchanged);
   - `e2e/showcase.spec.ts` `showcase slider arrow keys`: focus the showcase Slider, press ArrowRight,
@@ -762,15 +762,16 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
   `../umbra-m5b` (branch `m5b`, not yet merged into `develop`); M6 is in `../umbra-m6` (branch `m6`).
 
 ### In progress
-- Nothing. The working tree is clean at the WI-7 commit.
+- Nothing. The working tree is clean at the WI-8 commit.
 
 ### Next
-- WI-8 (showcase shell and screenshot tests, closes A-003; baselines committed and marked "pending human review"
-  per the human's 2026-10-21 away instruction), then WI-9..WI-17.
+- WI-9: `@umbra/data` and `gen:api` (both outputs), engine-stream skeleton; then WI-10..WI-17.
+- **Pending human review (H-10):** the six showcase baselines in `gui/e2e/__screenshots__/linux/` (ASM-347).
 - Open nit from the WI-2 review: the `scripts/` entry of the second `no-deep-import` rule has no fixture.
 - Merge `m5b` into `develop` when M5b closes (shared docs may conflict, see `docs/assumptions.md`).
 
 ### Done
+- WI-8 (2026-10-21, reviewed GO-with-fixes, fixes applied: computed-style glass-on-glass guard (mutations proven), all token groups exported by ui-kit, per-platform baseline dir, Alert named by its title, sample strings via messages, one h1, threshold 0.05, 216 bun + 15 e2e tests): `@umbra/shell-showcase` (`feature-shells/showcase`, route `/showcase`, lazy `ShowcasePage`: docked CommandBar with `ThemeToggle`, token sections, all 14 components in reference states, floating CommandBar sample), router uses the shell route; tests `ShowcasePage.test.tsx` (10), `e2e/showcase.spec.ts` (7), `app.spec.ts` theme switch. ASM-344..347. **Baselines pending human review (H-10)**, Linux-generated, in `gui/e2e/__screenshots__/linux/`: `showcase-tokens-ops.png`, `showcase-tokens-day.png`, `showcase-components-ops.png`, `showcase-components-day.png`, `showcase-floating-ops.png`, `showcase-floating-day.png`. Review fixes applied: deterministic glass-on-glass CSS assertions, ui-kit exports all token groups, `Alert` named by its title, sample strings in messages, h1/h2/h3 headings. Screenshot suite ran 5 times in a row without a diff after the fixes.
 - WI-7 (2026-10-21, commit `616cdaf`, reviewed GO-with-fixes, fixes applied incl. the new foundation feature `@umbra/runtime-config` (ASM-339), Playwright as a dev dependency, router created once in `main.tsx`, `--port 0` preview, `/api/` proxy key): app shell in `gui/src` (`main`, `App`, `router`, `messages`), `public/config.json`, `index.html` icon link, `umbra-icon` Vite plugin (dev, preview, build; byte-identical, no copy), `/api` proxy with `ws: true`, Playwright `ui` project with global setup/teardown (build `--mode e2e`, `vite preview`), `e2e/app.spec.ts` (5 tests; 202 bun tests), unit tests in `runtime-config` (model, provider), `index-html.test.ts`, `App.test.tsx`; `test:e2e` added to `verify`; verify-frontend skill updated. ASM-338..343.
 - WI-6 (2026-10-21, reviewed GO-with-fixes, fixes applied (dead biome-ignores removed, U+00A0 echelon, paused needs a visible word, WI-8 glass screenshot item, roving tab stop deferred to M8)): ui-kit components C: `CommandBar`, `Readout`, `EntityRow`/`EntityList` (tsx, css, tests each), shared `VisuallyHidden.css`, `props.test-d.ts` cases, README and `index.ts` updated; `bun run verify` passes (179 tests); EntityList virtualization not built (M8). ASM-337 (incl. the glass-on-glass CSS guard for a floating CommandBar).
 - WI-5 (2026-10-21, reviewed GO-with-fixes, fixes applied (Tabs label/id/aria-controls, count separator and tabular figures, TextField aria-invalid and empty id; Slider arrow-key e2e scheduled in WI-8)): ui-kit components B: `Panel`, `Card`, `TextField`, `Toggle`, `Slider`, `Tabs`, `ThemeToggle` (tsx, css, tests each), shared `Label.css`, new type-level cases in `props.test-d.ts`, README and `index.ts` updated. `bun run verify` passes (151 tests). ASM-336 (incl. the glass-on-glass note for the WI-8 review).
@@ -791,7 +792,7 @@ ASM-300..ASM-326 are in `docs/assumptions/M5b.md` (proposed with this plan; fina
 - Later ADR: `milsymbol` once the contract has entity types.
 
 ### Assumed
-See `docs/assumptions/M5b.md` (ASM-300..ASM-343 so far). Added during implementation: ASM-322..326
+See `docs/assumptions/M5b.md` (ASM-300..ASM-347 so far). Added during implementation: ASM-322..326
 (exact pins, licence rules incl. OFL-1.1 only for `@fontsource/*`, tsconfig layout, `gui/**/node_modules`,
 biome preset), ASM-327..331 (dependency-cruiser details, app root exempt from the workspace-dep rule,
 plain-request allow-list until WI-9), ASM-332..334 (remaining `umbra-allow` lines, own-keys i18n lookup,

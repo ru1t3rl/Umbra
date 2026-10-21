@@ -37,3 +37,19 @@ test("headless Chromium can create a WebGL context", async ({ page }) => {
   );
   expect(ok).toBe(true);
 });
+
+test("starts in ops and switches to day without a reload", async ({ page }) => {
+  await page.goto("/showcase");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.evaluate(() => {
+    (window as unknown as { __marker: string }).__marker = "alive";
+  });
+  const navigations = () => page.evaluate(() => performance.getEntriesByType("navigation").length);
+  const before = await navigations();
+  await page.getByRole("switch", { name: "Day theme" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(await page.evaluate(() => (window as unknown as { __marker?: string }).__marker)).toBe(
+    "alive",
+  );
+  expect(await navigations()).toBe(before);
+});

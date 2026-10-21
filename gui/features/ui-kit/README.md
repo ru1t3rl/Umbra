@@ -3,6 +3,7 @@
 Foundation feature (tier `foundation`): the Vantage design system (A-003). Tokens, fonts, theme and the
 reference components are added in M5b WI-3..WI-6. The package exports `.` and `./styles.css` (ADR 0043).
 Design values change only in `src/tokens/tokens.json`; run `bun run gen:tokens`.
+`tokens.ts` exports every token group as a name list and type (`colorTokens`, `spacingTokens`, `radiusTokens`, `shadowTokens`, `blurTokens`, `opacityTokens`, `durationTokens`, `easingTokens`, `typeStyles`) and `cssVar(name)` for any of them (WI-8).
 
 ## Components (M5b WI-4)
 Props and `vt-*` class names match `reference/vantage`. Import from `@umbra/ui-kit`.

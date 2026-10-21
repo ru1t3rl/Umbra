@@ -44,3 +44,24 @@ test("no body element without children", () => {
   const { container } = render(<Alert title="Saved" />);
   expect(container.querySelector(".vt-alert-body")).toBeNull();
 });
+
+test("the title names the alert", () => {
+  render(<Alert tone="danger" title="Order rejected" />);
+  expect(screen.getByRole("alert", { name: "Order rejected" })).toBeTruthy();
+});
+
+test("two alerts get distinct title ids", () => {
+  render(
+    <>
+      <Alert title="One" />
+      <Alert title="Two" />
+    </>,
+  );
+  expect(screen.getByRole("status", { name: "One" })).toBeTruthy();
+  expect(screen.getByRole("status", { name: "Two" })).toBeTruthy();
+});
+
+test("without a title the alert has no aria-labelledby", () => {
+  render(<Alert title="" />);
+  expect(screen.getByRole("status").hasAttribute("aria-labelledby")).toBe(false);
+});

@@ -6,6 +6,7 @@
       "name": "umbra-gui",
       "dependencies": {
         "@umbra/runtime-config": "workspace:*",
+        "@umbra/shell-showcase": "workspace:*",
         "@umbra/ui-kit": "workspace:*",
         "react": "19.3.1",
         "react-dom": "19.3.1",
@@ -26,6 +27,16 @@
         "dependency-cruiser": "17.4.3",
         "typescript": "5.9.3",
         "vite": "7.3.7",
+      },
+    },
+    "feature-shells/showcase": {
+      "name": "@umbra/shell-showcase",
+      "version": "0.0.0",
+      "dependencies": {
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
       },
     },
     "features/runtime-config": {
@@ -266,6 +277,8 @@
     "@types/ws": ["@types/ws@8.18.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w=="],
 
     "@umbra/runtime-config": ["@umbra/runtime-config@workspace:features/runtime-config"],
+
+    "@umbra/shell-showcase": ["@umbra/shell-showcase@workspace:feature-shells/showcase"],
 
     "@umbra/ui-kit": ["@umbra/ui-kit@workspace:features/ui-kit"],
 

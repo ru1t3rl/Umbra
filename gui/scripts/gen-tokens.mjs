@@ -58,14 +58,33 @@ const ts = `// GENERATED from tokens.json by gui/scripts/gen-tokens.mjs. Do not 
 export const colorTokens = ${names(t.color.tokens)} as const;
 export const spacingTokens = ${names(t.spacing.tokens)} as const;
 export const radiusTokens = ${names(t.radius.tokens)} as const;
+export const shadowTokens = ${names(t.shadow.tokens)} as const;
+export const blurTokens = ${names(t.blur.tokens)} as const;
+export const opacityTokens = ${names(t.opacity.tokens)} as const;
+export const durationTokens = ${names(t.duration.tokens)} as const;
+export const easingTokens = ${names(t.easing.tokens)} as const;
 export const typeStyles = ${JSON.stringify(t.type.groups.flatMap((g) => g.styles.map((s) => s.name)))} as const;
 export type ColorToken = (typeof colorTokens)[number];
 export type SpacingToken = (typeof spacingTokens)[number];
 export type RadiusToken = (typeof radiusTokens)[number];
+export type ShadowToken = (typeof shadowTokens)[number];
+export type BlurToken = (typeof blurTokens)[number];
+export type OpacityToken = (typeof opacityTokens)[number];
+export type DurationToken = (typeof durationTokens)[number];
+export type EasingToken = (typeof easingTokens)[number];
 export type TypeStyle = (typeof typeStyles)[number];
 export type Affiliation = "friend" | "hostile" | "neutral" | "unknown";
 /** CSS custom property reference for a token, e.g. cssVar("azure") -> "var(--azure)". */
-export const cssVar = (name: ColorToken | SpacingToken | RadiusToken): string => \`var(--\${name})\`;
+export type CssVarToken =
+  | ColorToken
+  | SpacingToken
+  | RadiusToken
+  | ShadowToken
+  | BlurToken
+  | OpacityToken
+  | DurationToken
+  | EasingToken;
+export const cssVar = (name: CssVarToken): string => \`var(--\${name})\`;
 `;
 
 const targets = [["tokens.css", css], ["tokens.ts", ts]];

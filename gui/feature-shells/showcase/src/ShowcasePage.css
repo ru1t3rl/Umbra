@@ -1,0 +1,134 @@
+.showcase-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  max-width: 1200px;
+}
+.showcase-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.showcase-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.showcase-section > h3,
+.showcase-page > h1,
+.showcase-page > h2 {
+  margin: 0;
+}
+.showcase-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.showcase-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 420px;
+}
+.showcase-flush {
+  padding: 0;
+}
+.showcase-end {
+  justify-content: flex-end;
+}
+.showcase-muted {
+  margin: 0;
+  color: var(--ink-muted);
+}
+.showcase-swatches,
+.showcase-specimens,
+.showcase-scale,
+.showcase-radii,
+.showcase-shadows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.showcase-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+.showcase-swatch,
+.showcase-radius,
+.showcase-shadow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.showcase-swatch-chip {
+  display: block;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+.showcase-specimens,
+.showcase-scale {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.showcase-specimen,
+.showcase-scale-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+}
+.showcase-token-name {
+  flex: 0 0 120px;
+  color: var(--ink-muted);
+}
+.showcase-space-bar {
+  display: block;
+  height: 12px;
+  background: var(--ink-muted);
+}
+.showcase-radii,
+.showcase-shadows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+.showcase-radius-box,
+.showcase-shadow-box {
+  display: block;
+  width: 72px;
+  height: 72px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+}
+.showcase-shadow-box {
+  border: none;
+  border-radius: var(--radius-md);
+}
+.showcase-backdrop {
+  display: block;
+  position: relative;
+  width: 200px;
+  height: 100px;
+  border-radius: var(--radius-md);
+  background: repeating-linear-gradient(45deg, var(--surface-3) 0 12px, var(--surface-1) 12px 24px);
+}
+.showcase-glass-box {
+  display: block;
+  position: absolute;
+  inset: var(--space-4) var(--space-6);
+  background: var(--glass);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: blur(var(--blur-md));
+}
+.showcase-map {
+  width: auto;
+  height: auto;
+  min-height: 280px;
+  padding: var(--space-6);
+}

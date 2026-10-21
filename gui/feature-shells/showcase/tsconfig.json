@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/shell-showcase.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["src", "../../test/jest-dom.d.ts"],
+  "references": [{ "path": "../../features/ui-kit" }]
+}

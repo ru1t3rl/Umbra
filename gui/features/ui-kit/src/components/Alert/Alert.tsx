@@ -1,4 +1,4 @@
-import type { ReactElement, ReactNode } from "react";
+import { type ReactElement, type ReactNode, useId } from "react";
 import "./Alert.css";
 
 export type AlertTone = "info" | "success" | "warning" | "danger";
@@ -21,14 +21,21 @@ export function Alert({
   className,
   children,
 }: AlertProps): ReactElement {
+  const titleId = useId();
   const classes = ["vt-alert", `vt-alert-${tone}`, className].filter(Boolean).join(" ");
   return (
-    <div className={classes} role={tone === "danger" || tone === "warning" ? "alert" : "status"}>
+    <div
+      className={classes}
+      role={tone === "danger" || tone === "warning" ? "alert" : "status"}
+      {...(title ? { "aria-labelledby": titleId } : {})}
+    >
       <span className="vt-alert-icon" aria-hidden="true">
         {GLYPH[tone]}
       </span>
       <div className="vt-alert-text">
-        <div className="vt-alert-title">{title}</div>
+        <div className="vt-alert-title" id={titleId}>
+          {title}
+        </div>
         {children ? <div className="vt-alert-body">{children}</div> : null}
       </div>
       {action}
