@@ -1,19 +1,17 @@
-// Public API of @umbra/engine-stream. WI-9 skeleton: the generated stream wire types only; the
-// connection, store and hooks arrive in WI-10.
+// Public API of @umbra/engine-stream: the live WebSocket stream (ADR 0045). REST data is @umbra/data.
 
-// The import below is extensionless on purpose: the generated file is stream.d.ts (types only).
+export type { EngineStreamConnection, EngineStreamOptions } from "./connection.ts";
+export { connectEngineStream } from "./connection.ts";
+export type { EngineStreamProviderProps } from "./EngineStreamProvider.tsx";
+export { EngineStreamProvider } from "./EngineStreamProvider.tsx";
+export { useEntitySource, useRunStatus, useStreamStatus } from "./hooks.ts";
+export { streamUrl } from "./model/url.ts";
 export type {
+  EntityFrame,
+  EntitySource,
   EntitySummary,
-  EventDto,
-  Frame,
-  GeoBox,
-  Hello,
-  PluginFaultDto,
-  RouteProgress,
   RunStatus,
-  StreamError,
-  StreamFilter,
-  StreamMessage,
-  StreamSettings,
+  StreamStatus,
   Subscription,
-} from "./generated/stream";
+  WebSocketLike,
+} from "./types.ts";

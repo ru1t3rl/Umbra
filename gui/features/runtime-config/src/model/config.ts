@@ -18,12 +18,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isHttpUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 /** Validates the parsed JSON; missing optional fields fall back to the defaults. */
 export function parseRuntimeConfig(raw: unknown): RuntimeConfig {
   if (!isRecord(raw)) throw new ConfigError("config must be a JSON object");
   const { engineUrl, basemap } = raw;
   if (engineUrl !== undefined && typeof engineUrl !== "string") {
     throw new ConfigError("engineUrl must be a string");
+  }
+  if (engineUrl !== undefined && engineUrl !== "" && !isHttpUrl(engineUrl)) {
+    throw new ConfigError("engineUrl must be empty or an absolute http(s) URL");
   }
   const config: RuntimeConfig = { engineUrl: engineUrl ?? DEFAULT_CONFIG.engineUrl };
   if (basemap !== undefined) {

@@ -4,7 +4,7 @@ Foundation feature (tier `foundation`, no workspace dependencies): the runtime c
 `config.json` at start-up. It is not engine REST (that is `@umbra/data`).
 
 ## Public API
-- `RuntimeConfig`: `{ engineUrl: string; basemap?: { styleUrl: string } }`. An empty `engineUrl` means the page origin.
+- `RuntimeConfig`: `{ engineUrl: string; basemap?: { styleUrl: string } }`. An empty `engineUrl` means the page origin; otherwise it must be an absolute `http:` or `https:` URL (`parseRuntimeConfig` throws `ConfigError` for anything else).
 - `DEFAULT_CONFIG`, `ConfigError`.
 - `parseRuntimeConfig(raw)`: validates parsed JSON; missing optional fields default.
 - `loadRuntimeConfig(fetchImpl, baseUrl = "/")`: fetches `${baseUrl}config.json`. A 404 logs a warning and gives the defaults (the file is always emitted, so a 404 means a mis-served path); every other failure throws `ConfigError`.

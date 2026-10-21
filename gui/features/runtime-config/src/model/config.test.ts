@@ -61,11 +61,22 @@ describe("loadRuntimeConfig", () => {
 });
 
 describe("parseRuntimeConfig", () => {
+  test.each(["", "http://127.0.0.1:7878", "https://engine.example/base"])(
+    "accepts the engineUrl %p",
+    (engineUrl) => {
+      expect(parseRuntimeConfig({ engineUrl }).engineUrl).toBe(engineUrl);
+    },
+  );
+
   test.each([
     ["null", null],
     ["an array", []],
     ["a string", "x"],
     ["a numeric engineUrl", { engineUrl: 5 }],
+    ["a relative engineUrl", { engineUrl: "/engine" }],
+    ["a host without scheme", { engineUrl: "engine:7878" }],
+    ["a ws engineUrl", { engineUrl: "ws://engine:7878" }],
+    ["a javascript engineUrl", { engineUrl: "javascript:alert(1)" }],
     ["a string basemap", { basemap: "x" }],
     ["a basemap without styleUrl", { basemap: {} }],
     ["an empty styleUrl", { basemap: { styleUrl: "" } }],
