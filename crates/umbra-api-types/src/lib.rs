@@ -47,7 +47,7 @@ pub use validation::{Diagnostic, DiagnosticNote, ValidateGraphRequest, Validatio
 /// Version of the REST and stream contract (semver, additive changes only; ADR 0026).
 ///
 /// It is the `info.version` of the generated `OpenAPI` document, not the crate version.
-pub const API_VERSION: &str = "1.0.0";
+pub const API_VERSION: &str = "1.1.0";
 
 /// Every wire type as an `OpenAPI` component (review m6: no DTO is left out of the contract). The
 /// server merges these into its document (WI-11, WI-12); this type has no paths of its own.

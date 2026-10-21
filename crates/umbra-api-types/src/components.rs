@@ -20,6 +20,8 @@ pub enum ComponentKind {
     Condition,
     /// A behavior-tree action leaf.
     Action,
+    /// A network adapter (added in API 1.1.0).
+    NetworkAdapter,
 }
 
 /// Where a component or catalog entry came from.

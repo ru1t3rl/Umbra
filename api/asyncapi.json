@@ -26,7 +26,7 @@
   "info": {
     "description": "The WebSocket stream of the Umbra control API. JSON text frames; the connection parameters (rate, encoding, filters) are the query of the upgrade request and `subscribe` messages (ADR 0027). No authentication in v1: the server binds to localhost by default.",
     "title": "Umbra control stream",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "operations": {
     "receiveServerMessage": {

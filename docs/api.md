@@ -26,11 +26,13 @@ builds the engine-only CLI without it (gate 16).
 
 ## Versioning and compatibility
 - All routes are under `/api/v1`. `info.version` in `api/openapi.json`, `api_version` in `GET /api/v1/status`
-  and in the stream `hello` is the API semver (`1.0.0`).
+  and in the stream `hello` is the API semver (`1.1.0`).
 - Within v1 every change is additive and bumps the minor version: a new endpoint, an optional request
   field, a response field, an enum value, a problem code, a stream message type. Clients must ignore
   unknown fields, enum values, event kinds and message types.
 - Removing or changing anything is a breaking change: it needs an ADR and a `/api/v2`.
+- Changelog: 1.1.0 adds the `network_adapter` value of `ComponentKind` (M6 WI-3; `GET /components` lists
+  every registry kind); M6 WI-17 (adapter endpoints) ships under the same 1.1.0.
 - After a contract change, `frontend-engineer` runs the `generate-api-client` skill.
 
 ## Determinism
@@ -166,8 +168,8 @@ There is no `GET /api/v1/scenarios` (listing loadable scenarios under the root) 
   (`ids=1,2`). The server accepts both the repeated and the comma form, so the GUI's orval-generated client (`@umbra/data`) works with its default style.
 - A bounding box is four scalars, `min_lat_deg`, `min_lon_deg`, `max_lat_deg`, `max_lon_deg`: give all four
   or none (`400 bad_request`). `min_lon_deg` larger than `max_lon_deg` crosses the antimeridian.
-- `GET /api/v1/components?kind=` takes `motion_model`, `terrain`, `behavior`, `sensor`, `condition` or
-  `action`.
+- `GET /api/v1/components?kind=` takes `motion_model`, `terrain`, `behavior`, `sensor`, `condition`, `action` or
+  `network_adapter`.
 
 ## Error codes
 Every non-2xx response is `application/problem+json`:
@@ -330,7 +332,7 @@ stopped afterwards); long values are shortened with `...`. The scenario is
 
 ```
 $ curl -s http://127.0.0.1:7878/api/v1/status
-{"api_version":"1.0.0","run":{"state":"idle","clock":{"mode":"realtime"},"session":0,"step_pending":false}}
+{"api_version":"1.1.0","run":{"state":"idle","clock":{"mode":"realtime"},"session":0,"step_pending":false}}
 
 $ curl -s -X POST http://127.0.0.1:7878/api/v1/scenario -H 'content-type: application/json' \
     -d '{"path":"scenarios/walking_skeleton/scenario.toml","clock":{"mode":"stepped"},"seed":"42"}'
@@ -381,7 +383,7 @@ another client ran `step` with `count` 3. The scenario runs at 30 Hz, so a 10 Hz
 third tick:
 
 ```
-<- {"type":"hello","protocol":"umbra.stream.v1","api_version":"1.0.0","encoding":"json","settings":{"default_rate_hz":30.0,"max_rate_hz":60.0,"queue_frames":4,"max_events_per_frame":4096,"send_timeout_s":10.0,"max_message_bytes":65536,"max_entity_ids":10000}}
+<- {"type":"hello","protocol":"umbra.stream.v1","api_version":"1.1.0","encoding":"json","settings":{"default_rate_hz":30.0,"max_rate_hz":60.0,"queue_frames":4,"max_events_per_frame":4096,"send_timeout_s":10.0,"max_message_bytes":65536,"max_entity_ids":10000}}
 -> {"type":"subscribe","max_rate_hz":10,"state_hash":true,"filter":{"entity_ids":[1,2]}}
 <- {"type":"frame","kind":"snapshot","cause":"control","session":3,"seq":0,"tick":0,"time_s":0.0,"run":{"state":"running","clock":{"mode":"stepped"},"session":3,"tick":0,...},"dropped":0,"entities":[{"id":1,"name":"base-1",...},{"id":2,"name":"tank-1",...}],...}
 -> {"type":"nonsense"}

@@ -25,6 +25,7 @@
 //! - [`intent`], [`ownership`], [`terrain`], [`motion`]: [`Intent`], [`Ownership`],
 //!   [`TerrainProvider`], [`KinematicState`] and the [`MotionModel`] trait (REQ-B-2, REQ-K-5,
 //!   REQ-C-6, REQ-M-1).
+//! - [`net`]: the protocol-neutral network model and the adapter traits (REQ-N-1, D-9, ADR 0030).
 //! - [`plugin`]: [`PluginFaultPolicy`] (REQ-P-7, ADR 0021).
 //! - [`event`]: the canonical [`SimEvent`] and [`ControlAction`] (REQ-C-5, ADR 0028).
 //!
@@ -45,6 +46,7 @@ pub mod id;
 pub mod intent;
 pub mod math;
 pub mod motion;
+pub mod net;
 pub mod ownership;
 pub mod params;
 pub mod perception;

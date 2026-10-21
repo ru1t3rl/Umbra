@@ -273,7 +273,8 @@
           "behavior",
           "sensor",
           "condition",
-          "action"
+          "action",
+          "network_adapter"
         ],
         "type": "string"
       },
@@ -1761,7 +1762,7 @@
       "name": "MIT OR Apache-2.0"
     },
     "title": "Umbra control API",
-    "version": "1.0.0"
+    "version": "1.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
