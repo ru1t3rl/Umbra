@@ -1,0 +1,9 @@
+/* The uppercase field label, shared by TextField, Slider and Readout. */
+.vt-label {
+  font-size: 12px; /* umbra-allow: reference size, equals .type-label (ASM-336) */
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
