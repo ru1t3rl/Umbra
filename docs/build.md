@@ -22,7 +22,7 @@ Which gates need what (from M4):
 | Offline cargo cache (`cargo fetch --locked` once online) | 3, 4, 13: tests build plugin libraries with a nested `cargo build --locked --offline` into `CARGO_TARGET_TMPDIR` (ADR 0023 item 4) |
 
 GUI gate 15 (from M5b WI-1, ADR 0043/0044) needs, only when run with `scripts/gates.sh --gui` (plain `scripts/gates.sh` skips it, so the engine track needs none of this):
-- Bun at the version pinned by `gui/package.json` `packageManager` (`bun@1.4.2`);
+- Bun at the version pinned by `gui/package.json` `packageManager` (`bun@1.4.4`);
 - Node.js LTS (22 or 24) for the Node-launched tools (Playwright, orval, dependency-cruiser; Playwright does not support Bun);
 - `cd gui && bunx playwright install chromium` once, online (from WI-7, when `test:e2e` is added);
 - the release binary `target/release/umbra` (or `UMBRA_BIN`), only for the Playwright `engine` project: `cargo build -p umbra-cli --release --locked`. `scripts/gates.sh` builds it in gate 9, before gate 15. `test:e2e` never builds it; when it is missing the engine tests fail with that hint (ASM-311), while `--project ui` needs no binary. The engine is started per worker by a fixture (ASM-514).
