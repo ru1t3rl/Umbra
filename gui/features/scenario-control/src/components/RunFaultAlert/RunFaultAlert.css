@@ -1,0 +1,15 @@
+.umbra-fault-rows {
+  margin: 0;
+}
+.umbra-fault-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.umbra-fault-row dt {
+  min-width: 6rem;
+  color: var(--ink-muted);
+}
+.umbra-fault-row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

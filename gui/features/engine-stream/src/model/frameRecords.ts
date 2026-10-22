@@ -4,7 +4,7 @@
 import type { JournalLevel, RunStatus } from "../types.ts";
 import type { Decoded } from "./decode.ts";
 import type { JournalDraft } from "./journal.ts";
-import { sameFault } from "./store.ts";
+import { sameFault, sameNetworkFault } from "./store.ts";
 
 type FrameMessage = Extract<Decoded, { kind: "frame" }>;
 
@@ -14,6 +14,7 @@ export interface RecorderState {
   readonly runState: RunStatus["state"] | undefined;
   readonly stopReason: RunStatus["stop_reason"];
   readonly fault: RunStatus["fault"];
+  readonly networkFault: RunStatus["network_fault"];
 }
 
 export const INITIAL_RECORDER_STATE: RecorderState = {
@@ -21,6 +22,7 @@ export const INITIAL_RECORDER_STATE: RecorderState = {
   runState: undefined,
   stopReason: undefined,
   fault: undefined,
+  networkFault: undefined,
 };
 
 const ERROR_REASONS: readonly string[] = ["plugin_fault", "network_fault", "error"];
@@ -36,9 +38,12 @@ function runLevel(run: RunStatus): JournalLevel {
 
 function runMessage(run: RunStatus): string {
   let text = `Run ${run.state}`;
-  if (run.stop_reason) text += ` (${run.stop_reason})`;
+  if (run.stop_reason) text += ` (${run.stop_reason_raw ?? run.stop_reason})`;
   if (run.fault) {
     text += `: ${run.fault.plugin} ${run.fault.capability}/${run.fault.call}: ${run.fault.message}`;
+  }
+  if (run.network_fault) {
+    text += `: ${run.network_fault.adapter}: ${run.network_fault.reason}`;
   }
   return text;
 }
@@ -72,11 +77,13 @@ export function recordFrame(
   let runState = prev.runState;
   let stopReason = prev.stopReason;
   let fault = prev.fault;
+  let networkFault = prev.networkFault;
   if (
     run &&
     (run.state !== prev.runState ||
       run.stop_reason !== prev.stopReason ||
-      !sameFault(run.fault, prev.fault))
+      !sameFault(run.fault, prev.fault) ||
+      !sameNetworkFault(run.network_fault, prev.networkFault))
   ) {
     drafts.push({
       source: "run",
@@ -92,6 +99,7 @@ export function recordFrame(
     runState = run.state;
     stopReason = run.stop_reason;
     fault = run.fault;
+    networkFault = run.network_fault;
   }
 
   for (const event of events) {
@@ -129,5 +137,5 @@ export function recordFrame(
     });
   }
 
-  return { drafts, next: { session, runState, stopReason, fault } };
+  return { drafts, next: { session, runState, stopReason, fault, networkFault } };
 }

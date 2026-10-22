@@ -83,6 +83,11 @@ function pluginFault(v: unknown): RunStatus["fault"] {
   return { call: v.call, capability: v.capability, message: v.message, plugin: v.plugin };
 }
 
+function networkFault(v: unknown): RunStatus["network_fault"] {
+  if (!isRec(v) || !isStr(v.adapter) || !isStr(v.reason)) return null;
+  return { adapter: v.adapter, reason: v.reason };
+}
+
 function clockOf(v: unknown): Clock {
   if (!isRec(v)) return { mode: "unknown" };
   switch (v.mode) {
@@ -118,9 +123,14 @@ export function runOf(v: unknown): RunStatus | undefined {
   if (source !== undefined) run.tick_rate_source = source;
   const reason = oneOf(STOP_REASONS, v.stop_reason);
   if (reason !== undefined) run.stop_reason = reason;
-  else if (v.stop_reason !== undefined && v.stop_reason !== null) run.stop_reason = "unknown"; // a reason this client does not know (ASM-359)
+  else if (v.stop_reason !== undefined && v.stop_reason !== null) {
+    run.stop_reason = "unknown"; // a reason this client does not know (ASM-359)
+    if (isStr(v.stop_reason)) run.stop_reason_raw = v.stop_reason; // kept verbatim for display (ASM-909)
+  }
   const fault = pluginFault(v.fault);
   if (fault) run.fault = fault;
+  const netFault = networkFault(v.network_fault);
+  if (netFault) run.network_fault = netFault;
   return run;
 }
 

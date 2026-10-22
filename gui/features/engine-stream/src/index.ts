@@ -12,6 +12,7 @@ export { useRunStatus } from "./hooks/useRunStatus.ts";
 export { useStreamStatus } from "./hooks/useStreamStatus.ts";
 export { streamUrl } from "./model/url.ts";
 export type {
+  Clock,
   EntityFrame,
   EntitySource,
   EntitySummary,

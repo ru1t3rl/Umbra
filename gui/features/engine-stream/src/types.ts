@@ -34,6 +34,8 @@ export type RunStatus = Readonly<
     state: RunState;
     clock: Clock;
     stop_reason?: NonNullable<WireRunStatus["stop_reason"]> | "unknown" | null;
+    /** The reason word as received, only when `stop_reason` is "unknown" (a newer server's value, ASM-909). */
+    stop_reason_raw?: string;
   }
 >;
 

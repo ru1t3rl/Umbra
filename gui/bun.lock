@@ -108,6 +108,7 @@
       "name": "@umbra/scenario-control",
       "version": "0.0.0",
       "dependencies": {
+        "@umbra/data": "workspace:*",
         "@umbra/engine-stream": "workspace:*",
         "@umbra/ui-kit": "workspace:*",
       },

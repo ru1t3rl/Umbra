@@ -25,6 +25,11 @@ export const sameFault = (a: RunStatus["fault"], b: RunStatus["fault"]): boolean
     a.plugin === b.plugin &&
     a.message === b.message);
 
+export const sameNetworkFault = (
+  a: RunStatus["network_fault"],
+  b: RunStatus["network_fault"],
+): boolean => a === b || (!!a && !!b && a.adapter === b.adapter && a.reason === b.reason);
+
 /** Field-wise equality, so an unchanged run keeps its object identity and its subscribers stay quiet. */
 export function sameRun(a: RunStatus, b: RunStatus): boolean {
   return (
@@ -36,8 +41,10 @@ export function sameRun(a: RunStatus, b: RunStatus): boolean {
     a.tick_rate_source === b.tick_rate_source &&
     a.step_pending === b.step_pending &&
     a.stop_reason === b.stop_reason &&
+    a.stop_reason_raw === b.stop_reason_raw &&
     sameClock(a.clock, b.clock) &&
-    sameFault(a.fault, b.fault)
+    sameFault(a.fault, b.fault) &&
+    sameNetworkFault(a.network_fault, b.network_fault)
   );
 }
 
