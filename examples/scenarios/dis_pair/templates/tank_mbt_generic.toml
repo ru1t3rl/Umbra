@@ -1,0 +1,7 @@
+schema_version = 1
+id = "tank.mbt_generic"
+extends = "ground_vehicle.base"
+description = "Generic main battle tank; published on DIS as entity type 1.1.225.1.1.0.0"
+
+[network.dis]
+entity_type = "1.1.225.1.1.0.0"

@@ -62,7 +62,7 @@ fn given_a_manifest_with_another_abi_major_then_rejected_without_opening() {
 
 #[test]
 fn given_a_manifest_with_a_newer_abi_minor_then_rejected_without_opening() {
-    let (err, _) = load_garbage(Some(&VALID.replace("\"0.0\"", "\"0.1\"")));
+    let (err, _) = load_garbage(Some(&VALID.replace("\"0.0\"", "\"0.2\"")));
 
     assert!(matches!(err, PluginError::AbiMismatch { .. }), "{err:?}");
 }

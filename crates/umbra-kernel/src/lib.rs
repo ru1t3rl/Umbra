@@ -31,6 +31,7 @@ pub use clock::{
 };
 pub use error::{KernelError, RouteParam};
 pub use kernel::{
-    AgentInit, EntityInit, EntitySnapshot, Kernel, KernelConfig, RouteInit, Snapshot,
+    AgentInit, EntityInit, EntitySnapshot, Kernel, KernelConfig, OwnedView, RemoteInit, RouteInit,
+    Snapshot,
 };
 pub use pipeline::{PHASE_COUNT, Phase, TickReport};

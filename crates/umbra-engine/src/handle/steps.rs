@@ -2,6 +2,7 @@
 //! at a time. The step is answered by the code that ends it: a tick reaching the target
 //! (`after_tick`), or a state change ([`Worker::publish_control_then`]).
 
+use umbra_core::ControlAction;
 use umbra_kernel::ClockMode;
 
 use super::commands::need;
@@ -22,7 +23,13 @@ impl Worker {
                     .and_then(|r| r.take_step(StepEnd::Complete));
                 self.finish_step(done);
             }
-            Ok(()) => {}
+            Ok(()) => {
+                // A fault while announcing the step stops the run; the step is answered
+                // cancelled after the control frame (ASM-295).
+                if let Some(stopped) = self.control_or_stop(ControlAction::Step(count)) {
+                    self.publish_control_then(Vec::new(), Some(stopped));
+                }
+            }
             Err((error, reply)) => reply.complete(Err(error)),
         }
     }

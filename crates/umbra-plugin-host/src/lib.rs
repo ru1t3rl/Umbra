@@ -30,7 +30,10 @@
 //! Each behavior capability is registered as a core `Factory<dyn Behavior>` whose `build` calls the
 //! plugin's `configure` (module `bridge`). The configured behavior and its instances are core
 //! `Behavior` / `BehaviorInstance` objects; all instances of one capability share one
-//! `BehaviorBatch`, so the kernel ticks them in one `tick_batch` call per tick. Every call into a
+//! `BehaviorBatch`, so the kernel ticks them in one `tick_batch` call per tick. Each network adapter
+//! capability (ABI 0.1, ADR 0033) is registered as a core `Factory<dyn NetworkAdapterConfig>`: its
+//! configuration and started adapter are core `NetworkAdapterConfig` / `NetworkAdapter` objects, and
+//! `stop` and `destroy` run before the image can be released. Every call into a
 //! plugin goes through the image's call lock and pushes a call record that scopes the tokens the
 //! plugin may use (host context, RNG, sinks); plugin handles are opaque and never dereferenced.
 //!

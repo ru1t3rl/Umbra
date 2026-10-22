@@ -11,6 +11,7 @@ use crate::behavior::{Action, Behavior, Condition};
 use crate::catalog::ComponentInfo;
 use crate::id::ComponentId;
 use crate::motion::MotionModel;
+use crate::net::NetworkAdapterConfig;
 use crate::params::{ParamSchema, ParamValue};
 use crate::perception::Sensor;
 use crate::terrain::TerrainProvider;
@@ -31,6 +32,8 @@ pub enum ComponentKind {
     Condition,
     /// A behavior-tree action leaf (M3).
     Action,
+    /// A network adapter configuration (M6, ADR 0030).
+    NetworkAdapter,
 }
 
 impl ComponentKind {
@@ -42,6 +45,7 @@ impl ComponentKind {
         Self::Sensor,
         Self::Condition,
         Self::Action,
+        Self::NetworkAdapter,
     ];
 
     /// Human-readable singular noun for messages.
@@ -53,6 +57,7 @@ impl ComponentKind {
             Self::Sensor => "sensor",
             Self::Condition => "condition",
             Self::Action => "action",
+            Self::NetworkAdapter => "network adapter",
         }
     }
 }
@@ -140,6 +145,7 @@ type ActionFactory = Arc<dyn Factory<dyn Action>>;
 /// A factory stored with its metadata, so one cannot exist without the other.
 type WithInfo<F> = (F, ComponentInfo);
 type SensorFactory = Arc<dyn Factory<dyn Sensor>>;
+type NetworkAdapterFactory = Arc<dyn Factory<dyn NetworkAdapterConfig>>;
 
 /// All registered component factories, looked up by kind and ID.
 ///
@@ -154,6 +160,7 @@ pub struct Registry {
     condition: BTreeMap<ComponentId, WithInfo<ConditionFactory>>,
     action: BTreeMap<ComponentId, WithInfo<ActionFactory>>,
     sensor: BTreeMap<ComponentId, SensorFactory>,
+    network_adapter: BTreeMap<ComponentId, NetworkAdapterFactory>,
 }
 
 impl fmt::Debug for Registry {
@@ -296,6 +303,29 @@ impl Registry {
         )
     }
 
+    /// Registers a network adapter factory under its own ID (ADR 0030).
+    ///
+    /// # Errors
+    /// [`RegistryError::Duplicate`] if the ID is taken; the registry is unchanged.
+    pub fn register_network_adapter(
+        &mut self,
+        f: NetworkAdapterFactory,
+    ) -> Result<(), RegistryError> {
+        let id = f.id().clone();
+        insert(
+            &mut self.kinds,
+            &mut self.network_adapter,
+            ComponentKind::NetworkAdapter,
+            &id,
+            f,
+        )
+    }
+
+    /// The network adapter factory with this ID.
+    pub fn network_adapter(&self, id: &ComponentId) -> Option<&NetworkAdapterFactory> {
+        self.network_adapter.get(id)
+    }
+
     /// The behavior factory with this ID.
     pub fn behavior(&self, id: &ComponentId) -> Option<&BehaviorFactory> {
         self.behavior.get(id).map(|(f, _)| f)
@@ -412,6 +442,7 @@ impl Registry {
             ComponentKind::Sensor => self.sensor.get(id).map(|f| f.param_schema()),
             ComponentKind::Condition => self.condition.get(id).map(|(f, _)| f.param_schema()),
             ComponentKind::Action => self.action.get(id).map(|(f, _)| f.param_schema()),
+            ComponentKind::NetworkAdapter => self.network_adapter.get(id).map(|f| f.param_schema()),
         }
     }
 
@@ -429,6 +460,7 @@ impl Registry {
             ComponentKind::Sensor => self.sensor.keys().collect(),
             ComponentKind::Condition => self.condition.keys().collect(),
             ComponentKind::Action => self.action.keys().collect(),
+            ComponentKind::NetworkAdapter => self.network_adapter.keys().collect(),
         }
     }
 }
@@ -555,7 +587,7 @@ mod tests {
     fn all_lists_every_kind_once() {
         // The exhaustive match fails to compile when a variant is added without updating it;
         // `COUNT` sits next to it and must grow with it, so dropping a kind from `ALL` fails.
-        const COUNT: usize = 6;
+        const COUNT: usize = 7;
         let index = |k: ComponentKind| match k {
             ComponentKind::MotionModel => 0,
             ComponentKind::Terrain => 1,
@@ -563,6 +595,7 @@ mod tests {
             ComponentKind::Sensor => 3,
             ComponentKind::Condition => 4,
             ComponentKind::Action => 5,
+            ComponentKind::NetworkAdapter => 6,
         };
         let mut seen: Vec<usize> = ComponentKind::ALL.iter().map(|&k| index(k)).collect();
         seen.sort_unstable();

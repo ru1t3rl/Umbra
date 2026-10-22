@@ -100,6 +100,10 @@ fn scrub_stop_reason(confinement: Option<&Confinement>, reason: StopReason) -> S
             fault.message = confinement.scrub(&fault.message);
             StopReason::PluginFault(fault)
         }
+        StopReason::NetworkFault(mut fault) => {
+            fault.reason = confinement.scrub(&fault.reason);
+            StopReason::NetworkFault(fault)
+        }
         other => other,
     }
 }

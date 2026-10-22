@@ -23,6 +23,7 @@ after_includes = """
 /* Opaque plugin-owned handles: incomplete types, the host never dereferences them. */
 typedef struct UmbraBehavior UmbraBehavior;
 typedef struct UmbraInstance UmbraInstance;
+typedef struct UmbraNetAdapter UmbraNetAdapter;
 
 /* Umbra plugin ABI v0 supports 64-bit targets only (ADR 0019). */
 #if defined(__cplusplus)
@@ -81,9 +82,14 @@ include = [
     "UmbraValue",
     "UmbraValueSink",
     "UmbraPluginEntry",
+    # ABI 0.1 (ADR 0033).
+    "UmbraNetMessage",
+    "UmbraNetBatch",
+    "UmbraNetSink",
+    "UmbraNetworkVTable",
 ]
 # Opaque plugin-owned handles: declared as incomplete types in `after_includes` (R-M6).
-exclude = ["UmbraBehavior", "UmbraInstance"]
+exclude = ["UmbraBehavior", "UmbraInstance", "UmbraNetAdapter"]
 
 [parse]
 parse_deps = false

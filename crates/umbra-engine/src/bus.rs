@@ -45,6 +45,9 @@ pub enum StopReason {
     Duration,
     /// A plugin fault under the `abort` policy (ADR 0021).
     PluginFault(PluginFault),
+    /// A network adapter fault under the `abort` policy (M6, ASM-252). The wire reports it as
+    /// `network_fault` with the adapter and the reason (ASM-294).
+    NetworkFault(crate::net::NetFault),
     /// A kernel error.
     Error(String),
 }

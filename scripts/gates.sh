@@ -77,7 +77,7 @@ gate 1-fmt cargo fmt --all -- --check
 gate 2-clippy cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 gate 3-test cargo test --workspace --locked --offline
 gate 4-determinism cargo test -p umbra-engine --test determinism --test behavior_determinism \
-    --test plugin_determinism --test handle_determinism --locked --offline
+    --test plugin_determinism --test handle_determinism --test net_determinism --locked --offline
 gate 5-deps cargo xtask check-deps
 gate 6-deny cargo deny check
 gate 7-audit cargo audit
@@ -91,7 +91,8 @@ fi
 gate 11-header cargo xtask gen-header --check
 gate 12-plugins cargo xtask build-plugins --release
 gate 13-plugin-fail cargo test -p umbra-plugin-host --test plugin_failures --locked --offline
-gate 14-bench cargo bench -p umbra-kernel --bench tick --no-run --locked --offline
+gate 14-bench sh -c 'cargo bench -p umbra-kernel --bench tick --no-run --locked --offline &&
+    cargo bench -p umbra-net --bench publish --no-run --locked --offline'
 gate 16-engine-only sh -c 'cargo build -p umbra-cli --no-default-features --locked --offline &&
     cargo clippy -p umbra-cli --no-default-features --all-targets --locked --offline -- -D warnings'
 if [ "${1:-}" = --gui ]; then

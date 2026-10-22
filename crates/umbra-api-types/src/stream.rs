@@ -142,12 +142,13 @@ pub enum FrameCause {
 pub struct EventDto {
     /// The tick it happened in.
     pub tick: u64,
-    /// The kind: `entity_created`, `entity_removed`, `fire`, `custom` or `simulation_control`.
+    /// The kind: `entity_created`, `entity_removed`, `fire`, `detonation`, `custom` or
+    /// `simulation_control` (`detonation` since API 1.1.0). Clients ignore kinds they do not know.
     pub kind: String,
-    /// The main entity: created, removed, shooter or source.
+    /// The main entity: created, removed, shooter (`fire`, `detonation`) or source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entity_id: Option<u64>,
-    /// The target of a `fire`.
+    /// The target of a `fire` or a `detonation`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_id: Option<u64>,
     /// The template of an `entity_created`.
@@ -158,7 +159,9 @@ pub struct EventDto {
     pub weapon: Option<String>,
     /// A `custom` event: `{"kind": <component id>, "payload": <the payload>}`. A
     /// `simulation_control`: `{"action": "start" | "pause" | "resume" | "stop" | "step"}`, with
-    /// `"count"` for `step`.
+    /// `"count"` for `step`. A `detonation`: `{"position": {"lat_deg", "lon_deg", "alt_m"}}`, WGS-84
+    /// like the entities; the shooter and target are `entity_id` and `target_id` when they are
+    /// mapped to entities of this engine.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<Object>)]
     pub detail: Option<Value>,

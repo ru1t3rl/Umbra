@@ -26,6 +26,7 @@ fn run_status() -> RunStatus {
         state: RunState::Running,
         stop_reason: None,
         fault: None,
+        network_fault: None,
         clock: ClockSetting::Scaled { scale: 4.0 },
         session: 2,
         tick: Some(30),
@@ -44,6 +45,7 @@ fn summary() -> EntitySummary {
         group: None,
         force: Some("blue".into()),
         ownership: Ownership::Owned,
+        remote_source: None,
         lat_deg: 52.0,
         lon_deg: 4.0,
         alt_m: 1.5,
@@ -289,6 +291,7 @@ fn status_and_run_dtos_round_trip() {
         state: RunState::Idle,
         stop_reason: None,
         fault: None,
+        network_fault: None,
         clock: ClockSetting::Afap,
         session: 0,
         tick: None,
@@ -336,6 +339,7 @@ fn status_and_run_dtos_round_trip() {
         tick_rate_source: TickRateSource::Default,
         duration_ticks: 7200,
         entity_count: 3,
+        warnings: Vec::new(),
     };
     let scenario_json = round_trip(&scenario);
     assert_eq!(scenario_json["seed"], "18446744073709551615");
@@ -493,6 +497,7 @@ fn template_component_catalog_and_plugin_dtos_round_trip() {
         assert_eq!(round_trip(&kind), json!(text));
     }
     let diagnostic = Diagnostic {
+        severity: Severity::Error,
         code: "unknown_component".into(),
         message: "no such action".into(),
         file: Some("graphs/patrol.toml".into()),
@@ -549,6 +554,7 @@ fn problem_carries_type_status_and_code_from_the_table() {
     assert_eq!(json["status"], 409);
     assert!(json.get("diagnostics").is_none());
     let with = problem.with_diagnostics(vec![Diagnostic {
+        severity: Severity::Error,
         code: "io".into(),
         message: "cannot read".into(),
         file: None,

@@ -1,4 +1,5 @@
-//! Version constants, caps and the integer "enum" typedefs of ABI v0 (ADR 0019, ADR 0020, ADR 0021).
+//! Version constants, caps and the integer "enum" typedefs of ABI v0 (ADR 0019, ADR 0020, ADR 0021,
+//! ADR 0033).
 //!
 //! Every enum-like value crossing the boundary is a fixed-width integer with `UMBRA_*` constants, never a
 //! Rust `enum` or `bool`: an unknown value is an error for the reader, never undefined behavior
@@ -12,7 +13,10 @@
 /// the M4 close-out (WI-16, ASM-117).
 pub const UMBRA_ABI_VERSION_MAJOR: u32 = 0;
 /// ABI minor version: bumped for every appended field, vtable entry or kind (append-only, REQ-P-2).
-pub const UMBRA_ABI_VERSION_MINOR: u32 = 0;
+/// History (`docs/plugin-abi-changelog.md`): 0 (M4), 1 (M6: the network adapter kind, ADR 0033).
+/// A plugin declares in its descriptor the lowest minor that defines every capability kind it exports
+/// (behavior 0, network adapter 1; ADR 0033), not necessarily this one.
+pub const UMBRA_ABI_VERSION_MINOR: u32 = 1;
 /// Packed ABI version written into every `abi_version` field: `major << 16 | minor`.
 pub const UMBRA_ABI_VERSION: u32 = (UMBRA_ABI_VERSION_MAJOR << 16) | UMBRA_ABI_VERSION_MINOR;
 /// Version of the intent set the intent kinds below describe (ADR 0016); equals the host's
@@ -33,6 +37,11 @@ pub const UMBRA_MAX_METADATA_LEN: usize = 1 << 16;
 pub const UMBRA_MAX_ERROR_LEN: usize = 4096;
 /// At most this many intents per batch item per call; the next one is refused and faults the capability.
 pub const UMBRA_MAX_INTENTS_PER_ITEM: usize = 64;
+/// At most this many messages per network `poll` call, whatever `max` the host passes (ABI 0.1,
+/// ADR 0033); one more push is refused and faults the capability.
+pub const UMBRA_MAX_NET_POLL: usize = 4096;
+/// At most this many counters a network adapter's `counters` entry is asked for (ABI 0.1, ADR 0033).
+pub const UMBRA_MAX_NET_COUNTERS: usize = 8;
 
 // ---------------------------------------------------------------- tokens
 
@@ -65,15 +74,17 @@ pub const UMBRA_ERR_STATE: UmbraCode = 6;
 
 // ---------------------------------------------------------------- capability kinds (REQ-P-4)
 
-/// Kind of a capability in the descriptor. Written by the plugin. Only [`UMBRA_CAPABILITY_BEHAVIOR`] is
-/// supported in v0; the other numbers are reserved and rejected as unsupported; `0` and unknown values
-/// are invalid.
+/// Kind of a capability in the descriptor. Written by the plugin. Supported: [`UMBRA_CAPABILITY_BEHAVIOR`]
+/// (minor 0) and, for descriptors declaring minor 1 or newer, [`UMBRA_CAPABILITY_NETWORK_ADAPTER`]
+/// (ADR 0033); the other numbers are reserved and rejected as unsupported; `0` and unknown values are
+/// invalid.
 pub type UmbraCapabilityKind = u32;
 /// A behavior (vtable `UmbraBehaviorVTable`, ADR 0020).
 pub const UMBRA_CAPABILITY_BEHAVIOR: UmbraCapabilityKind = 1;
 /// Reserved: motion model (M7).
 pub const UMBRA_CAPABILITY_MOTION_MODEL: UmbraCapabilityKind = 2;
-/// Reserved: network adapter (M6).
+/// A network adapter (vtable `UmbraNetworkVTable`, ABI 0.1, ADR 0033); needs a descriptor of minor 1 or
+/// newer.
 pub const UMBRA_CAPABILITY_NETWORK_ADAPTER: UmbraCapabilityKind = 3;
 /// Reserved: sensor (M7).
 pub const UMBRA_CAPABILITY_SENSOR: UmbraCapabilityKind = 4;
@@ -155,3 +166,52 @@ pub const UMBRA_LOG_INFO: UmbraLogLevel = 3;
 pub const UMBRA_LOG_DEBUG: UmbraLogLevel = 4;
 /// Trace.
 pub const UMBRA_LOG_TRACE: UmbraLogLevel = 5;
+
+// ---------------------------------------------------------------- network adapter (ABI 0.1, ADR 0033)
+
+/// Kind of a `UmbraNetMessage`, written by its producer (host for `publish`, plugin for `poll`); `0` and
+/// unknown values are invalid.
+pub type UmbraNetKind = u32;
+/// The state of one entity (`key`), with its dead-reckoning basis.
+pub const UMBRA_NET_ENTITY_STATE: UmbraNetKind = 1;
+/// Entity `key` left the exercise.
+pub const UMBRA_NET_ENTITY_REMOVED: UmbraNetKind = 2;
+/// Entity `key` fired `weapon` at `other_key` (0 = no target) from `position`.
+pub const UMBRA_NET_FIRE: UmbraNetKind = 3;
+/// A detonation at `position`; shooter `key` and target `other_key`, 0 = none.
+pub const UMBRA_NET_DETONATION: UmbraNetKind = 4;
+/// Simulation control `control`.
+pub const UMBRA_NET_CONTROL: UmbraNetKind = 5;
+
+/// Dead-reckoning model of an entity state, in the order of ADR 0032's models
+/// (`umbra_core::dead_reckoning::DeadReckoning`); `0` and unknown values are invalid.
+pub type UmbraDeadReckoning = u32;
+/// Does not move.
+pub const UMBRA_DR_STATIC: UmbraDeadReckoning = 1;
+/// Constant velocity (world frame).
+pub const UMBRA_DR_VELOCITY: UmbraDeadReckoning = 2;
+/// Constant velocity, orientation turning at the angular velocity.
+pub const UMBRA_DR_VELOCITY_ROTATION: UmbraDeadReckoning = 3;
+/// Constant acceleration, orientation turning at the angular velocity.
+pub const UMBRA_DR_ACCELERATION_ROTATION: UmbraDeadReckoning = 4;
+/// Constant acceleration (world frame).
+pub const UMBRA_DR_ACCELERATION: UmbraDeadReckoning = 5;
+/// Body-frame form of [`UMBRA_DR_VELOCITY`].
+pub const UMBRA_DR_BODY_VELOCITY: UmbraDeadReckoning = 6;
+/// Body-frame form of [`UMBRA_DR_VELOCITY_ROTATION`].
+pub const UMBRA_DR_BODY_VELOCITY_ROTATION: UmbraDeadReckoning = 7;
+/// Body-frame form of [`UMBRA_DR_ACCELERATION_ROTATION`].
+pub const UMBRA_DR_BODY_ACCELERATION_ROTATION: UmbraDeadReckoning = 8;
+/// Body-frame form of [`UMBRA_DR_ACCELERATION`].
+pub const UMBRA_DR_BODY_ACCELERATION: UmbraDeadReckoning = 9;
+
+/// Simulation-control action of a [`UMBRA_NET_CONTROL`] message; `0` and unknown values are invalid.
+pub type UmbraNetControl = u32;
+/// Start the exercise.
+pub const UMBRA_NET_CONTROL_START: UmbraNetControl = 1;
+/// Pause (freeze) the exercise.
+pub const UMBRA_NET_CONTROL_PAUSE: UmbraNetControl = 2;
+/// Resume a paused exercise.
+pub const UMBRA_NET_CONTROL_RESUME: UmbraNetControl = 3;
+/// Stop the exercise.
+pub const UMBRA_NET_CONTROL_STOP: UmbraNetControl = 4;

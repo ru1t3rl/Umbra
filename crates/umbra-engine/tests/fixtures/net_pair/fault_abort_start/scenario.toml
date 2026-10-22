@@ -1,0 +1,26 @@
+# net_fault_abort_start. See ../README.md.
+schema_version = 1
+
+[scenario]
+name = "net_fault_abort_start"
+seed = 3
+tick_rate_hz = 30
+clock = "stepped"
+duration_s = 60.0
+template_paths = ["../templates"]
+on_plugin_fault = "abort"
+
+[[network_adapters]]
+adapter = "test.net.fault"
+name = "bad"
+params = { fail = "control" }
+[network_adapters.publish]
+control = true
+
+[[entities]]
+template = "tank.mbt_generic"
+name = "f-tank"
+force = "blue"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 90.0
+speed_mps = 5.0

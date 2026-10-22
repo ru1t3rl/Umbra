@@ -4,6 +4,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use umbra_core::ControlAction;
 use umbra_kernel::ClockMode;
 
 use super::thread::{EndingStep, Run, StepEnd, Worker};
@@ -72,6 +73,12 @@ impl Worker {
             Command::Components { kind, reply } => reply.complete(Ok(self.components(kind))),
             Command::Catalog { reply } => reply.complete(Ok(self.catalog())),
             Command::Plugins { reply } => reply.complete(Ok(self.plugins())),
+            Command::NetworkAdapters { reply } => reply.complete(self.network_adapters()),
+            Command::SetAdapterEnabled {
+                name,
+                enabled,
+                reply,
+            } => reply.complete(self.set_adapter_enabled(&name, enabled)),
             Command::ValidateGraph {
                 name,
                 document,
@@ -106,7 +113,7 @@ impl Worker {
         need(run, &[RunState::Ready], "start")?;
         run.session.engine_mut().resume();
         run.state = RunState::Running;
-        Ok(None)
+        Ok(self.control_or_stop(ControlAction::Start))
     }
 
     fn pause(&mut self) -> Result<Option<EndingStep>, HandleError> {
@@ -114,7 +121,9 @@ impl Worker {
         need(run, &[RunState::Running], "pause")?;
         run.session.engine_mut().pause();
         run.state = RunState::Paused;
-        Ok(run.take_step(StepEnd::Cancel))
+        let ending = run.take_step(StepEnd::Cancel);
+        let stopped = self.control_or_stop(ControlAction::Pause);
+        Ok(ending.or(stopped))
     }
 
     fn resume(&mut self) -> Result<Option<EndingStep>, HandleError> {
@@ -122,7 +131,7 @@ impl Worker {
         need(run, &[RunState::Paused], "resume")?;
         run.session.engine_mut().resume();
         run.state = RunState::Running;
-        Ok(None)
+        Ok(self.control_or_stop(ControlAction::Resume))
     }
 
     fn stop(&mut self) -> Result<Option<EndingStep>, HandleError> {
@@ -194,10 +203,16 @@ impl Worker {
             tick_rate_source: scenario.tick_rate_source,
             duration_ticks: session.duration_ticks(),
             entity_count: session.entities().len(),
+            warnings: scenario
+                .warnings
+                .iter()
+                .map(|w| self.shown_diagnostic(w.clone()))
+                .collect(),
         };
         self.bus.set_tick_rate(Some(info.tick_rate));
         self.run = Some(Run {
-            directory: Arc::new(session.entities().clone()),
+            directory: Arc::new(session.directory()),
+            directory_ghosts: 0,
             session,
             info: info.clone(),
             state: RunState::Ready,

@@ -4,17 +4,19 @@
 use core::time::Duration;
 use std::sync::Arc;
 
+use umbra_core::dead_reckoning::RemoteState;
+pub use umbra_core::net::OwnedView;
 use umbra_core::{
     Behavior, BehaviorId, Contact, Ecef, EntityId, Force, Intent, KinematicState, Meters,
-    MetersPerSecond, MotionModel, MotionModelId, Ownership, Sensor, SimEvent, SimRng, SimTime,
-    StateHash, Status, TerrainProvider, TickRate,
+    MetersPerSecond, MotionModel, MotionModelId, Ownership, RemoteSource, Seconds, Sensor,
+    SimEvent, SimRng, SimTime, StateHash, Status, TerrainProvider, TickRate,
 };
 
 use crate::clock::{Clock, ClockMode, WallClock};
 use crate::error::KernelError;
 use crate::pipeline::{PHASE_COUNT, Phase, TickContext, TickReport};
 use crate::state;
-use crate::systems::{behavior, events, motion, perception};
+use crate::systems::{behavior, events, ingest, motion, perception};
 use crate::world::{BehaviorSlot, World};
 
 /// Kernel construction parameters.
@@ -294,9 +296,86 @@ impl Kernel {
     }
 }
 
+/// A remote entity to mirror: who owns it, how its identity is built and its first basis
+/// (ADR 0032, REQ-K-5).
+#[derive(Clone)]
+pub struct RemoteInit {
+    /// Where the entity comes from (the adapter's name, ASM-227).
+    pub source: RemoteSource,
+    /// Motion model for identity only; never stepped for a Remote entity (ASM-241).
+    pub motion: Arc<dyn MotionModel>,
+    /// Its force, if the peer sent one (ASM-242).
+    pub force: Option<Force>,
+    /// The first dead-reckoning basis, taken at the kernel's current time.
+    pub remote: RemoteState,
+}
+
+impl Kernel {
+    /// Adds a Remote entity (no behavior, no sensors) under the next id (ADR 0032, ASM-242). Its
+    /// state is the basis; the basis is taken at the current time (ASM-267).
+    ///
+    /// # Errors
+    /// [`KernelError::InvalidState`] for a non-finite basis state and
+    /// [`KernelError::IdsExhausted`] when ids run out. The kernel is unchanged on error.
+    pub fn spawn_remote(&mut self, init: RemoteInit) -> Result<EntityId, KernelError> {
+        self.world.spawn_remote(init, self.clock.now(), self.rng)
+    }
+
+    /// The dead-reckoning cap of `source`, if one is set.
+    #[must_use]
+    pub fn remote_timeout(&self, source: &RemoteSource) -> Option<Seconds> {
+        self.world.remote_timeout(source)
+    }
+
+    /// Replaces the dead-reckoning caps: a Remote entity of a listed source is never extrapolated
+    /// further than its source's timeout, the adapter's ghost timeout (ADR 0032, ASM-457). The
+    /// previous list is dropped as a whole; a source that is not listed is not capped. Remote
+    /// entities exist only with a network link, so scenarios without one are unaffected.
+    ///
+    /// # Errors
+    /// [`KernelError::InvalidRemoteTimeout`] when a timeout is not positive and finite; the
+    /// kernel is unchanged.
+    pub fn set_remote_timeouts<'a>(
+        &mut self,
+        timeouts: impl IntoIterator<Item = (&'a RemoteSource, Seconds)>,
+    ) -> Result<(), KernelError> {
+        let mut map = std::collections::BTreeMap::new();
+        for (source, timeout) in timeouts {
+            if !(timeout.0.is_finite() && timeout.0 > 0.0) {
+                return Err(KernelError::InvalidRemoteTimeout);
+            }
+            map.insert(source.clone(), timeout);
+        }
+        self.world.set_remote_timeouts(map);
+        Ok(())
+    }
+
+    /// Replaces a Remote entity's dead-reckoning basis with `remote`, taken at the current time.
+    ///
+    /// # Errors
+    /// [`KernelError::NotRemote`] for an Owned entity, [`KernelError::UnknownEntity`] for an
+    /// unknown id, [`KernelError::InvalidState`] for a non-finite basis state. The kernel is
+    /// unchanged on error.
+    pub fn update_remote(&mut self, id: EntityId, remote: RemoteState) -> Result<(), KernelError> {
+        self.world.update_remote(id, remote, self.clock.now())
+    }
+
+    /// Clears `out` and fills it with the Owned entities in id order (ASM-253).
+    pub fn owned_views(&self, out: &mut Vec<OwnedView>) {
+        out.clear();
+        self.world.for_each_owned(|id, state, force| {
+            out.push(OwnedView {
+                id,
+                state: *state,
+                force: force.cloned(),
+            });
+        });
+    }
+}
+
 /// Runs the systems of one phase. Perception, Behavior and Motion act for `Owned` entities only
 /// (REQ-K-5), and so does Events, which turns `Fire` and `Custom` intents into `events` (ADR 0028);
-/// Ingest and Publish have no systems yet.
+/// Ingest dead-reckons Remote entities (ADR 0032); Publish has no systems yet.
 fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>, events: &mut Vec<SimEvent>) {
     match phase {
         Phase::Perception => perception::run(world, ctx),
@@ -307,7 +386,8 @@ fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>, events: &mu
             }
         }),
         Phase::Events => events::run(world, events),
-        Phase::Ingest | Phase::Publish => {}
+        Phase::Ingest => ingest::run(world, ctx),
+        Phase::Publish => {}
     }
 }
 

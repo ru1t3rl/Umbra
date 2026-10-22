@@ -45,6 +45,10 @@ pub fn summary_of(info: &EntityInfo, snapshot: &EntitySnapshot) -> api::EntitySu
         group: info.group.clone(),
         force: snapshot.force.as_ref().map(|f| f.as_str().to_owned()),
         ownership: ownership(&snapshot.ownership),
+        remote_source: match &snapshot.ownership {
+            Ownership::Remote { source } => Some(source.as_str().to_owned()),
+            Ownership::Owned => None,
+        },
         lat_deg: shown.lat_deg,
         lon_deg: shown.lon_deg,
         alt_m: shown.height_m,

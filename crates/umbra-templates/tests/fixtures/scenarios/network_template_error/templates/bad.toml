@@ -1,0 +1,6 @@
+schema_version = 1
+id = "veh.bad"
+
+[motion]
+model = "stub.motion.missing"
+params = { a = 1.0 }

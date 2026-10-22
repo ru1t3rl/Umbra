@@ -20,7 +20,7 @@ use umbra_api_types::{API_VERSION, ApiSchemas};
 use utoipa::OpenApi;
 
 /// `(method, path, operationId)` of every route (ADR 0026, the plan's endpoint table).
-const ROUTES: [(&str, &str, &str); 22] = [
+const ROUTES: [(&str, &str, &str); 25] = [
     ("get", "/api/v1/status", "getStatus"),
     ("post", "/api/v1/scenario", "loadScenario"),
     ("get", "/api/v1/scenario", "getScenario"),
@@ -39,14 +39,34 @@ const ROUTES: [(&str, &str, &str); 22] = [
     ("get", "/api/v1/templates/{id}", "getTemplate"),
     ("get", "/api/v1/components", "listComponents"),
     ("get", "/api/v1/plugins", "getPlugins"),
+    ("get", "/api/v1/network/adapters", "listNetworkAdapters"),
+    (
+        "post",
+        "/api/v1/network/adapters/{name}/enable",
+        "enableNetworkAdapter",
+    ),
+    (
+        "post",
+        "/api/v1/network/adapters/{name}/disable",
+        "disableNetworkAdapter",
+    ),
     ("get", "/api/v1/catalog/behavior", "getBehaviorCatalog"),
     ("post", "/api/v1/behaviors/validate", "validateBehavior"),
     ("get", "/api/v1/openapi.json", "getOpenApi"),
     ("get", "/api/v1/stream", "openStream"),
 ];
 
+/// The routes the script above does not call: the list has its own test below, and enable and
+/// disable need a scenario with a network adapter, so `rest_network.rs` exercises them
+/// (`the_adapter_routes_the_script_skips_are_covered`).
+const NEEDS_ADAPTER: [&str; 3] = [
+    "/api/v1/network/adapters",
+    "/api/v1/network/adapters/{name}/enable",
+    "/api/v1/network/adapters/{name}/disable",
+];
+
 /// The extra problem statuses each operation documents, besides the four every route has.
-const EXTRA_PROBLEMS: [(&str, &[&str]); 16] = [
+const EXTRA_PROBLEMS: [(&str, &[&str]); 19] = [
     ("loadScenario", &["400", "403", "415", "422"]),
     ("getScenario", &["409"]),
     ("unloadScenario", &["409"]),
@@ -63,9 +83,12 @@ const EXTRA_PROBLEMS: [(&str, &[&str]); 16] = [
     ("validateBehavior", &["400", "413", "415", "422"]),
     ("openStream", &["400", "403", "503"]),
     ("stopRun", &["409"]),
+    ("listNetworkAdapters", &["409"]),
+    ("enableNetworkAdapter", &["404", "409"]),
+    ("disableNetworkAdapter", &["404", "409"]),
 ];
 
-const TAGS: [&str; 9] = [
+const TAGS: [&str; 10] = [
     "status",
     "scenario",
     "run",
@@ -73,6 +96,7 @@ const TAGS: [&str; 9] = [
     "templates",
     "components",
     "plugins",
+    "network",
     "behaviors",
     "stream",
 ];
@@ -138,7 +162,10 @@ async fn openapi_lists_every_route_of_the_router() {
     // The router serves each of them: no request is answered with the route-not-found or the
     // method-not-allowed problem.
     for (method, path, _) in operations(&doc) {
-        let uri = path.replace("{id}", "1").replace("{template_id}", "x");
+        let uri = path
+            .replace("{id}", "1")
+            .replace("{template_id}", "x")
+            .replace("{name}", "lb");
         let uri = uri.split('{').next().unwrap_or(&uri).to_string();
         let reply = h
             .send(
@@ -355,7 +382,7 @@ async fn responses_conform_to_their_openapi_schemas() {
     }
     let documented: BTreeSet<(String, String)> = operations(&doc)
         .into_iter()
-        .filter(|(_, p, _)| !p.ends_with("/stream"))
+        .filter(|(_, p, _)| !p.ends_with("/stream") && !NEEDS_ADAPTER.contains(&p.as_str()))
         .map(|(m, p, _)| (m, normalise(&p)))
         .collect();
     let missing: Vec<_> = documented.difference(&exercised).collect();
@@ -469,4 +496,179 @@ async fn api_version_matches_info_version() {
     assert_eq!(committed("openapi.json")["info"]["version"], API_VERSION);
     let status = h.get("/api/v1/status").await.assert_json(200);
     assert_eq!(status["api_version"], API_VERSION);
+}
+
+// ---- API 1.1.0 additions (M6 WI-17, ADR 0035, ASM-294, ASM-297, ASM-400) ----
+
+/// The names in the `enum` of the component schema `name`.
+fn enum_values(doc: &Value, name: &str) -> BTreeSet<String> {
+    doc["components"]["schemas"][name]["enum"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{name} has no enum"))
+        .iter()
+        .map(|v| v.as_str().expect("text").to_owned())
+        .collect()
+}
+
+fn properties(doc: &Value, name: &str) -> BTreeSet<String> {
+    doc["components"]["schemas"][name]["properties"]
+        .as_object()
+        .unwrap_or_else(|| panic!("{name} has no properties"))
+        .keys()
+        .cloned()
+        .collect()
+}
+
+#[tokio::test]
+async fn the_1_1_additions_are_in_the_served_document_and_nothing_was_taken_away() {
+    let h = Harness::start("contract-1-1");
+    let doc = served(&h).await;
+
+    for code in ["adapter_not_found", "adapter_faulted", "entity_remote"] {
+        assert!(enum_values(&doc, "ProblemCode").contains(code), "{code}");
+    }
+    // The 1.0 codes and stop reasons are all still there.
+    for code in [
+        "bad_request",
+        "entity_not_found",
+        "duplicate_name",
+        "internal",
+    ] {
+        assert!(enum_values(&doc, "ProblemCode").contains(code), "{code}");
+    }
+    assert_eq!(
+        enum_values(&doc, "StopReason"),
+        [
+            "command",
+            "duration",
+            "plugin_fault",
+            "error",
+            "network_fault"
+        ]
+        .map(String::from)
+        .into()
+    );
+    assert_eq!(
+        enum_values(&doc, "Severity"),
+        ["error", "warning"].map(String::from).into()
+    );
+    assert!(properties(&doc, "RunStatus").contains("network_fault"));
+    assert!(properties(&doc, "RunStatus").contains("fault"));
+    assert!(properties(&doc, "EntitySummary").contains("remote_source"));
+    assert!(properties(&doc, "Diagnostic").contains("severity"));
+    assert!(properties(&doc, "ScenarioInfo").contains("warnings"));
+    for name in [
+        "name",
+        "adapter",
+        "plugin",
+        "enabled",
+        "faulted",
+        "fault_reason",
+        "key_space",
+        "ghosts",
+        "counters",
+    ] {
+        assert!(
+            properties(&doc, "AdapterDto").contains(name),
+            "AdapterDto.{name}"
+        );
+    }
+    // Responses only grew: the new fields are not required of a client that sends none, and the
+    // two that every response carries are required.
+    let required = |name: &str| -> BTreeSet<String> {
+        doc["components"]["schemas"][name]["required"]
+            .as_array()
+            .map(|r| {
+                r.iter()
+                    .map(|v| v.as_str().expect("text").to_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for (schema, field) in [
+        ("RunStatus", "network_fault"),
+        ("EntitySummary", "remote_source"),
+        ("Diagnostic", "severity"),
+        ("ScenarioInfo", "warnings"),
+    ] {
+        assert!(
+            !required(schema).contains(field),
+            "{schema}.{field} must stay optional"
+        );
+    }
+    assert!(required("AdapterDto").contains("enabled"));
+}
+
+#[tokio::test]
+async fn a_status_with_a_network_fault_conforms_to_the_run_status_schema() {
+    let h = Harness::start("contract-network-fault");
+    let doc = served(&h).await;
+    let mut status = serde_json::to_value(umbra_api_types::RunStatus {
+        state: umbra_api_types::RunState::Stopped,
+        stop_reason: Some(umbra_api_types::StopReason::NetworkFault),
+        fault: None,
+        network_fault: Some(Box::new(umbra_api_types::NetworkFaultDto {
+            adapter: "left".into(),
+            reason: "send broke".into(),
+        })),
+        clock: umbra_api_types::ClockSetting::Stepped,
+        session: 1,
+        tick: Some(6),
+        time_s: Some(0.2),
+        step_pending: false,
+        tick_rate_hz: Some(30),
+        tick_rate_source: Some(umbra_api_types::TickRateSource::Scenario),
+    })
+    .expect("json");
+    let schema = &doc["components"]["schemas"]["RunStatus"];
+
+    schema_walk::validate_closed(&doc, schema, &status).expect("a network fault status conforms");
+
+    // The check can fail: a property the schema does not know is refused, and so is a wrong reason.
+    status["network_fault"]["unknown"] = json!(1);
+    assert!(schema_walk::validate_closed(&doc, schema, &status).is_err());
+    status["network_fault"] = json!({"adapter": "left", "reason": "x"});
+    status["stop_reason"] = json!("network_broke");
+    assert!(schema_walk::validate_closed(&doc, schema, &status).is_err());
+}
+
+#[tokio::test]
+async fn the_adapter_list_answers_409_idle_and_200_loaded_and_conforms() {
+    let h = Harness::start("contract-adapters");
+    let doc = served(&h).await;
+    let schema = &doc["paths"]["/api/v1/network/adapters"]["get"]["responses"];
+
+    let idle = h.get("/api/v1/network/adapters").await;
+    assert_eq!(idle.status, 409, "{}", idle.text());
+    let problem = &schema["409"]["content"]["application/problem+json"]["schema"];
+    schema_walk::validate_closed(&doc, problem, &idle.json()).expect("the 409 conforms");
+
+    h.load_skeleton("stepped").await;
+    let loaded = h.get("/api/v1/network/adapters").await;
+    assert_eq!(loaded.status, 200, "{}", loaded.text());
+    let list = &schema["200"]["content"]["application/json"]["schema"];
+    schema_walk::validate_closed(&doc, list, &loaded.json()).expect("the 200 conforms");
+}
+
+#[tokio::test]
+async fn the_adapter_routes_the_script_skips_are_covered() {
+    let h = Harness::start("contract-skipped");
+    let doc = served(&h).await;
+    // The skipped routes are exactly the adapter routes with a path parameter.
+    let documented: BTreeSet<String> = operations(&doc)
+        .into_iter()
+        .map(|(_, p, _)| p)
+        .filter(|p| p.starts_with("/api/v1/network/adapters"))
+        .collect();
+    let skipped: BTreeSet<String> = NEEDS_ADAPTER.iter().map(|p| (*p).to_owned()).collect();
+    assert_eq!(documented, skipped);
+    // `rest_network.rs` names enable and disable (its conformance test walks their responses); the
+    // list is covered by the test above.
+    let source = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/rest_network.rs"),
+    )
+    .expect("rest_network.rs");
+    for route in &NEEDS_ADAPTER[1..] {
+        assert!(source.contains(&format!("\"{route}\"")), "{route}");
+    }
 }

@@ -19,6 +19,7 @@ pub mod display;
 pub mod engine;
 pub mod error;
 pub mod handle;
+pub mod net;
 pub mod plugins;
 pub mod scenario;
 pub mod session;
@@ -26,11 +27,12 @@ pub mod validate;
 mod visual;
 
 pub use confine::{ConfineError, Confinement};
-pub use display::EntityDisplay;
+pub use display::{EntityDisplay, PositionDisplay};
 pub use engine::{
     AgentInit, Engine, EngineConfig, Pumped, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView,
 };
 pub use error::{EngineError, SpawnParam};
+pub use net::{GhostInfo, MANAGER_TEMPLATE_KEYS, NetFault, NetLink, net_summary};
 pub use plugins::{
     CapabilityInfo, HostOptions, LoadedScenario, PluginError, PluginFault, PluginFaultPolicy,
     PluginHost, PluginInfo, PluginLog, instantiate_with_plugins, load_plugins,
@@ -41,6 +43,7 @@ pub use scenario::{EntityInfo, LoadSettings, ScenarioError};
 pub use session::{Session, SessionError, SessionOptions, TemplateSpawn};
 /// The result of ticking a behavior (REQ-B-8), as an entity snapshot reports it.
 pub use umbra_core::Status as BehaviorStatus;
+pub use umbra_core::net::KeySpace;
 pub use umbra_core::{
     Catalog, CatalogEntry, CatalogKind, ComponentId, ComponentKind, ControlAction, EntityId,
     FlatTerrain, Force, Geodetic, Meters, MetersPerSecond, Ownership, ParamSchema, ParamValue,
@@ -51,12 +54,13 @@ pub use umbra_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, StdWallClock, TickReport,
     TimeScale, WallClock,
 };
+pub use umbra_net::{AdapterStatus, LoopbackHub};
 pub use umbra_templates::config::{
     Config, ConfigError, LogLevel, ServerConfig, StreamConfig, load_config,
 };
 pub use umbra_templates::{
     BEHAVIOR_FILE_SCHEMA, CONFIG_FILE_SCHEMA, ClockSetting, Diagnostic, Location, Note,
-    ResolvedTemplate, SCENARIO_FILE_SCHEMA, ScenarioInputs, TEMPLATE_FILE_SCHEMA, TickRateSource,
-    scenario_inputs,
+    ResolvedTemplate, SCENARIO_FILE_SCHEMA, ScenarioInputs, Severity, TEMPLATE_FILE_SCHEMA,
+    TickRateSource, scenario_inputs,
 };
 pub use validate::{GraphValidation, validate_graph_document};

@@ -144,6 +144,23 @@ pub fn fixture(features: &[&str]) -> PathBuf {
     plugins_dir(&[("fixture", &library("umbra-test-plugin", features))])
 }
 
+/// A plugin directory with the DIS adapter as package `dis`: the built library and the manifest the
+/// crate ships (M6 WI-16; the same layout `cargo xtask build-plugins` packages).
+pub fn dis() -> PathBuf {
+    let dir = plugins_dir(&[("dis", &library("umbra-net-dis", &[]))]);
+    std::fs::copy(
+        workspace_root().join("crates/umbra-net-dis/plugin.toml"),
+        dir.join("dis/plugin.toml"),
+    )
+    .expect("copy the shipped plugin.toml");
+    dir
+}
+
+/// `examples/scenarios/dis_pair` (M6 WI-16).
+pub fn dis_pair_example_dir() -> PathBuf {
+    workspace_root().join("examples/scenarios/dis_pair")
+}
+
 /// `examples/scenarios/plugin_wander` (WI-13).
 pub fn wander_example_dir() -> PathBuf {
     workspace_root().join("examples/scenarios/plugin_wander")

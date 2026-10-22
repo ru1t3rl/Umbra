@@ -7,13 +7,15 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use umbra_core::dead_reckoning::{RemoteState, extrapolate};
 use umbra_core::{
     BehaviorBatch, BehaviorId, BehaviorInstance, Contact, Ecef, EntityId, Force, Intent,
-    KinematicState, MotionModel, Ownership, RngStream, Sensor, SimRng, Status, StreamKey,
+    KinematicState, MotionModel, Ownership, RemoteSource, RngStream, Seconds, Sensor, SimRng,
+    SimTime, Status, StreamKey,
 };
 
 use crate::error::{KernelError, RouteParam};
-use crate::kernel::{EntityInit, RouteInit};
+use crate::kernel::{EntityInit, RemoteInit, RouteInit};
 use crate::systems::perception::Scratch;
 
 mod batch;
@@ -45,6 +47,13 @@ pub(crate) struct Sensors(pub(crate) Vec<Arc<dyn Sensor>>);
 
 /// Contacts of the last Perception phase, sorted by id; present only with [`Sensors`].
 pub(crate) struct Contacts(pub(crate) Vec<Contact>);
+
+/// The dead-reckoning basis of a Remote entity and the kernel time it was taken at (ASM-230,
+/// ASM-267). Not hashed: the kinematic state it produces is.
+pub(crate) struct RemoteTrack {
+    pub(crate) basis: RemoteState,
+    pub(crate) at: SimTime,
+}
 
 /// An instantiated behavior and the status of its last tick (ADR 0013). Kept beside the ECS
 /// because instances are `Send` but not `Sync`.
@@ -134,6 +143,11 @@ pub(crate) struct World {
     behaviors: BTreeMap<EntityId, BehaviorSlot>,
     /// Number of entities with sensors; kept in sync with `index` like `behaviors`.
     sensor_owners: usize,
+    /// Number of entities with a [`RemoteTrack`]; kept in sync with `index` like `sensor_owners`.
+    remote_count: usize,
+    /// Per source: the longest a Remote entity is dead-reckoned past its basis (the adapter's
+    /// ghost timeout, ADR 0032). A source without an entry is not capped.
+    remote_timeouts: BTreeMap<RemoteSource, Seconds>,
     next_id: Option<EntityId>,
     /// Perception buffers reused across ticks (ASM-093 (f)); taken out while the phase runs.
     pub(crate) perception: Scratch,
@@ -151,6 +165,15 @@ fn validate_state(s: &KinematicState) -> Result<(), KernelError> {
         && is_finite(s.velocity)
         && [q.w, q.x, q.y, q.z].iter().all(|c| c.is_finite());
     if finite {
+        Ok(())
+    } else {
+        Err(KernelError::InvalidState)
+    }
+}
+
+fn validate_remote(remote: &RemoteState) -> Result<(), KernelError> {
+    validate_state(&remote.state)?;
+    if is_finite(remote.acceleration) && is_finite(remote.angular_velocity) {
         Ok(())
     } else {
         Err(KernelError::InvalidState)
@@ -187,6 +210,8 @@ impl World {
             index: BTreeMap::new(),
             behaviors: BTreeMap::new(),
             sensor_owners: 0,
+            remote_count: 0,
+            remote_timeouts: BTreeMap::new(),
             next_id: EntityId::new(1),
             perception: Scratch::default(),
             batch: BatchScratch::default(),
@@ -213,6 +238,20 @@ impl World {
         slot: impl FnOnce() -> Result<Option<BehaviorSlot>, KernelError>,
         rng: SimRng,
     ) -> Result<EntityId, KernelError> {
+        self.spawn_tracked(init, force, sensors, slot, None, rng)
+    }
+
+    /// [`World::spawn_with`] plus an optional [`RemoteTrack`] added with the other components, so
+    /// a Remote entity never exists without its track.
+    fn spawn_tracked(
+        &mut self,
+        init: EntityInit,
+        force: Option<Force>,
+        sensors: Vec<Arc<dyn Sensor>>,
+        slot: impl FnOnce() -> Result<Option<BehaviorSlot>, KernelError>,
+        track: Option<RemoteTrack>,
+        rng: SimRng,
+    ) -> Result<EntityId, KernelError> {
         validate_state(&init.state)?;
         let route = init.route.as_ref().map(validate_route).transpose()?;
         let id = self.next_id.ok_or(KernelError::IdsExhausted)?;
@@ -236,12 +275,125 @@ impl World {
             builder.add(Sensors(sensors)).add(Contacts(Vec::new()));
             self.sensor_owners += 1;
         }
+        if let Some(track) = track {
+            builder.add(track);
+            self.remote_count += 1;
+        }
         if let Some(slot) = slot {
             self.behaviors.insert(id, slot);
         }
         let entity = self.ecs.spawn(builder.build());
         self.index.insert(id, entity);
         Ok(id)
+    }
+
+    /// Adds a Remote entity whose state is the basis, taken at `now` (ADR 0032, ASM-267): no
+    /// behavior, no sensors, a [`RemoteTrack`]. Nothing changes on error, and no id is consumed.
+    pub(crate) fn spawn_remote(
+        &mut self,
+        init: RemoteInit,
+        now: SimTime,
+        rng: SimRng,
+    ) -> Result<EntityId, KernelError> {
+        let RemoteInit {
+            source,
+            motion,
+            force,
+            remote,
+        } = init;
+        validate_remote(&remote)?;
+        let entity_init = EntityInit {
+            state: remote.state,
+            ownership: Ownership::Remote { source },
+            motion,
+            route: None,
+        };
+        let track = RemoteTrack {
+            basis: remote,
+            at: now,
+        };
+        self.spawn_tracked(
+            entity_init,
+            force,
+            Vec::new(),
+            || Ok(None),
+            Some(track),
+            rng,
+        )
+    }
+
+    /// Replaces the basis of a Remote entity, taken at `now`; its state becomes the basis.
+    pub(crate) fn update_remote(
+        &mut self,
+        id: EntityId,
+        remote: RemoteState,
+        now: SimTime,
+    ) -> Result<(), KernelError> {
+        let entity = *self.index.get(&id).ok_or(KernelError::UnknownEntity(id))?;
+        let Ok((track, state)) = self
+            .ecs
+            .query_one_mut::<(&mut RemoteTrack, &mut KinematicState)>(entity)
+        else {
+            return Err(KernelError::NotRemote(id));
+        };
+        validate_remote(&remote)?;
+        *track = RemoteTrack {
+            basis: remote,
+            at: now,
+        };
+        *state = remote.state;
+        Ok(())
+    }
+
+    /// Dead-reckons every Remote entity to `now` (the Ingest system).
+    pub(crate) fn extrapolate_remotes(&mut self, now: SimTime) {
+        if self.remote_count == 0 {
+            return;
+        }
+        // Archetype order, not id order: each extrapolation reads only its own track.
+        let timeouts = &self.remote_timeouts;
+        for (track, state, ownership) in self
+            .ecs
+            .query_mut::<(&RemoteTrack, &mut KinematicState, &Ownership)>()
+        {
+            let ticks = now.ticks_since(track.at);
+            debug_assert!(
+                ticks.is_ok(),
+                "a track is never taken after the current time"
+            );
+            let mut elapsed = ticks.map_or(0.0, |ticks| {
+                #[expect(clippy::cast_precision_loss, reason = "ticks stay far below 2^53")]
+                let t = ticks as f64;
+                t / f64::from(now.rate().hz())
+            });
+            if let Ownership::Remote { source } = ownership
+                && let Some(cap) = timeouts.get(source)
+            {
+                elapsed = elapsed.min(cap.0);
+            }
+            *state = extrapolate(&track.basis, umbra_core::Seconds(elapsed));
+        }
+    }
+
+    pub(crate) fn remote_timeout(&self, source: &RemoteSource) -> Option<Seconds> {
+        self.remote_timeouts.get(source).copied()
+    }
+
+    /// Replaces the dead-reckoning caps (the caller has validated them).
+    pub(crate) fn set_remote_timeouts(&mut self, timeouts: BTreeMap<RemoteSource, Seconds>) {
+        self.remote_timeouts = timeouts;
+    }
+
+    /// Visits every Owned entity in ascending id order as `(id, state, force)`.
+    pub(crate) fn for_each_owned(
+        &self,
+        mut f: impl FnMut(EntityId, &KinematicState, Option<&Force>),
+    ) {
+        self.for_each(|e| {
+            if e.ownership.is_owned() {
+                f(e.id, e.state, e.force.map(|t| &t.0));
+            }
+        });
     }
 
     /// Removes an entity and its behavior slot, keeping `index`, `behaviors` and `sensor_owners`
@@ -256,6 +408,9 @@ impl World {
         if self.ecs.satisfies::<&Sensors>(entity) {
             debug_assert!(self.sensor_owners > 0, "a sensor owner was counted");
             self.sensor_owners = self.sensor_owners.saturating_sub(1);
+        }
+        if self.ecs.satisfies::<&RemoteTrack>(entity) {
+            self.remote_count = self.remote_count.saturating_sub(1);
         }
         let despawned = self.ecs.despawn(entity);
         debug_assert!(despawned.is_ok(), "an indexed entity is in the ECS");

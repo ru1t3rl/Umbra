@@ -10,6 +10,11 @@
 //! host's size for the declared minor, a multiple of 8) before anything past the header is read;
 //! only `struct_size` bytes are read, newer fields are absent. Errors name the field as
 //! `descriptor.<f>`, `capabilities[<i>].<f>` or `capabilities[<i>].vtable.<f>` (ASM-125 b3).
+//!
+//! ABI 0.1 (ADR 0033): a capability kind is accepted only in a descriptor declaring at least the minor
+//! that defines the kind (behavior 0, network adapter 1; [`required_minor`]). A network adapter's
+//! schema, metadata (empty in 0.1) and vtable (a struct that exists since minor 1) are validated here
+//! and copied into a [`KindVTable::Network`]; the network bridge (`bridge::network`) uses it.
 
 #![expect(
     unsafe_code,
@@ -22,10 +27,11 @@ use std::mem::{MaybeUninit, size_of};
 use umbra_core::{BbType, ComponentId, ComponentKind, ParamSchema, PluginId, Version};
 use umbra_plugin_api::{
     UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_CAPABILITY_BEHAVIOR,
-    UMBRA_MAX_CAPABILITIES, UMBRA_MAX_ID_LEN, UMBRA_MAX_METADATA_LEN, UMBRA_MAX_SCHEMA_LEN,
-    UmbraBehavior, UmbraBehaviorBatch, UmbraBehaviorVTable, UmbraCapability, UmbraCode,
-    UmbraErrorSink, UmbraHostApi, UmbraInstance, UmbraIntent, UmbraPluginDescriptor, UmbraStr,
-    UmbraValue, UmbraValueSink,
+    UMBRA_CAPABILITY_NETWORK_ADAPTER, UMBRA_MAX_CAPABILITIES, UMBRA_MAX_ID_LEN,
+    UMBRA_MAX_METADATA_LEN, UMBRA_MAX_SCHEMA_LEN, UmbraBehavior, UmbraBehaviorBatch,
+    UmbraBehaviorVTable, UmbraCapability, UmbraCapabilityKind, UmbraCode, UmbraErrorSink,
+    UmbraHostApi, UmbraInstance, UmbraIntent, UmbraNetAdapter, UmbraNetBatch, UmbraNetMessage,
+    UmbraNetSink, UmbraNetworkVTable, UmbraPluginDescriptor, UmbraStr, UmbraValue, UmbraValueSink,
 };
 
 use crate::error::PluginError;
@@ -38,14 +44,39 @@ const RESERVED_PREFIX: &str = "builtin.";
 const STRUCT_ALIGN: usize = 8;
 
 /// The size of each struct per ABI minor of this host, index = minor (append-only, ADR 0019 R-B3).
-const DESCRIPTOR_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraPluginDescriptor>()];
-const CAPABILITY_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraCapability>()];
-const VTABLE_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraBehaviorVTable>()];
+/// Minor 1 (ADR 0033) changed none of the 0.0 structs.
+const DESCRIPTOR_SIZES: [usize; HOST_MINORS] = [
+    size_of::<UmbraPluginDescriptor>(),
+    size_of::<UmbraPluginDescriptor>(),
+];
+const CAPABILITY_SIZES: [usize; HOST_MINORS] =
+    [size_of::<UmbraCapability>(), size_of::<UmbraCapability>()];
+const VTABLE_SIZES: [usize; HOST_MINORS] = [
+    size_of::<UmbraBehaviorVTable>(),
+    size_of::<UmbraBehaviorVTable>(),
+];
+/// `UmbraNetworkVTable` exists since minor 1 (ADR 0033); the minor-0 entry is never read.
+const NETWORK_VTABLE_SIZES: [usize; HOST_MINORS] = [0, size_of::<UmbraNetworkVTable>()];
 /// Number of minors this host knows (`0..=UMBRA_ABI_VERSION_MINOR`).
 const HOST_MINORS: usize = UMBRA_ABI_VERSION_MINOR as usize + 1;
 
 /// The host's own `(major, minor)`.
 pub(crate) const HOST_ABI: (u32, u32) = (UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR);
+
+/// The lowest ABI minor that defines capability `kind` (ADR 0033), or `None` for a kind this host
+/// cannot load (reserved or unknown).
+pub(crate) const fn required_minor(kind: UmbraCapabilityKind) -> Option<u32> {
+    match kind {
+        UMBRA_CAPABILITY_BEHAVIOR => Some(0),
+        UMBRA_CAPABILITY_NETWORK_ADAPTER => Some(NETWORK_ADAPTER_MINOR),
+        _ => None,
+    }
+}
+
+/// The minor that defines the network adapter kind and its structs (ADR 0033).
+pub(crate) const NETWORK_ADAPTER_MINOR: u32 = 1;
+// Every kind this host knows is defined in a minor it knows.
+const _: () = assert!(NETWORK_ADAPTER_MINOR <= UMBRA_ABI_VERSION_MINOR);
 
 /// `init` of a plugin.
 pub(crate) type InitFn =
@@ -75,7 +106,7 @@ pub(crate) struct Descriptor {
 /// One copied, validated capability.
 #[derive(Debug, Clone)]
 pub(crate) struct Capability {
-    /// Always `Behavior` in ABI v0 (other kinds are rejected as unsupported).
+    /// `Behavior` or `NetworkAdapter` (the kinds ABI 0.1 defines).
     pub(crate) kind: ComponentKind,
     /// Component id.
     pub(crate) id: ComponentId,
@@ -86,10 +117,19 @@ pub(crate) struct Capability {
     pub(crate) schema: ParamSchema,
     /// The schema's top-level `description` (empty without one).
     pub(crate) description: String,
-    /// The behavior metadata (ADR 0020).
+    /// The behavior metadata (ADR 0020); empty for a network adapter (ABI 0.1 defines none).
     pub(crate) metadata: Metadata,
-    /// The behavior vtable, copied.
-    pub(crate) vtable: BehaviorVTable,
+    /// The vtable of the capability's kind, copied.
+    pub(crate) vtable: KindVTable,
+}
+
+/// The copied vtable of one capability, by kind (ADR 0033).
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum KindVTable {
+    /// A behavior (`UMBRA_CAPABILITY_BEHAVIOR`).
+    Behavior(BehaviorVTable),
+    /// A network adapter (`UMBRA_CAPABILITY_NETWORK_ADAPTER`, ABI 0.1).
+    Network(NetworkVTable),
 }
 
 /// Behavior metadata (ADR 0020): types of interface params and outputs, result text.
@@ -144,6 +184,45 @@ pub(crate) struct BehaviorVTable {
     >,
 }
 
+/// The network adapter vtable entries this host knows, copied from the plugin (ADR 0033; required
+/// ones are non-null). Used by the network bridge (`bridge::network`).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct NetworkVTable {
+    pub(crate) configure: unsafe extern "C" fn(
+        params: UmbraStr,
+        out: *mut *mut UmbraNetAdapter,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) destroy: unsafe extern "C" fn(adapter: *mut UmbraNetAdapter),
+    pub(crate) key_space: unsafe extern "C" fn(
+        adapter: *mut UmbraNetAdapter,
+        base: *mut u64,
+        count: *mut u64,
+    ) -> UmbraCode,
+    pub(crate) start: unsafe extern "C" fn(
+        adapter: *mut UmbraNetAdapter,
+        tick: u64,
+        rate_hz: u32,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) publish: unsafe extern "C" fn(
+        adapter: *mut UmbraNetAdapter,
+        batch: *const UmbraNetBatch,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) poll: unsafe extern "C" fn(
+        adapter: *mut UmbraNetAdapter,
+        tick: u64,
+        max: usize,
+        sink: *const UmbraNetSink,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) stop: unsafe extern "C" fn(adapter: *mut UmbraNetAdapter) -> UmbraCode,
+    pub(crate) counters: Option<
+        unsafe extern "C" fn(adapter: *mut UmbraNetAdapter, out: *mut u64, n: usize) -> UmbraCode,
+    >,
+}
+
 /// A headed ABI struct the host reads from plugin memory.
 ///
 /// # Safety
@@ -159,10 +238,14 @@ unsafe impl Headed for UmbraPluginDescriptor {}
 unsafe impl Headed for UmbraCapability {}
 // SAFETY: as above; integers and `Option`s of function pointers.
 unsafe impl Headed for UmbraBehaviorVTable {}
+// SAFETY: as above; integers and `Option`s of function pointers (ABI 0.1).
+unsafe impl Headed for UmbraNetworkVTable {}
 // SAFETY: as above; integers, an `f64`, `UmbraVec3` (three `f64`) and `UmbraStr`s.
 unsafe impl Headed for UmbraIntent {}
 // SAFETY: as above; integers, `f64`s, a byte array, `UmbraStr` and `UmbraVec3`.
 unsafe impl Headed for UmbraValue {}
+// SAFETY: as above; integers, `UmbraVec3`s (three `f64`) and `UmbraStr`s (ABI 0.1).
+unsafe impl Headed for UmbraNetMessage {}
 
 /// Context for error construction: the origin of the load.
 struct Ctx<'a> {
@@ -195,8 +278,23 @@ impl Ctx<'_> {
     fn header(
         &self,
         prefix: &str,
+        header: (u32, u32),
+        sizes: [usize; HOST_MINORS],
+    ) -> Result<usize, PluginError> {
+        self.header_since(prefix, header, sizes, 0, HOST_ABI.1)
+    }
+
+    /// [`Self::header`] for a struct inside a descriptor declaring minor `ceiling` that exists since
+    /// minor `first` (ADR 0033): a header declaring a minor older than `first` or (once it is loadable
+    /// at all) newer than the descriptor's is an error at `<prefix>.abi_version`, and the smallest
+    /// size is the size at `first`.
+    fn header_since(
+        &self,
+        prefix: &str,
         (abi_version, struct_size): (u32, u32),
         sizes: [usize; HOST_MINORS],
+        first: u32,
+        ceiling: u32,
     ) -> Result<usize, PluginError> {
         let plugin = (abi_version >> 16, abi_version & 0xFFFF);
         if plugin.0 != HOST_ABI.0 || plugin.1 > HOST_ABI.1 {
@@ -207,8 +305,26 @@ impl Ctx<'_> {
                 host: HOST_ABI,
             });
         }
+        if plugin.1 > ceiling {
+            return Err(self.err(
+                format!("{prefix}.abi_version"),
+                format!(
+                    "declares ABI {}.{}, newer than the descriptor's ABI {}.{ceiling}",
+                    plugin.0, plugin.1, plugin.0
+                ),
+            ));
+        }
+        if plugin.1 < first {
+            return Err(self.err(
+                format!("{prefix}.abi_version"),
+                format!(
+                    "declares ABI {}.{}, but this struct exists since ABI {}.{first}",
+                    plugin.0, plugin.1, plugin.0
+                ),
+            ));
+        }
         let size = struct_size as usize;
-        let (min, max) = (sizes[0], sizes[plugin.1 as usize]);
+        let (min, max) = (sizes[first as usize], sizes[plugin.1 as usize]);
         if size < min || size > max || !size.is_multiple_of(STRUCT_ALIGN) {
             return Err(self.err(
                 format!("{prefix}.struct_size"),
@@ -304,9 +420,9 @@ pub(crate) unsafe fn copy(
             format!("{version_text:?} is not a semantic version: {e}"),
         )
     })?;
-    // SAFETY: forwarded caller contract for the capability array.
-    let capabilities = unsafe { capabilities(&cx, &raw, &version) }?;
     let abi_version = raw.abi_version;
+    // SAFETY: forwarded caller contract for the capability array.
+    let capabilities = unsafe { capabilities(&cx, &raw, &version, abi_version & 0xFFFF) }?;
     Ok(Descriptor {
         id,
         name,
@@ -318,7 +434,7 @@ pub(crate) unsafe fn copy(
     })
 }
 
-/// The capability array of `raw`.
+/// The capability array of `raw`, whose descriptor declares ABI minor `minor`.
 ///
 /// # Safety
 /// As [`copy`].
@@ -326,6 +442,7 @@ unsafe fn capabilities(
     cx: &Ctx<'_>,
     raw: &UmbraPluginDescriptor,
     plugin_version: &Version,
+    minor: u32,
 ) -> Result<Vec<Capability>, PluginError> {
     let count = raw.capability_count;
     if count > UMBRA_MAX_CAPABILITIES {
@@ -346,10 +463,12 @@ unsafe fn capabilities(
     }
     cx.pointer(base, "descriptor.capabilities")?;
     // SAFETY: non-null, aligned, `count > 0`: the first element's header is readable (caller).
-    let stride = cx.header(
+    let stride = cx.header_since(
         "capabilities[0]",
         unsafe { read_header(base) },
         CAPABILITY_SIZES,
+        0,
+        minor,
     )?;
     if count
         .checked_mul(stride)
@@ -366,7 +485,7 @@ unsafe fn capabilities(
         let ptr = unsafe { base.byte_add(index * stride) };
         // SAFETY: inside the array (above); aligned and non-null.
         let header = unsafe { read_header(ptr) };
-        let size = cx.header(&prefix, header, CAPABILITY_SIZES)?;
+        let size = cx.header_since(&prefix, header, CAPABILITY_SIZES, 0, minor)?;
         if size != stride {
             return Err(cx.err(
                 format!("{prefix}.struct_size"),
@@ -376,7 +495,7 @@ unsafe fn capabilities(
         // SAFETY: `size` bytes of this element are readable (caller), `size` checked.
         let cap = unsafe { read_prefix(ptr, size) };
         // SAFETY: forwarded caller contract for the strings and the vtable of this capability.
-        let capability = unsafe { capability(cx, &prefix, &cap, plugin_version) }?;
+        let capability = unsafe { capability(cx, &prefix, &cap, plugin_version, minor) }?;
         if !seen.insert(capability.id.clone()) {
             return Err(cx.err(
                 format!("{prefix}.id"),
@@ -388,7 +507,7 @@ unsafe fn capabilities(
     Ok(out)
 }
 
-/// One capability.
+/// One capability of a descriptor declaring ABI minor `minor`.
 ///
 /// # Safety
 /// As [`copy`], for the strings and the vtable `cap` points to.
@@ -397,6 +516,7 @@ unsafe fn capability(
     prefix: &str,
     cap: &UmbraCapability,
     plugin_version: &Version,
+    minor: u32,
 ) -> Result<Capability, PluginError> {
     let id_field = format!("{prefix}.id");
     let id_text = cx.text(cap.id, UMBRA_MAX_ID_LEN, &id_field)?;
@@ -407,12 +527,23 @@ unsafe fn capability(
             id: id_text,
         });
     }
-    if cap.kind != UMBRA_CAPABILITY_BEHAVIOR {
-        return Err(PluginError::Unsupported {
-            origin: cx.origin.to_owned(),
-            capability: id_text,
-            kind: cap.kind,
-        });
+    let unsupported = |id_text: String| PluginError::Unsupported {
+        origin: cx.origin.to_owned(),
+        capability: id_text,
+        kind: cap.kind,
+    };
+    let Some(needed) = required_minor(cap.kind) else {
+        return Err(unsupported(id_text));
+    };
+    if minor < needed {
+        return Err(cx.err(
+            format!("{prefix}.kind"),
+            format!(
+                "kind {} needs a descriptor of ABI minor {needed} or newer; the descriptor declares \
+                 {}.{minor}",
+                cap.kind, HOST_ABI.0
+            ),
+        ));
     }
     let version_field = format!("{prefix}.version");
     let version_text = cx.text(cap.version, MAX_TEXT_LEN, &version_field)?;
@@ -438,10 +569,29 @@ unsafe fn capability(
         .to_owned();
     let metadata_field = format!("{prefix}.metadata");
     let metadata_text = cx.text(cap.metadata, UMBRA_MAX_METADATA_LEN, &metadata_field)?;
-    let metadata = metadata(cx, &metadata_field, &metadata_text)?;
     let vtable_field = format!("{prefix}.vtable");
+    if cap.kind == UMBRA_CAPABILITY_NETWORK_ADAPTER {
+        if !metadata_text.is_empty() {
+            return Err(cx.err(
+                &metadata_field,
+                "must be empty for a network adapter (ABI 0.1 defines no metadata for it)",
+            ));
+        }
+        // SAFETY: forwarded caller contract for the vtable pointer.
+        let vtable = unsafe { network_vtable(cx, &vtable_field, cap.vtable.cast(), minor) }?;
+        return Ok(Capability {
+            kind: ComponentKind::NetworkAdapter,
+            id,
+            version,
+            schema,
+            description,
+            metadata: Metadata::default(),
+            vtable: KindVTable::Network(vtable),
+        });
+    }
+    let metadata = metadata(cx, &metadata_field, &metadata_text)?;
     // SAFETY: forwarded caller contract for the vtable pointer.
-    let vtable = unsafe { vtable(cx, &vtable_field, cap.vtable.cast()) }?;
+    let vtable = unsafe { vtable(cx, &vtable_field, cap.vtable.cast(), minor) }?;
     check_entries(cx, &vtable_field, &metadata, &vtable)?;
     check_schema(cx, &metadata_field, &metadata, &schema)?;
     Ok(Capability {
@@ -451,11 +601,11 @@ unsafe fn capability(
         schema,
         description,
         metadata,
-        vtable,
+        vtable: KindVTable::Behavior(vtable),
     })
 }
 
-/// Copies the behavior vtable at `ptr`.
+/// Copies the behavior vtable at `ptr` of a descriptor declaring minor `minor`.
 ///
 /// # Safety
 /// As [`copy`]: a non-null, aligned `ptr` points to a vtable of at least its `struct_size` bytes.
@@ -463,10 +613,11 @@ unsafe fn vtable(
     cx: &Ctx<'_>,
     field: &str,
     ptr: *const UmbraBehaviorVTable,
+    minor: u32,
 ) -> Result<BehaviorVTable, PluginError> {
     cx.pointer(ptr, field)?;
     // SAFETY: non-null and aligned (checked); the plugin's vtable has a header (caller).
-    let size = cx.header(field, unsafe { read_header(ptr) }, VTABLE_SIZES)?;
+    let size = cx.header_since(field, unsafe { read_header(ptr) }, VTABLE_SIZES, 0, minor)?;
     // SAFETY: `size` bytes are readable (caller) and checked against the host's size.
     let raw = unsafe { read_prefix(ptr, size) };
     let required = |entry: bool, name: &str| {
@@ -509,6 +660,42 @@ unsafe fn vtable(
         halt_running: raw.halt_running,
         set_input: raw.set_input,
         output: raw.output,
+    })
+}
+
+/// Copies the network adapter vtable at `ptr` of a descriptor declaring minor `minor` (ABI 0.1,
+/// ADR 0033).
+///
+/// # Safety
+/// As [`copy`]: a non-null, aligned `ptr` points to a vtable of at least its `struct_size` bytes.
+unsafe fn network_vtable(
+    cx: &Ctx<'_>,
+    field: &str,
+    ptr: *const UmbraNetworkVTable,
+    minor: u32,
+) -> Result<NetworkVTable, PluginError> {
+    cx.pointer(ptr, field)?;
+    // SAFETY: non-null and aligned (checked); the plugin's vtable has a header (caller).
+    let header = unsafe { read_header(ptr) };
+    let size = cx.header_since(
+        field,
+        header,
+        NETWORK_VTABLE_SIZES,
+        NETWORK_ADAPTER_MINOR,
+        minor,
+    )?;
+    // SAFETY: `size` bytes are readable (caller) and checked against the host's size.
+    let raw = unsafe { read_prefix(ptr, size) };
+    let required = |name: &str| cx.err(format!("{field}.{name}"), "required entry is null");
+    Ok(NetworkVTable {
+        configure: raw.configure.ok_or_else(|| required("configure"))?,
+        destroy: raw.destroy.ok_or_else(|| required("destroy"))?,
+        key_space: raw.key_space.ok_or_else(|| required("key_space"))?,
+        start: raw.start.ok_or_else(|| required("start"))?,
+        publish: raw.publish.ok_or_else(|| required("publish"))?,
+        poll: raw.poll.ok_or_else(|| required("poll"))?,
+        stop: raw.stop.ok_or_else(|| required("stop"))?,
+        counters: raw.counters,
     })
 }
 
@@ -666,6 +853,54 @@ mod tests {
     }
 
     #[test]
+    fn minor_1_rows_keep_every_0_0_size_and_add_the_network_vtable() {
+        assert_eq!(HOST_MINORS, 2);
+        assert_eq!(DESCRIPTOR_SIZES[1], DESCRIPTOR_SIZES[0]);
+        assert_eq!(CAPABILITY_SIZES[1], CAPABILITY_SIZES[0]);
+        assert_eq!(VTABLE_SIZES[1], VTABLE_SIZES[0]);
+        assert_eq!(NETWORK_VTABLE_SIZES[1], size_of::<UmbraNetworkVTable>());
+    }
+
+    #[test]
+    fn required_minor_per_kind() {
+        assert_eq!(required_minor(UMBRA_CAPABILITY_BEHAVIOR), Some(0));
+        assert_eq!(required_minor(UMBRA_CAPABILITY_NETWORK_ADAPTER), Some(1));
+        for reserved in [0, 2, 4, 5, 6, 7, 99] {
+            assert_eq!(required_minor(reserved), None, "kind {reserved}");
+        }
+    }
+
+    #[test]
+    fn header_since_rejects_an_older_minor_and_uses_the_first_size() {
+        let c = cx();
+        let own = NETWORK_VTABLE_SIZES[1];
+        let own32 = u32::try_from(own).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            c.header_since("v", (1, own32), NETWORK_VTABLE_SIZES, 1, 1)
+                .ok(),
+            Some(own)
+        );
+        assert!(matches!(
+            c.header_since("v", (0, own32), NETWORK_VTABLE_SIZES, 1, 1),
+            Err(PluginError::Descriptor { field, .. }) if field == "v.abi_version"
+        ));
+        assert!(matches!(
+            c.header_since("v", (1, 8), NETWORK_VTABLE_SIZES, 1, 1),
+            Err(PluginError::Descriptor { field, .. }) if field == "v.struct_size"
+        ));
+        // The descriptor's minor is the ceiling of every nested header.
+        let vt = u32::try_from(VTABLE_SIZES[1]).unwrap_or_else(|e| panic!("{e}"));
+        assert!(matches!(
+            c.header_since("w", (1, vt), VTABLE_SIZES, 0, 0),
+            Err(PluginError::Descriptor { field, .. }) if field == "w.abi_version"
+        ));
+        assert_eq!(
+            c.header_since("w", (0, vt), VTABLE_SIZES, 0, 1).ok(),
+            Some(VTABLE_SIZES[0])
+        );
+    }
+
+    #[test]
     fn header_checks_major_minor_and_size() {
         let c = cx();
         let own = DESCRIPTOR_SIZES[0];
@@ -676,7 +911,7 @@ mod tests {
             Err(PluginError::AbiMismatch { field, .. }) if field == "d.abi_version"
         ));
         assert!(matches!(
-            c.header("d", (1, own32), DESCRIPTOR_SIZES),
+            c.header("d", (2, own32), DESCRIPTOR_SIZES),
             Err(PluginError::AbiMismatch { .. })
         ));
         for bad in [0, 8, own32 - 4, own32 + 8] {

@@ -89,6 +89,8 @@ pub enum DiagnosticCode {
     InvalidGuard,
     /// Nodes nested deeper than `umbra_core::MAX_NODE_DEPTH` levels (ASM-106).
     NodeTooDeep,
+    /// A value that is valid but probably not what was meant; always a warning (M6, ASM-290).
+    SuspiciousValue,
 }
 
 impl DiagnosticCode {
@@ -128,6 +130,28 @@ impl DiagnosticCode {
             Self::InvalidBinding => "invalid_binding",
             Self::InvalidGuard => "invalid_guard",
             Self::NodeTooDeep => "node_too_deep",
+            Self::SuspiciousValue => "suspicious_value",
+        }
+    }
+}
+
+/// How serious a diagnostic is (M6, ASM-290). Every diagnostic of the M2 readers is an `Error`; a
+/// `Warning` never fails a load and is carried next to the result instead of in the error list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum Severity {
+    /// The input is rejected.
+    Error,
+    /// The input is accepted; the author may want to look.
+    Warning,
+}
+
+impl Severity {
+    /// The word used in the text form: `error` or `warning`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warning => "warning",
         }
     }
 }
@@ -141,9 +165,11 @@ pub struct Note {
     pub location: Option<Location>,
 }
 
-/// One located error.
+/// One located error or warning.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Diagnostic {
+    /// Error or warning; [`Diagnostic::new`] makes an error.
+    pub severity: Severity,
     /// The stable code.
     pub code: DiagnosticCode,
     /// The message.
@@ -162,10 +188,23 @@ impl Diagnostic {
         location: Option<Location>,
     ) -> Self {
         Self {
+            severity: Severity::Error,
             code,
             message: message.into(),
             location,
             notes: Vec::new(),
+        }
+    }
+
+    /// A warning without notes (ASM-290).
+    pub fn warning(
+        code: DiagnosticCode,
+        message: impl Into<String>,
+        location: Option<Location>,
+    ) -> Self {
+        Self {
+            severity: Severity::Warning,
+            ..Self::new(code, message, location)
         }
     }
 
@@ -195,13 +234,19 @@ impl fmt::Display for Location {
 }
 
 impl fmt::Display for Diagnostic {
-    /// `path:line:col: error[code]: message`, then one `  note: message (path:line:col)` line per
+    /// `path:line:col: error[code]: message` (`warning[code]` for a warning), then one `  note: message (path:line:col)` line per
     /// note.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(location) = &self.location {
             write!(f, "{location}: ")?;
         }
-        write!(f, "error[{}]: {}", self.code.as_str(), self.message)?;
+        write!(
+            f,
+            "{}[{}]: {}",
+            self.severity.as_str(),
+            self.code.as_str(),
+            self.message
+        )?;
         for note in &self.notes {
             write!(f, "\n  note: {}", note.message)?;
             if let Some(location) = &note.location {

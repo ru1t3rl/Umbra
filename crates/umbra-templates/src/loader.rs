@@ -63,6 +63,8 @@ pub struct ValidationReport {
     pub defaulted_tick_rates: Vec<(PathBuf, TickRate)>,
     /// Every diagnostic, sorted.
     pub diagnostics: Vec<Diagnostic>,
+    /// The warnings of the valid scenarios, sorted (M6, ASM-290); they do not make the check fail.
+    pub warnings: Vec<Diagnostic>,
 }
 
 /// What a scoped loader knows about the graph files of its load (WI-14, `overlay.rs`); empty for

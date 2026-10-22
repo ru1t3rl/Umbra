@@ -3,7 +3,9 @@
 //! [`PluginCapability`] is created once per (host, loaded capability) and shared by `Arc` by the
 //! registered factory, every behavior it builds and every instance of those: it is the capability's
 //! [`BehaviorBatch`] (one `Arc`, so the kernel groups all of them into one `tick_batch` call per
-//! tick) and the place calls are made and faults recorded.
+//! tick) and the place calls are made and faults recorded. It is generic over the copied vtable of
+//! its kind: `PluginCapability` (the default) is a behavior, `PluginCapability<NetworkVTable>` a
+//! network adapter (`bridge::network`, ADR 0033); calls, faults and the call verdict are shared.
 //!
 //! A batch call: items whose instance is not one of this capability's (per host) are ticked through
 //! their own `tick` first, outside any plugin call; then, unless the capability is faulted for this
@@ -37,12 +39,27 @@ use crate::fault::{CapabilityKey, HostState};
 use crate::lifecycle::{CallError, CallScope, LoadedImage, describe};
 use crate::tokens::{self, Finished, Sink};
 
-/// One capability of one host (see the module docs).
-pub(crate) struct PluginCapability {
+/// One capability of one host (see the module docs), with the copied vtable `V` of its kind.
+pub(crate) struct PluginCapability<V = BehaviorVTable> {
     image: Arc<LoadedImage>,
     index: usize,
     key: CapabilityKey,
     host: Arc<HostState>,
+    vtable: V,
+}
+
+/// The fault message of a call that returned `code` with what it left in its record; `None` when
+/// the call was clean.
+pub(crate) fn problem(code: i32, finished: &Finished) -> Option<String> {
+    match (&finished.breach, code) {
+        (Some(breach), UMBRA_OK) => Some(breach.clone()),
+        (Some(breach), code) => Some(format!("{breach} (the call {})", describe(code))),
+        (None, UMBRA_OK) => None,
+        (None, code) => Some(match &finished.error {
+            Some(message) => format!("{}: {message}", describe(code)),
+            None => describe(code),
+        }),
+    }
 }
 
 /// How a batch call ended.
@@ -55,19 +72,22 @@ enum Verdict {
     Fault(String),
 }
 
-impl PluginCapability {
-    /// The capability `index` of `image`, as host `host` (fault key `key`) sees it.
+impl<V> PluginCapability<V> {
+    /// The capability `index` of `image` with its copied `vtable`, as host `host` (fault key `key`)
+    /// sees it.
     pub(crate) fn new(
         image: Arc<LoadedImage>,
         index: usize,
         key: CapabilityKey,
         host: Arc<HostState>,
+        vtable: V,
     ) -> Self {
         Self {
             image,
             index,
             key,
             host,
+            vtable,
         }
     }
 
@@ -77,8 +97,8 @@ impl PluginCapability {
     }
 
     /// The copied vtable.
-    pub(crate) fn vtable(&self) -> &BehaviorVTable {
-        &self.capability().vtable
+    pub(crate) fn vtable(&self) -> &V {
+        &self.vtable
     }
 
     /// The plugin id.
@@ -119,19 +139,12 @@ impl PluginCapability {
     ) -> Result<(R, Finished), CallError> {
         self.image.call(&self.host.log, f)
     }
+}
 
-    /// The fault message of a call that returned `code` with what it left in its record; `None`
-    /// when the call was clean.
+impl PluginCapability {
+    /// [`problem`], for the behavior bridge.
     pub(crate) fn problem(code: i32, finished: &Finished) -> Option<String> {
-        match (&finished.breach, code) {
-            (Some(breach), UMBRA_OK) => Some(breach.clone()),
-            (Some(breach), code) => Some(format!("{breach} (the call {})", describe(code))),
-            (None, UMBRA_OK) => None,
-            (None, code) => Some(match &finished.error {
-                Some(message) => format!("{}: {message}", describe(code)),
-                None => describe(code),
-            }),
-        }
+        problem(code, finished)
     }
 
     /// Whether `item`'s instance is one of this capability's (for this host).

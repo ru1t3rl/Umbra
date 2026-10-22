@@ -43,7 +43,7 @@ One template per file. Keys:
 | `[motion]` | table | `model` (component ID), `params` (table) |
 | `[behavior]` | table | `ref` (a registered behavior, e.g. a built-in graph, or a `*.behavior.toml` graph of the same load), `params`; see "Behaviors and sensors" below |
 | `[[sensors]]` | array of tables | `kind` (required, a registered sensor such as `builtin.visual`), `params`; resolved into the template and dry-run through the sensor's factory |
-| `[network.<adapter>]` | tables | adapter name `[a-z][a-z0-9_]*`; contents are opaque (REQ-T-4) |
+| `[network.<adapter>]` | tables | adapter name `[a-z][a-z0-9_]*` (the `name` of a scenario's `[[network_adapters]]` entry); `entity_type` is read by the engine, everything else is opaque and belongs to the adapter (REQ-T-4); see "Network tables" below |
 
 Every resolved template must name a motion model (in itself or in an ancestor): otherwise `missing_key`.
 
@@ -69,9 +69,9 @@ Chains are folded root first. `id`, `extends`, `description` and `schema_version
   parent's model). Naming the same one again keeps merging.
 - `sensors` arrays replace as a whole (the most derived list wins; an empty list clears).
 - Each `network.<adapter>` table replaces the parent's table for that adapter as a whole; other adapters
-  are inherited. The tables are never validated by the engine and are handed to the adapter unchanged,
-  but they still cross as JSON: datetimes, `nan`/`inf` and integers outside 64 bits are rejected there too
-  (`unsupported_value`, ASM-060).
+  are inherited. The template reader does not validate the tables; they are handed to the adapter
+  unchanged (see "Network tables" below), but they still cross as JSON: datetimes, `nan`/`inf` and integers
+  outside 64 bits are rejected there too (`unsupported_value`, ASM-060).
 - The merged `params` are validated against the component's JSON Schema, then dry-run through the
   component factory (`Factory::build`), so `validate` catches what spawning would (ASM-058).
 - Errors are located where the offending value is written, so an error inherited from a parent is reported
@@ -109,6 +109,27 @@ params passed through different calls may be checked only by the plugin's `confi
 Sensor `params` are validated against the sensor's schema and dry-run; an entity without a sensor has no
 contacts, so conditions such as `builtin.cond.enemy_in_range` never succeed for it.
 
+### Network tables (M6, ADR 0030, ASM-228)
+A template's `[network.<name>]` table describes the template to the network adapter that the scenario names
+`<name>` in `[[network_adapters]]`; a table for a name the scenario does not use is ignored. Guide:
+`docs/net/README.md`.
+- **`entity_type`** (string) is the one key the engine itself reads (`umbra_engine::MANAGER_TEMPLATE_KEYS`;
+  plugins see the same list as `umbra_sdk::MANAGER_TEMPLATE_KEYS`, and
+  `crates/umbra-engine/tests/manager_template_keys.rs` keeps the two equal). It is an opaque type token in
+  the adapter's format (DIS: `kind.domain.country.category.subcategory.specific.extra`, for example
+  `1.1.225.1.1.0.0`). Outbound, owned entities of the template are published with that type (without one,
+  they are published untyped, ASM-239). Inbound, an entity whose token equals it becomes a ghost of this
+  template, unless the scenario's `[ghosts] type_map` maps the token elsewhere; several templates with
+  one token: the smallest template id wins, with a load warning. A value that is not a string is ignored by the
+  engine (the template maps through `default_template` only) and gives a located `suspicious_value`
+  warning in the scenario's warnings, for the adapters the scenario names (`validate` and `run` agree,
+  ASM-457); the template itself still loads, as before M6.
+- **Every other key** is the adapter's. The adapter gets all tables for its name in `configure`, as
+  `templates` in the input `{"name", "params", "templates": {<template id>: <table>}}`, validates them and
+  reports errors as build errors naming the template (also from `umbra validate`, which configures without
+  starting). The DIS adapter accepts `entity_type` only and refuses a bad token (`docs/net/dis.md`).
+- Inheritance replaces a parent's table per adapter name as a whole (merge rules above).
+
 ## Scenario files
 A file whose name ends in `.behavior.toml` is a behavior graph (M3, ASM-074; see the migration note
 above). Of the other `.toml` files, one with a top-level `scenario` table is a scenario and any other is a
@@ -128,6 +149,7 @@ template (ASM-053).
 | `on_plugin_fault` | `abort` \| `disable_capability` | default `abort` (REQ-P-7, ADR 0021): what a plugin fault during the run does (`abort` ends the run after the faulting tick, `disable_capability` continues without the capability; `docs/plugin-guide.md`, "Faults"); another string is `invalid_value` naming both values, a non-string `wrong_type` (ASM-143) |
 | `[terrain]` | table | `provider` (default `builtin.terrain.flat`), `params` (default `{ height_m = 0.0 }` for the default provider) |
 | `[[entities]]` | array of tables | spawned in file order |
+| `[[network_adapters]]` | array of tables | optional, absent is none; see "Network adapters" below (M6, ADR 0030) |
 
 Entity keys: `template` (required), `position` (required), `name`, `group`, `heading_deg` (default 0),
 `speed_mps` (>= 0, default 0), `force` (optional, `[a-z][a-z0-9_]*`, at most 128 bytes; absent means neutral; two entities are hostile iff both have a force and the forces differ, so a neutral entity is never hostile to anyone; a bad name is `invalid_value`, a non-string `wrong_type`; ADR 0015, ASM-079), `[entities.overrides.motion]` (`model`, `params`; merged over the template's
@@ -135,6 +157,41 @@ motion and validated again, errors located in the scenario), `[entities.route]` 
 `arrival_radius_m` > 0, `cruise_speed_mps` > 0). Duplicate non-empty names are `duplicate_name`. Every
 template and graph found under `template_paths` is validated, not only the referenced ones; any error fails
 the load.
+
+### Network adapters (M6, ADR 0030, ASM-227, ASM-290)
+```toml
+[[network_adapters]]
+adapter = "umbra.net.dis"          # a registered network adapter (plugin or built-in)
+name = "dis"                       # [a-z][a-z0-9_]*, unique; selects the templates' [network.dis]; ghost source
+enabled = true                     # optional, default true
+params = { bind = "127.0.0.1:3001" }   # checked against the adapter's parameter schema; default {}
+
+[network_adapters.publish]         # optional; defaults shown
+position_threshold_m = 1.0         # > 0
+orientation_threshold_deg = 3.0    # > 0
+heartbeat_s = 5.0                  # > 0
+min_interval_s = 0.0               # >= 0
+dead_reckoning = "velocity"        # static | velocity | acceleration (the others are inbound only)
+control = false
+
+[network_adapters.ghosts]          # optional; defaults shown
+timeout_s = 12.0                   # > 0; not above heartbeat_s is a warning
+max = 10000                        # >= 1
+max_inbound_per_tick = 4096        # >= 1
+default_template = "ground_vehicle.base"                 # optional template id
+type_map = { "1.1.225.1.1.1.0" = "tank.mbt_generic" }    # optional, token -> template id
+```
+`adapter` and `name` are required (`missing_key` at the table header). Unknown keys are `unknown_key` in each of
+the three tables; a bad or repeated `name` is `invalid_value` or `duplicate_name` at the value; an `adapter`
+that is unregistered or of another kind is `unknown_id`; `params` that is not a table is `wrong_type` and a
+schema violation is `param_wrong_type`, `unknown_param` and so on, located like any component parameter;
+numbers out of range, an unpublished `dead_reckoning` and an empty `type_map` token are `invalid_value`;
+a template id in `type_map` or `default_template` that no loaded template defines is `unknown_template`. The
+adapter's own `configure` errors (for example a bad entity type token in a template's `[network.<name>]`
+table) come from the reader's trial build, which hands the adapter the same input as the engine
+(`{"name", "params", "templates"}`, ASM-296, ASM-401), and are reported at the adapter's `params` like any
+component build error; nothing is started during a load or `umbra validate` (ASM-251). The scenario schema gains the optional property `network_adapters`; `schema_version`
+stays 1 and `template.v1.schema.json` is unchanged.
 
 ### Positions (ASM-044)
 Everywhere a position is accepted (entity `position`, route `waypoints`), exactly one form:
@@ -180,6 +237,13 @@ Text form, one per error, sorted by (path, byte offset, code, message) without d
 path:line:col: error[code]: message
   note: extra line (path:line:col)
 ```
+A diagnostic has a severity, `error` or `warning` (M6, ASM-290). A warning has the same form with
+`warning[code]`, never fails a load and is not part of the error list: a successful scenario load carries it
+in `Scenario::warnings`, and `validate_path` returns the warnings of the valid scenarios in
+`ValidationReport::warnings`. `umbra validate` prints them on stderr (stdout and the exit code are unchanged); with `--json` the
+document gains `"warnings": [...]` in the shape of `diagnostics`, `valid` counts errors only, and nothing is
+printed on stderr. Only scenarios without errors contribute warnings. A load that fails returns its errors only. The only warning today is
+`suspicious_value`: `timeout_s` not above `heartbeat_s` of a network adapter.
 Line and column are 1-based; the column counts Unicode scalar values; CRLF is one line break. A diagnostic
 without a position (`io` on a path, or a parser error that reports no span) has no `path:line:col:` prefix. All errors of all files are reported
 together. Files with syntax errors are not checked further; templates that depend on a broken or
@@ -206,6 +270,7 @@ cyclic template produce no follow-on errors.
 | `unknown_param` | A parameter the component's schema does not define |
 | `param_invalid` | `enum`/`const`/`oneOf` violation, or a combination the factory rejected |
 | `duplicate_name` | Two entities with one name |
+| `suspicious_value` | A valid value that is probably a mistake; always a warning (see above) |
 | `not_a_scenario` | A file given as a scenario has no `[scenario]` table, or is a `*.behavior.toml` graph |
 
 Graph files add their own codes (`unknown_node`, `node_reused`, `invalid_binding`, `subgraph_cycle`, ...)

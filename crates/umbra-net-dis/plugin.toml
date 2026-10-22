@@ -1,0 +1,7 @@
+# Package manifest of the DIS adapter (ADR 0022, ADR 0034). Checked by the host before the library is
+# opened; `id`, `version` and `abi` must equal the plugin's descriptor. A network adapter needs ABI 0.1.
+schema_version = 1
+id = "umbra.plugin.dis"
+version = "0.1.0"
+abi = "0.1"
+name = "Umbra DIS adapter"

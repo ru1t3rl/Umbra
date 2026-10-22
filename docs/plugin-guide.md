@@ -1,8 +1,9 @@
 # Plugin guide
 
-How to write, build, package and run native Umbra plugins against **ABI 0.0** (M4). A plugin is a
-64-bit dynamic library that exports one symbol, `umbra_plugin_entry`, and offers **capabilities**; in
-v0 the only kind is `behavior`. Once loaded, a plugin behavior is used exactly like any registered
+How to write, build, package and run native Umbra plugins against **ABI 0.0** (M4) and **0.1** (M6,
+ADR 0033). A plugin is a 64-bit dynamic library that exports one symbol, `umbra_plugin_entry`, and
+offers **capabilities**: `behavior`, and from ABI 0.1 `network adapter`
+([network adapters](#writing-a-network-adapter-in-rust-abi-01)). Once loaded, a plugin behavior is used exactly like any registered
 behavior: as a template `[behavior] ref` and as a `subgraph` target (D-8, REQ-B-9).
 
 Decisions behind this guide:
@@ -23,7 +24,7 @@ Examples (the code this guide walks through; it is not copied here):
 
 Contents: [trust model](#trust-model-and-in-process-risk), [packages](#packages-discovery-and-plugintoml),
 [build and run](#build-and-run), [Rust SDK](#writing-a-plugin-in-rust-umbra-sdk),
-[C](#writing-a-plugin-in-c), [ABI rules](#abi-rules), [tokens and lifetimes](#tokens-and-lifetimes),
+[network adapters](#writing-a-network-adapter-in-rust-abi-01), [C](#writing-a-plugin-in-c), [ABI rules](#abi-rules), [tokens and lifetimes](#tokens-and-lifetimes),
 [threads](#threads-and-re-entry), [panics](#panics-c-exceptions-and-longjmp), [faults](#faults),
 [determinism](#determinism), [state and reload](#state-reload-and-thread-locals),
 [params](#params-schemas-and-bindable-params), [behaviors in graphs](#plugin-behaviors-in-graphs),
@@ -151,8 +152,87 @@ next to this list.
 
 What the SDK does for you (crate docs of `umbra-sdk`): validates every host struct before any trait
 call (nulls, alignment, major, `struct_size`, exact element stride, bounds, UTF-8, enums, value
-invariants), catches every panic, writes its own ABI minor into everything it produces, tags handles
-per capability, and ends a `tick_batch` call at the first refused draw or intent (ASM-128..ASM-131).
+invariants), catches every panic, writes the minor of each capability's kind into everything it
+produces for it (behavior 0, network adapter 1) and the highest of them into the descriptor (ADR 0033,
+ASM-403, ASM-406), tags handles per capability, and ends a `tick_batch` call at the first refused draw or
+intent (ASM-128..ASM-131).
+
+## Writing a network adapter in Rust (ABI 0.1)
+A network adapter connects a scenario to a network (REQ-N-1, ADR 0030, ADR 0033): the engine hands it
+the owned entities' states and events (`publish`) and takes the remote ones from it (`poll`). It is an
+ordinary capability of kind 3 and needs a host of ABI 0.1 or newer. The crate docs of `umbra-sdk` have a
+complete minimal adapter; the fixture `crates/umbra-test-plugin/src/network.rs` (a mirror) is a fuller
+one, and `crates/umbra-net-dis` (the DIS adapter, [`docs/net/dis.md`](net/dis.md)) is a complete real one:
+UDP sockets, two I/O threads, bounded queues, built on the SDK only. What the engine does around an adapter
+(publish policy, ghosts, identity and key spaces, echo handling, several adapters at once, determinism,
+faults, the control API) and the rules every adapter follows are in the network adapter guide,
+[`docs/net/README.md`](net/README.md); this section covers the SDK side only.
+
+1. **Traits** (they mirror the engine's `NetworkAdapterConfig` and `NetworkAdapter` and the ABI
+   lifecycle `configure -> key_space -> start -> (publish | poll | counters)* -> stop -> destroy`):
+   - `NetworkAdapterFactory`: `ID`, `PARAM_SCHEMA`, optional `VERSION` as for behaviors, and
+     `configure(&ConfigureInput)`. The input is the ADR 0030 wrapper: `name()` (the scenario's adapter
+     name), `params()` (validated against `PARAM_SCHEMA` by the host) and `templates()` (each template's
+     `[network.<name>]` table, by template ID). Refuse bad params with `Error::params`; the scenario
+     check reports it at the adapter's `params` table, naming the capability. **No I/O here**: a dry run
+     (`umbra validate`) builds without starting.
+   - `NetworkAdapterConfig`: `key_space()` (built with `KeySpace::new(base, count)`, which refuses an
+     empty or overflowing range; local entities get keys in `(base, base + count]`) and
+     `start(&mut self, SimTime) -> Adapter`, where sockets are opened and I/O threads started. The SDK
+     calls `start` at most once.
+   - `NetworkAdapter`: `publish(now, &[NetMessage])`, `poll(now, &mut Inbox)`, optional `counters()`
+     (tx dropped, rx dropped, decode errors, I/O errors) and `stop()`, which must join every thread the
+     adapter started. The SDK calls `stop` at most once and always before the adapter drops (also when
+     the host destroys a started adapter without `stop`), and drops the adapter before its
+     configuration.
+   Host-free tests: `SimTime::new(tick, rate_hz)` and `ConfigureInput::from_parts(name, params,
+   templates)` are public, and `umbra_sdk::serde_json` re-exports the JSON crate the params use, so an
+   adapter's `configure`, `start` and `publish` can be driven in a plain test (`poll` needs a host sink).
+   `umbra_sdk::MANAGER_TEMPLATE_KEYS` lists the keys of a template's `[network.<name>]` table that the engine
+   itself reads (`entity_type`); every other key is the adapter's to define and validate.
+2. **Messages** (`NetMessage`: entity state, entity removed, fire, detonation, run control) borrow their
+   strings; ECEF metres, SI units, orientation as yaw, pitch, roll in radians, `None` for "not sent".
+   Keep what you need from `publish` as owned data (the borrow ends with the call).
+3. **Polling.** Push received messages with `inbox.push(&message)`, at most `inbox.remaining()` per call
+   (the host's `max`, capped at `UMBRA_MAX_NET_POLL`); keep the rest for the next poll. `push` checks
+   the message first (`NetMessage::validate`: subject keys never 0, `Some(NetKey(0))` and `Some("")` are
+   refused, finite numbers, strings at most `UMBRA_MAX_ID_LEN` bytes, a non-empty `FIRE` weapon): an
+   invalid message or a full inbox is an `Err` that faults nothing and sends nothing, so a garbled
+   datagram can be counted as a decode error. The host additionally checks two grammars (ADR 0002)
+   that the SDK does not, so check them before pushing (map other values to `None`, or count the
+   datagram as a decode error): a `force` is one ID segment, `[a-z][a-z0-9_]*` (for example `blue`,
+   `opfor_2`); a `weapon` is a namespaced ID, `segment ("." segment)+` with the same segment rule, so at
+   least two segments (for example `acme.cannon_120`); both at most `UMBRA_MAX_ID_LEN` (128) bytes, no
+   upper case, hyphens or spaces.
+   (The DIS adapter's `decode_errors` also counts datagrams of another exercise and Fire PDUs of a munition
+   in no `weapons` entry; on a shared network these are normal traffic, not a fault.) A message the host refuses faults the capability, and the `poll`
+   returns the host's code whatever the adapter returns. The `Inbox` cannot outlive the call or
+   leave its thread (the sink token is valid only during the call, REQ-P-11).
+4. **Threads and blocking** (ADR 0033): `publish` and `poll` never block on I/O; move data to or from
+   bounded queues and count what you drop in `counters()`. Your I/O threads never call the host API
+   (`umbra_sdk::log` from them is refused by the host and does nothing) and must have ended when `stop`
+   (or the drop) returns, so the library can unload.
+5. **Determinism** (REQ-K-4): use the `SimTime` of the call (`tick()`, `rate_hz()`, `seconds()`), never a
+   wall clock; what arrives from a real network is outside the determinism contract, but the adapter
+   must not add randomness of its own.
+6. **Export** with `network_adapters: [..]` after the optional `behaviors: [..]` in `export_plugin!`.
+   The descriptor then declares ABI 0.1, so the package's `plugin.toml` says `abi = "0.1"`; a
+   behavior-only plugin built with the same SDK keeps declaring 0.0 and still loads in an ABI 0.0 host
+   (the required-minor rule, ADR 0033, ASM-245).
+7. **Test** the adapter against the engine's contract suite (`umbra_core::network_adapter_contract_tests!`,
+   with `feed = ..` when it receives) through the real host: a plugin crate may depend on `umbra-sdk` only,
+   so the run lives in a crate that loads the built library, as `crates/umbra-engine/tests/dis_plugin.rs`
+   does for DIS. Add golden packets, malformed-input property tests and a two-instance exchange
+   ([`docs/net/README.md`](net/README.md), "Writing an adapter").
+
+What the SDK enforces for a network adapter (ASM-411..ASM-413): every host-written batch and message is
+validated before `publish` runs (only the fields the message's kind uses; malformed input is
+`UMBRA_ERR_INVALID_ARGUMENT`); `publish` and `poll` before `start` or after `stop`, and a second `start`,
+are `UMBRA_ERR_STATE` without a trait call; every entry is panic-guarded (a panic in `key_space`,
+`counters`, `stop` or `destroy`, which have no error sink, is logged at error level); messages it writes
+carry minor 1 with unused fields zero; the network capability's metadata is empty (ABI 0.1 defines none).
+How the host and engine treat faults (`abort` ends the run after the tick, `disable_capability` disables
+that adapter while the others go on) is in [faults](#faults) and the [list below](#not-in-v0).
 
 ## Writing a plugin in C
 Include `umbra_plugin_api.h` only; compile as C11 with strict warnings, as
@@ -195,8 +275,13 @@ REQ-P-2 applies in full (`docs/plugin-abi-changelog.md`).
 - **Versions.** `UMBRA_ABI_VERSION = major << 16 | minor`. Major 0 is a real major: a different major
   is incompatible. A plugin whose required minor is newer than the host's is rejected (REQ-P-9).
   Every appended field, vtable entry or kind bumps the minor and is optional, with a documented meaning
-  when absent. The SDK writes its own minor, so a plugin built with a newer SDK needs a host of at least
-  that minor even if it uses nothing new.
+  when absent. A descriptor declares the lowest minor that defines every capability kind it exports
+  (behavior 0, network adapter 1; ADR 0033, amending ADR 0019's "the SDK writes its own minor"). A
+  kind's minor is the newest minor that changed a struct on its call surface; a capability, its vtable
+  and every struct written during its calls (intents, values) carry that minor, never one above the
+  descriptor's (the host refuses them otherwise). So a behavior-only plugin built with a newer SDK
+  still runs in an older host. A capability of a kind newer than the descriptor's minor is rejected
+  naming `capabilities[<i>].kind`. The current ABI is 0.1 (`docs/plugin-abi-changelog.md`).
 - **Header and padding.** Every struct that can grow starts with `uint32_t abi_version; uint32_t
   struct_size;`. No struct has implicit padding, internal or trailing: every gap is a named
   `reserved_N` field that writers zero and readers ignore, and every headed size is a multiple of 8.
@@ -287,6 +372,15 @@ On a fault (ADR 0020, ADR 0021, ASM-140):
   and exits 1. **`"disable_capability"`**: the run continues without the capability (its entities get
   Failure and no intents, so they slow to a stop) and exits 0. At the faulting tick both policies have
   the same state hash.
+- **Network adapters** (ABI 0.1, ADR 0033): a non-OK `publish`, `poll`, `counters` or `stop`, a panic,
+  or a message the host refuses faults the capability; the messages of a faulted `poll` are discarded
+  whole and afterwards only `stop` and `destroy` are called. Under `abort` the run ends after the tick
+  with `EngineError::PluginFault` naming the plugin, the capability and the call; under
+  `disable_capability` the manager disables that adapter (its ghosts time out). The fault belongs to the
+  capability in that host, so other adapters configured from the same capability (one capability under
+  several scenario names) fault at their next call and are disabled too; adapters of other capabilities
+  and images, and built-in ones, keep running (ASM-408 c, ASM-410). A non-OK
+  `configure`, `key_space` or `start` is a build or start error, not a fault.
 
 ## Determinism
 Runs must be reproducible for the same scenario, seed and plugin versions (A-2, REQ-K-4). The host
@@ -394,8 +488,19 @@ scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Load
 `POST /api/v1/scenario` over a running session) starts a new plugin lifecycle: `init` runs again.
 
 ## Not in v0
-- Kinds other than `behavior`: motion model, network adapter, sensor, component, condition, action
-  (M6/M7). Their kind numbers are reserved; a capability of such a kind is rejected as unsupported.
+- Kinds other than `behavior`: motion model, sensor, component, condition, action (M7). Their kind
+  numbers are reserved; a capability of such a kind is rejected as unsupported. The network adapter
+  kind (3) is defined in ABI 0.1 (ADR 0033): its structs are in the header, the host validates its
+  descriptor entries and registers it as a network adapter through the host bridge (M6 WI-11: `configure`
+  and `key_space` at build, `start` once, `publish`/`poll` on the tick path, `counters` read after each
+  `poll` and before `stop`, `stop` and `destroy` exactly once; a non-OK `publish`, `poll`, `counters` or
+  `stop`, an invalid pushed message or more than `max` pushes faults the capability, after which only
+  `stop` and `destroy` are called; a non-OK `configure`, `key_space` or `start` is a build or start
+  error, not a fault). Host-written strings respect `UMBRA_MAX_ID_LEN`: a longer display `name` arrives
+  cut at a UTF-8 char boundary, a longer `entity_type` arrives empty (ASM-409). Several network adapters
+  may run at once, from one plugin or several and one capability under several names; each has its own
+  handle, key space and sink (ASM-410). The SDK traits are in
+  [network adapters](#writing-a-network-adapter-in-rust-abi-01) (WI-12).
 - Host API beyond `log` and RNG: terrain queries and event emit come with M7 (REQ-P-5 is staged);
   there is no memory helper and no runtime registration call (the descriptor is the only registration).
 - Saving and restoring instance state (replay, M7); hot reload; plugin-level configuration in scenarios;

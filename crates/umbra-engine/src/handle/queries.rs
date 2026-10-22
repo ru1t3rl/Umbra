@@ -44,8 +44,7 @@ impl Run {
     pub(super) fn entity_state(&self, id: EntityId) -> Result<EntityState, HandleError> {
         let info = self
             .session
-            .entities()
-            .get(&id)
+            .entity_info(id)
             .ok_or(SessionError::EntityNotFound(id))?;
         let snapshot = self
             .session
@@ -55,10 +54,7 @@ impl Run {
             .into_iter()
             .find(|e| e.id == id)
             .ok_or(SessionError::EntityNotFound(id))?;
-        Ok(EntityState {
-            info: info.clone(),
-            snapshot,
-        })
+        Ok(EntityState { info, snapshot })
     }
 }
 
@@ -102,7 +98,7 @@ impl Worker {
     pub(super) fn entities(&self, query: &EntityQuery) -> Result<EntityPage, HandleError> {
         let run = self.run_ref()?;
         let snapshot = run.session.engine().snapshot();
-        let directory = run.session.entities();
+        let directory = run.session.directory();
         let ids: BTreeSet<EntityId> = query.ids.iter().copied().collect();
         let hits: Vec<EntityState> = snapshot
             .entities

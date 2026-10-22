@@ -8,6 +8,7 @@
 //! `shutdown`.
 
 mod commands;
+mod network;
 mod prime;
 mod queries;
 mod shown;
@@ -29,8 +30,9 @@ use umbra_core::{
     StateHash, TickRate, Version,
 };
 use umbra_kernel::{ClockMode, EntitySnapshot, StdWallClock, WallClock};
+use umbra_net::AdapterStatus;
 use umbra_plugin_host::PluginLog;
-use umbra_templates::{ResolvedTemplate, TickRateSource};
+use umbra_templates::{Diagnostic, ResolvedTemplate, TickRateSource};
 
 use crate::bus::{Bus, RunState, RunStatus, SubscribeOptions, Subscription};
 use crate::error::EngineError;
@@ -77,6 +79,12 @@ pub enum HandleError {
         /// The time reached when it was cancelled.
         reached: SimTime,
     },
+    /// No network adapter of the scenario has this name (REQ-X-5, ADR 0035).
+    #[error("no network adapter is named `{0}`")]
+    AdapterNotFound(String),
+    /// The adapter faulted and cannot be enabled again (REQ-X-5, ADR 0035).
+    #[error("network adapter `{0}` faulted and cannot be enabled")]
+    AdapterFaulted(String),
     /// Loading, spawning or removing failed.
     #[error(transparent)]
     Session(#[from] SessionError),
@@ -198,6 +206,8 @@ pub struct SessionInfo {
     pub duration_ticks: u64,
     /// Entities at load time.
     pub entity_count: usize,
+    /// The scenario's warnings (ASM-290), files and quoted paths in display form (ASM-297).
+    pub warnings: Vec<Diagnostic>,
 }
 
 /// The run status plus the scenario, if any.
@@ -377,6 +387,19 @@ pub struct PluginReport {
     pub fault: Option<PluginFault>,
 }
 
+/// One network adapter of the session as the engine reports it (REQ-X-5, ADR 0035): the scenario
+/// entry and the manager's counters.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct AdapterReport {
+    /// The registered adapter component the scenario named.
+    pub adapter: ComponentId,
+    /// The plugin that provides the adapter; `None` for a built-in one.
+    pub plugin: Option<String>,
+    /// The name, state and counters (`status.name` is the scenario name).
+    pub status: AdapterStatus,
+}
+
 /// A request to the engine thread. Each carries a [`Reply`].
 #[derive(Debug)]
 #[non_exhaustive]
@@ -494,6 +517,20 @@ pub enum Command {
         document: String,
         /// The answer.
         reply: Reply<GraphValidation>,
+    },
+    /// Lists the network adapters in scenario order (REQ-X-5, ADR 0035); empty without any.
+    NetworkAdapters {
+        /// The answer.
+        reply: Reply<Vec<AdapterReport>>,
+    },
+    /// Enables or disables the adapter called `name`, between ticks; idempotent (ADR 0035).
+    SetAdapterEnabled {
+        /// The adapter's scenario name.
+        name: String,
+        /// The new state.
+        enabled: bool,
+        /// The answer.
+        reply: Reply<AdapterReport>,
     },
     /// Internal: serve the subscriptions marked "needs prime".
     #[doc(hidden)]
@@ -758,6 +795,30 @@ impl EngineHandle {
     /// As the command.
     pub fn plugins(&self) -> Result<PluginReport, HandleError> {
         self.call(|reply| Command::Plugins { reply })
+    }
+
+    /// Blocking form of [`Command::NetworkAdapters`].
+    ///
+    /// # Errors
+    /// As the command.
+    pub fn network_adapters(&self) -> Result<Vec<AdapterReport>, HandleError> {
+        self.call(|reply| Command::NetworkAdapters { reply })
+    }
+
+    /// Blocking form of [`Command::SetAdapterEnabled`].
+    ///
+    /// # Errors
+    /// As the command.
+    pub fn set_adapter_enabled(
+        &self,
+        name: String,
+        enabled: bool,
+    ) -> Result<AdapterReport, HandleError> {
+        self.call(|reply| Command::SetAdapterEnabled {
+            name,
+            enabled,
+            reply,
+        })
     }
 
     /// Blocking form of [`Command::ValidateGraph`].

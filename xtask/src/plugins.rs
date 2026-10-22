@@ -1,7 +1,7 @@
-//! `cargo xtask build-plugins [--release]`: builds the example plugins and writes plugin packages
-//! (gate 12, ADR 0022, ADR 0023 item 4, REQ-SDK-4).
+//! `cargo xtask build-plugins [--release]`: builds the example plugins and the DIS adapter and writes
+//! plugin packages (gate 12, ADR 0022, ADR 0023 item 4, ADR 0034, REQ-SDK-4).
 //!
-//! Each package is `<cargo target dir>/plugins/<name>/` holding the built library and the example's
+//! Each package is `<cargo target dir>/plugins/<name>/` holding the built library and the plugin's
 //! `plugin.toml` (ADR 0022 layout), so `umbra run .. --plugin-path target/plugins` loads them
 //! (ASM-113). The target directory is the one cargo reports (`cargo metadata`), so
 //! `CARGO_TARGET_DIR` and `build.target-dir` are honoured (ASM-125 d). A package directory is
@@ -24,12 +24,20 @@ pub struct RustPlugin {
     pub source: &'static str,
 }
 
-/// The Rust example plugins, in package-name order.
-pub const RUST_PLUGINS: &[RustPlugin] = &[RustPlugin {
-    name: "wander",
-    package: "example-wander",
-    source: "examples/plugins/wander",
-}];
+/// The Rust plugins, in package-name order: the DIS network adapter (M6 WI-15, ADR 0034) and the
+/// wander example.
+pub const RUST_PLUGINS: &[RustPlugin] = &[
+    RustPlugin {
+        name: "dis",
+        package: "umbra-net-dis",
+        source: "crates/umbra-net-dis",
+    },
+    RustPlugin {
+        name: "wander",
+        package: "example-wander",
+        source: "examples/plugins/wander",
+    },
+];
 
 /// A C example plugin: one source file compiled against `umbra_plugin_api.h` into a shared library.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

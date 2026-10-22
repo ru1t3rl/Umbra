@@ -10,6 +10,8 @@
 //! - [`geo`]: [`Vec3`], [`Quaternion`], [`Euler`] (REQ-C-3).
 //! - [`coords`]: WGS-84, [`Ecef`], [`Geodetic`], [`Enu`]/[`Ned`], [`LocalFrame`], [`Position`]
 //!   (REQ-C-3, D-15).
+//! - [`dead_reckoning`]: [`dead_reckoning::DeadReckoning`], [`dead_reckoning::RemoteState`] and
+//!   [`dead_reckoning::extrapolate`], shared by publisher and receiver (REQ-N-6, ADR 0032).
 //! - [`hash`]: the canonical [`StateHasher`] (ADR 0007).
 //! - [`rng`]: [`SimRng`] and derived streams (ADR 0006).
 //! - [`params`], [`registry`]: [`ParamValue`], [`ParamSchema`] and the single component
@@ -23,6 +25,7 @@
 //! - [`intent`], [`ownership`], [`terrain`], [`motion`]: [`Intent`], [`Ownership`],
 //!   [`TerrainProvider`], [`KinematicState`] and the [`MotionModel`] trait (REQ-B-2, REQ-K-5,
 //!   REQ-C-6, REQ-M-1).
+//! - [`net`]: the protocol-neutral network model and the adapter traits (REQ-N-1, D-9, ADR 0030).
 //! - [`plugin`]: [`PluginFaultPolicy`] (REQ-P-7, ADR 0021).
 //! - [`event`]: the canonical [`SimEvent`] and [`ControlAction`] (REQ-C-5, ADR 0028).
 //!
@@ -34,6 +37,7 @@
 pub mod behavior;
 pub mod catalog;
 pub mod coords;
+pub mod dead_reckoning;
 pub mod event;
 pub mod geo;
 pub mod graph;
@@ -42,6 +46,7 @@ pub mod id;
 pub mod intent;
 pub mod math;
 pub mod motion;
+pub mod net;
 pub mod ownership;
 pub mod params;
 pub mod perception;
@@ -63,7 +68,7 @@ pub use catalog::{
 };
 pub use coords::{CoordError, Ecef, Enu, Geodetic, LocalFrame, Ned, Position};
 pub use event::{ControlAction, SimEvent};
-pub use geo::{Euler, Quaternion, Vec3};
+pub use geo::{Euler, Quaternion, Vec3, WorldEuler};
 pub use graph::{
     Composite, DEFAULT_MAX_SUBGRAPH_DEPTH, Decorator, ExitDef, FsmDef, GraphDef, Interface,
     LeafRef, MAX_NODE_DEPTH, NODE_TYPES, NodeDef, NodeId, NodeKind, NodeKindTag, NodeTypeInfo,

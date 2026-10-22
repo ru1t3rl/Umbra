@@ -19,6 +19,10 @@ init_panics = []
 shutdown_panics = []
 # Adds `test.behavior.bad_schema`, whose param schema is outside the ADR 0009 subset (`anyOf`).
 bad_schema = []
+# Adds the network adapter capabilities `test.network.*` (ABI 0.1, M6 WI-12).
+network = []
+# Builds the second plugin `test.plugin.net_peer` (network capabilities only) instead (ASM-410).
+network_peer = []
 
 [dependencies]
 umbra-sdk = { path = "../umbra-sdk" }

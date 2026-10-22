@@ -1,0 +1,29 @@
+[package]
+name = "umbra-net"
+description = "Umbra protocol-neutral network layer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+umbra-core = { path = "../umbra-core" }
+thiserror.workspace = true
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+proptest.workspace = true
+serde_json.workspace = true
+
+[lib]
+# Criterion's harness replaces libtest for the bench target; the lib has no benches.
+bench = false
+
+[[bench]]
+name = "publish"
+harness = false

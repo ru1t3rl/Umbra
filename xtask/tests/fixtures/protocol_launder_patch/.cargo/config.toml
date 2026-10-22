@@ -1,0 +1,7 @@
+# Fixture only (README): crates.io is replaced by the local directory source `vendor/`, so the
+# registry dependency `dis-rs = "0.1"` resolves offline with a crates.io source.
+[source.crates-io]
+replace-with = "fixture-vendor"
+
+[source.fixture-vendor]
+directory = "vendor"

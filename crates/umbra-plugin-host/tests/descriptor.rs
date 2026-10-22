@@ -80,7 +80,7 @@ fn given_a_valid_descriptor_when_loaded_then_info_is_copied() {
     assert_eq!(info.id.as_str(), "test.plugin.forge");
     assert_eq!(info.name, "Forge");
     assert_eq!(info.version.to_string(), "0.1.0");
-    assert_eq!(info.abi, (0, 0));
+    assert_eq!(info.abi, (0, umbra_plugin_api::UMBRA_ABI_VERSION_MINOR));
     assert!(info.origin.contains(ORIGIN));
     assert_eq!(info.capabilities.len(), 1);
     let c = &info.capabilities[0];
@@ -367,7 +367,7 @@ rejected!(
 );
 rejected!(
     descriptor_abi_minor_is_newer,
-    |p| p.desc.abi_version = 1,
+    |p| p.desc.abi_version = 2,
     AbiMismatch,
     "descriptor.abi_version"
 );

@@ -71,6 +71,57 @@
 //! }
 //! ```
 //!
+//! # Network adapters (ABI 0.1, ADR 0033)
+//! Implement [`NetworkAdapterFactory`], [`NetworkAdapterConfig`] and [`NetworkAdapter`] and list the
+//! factory under `network_adapters:` (after `behaviors:`, each list optional):
+//!
+//! ```
+//! #![forbid(unsafe_code)]
+//! use umbra_sdk::{
+//!     ConfigureInput, Error, Inbox, KeySpace, NetMessage, NetworkAdapter, NetworkAdapterConfig,
+//!     NetworkAdapterFactory, SimTime, export_plugin,
+//! };
+//!
+//! struct NullFactory;
+//! struct NullConfig { keys: KeySpace }
+//! struct NullAdapter { sent: u64 }
+//!
+//! impl NetworkAdapterFactory for NullFactory {
+//!     const ID: &'static str = "example.network.null";
+//!     const PARAM_SCHEMA: &'static str = r#"{"type":"object","description":"Sends nowhere"}"#;
+//!     type Config = NullConfig;
+//!     fn configure(_input: &ConfigureInput) -> Result<NullConfig, Error> {
+//!         Ok(NullConfig { keys: KeySpace::new(1_000, 1_000)? })
+//!     }
+//! }
+//!
+//! impl NetworkAdapterConfig for NullConfig {
+//!     type Adapter = NullAdapter;
+//!     fn key_space(&self) -> KeySpace { self.keys }
+//!     fn start(&mut self, _now: SimTime) -> Result<NullAdapter, Error> {
+//!         Ok(NullAdapter { sent: 0 }) // open sockets and start I/O threads here, never earlier
+//!     }
+//! }
+//!
+//! impl NetworkAdapter for NullAdapter {
+//!     fn publish(&mut self, _now: SimTime, out: &[NetMessage<'_>]) -> Result<(), Error> {
+//!         self.sent += out.len() as u64; // hand to a bounded queue; never block
+//!         Ok(())
+//!     }
+//!     fn poll(&mut self, _now: SimTime, _inbox: &mut Inbox<'_>) -> Result<(), Error> {
+//!         Ok(()) // push received messages while `!inbox.is_full()`
+//!     }
+//!     fn stop(&mut self) {} // join every I/O thread here
+//! }
+//!
+//! export_plugin! {
+//!     id: "example.plugin.null_net",
+//!     name: "Null network example",
+//!     version: "0.1.0",
+//!     network_adapters: [NullFactory],
+//! }
+//! ```
+//!
 //! # What the SDK guarantees at the boundary (ADR 0019, ADR 0020, ADR 0021)
 //! - **Panics** never unwind into the host: every exported function runs under `catch_unwind`; the
 //!   message goes to the call's error sink (or, for calls without one, to the host log at error level)
@@ -81,7 +132,14 @@
 //!   `BbValue` invariants. Malformed input is `UMBRA_ERR_INVALID_ARGUMENT` (R-M2).
 //! - **Batches** (`tick_batch`) are validated completely first, then each item is ticked in order and
 //!   gets its status; the first host refusal or panic ends the call with its code (REQ-B-4).
-//! - **Output** structs carry the SDK's own `UMBRA_ABI_VERSION` and size.
+//! - **Output** structs (descriptor, capabilities, vtables, intents, values, network messages) carry
+//!   the minor of the capability kind they belong to (behavior 0, network adapter 1; ADR 0033,
+//!   `minor.rs`) and that minor's size; the descriptor declares the highest of its capabilities'.
+//! - **Network adapters** (ADR 0033): messages in both directions are checked against the ABI rules
+//!   of their kind (malformed host input is `UMBRA_ERR_INVALID_ARGUMENT` before any trait call; an
+//!   invalid pushed message is refused before it reaches the host), at most `max` messages are passed
+//!   per `poll`, the sink is reachable only during its call, and the lifecycle (`start` once, `stop`
+//!   before drop, adapter before configuration) is enforced by the SDK.
 //! - **Determinism** (REQ-K-4): time arrives in [`TickContext`]; randomness only through
 //!   [`TickContext::rng`], with the batch item's own host token. The SDK has no clock and no RNG.
 //! - **Handles** are plugin-owned boxes tagged per capability; a handle of another capability is
@@ -104,7 +162,7 @@
 //!   `static` with `Mutex` or `OnceLock`, as the SDK does.
 //!
 //! This is one of the three crates allowed to contain `unsafe` (CLAUDE.md rule 5, NFR-2). It lives in
-//! the modules `convert`, `guard`, `host` and `export`; every `unsafe` block carries a `// SAFETY:`
+//! the modules `convert`, `guard`, `host` and `export` (with their `network` children); every `unsafe` block carries a `// SAFETY:`
 //! comment naming the invariant it relies on and is exercised by a test.
 
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -114,12 +172,18 @@
 /// by `export_plugin!` can name them as `$crate::abi::..` without its own dependency.
 pub use umbra_plugin_api as abi;
 
+/// `serde_json`, re-exported: the type of `ConfigureInput::params` and `templates`, so a plugin names
+/// `umbra_sdk::serde_json::Value` without its own dependency.
+pub use serde_json;
+
 mod behavior;
 mod convert;
 mod error;
 mod export;
 mod guard;
 mod host;
+mod minor;
+mod network;
 
 pub use behavior::{
     Behavior, BehaviorFactory, BehaviorInstance, Contact, EntityView, Intent, Intents, Interface,
@@ -128,3 +192,8 @@ pub use behavior::{
 pub use error::Error;
 #[doc(hidden)]
 pub use export::__private;
+pub use network::{
+    ConfigureInput, ControlAction, Counters, DeadReckoning, EntityState, Euler, Inbox, KeySpace,
+    MANAGER_TEMPLATE_KEYS, NetKey, NetMessage, NetworkAdapter, NetworkAdapterConfig,
+    NetworkAdapterFactory, SimTime,
+};

@@ -9,7 +9,7 @@ use std::sync::{Arc, OnceLock};
 use umbra_core::{ComponentId, ComponentKind, PluginFaultPolicy, PluginId, Registry, Version};
 use umbra_plugin_api::UmbraPluginEntry;
 
-use crate::bridge::batch::PluginCapability;
+use crate::bridge::HostCapability;
 use crate::bridge::factory::BuildScope;
 use crate::descriptor::Descriptor;
 use crate::error::PluginError;
@@ -135,7 +135,7 @@ struct HostImage {
     /// The canonical library path (`None` for `load_static`).
     path: Option<PathBuf>,
     /// This host's view of each capability (the registered factories' and batches' shared state).
-    capabilities: Vec<Arc<PluginCapability>>,
+    capabilities: Vec<HostCapability>,
 }
 
 impl PluginHost {
@@ -346,14 +346,7 @@ impl PluginHost {
         let info = plugin_info(image.descriptor(), &origin);
         let index = self.plugins.len();
         let capabilities = (0..image.descriptor().capabilities.len())
-            .map(|c| {
-                Arc::new(PluginCapability::new(
-                    Arc::clone(&image),
-                    c,
-                    (index, c),
-                    Arc::clone(&self.state),
-                ))
-            })
+            .map(|c| HostCapability::new(&image, c, (index, c), &self.state))
             .collect();
         self.images.push(HostImage {
             image,

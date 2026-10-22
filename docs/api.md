@@ -26,11 +26,16 @@ builds the engine-only CLI without it (gate 16).
 
 ## Versioning and compatibility
 - All routes are under `/api/v1`. `info.version` in `api/openapi.json`, `api_version` in `GET /api/v1/status`
-  and in the stream `hello` is the API semver (`1.0.0`).
+  and in the stream `hello` is the API semver (`1.1.0`).
 - Within v1 every change is additive and bumps the minor version: a new endpoint, an optional request
   field, a response field, an enum value, a problem code, a stream message type. Clients must ignore
   unknown fields, enum values, event kinds and message types.
 - Removing or changing anything is a breaking change: it needs an ADR and a `/api/v2`.
+- Changelog: 1.1.0 adds the `network_adapter` value of `ComponentKind` (M6 WI-3; `GET /components` lists
+  every registry kind). M6 WI-17 ships under the same 1.1.0 (ADR 0035, ASM-445..): the network adapter
+  endpoints, the problem codes `adapter_not_found`, `adapter_faulted` and `entity_remote`, the `detonation`
+  event kind, `remote_source` on entities, the stop reason `network_fault` with `network_fault` on the run
+  status, `severity` on `Diagnostic` and `warnings` on `ScenarioInfo`.
 - After a contract change, `frontend-engineer` runs the `generate-api-client` skill.
 
 ## Determinism
@@ -80,7 +85,7 @@ through one router layer, so a later auth layer can wrap it without touching han
 | `ready` | A scenario is loaded and paused at tick 0 |
 | `running` | Ticking (or, with a stepped clock, accepting `step`) |
 | `paused` | Loaded and not ticking |
-| `stopped` | Ended; `stop_reason` is `command`, `duration` (the scenario's `duration_ticks` was reached), `plugin_fault` (with `fault`) or `error` |
+| `stopped` | Ended; `stop_reason` is `command`, `duration` (the scenario's `duration_ticks` was reached), `plugin_fault` (with `fault`), `network_fault` (with `network_fault`: `adapter`, `reason`; a network adapter faulted under the scenario's `abort` policy) or `error` |
 
 `idle -> ready -> running <-> paused`, and any loaded state `-> stopped`. `load` replaces any session (a
 new `session` number); `unload` returns to `idle`. Queries work in every loaded state, `stopped` included.
@@ -103,6 +108,8 @@ idempotency keys. Two clients racing one command get one success and one `409`.
 | spawn, remove | `no_scenario` | ok | ok (between ticks) | ok | `invalid_state` |
 | entity and template queries | `no_scenario` | ok | ok | ok | ok |
 | status, catalog, components, plugins, validate | ok | ok | ok | ok | ok |
+| list network adapters | `no_scenario` | ok | ok | ok | ok |
+| enable, disable a network adapter | `no_scenario` | ok | ok (between ticks) | ok | ok |
 
 All error entries are `409` problems.
 
@@ -143,8 +150,33 @@ response is a problem (next section).
 | `GET /api/v1/catalog/behavior` | `getBehaviorCatalog` | 200 | Behavior nodes, conditions, actions and graphs |
 | `POST /api/v1/behaviors/validate` | `validateBehavior` | 200 | Validate a graph document; diagnostics are the result (`valid: false`), not an error |
 | `GET /api/v1/plugins` | `getPlugins` | 200 | Plugins of the loaded scenario and the fault that stopped the run |
+| `GET /api/v1/network/adapters` | `listNetworkAdapters` | 200 | The network adapters of the loaded scenario in scenario order (an array; empty when it has none) |
+| `POST /api/v1/network/adapters/{name}/enable` | `enableNetworkAdapter` | 200 | Enable one adapter by its scenario name; answers the adapter |
+| `POST /api/v1/network/adapters/{name}/disable` | `disableNetworkAdapter` | 200 | Disable one adapter by its scenario name; answers the adapter |
 | `GET /api/v1/openapi.json` | `getOpenApi` | 200 | The OpenAPI document (equal to `api/openapi.json`) |
 | `GET /api/v1/stream` | `openStream` | 101 | WebSocket upgrade; see "The stream" |
+
+### Network adapters (API 1.1.0, ADR 0035, ASM-410)
+A scenario may run any number of network adapters at once (plugin and built-in, several of one kind).
+Each is addressed by its `name` in the scenario's `[[network_adapters]]`; a command touches that adapter
+only. `AdapterDto`: `name`, `adapter` (the registered component), optional `plugin` (the providing plugin),
+`enabled`, `faulted`, optional `fault_reason`, `key_space` (`base`, `count`), `ghosts` (live ghosts from this
+adapter) and `counters` (`published`, `received`, `echo_dropped`, `unmapped`, `keys_exhausted`,
+`ghosts_capped`, `control_ignored`, `world_errors`, `unsupported`, `invalid_state`, `tx_dropped`,
+`rx_dropped`, `decode_errors`, `io_errors`).
+- A disabled adapter is neither published to nor polled (its sockets stay open) and its ghosts time out
+  normally. Enabling sends every owned entity afresh. Both are idempotent and applied between ticks like
+  every command; the answer is the adapter after the change.
+- An unknown name is `404 adapter_not_found`; enabling a faulted adapter is `409 adapter_faulted` (a faulted
+  adapter can be disabled; a fault lasts for the session).
+- `GET /entities` and stream frames list the ghosts (`ownership: "remote"`); `remote_source` is the `name`
+  of the adapter they came from, and `?ownership=remote` lists only them. `DELETE /entities/{id}` of a
+  ghost is `409 entity_remote`: only the owner can remove it.
+- `detonation` events (from a peer): `entity_id` is the shooter and `target_id` the target when they are
+  ghosts or entities of this engine, `detail.position` has `lat_deg`, `lon_deg`, `alt_m`. Subscribe with
+  `filter.event_kinds: ["detonation"]`.
+- `POST /scenario` answers `warnings` (each a `Diagnostic` with `severity: "warning"`) next to the
+  scenario; a warning never fails a load. `severity` is `error` or `warning` on every `Diagnostic`.
 
 There is no `GET /api/v1/scenarios` (listing loadable scenarios under the root) yet.
 
@@ -166,8 +198,8 @@ There is no `GET /api/v1/scenarios` (listing loadable scenarios under the root) 
   (`ids=1,2`). The server accepts both the repeated and the comma form, so the GUI's orval-generated client (`@umbra/data`) works with its default style.
 - A bounding box is four scalars, `min_lat_deg`, `min_lon_deg`, `max_lat_deg`, `max_lon_deg`: give all four
   or none (`400 bad_request`). `min_lon_deg` larger than `max_lon_deg` crosses the antimeridian.
-- `GET /api/v1/components?kind=` takes `motion_model`, `terrain`, `behavior`, `sensor`, `condition` or
-  `action`.
+- `GET /api/v1/components?kind=` takes `motion_model`, `terrain`, `behavior`, `sensor`, `condition`, `action` or
+  `network_adapter`.
 
 ## Error codes
 Every non-2xx response is `application/problem+json`:
@@ -186,6 +218,7 @@ codes are a minor bump; clients must tolerate unknown ones.
 | `origin_not_allowed` | 403 | The stream `Origin` is not allowed |
 | `not_found` | 404 | No such route |
 | `entity_not_found` | 404 | No such entity |
+| `adapter_not_found` | 404 | No network adapter has this name (1.1.0) |
 | `template_not_found` | 404 | No such template |
 | `method_not_allowed` | 405 | The method is not allowed on this route |
 | `no_scenario` | 409 | No scenario is loaded |
@@ -194,6 +227,8 @@ codes are a minor bump; clients must tolerate unknown ones.
 | `step_in_progress` | 409 | Another step is pending |
 | `step_cancelled` | 409 | The step was cancelled before it completed |
 | `duplicate_name` | 409 | An entity with this name exists |
+| `entity_remote` | 409 | The entity is a ghost of a network peer and cannot be removed here (1.1.0) |
+| `adapter_faulted` | 409 | The network adapter faulted and cannot be enabled (1.1.0) |
 | `payload_too_large` | 413 | The body exceeds `[server] body_limit_bytes` (1 MiB) |
 | `unsupported_media_type` | 415 | The body needs `Content-Type: application/json` |
 | `validation_failed` | 422 | Well formed but invalid: unknown field, wrong type, out of range |
@@ -258,7 +293,7 @@ with 1011.
 **Events** (`EventDto`): `tick`, `kind` and optional `entity_id`, `target_id`, `template`, `weapon`,
 `detail`. Kinds today: `entity_created` (API spawns only; the initial load emits none, its control frame
 lists the entities), `entity_removed` (API removes), `fire` and `custom` (from behavior and plugin `Fire`
-and `Custom` intents), `simulation_control` (start, pause, resume, stop, step). `Spawn` and `Despawn`
+and `Custom` intents), `simulation_control` (start, pause, resume, stop, step), `detonation` (from a network peer, 1.1.0; see "Network adapters"). `Spawn` and `Despawn`
 intents from behaviors are recorded but not applied until M7. Unknown kinds must be ignored.
 
 ## Shutdown
@@ -330,7 +365,7 @@ stopped afterwards); long values are shortened with `...`. The scenario is
 
 ```
 $ curl -s http://127.0.0.1:7878/api/v1/status
-{"api_version":"1.0.0","run":{"state":"idle","clock":{"mode":"realtime"},"session":0,"step_pending":false}}
+{"api_version":"1.1.0","run":{"state":"idle","clock":{"mode":"realtime"},"session":0,"step_pending":false}}
 
 $ curl -s -X POST http://127.0.0.1:7878/api/v1/scenario -H 'content-type: application/json' \
     -d '{"path":"scenarios/walking_skeleton/scenario.toml","clock":{"mode":"stepped"},"seed":"42"}'
@@ -381,7 +416,7 @@ another client ran `step` with `count` 3. The scenario runs at 30 Hz, so a 10 Hz
 third tick:
 
 ```
-<- {"type":"hello","protocol":"umbra.stream.v1","api_version":"1.0.0","encoding":"json","settings":{"default_rate_hz":30.0,"max_rate_hz":60.0,"queue_frames":4,"max_events_per_frame":4096,"send_timeout_s":10.0,"max_message_bytes":65536,"max_entity_ids":10000}}
+<- {"type":"hello","protocol":"umbra.stream.v1","api_version":"1.1.0","encoding":"json","settings":{"default_rate_hz":30.0,"max_rate_hz":60.0,"queue_frames":4,"max_events_per_frame":4096,"send_timeout_s":10.0,"max_message_bytes":65536,"max_entity_ids":10000}}
 -> {"type":"subscribe","max_rate_hz":10,"state_hash":true,"filter":{"entity_ids":[1,2]}}
 <- {"type":"frame","kind":"snapshot","cause":"control","session":3,"seq":0,"tick":0,"time_s":0.0,"run":{"state":"running","clock":{"mode":"stepped"},"session":3,"tick":0,...},"dropped":0,"entities":[{"id":1,"name":"base-1",...},{"id":2,"name":"tank-1",...}],...}
 -> {"type":"nonsense"}

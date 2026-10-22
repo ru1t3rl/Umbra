@@ -214,6 +214,11 @@ export interface EntitySummary {
    * Owned or remote.
    */
   ownership: "owned" | "remote";
+  /**
+   * The name of the network adapter a remote entity comes from (`name` in
+   * `GET /network/adapters`); only when `ownership` is `remote` (added in API 1.1.0).
+   */
+  remote_source?: string | null;
   route?: RouteProgress | null;
   /**
    * Ground speed, metres per second.
@@ -248,19 +253,22 @@ export interface EventDto {
   /**
    * A `custom` event: `{"kind": <component id>, "payload": <the payload>}`. A
    * `simulation_control`: `{"action": "start" | "pause" | "resume" | "stop" | "step"}`, with
-   * `"count"` for `step`.
+   * `"count"` for `step`. A `detonation`: `{"position": {"lat_deg", "lon_deg", "alt_m"}}`, WGS-84
+   * like the entities; the shooter and target are `entity_id` and `target_id` when they are
+   * mapped to entities of this engine.
    */
   detail?: {} | null;
   /**
-   * The main entity: created, removed, shooter or source.
+   * The main entity: created, removed, shooter (`fire`, `detonation`) or source.
    */
   entity_id?: number | null;
   /**
-   * The kind: `entity_created`, `entity_removed`, `fire`, `custom` or `simulation_control`.
+   * The kind: `entity_created`, `entity_removed`, `fire`, `detonation`, `custom` or
+   * `simulation_control` (`detonation` since API 1.1.0). Clients ignore kinds they do not know.
    */
   kind: string;
   /**
-   * The target of a `fire`.
+   * The target of a `fire` or a `detonation`.
    */
   target_id?: number | null;
   /**
@@ -298,6 +306,7 @@ export interface RunStatus {
         scale: number;
       };
   fault?: PluginFaultDto | null;
+  network_fault?: NetworkFaultDto | null;
   /**
    * The session number; it changes with every load (0 before the first).
    */
@@ -310,7 +319,7 @@ export interface RunStatus {
    * Whether a `step` request is waiting for its ticks.
    */
   step_pending: boolean;
-  stop_reason?: ("command" | "duration" | "plugin_fault" | "error") | null;
+  stop_reason?: ("command" | "duration" | "plugin_fault" | "error" | "network_fault") | null;
   /**
    * The current tick; only when a scenario is loaded. Exact below 2^53.
    */
@@ -345,6 +354,19 @@ export interface PluginFaultDto {
    * The plugin id.
    */
   plugin: string;
+}
+/**
+ * The network adapter fault behind `stop_reason = network_fault` (added in API 1.1.0).
+ */
+export interface NetworkFaultDto {
+  /**
+   * The adapter's name in the scenario.
+   */
+  adapter: string;
+  /**
+   * Why it faulted.
+   */
+  reason: string;
 }
 /**
  * A problem with a client message.

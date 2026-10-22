@@ -5,7 +5,8 @@
 //! in the low half, 0 invalid. Tokens are checked, never dereferenced.
 //! - `host_ctx`: the image lifecycle generation (from the image table) and index
 //!   [`HOST_CTX_INDEX`].
-//! - Sink tokens (error, intent and value sinks): the image's **call** generation, and an index
+//! - Sink tokens (error, intent, value and network message sinks): the image's **call** generation,
+//!   and an index
 //!   that packs the low 16 bits of the image lifecycle generation (the image "tag") with the sink
 //!   kind, so a sink token names its image as well as its call.
 //! - RNG tokens: the call generation and `item + 1`; the image is named by the `host_ctx` argument
@@ -28,6 +29,7 @@ use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use umbra_core::net::NetMessage;
 use umbra_core::{BbValue, Intent, PluginId, RngStream};
 use umbra_plugin_api::UmbraToken;
 
@@ -45,6 +47,8 @@ pub(crate) enum Sink {
     Intent = 2,
     /// The value sink of an `output` call.
     Value = 3,
+    /// The message sink of a network adapter's `poll` call (ABI 0.1).
+    NetPoll = 4,
 }
 
 /// Packs a token; `generation` must be non-zero for the token to be valid (callers skip 0).
@@ -104,12 +108,24 @@ pub(crate) struct OutputCall {
     pub(crate) value: Option<BbValue>,
 }
 
+/// The per-call state of a network adapter's `poll` call, moved into the record for the duration of
+/// the call and back into the adapter afterwards (no allocation after warm-up).
+#[derive(Default)]
+pub(crate) struct PollCall {
+    /// At most this many pushes are accepted (`min(max, UMBRA_MAX_NET_POLL)`).
+    pub(crate) max: usize,
+    /// Pushed messages in push order, handed to the caller only after a clean call.
+    pub(crate) messages: Vec<NetMessage>,
+}
+
 /// One in-progress call into a plugin on this thread.
 pub(crate) struct CallRecord {
     /// The image lifecycle the call goes into (its `host_ctx`).
     pub(crate) image: UmbraToken,
     /// The image's call generation of this call (high half of its call-scoped tokens).
     pub(crate) generation: u32,
+    /// The plugin's declared ABI minor: the ceiling for structs it writes during the call (ADR 0033).
+    pub(crate) minor: u32,
     /// The plugin messages are attributed to.
     pub(crate) plugin: PluginId,
     /// The log of the host that made the call.
@@ -122,6 +138,8 @@ pub(crate) struct CallRecord {
     pub(crate) batch: Option<BatchCall>,
     /// Set during an `output` call.
     pub(crate) output: Option<OutputCall>,
+    /// Set during a network adapter's `poll` call.
+    pub(crate) poll: Option<PollCall>,
 }
 
 impl CallRecord {
@@ -135,13 +153,22 @@ impl CallRecord {
         Self {
             image,
             generation,
+            minor: umbra_plugin_api::UMBRA_ABI_VERSION_MINOR,
             plugin,
             log,
             error: None,
             breach: None,
             batch: None,
             output: None,
+            poll: None,
         }
+    }
+
+    /// The record with the plugin's declared minor (the ceiling for plugin-written structs; without
+    /// it the host's own minor).
+    pub(crate) const fn with_minor(mut self, minor: u32) -> Self {
+        self.minor = minor;
+        self
     }
 
     /// The token of `sink` in this call.

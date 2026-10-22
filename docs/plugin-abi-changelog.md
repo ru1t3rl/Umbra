@@ -3,14 +3,49 @@
 The Umbra plugin C ABI (`crates/umbra-plugin-api`, header `crates/umbra-plugin-api/include/umbra_plugin_api.h`)
 is versioned `major.minor` and packed as `UMBRA_ABI_VERSION = major << 16 | minor` (ADR 0019). Within a
 major, structs and vtables are append-only (REQ-P-2): every appended field or entry is optional with a
-documented meaning when absent, and bumps the minor. A plugin built against a newer minor needs a host of
-at least that minor (the SDK writes its own minor, ADR 0019). Every entry lists the structs whose size
+documented meaning when absent, and bumps the minor. A kind's minor is the newest minor that changed
+any struct on its call surface; a plugin needs a host of at least the minor its descriptor declares,
+the highest minor of the kinds it exports (ADR 0033, from 0.1; until 0.1 the SDK wrote its own minor,
+ADR 0019). Every entry lists the structs whose size
 changed, so the host's size-per-minor table (R-B3) can be checked against it. Rules for plugin authors:
 `docs/plugin-guide.md`.
 
 A minor bump changes, in one PR: the Rust types in `umbra-plugin-api`, the host's size-per-minor table,
 the pins in `crates/umbra-plugin-api/tests/layout.rs`, the regenerated header (gate 11; the generated C
-asserts of `c_header.rs` follow), the SDK's own minor, and an entry here. A major bump needs an ADR.
+asserts of `c_header.rs` follow), the SDK's kind minors (`crates/umbra-sdk/src/minor.rs` and its call
+surface table), and an entry here. A minor that grows a struct on a kind's call surface bumps that
+kind's minor, or the SDK must keep writing the old prefix. A major bump needs an ADR.
+
+## 0.1 (M6)
+- ADR 0033 (human decisions H1 and its extension of 2026-10-21; M6 WI-10). Append-only: **no ABI 0.0
+  struct, field, size or constant value changed** (all 16 structs and 112 field pins unchanged; the
+  host's size-per-minor tables have a minor-1 row equal to minor 0 for every 0.0 struct).
+- New kind: `UMBRA_CAPABILITY_NETWORK_ADAPTER` (3), supported only in a descriptor declaring minor 1 or
+  newer; with minor 0 it is rejected naming `capabilities[<i>].kind`. Its metadata must be empty.
+- New structs (minor-1 sizes): `UmbraNetMessage` 224, `UmbraNetBatch` 40, `UmbraNetSink` 24,
+  `UmbraNetworkVTable` 72 (entries `configure`, `destroy`, `key_space`, `start`, `publish`, `poll`,
+  `stop` required; `counters` optional). The vtable exists since minor 1: a header declaring minor 0 is
+  rejected. New opaque handle `UmbraNetAdapter`. 38 new pinned fields (150 in total).
+- New typedefs and constants: `UmbraNetKind` (`UMBRA_NET_ENTITY_STATE` 1 .. `UMBRA_NET_CONTROL` 5),
+  `UmbraDeadReckoning` (`UMBRA_DR_STATIC` 1 .. `UMBRA_DR_BODY_ACCELERATION` 9, ADR 0032 order),
+  `UmbraNetControl` (`UMBRA_NET_CONTROL_START` 1 .. `UMBRA_NET_CONTROL_STOP` 4); `0` is invalid for
+  each. Caps `UMBRA_MAX_NET_POLL` 4096, `UMBRA_MAX_NET_COUNTERS` 8.
+- `configure` input of a network adapter: the ADR 0030 wrapper `{"name", "params", "templates"}`; the
+  param schema applies to `params`, errors point at `/params/<key>` (ASM-401).
+- **Required-minor rule** (amends ADR 0019): a descriptor declares the lowest minor that defines every
+  capability kind it exports (behavior 0, network adapter 1); a capability and its vtable declare the
+  minor of their kind, and so do the structs written during the capability's calls (intents, values;
+  ADR 0033 clarified 2026-10-21, ASM-406). Behavior-only SDK plugins (`example-wander`,
+  `umbra-test-plugin`) declare and write 0.0 throughout, so they run in an ABI 0.0 host. The C example
+  `c-circle` is compiled against the 0.1 header and declares 0.1 (`plugin.toml` `abi = "0.1"`).
+- Host ceiling: a nested descriptor header (capability, vtable) declaring a minor above the
+  descriptor's is a descriptor error at `<prefix>.abi_version`; an intent or value declaring a minor
+  above the plugin's declared minor faults the capability (`intent.abi_version`, `value.abi_version`).
+- Host: the network adapter's descriptor entries are validated at load, and the capability is registered
+  as `ComponentKind::NetworkAdapter` through the host bridge (M6 WI-11, ASM-408). Host-written network
+  structs (`UmbraNetBatch`, `UmbraNetMessage`, `UmbraNetSink`) carry the plugin's declared minor in
+  `abi_version` and its size; pushed messages are read with the declared minor as the ceiling and only
+  the fields their `kind` uses are checked. No layout change.
 
 ## 0.0 (M4, frozen at `m4-done`)
 - First ABI. Layouts: the table in `docs/plans/M4.md` ("Layout table"), pinned by

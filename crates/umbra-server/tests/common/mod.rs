@@ -21,7 +21,7 @@ use axum::http::{Method, Request};
 use serde_json::{Value, json};
 use tower::ServiceExt;
 use umbra_api_types::{Problem, ProblemCode};
-use umbra_engine::handle::{EngineHandle, EngineThread};
+use umbra_engine::handle::{EngineHandle, EngineThread, HandleConfig};
 use umbra_engine::{Config, ManualWallClock, WallClock};
 use umbra_server::{Server, ServerSettings, Shutdown};
 
@@ -148,6 +148,16 @@ impl Harness {
     /// The handle is configured by `ServerSettings::handle_config`, as `umbra serve` does
     /// (ASM-180, ASM-197), with a `ManualWallClock` per session.
     pub fn with(tag: &str, configure: impl FnOnce(&mut Config)) -> Self {
+        Self::with_handle(tag, configure, |_| {})
+    }
+
+    /// As [`Harness::with`], and `tweak` adjusts the handle configuration (for example to add
+    /// adapters to the base registry) before the engine thread starts.
+    pub fn with_handle(
+        tag: &str,
+        configure: impl FnOnce(&mut Config),
+        tweak: impl FnOnce(&mut HandleConfig),
+    ) -> Self {
         let root = fresh_dir(tag);
         copy_example(&root, "walking_skeleton");
         copy_example(&root, "patrol_and_engage");
@@ -158,6 +168,7 @@ impl Harness {
         let mut handle_config = settings.handle_config().expect("handle configuration");
         handle_config.wall =
             Arc::new(|| -> Box<dyn WallClock> { Box::new(ManualWallClock::new()) });
+        tweak(&mut handle_config);
         let (handle, thread) = EngineHandle::spawn(handle_config).expect("spawn the engine");
         let shutdown = Shutdown::new();
         let server = Server::new(handle.clone(), settings.clone(), shutdown.clone());
@@ -662,4 +673,53 @@ async fn raw_upgrade(addr: std::net::SocketAddr, query: &str, headers: &[(&str, 
         location: None,
         body: raw[head_end..head_end + length].to_vec(),
     }
+}
+
+// ---- network peers (M6 WI-17): in-process engines on loopback hubs ----
+
+/// The `net_pair` fixtures of the engine tests.
+pub fn fixtures() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../umbra-engine/tests/fixtures/net_pair")
+}
+
+/// A key space of 100 keys above `base`.
+pub fn space(base: u64) -> umbra_engine::KeySpace {
+    umbra_engine::KeySpace { base, count: 100 }
+}
+
+/// A component id.
+pub fn id(text: &str) -> umbra_engine::ComponentId {
+    umbra_engine::ComponentId::new(text).expect("component id")
+}
+
+/// A peer engine of the `net_pair` fixture `dir` (`a` or `b`) on `hub`, issuing keys above `base`.
+pub fn peer(hub: &Arc<umbra_engine::LoopbackHub>, dir: &str, base: u64) -> umbra_engine::Engine {
+    use umbra_engine::scenario::{RunOptions, instantiate, load_scenario};
+    let mut registry =
+        umbra_engine::builtins::builtin_registry().expect("the built-in registry builds");
+    registry
+        .register_network_adapter(hub.factory(id("test.net.loopback"), space(base)))
+        .expect("register the loopback");
+    let scenario =
+        load_scenario(&registry, &fixtures().join(dir).join("scenario.toml")).expect("peer loads");
+    instantiate(
+        &registry,
+        &scenario,
+        RunOptions {
+            wall: Box::new(umbra_engine::ManualWallClock::with_auto_advance(
+                std::time::Duration::from_micros(500),
+            )),
+            seed: None,
+            clock: Some(umbra_engine::ClockMode::Stepped),
+        },
+    )
+    .expect("peer instantiates")
+    .engine
+}
+
+/// Steps a peer `n` ticks.
+pub fn ticks(engine: &mut umbra_engine::Engine, n: u64) {
+    engine
+        .step(n, |_| std::ops::ControlFlow::Continue(()))
+        .expect("peer steps");
 }

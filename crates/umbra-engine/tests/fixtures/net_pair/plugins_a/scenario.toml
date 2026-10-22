@@ -1,0 +1,59 @@
+# net_plugins_a. See ../README.md.
+schema_version = 1
+
+[scenario]
+name = "net_plugins_a"
+seed = 1
+tick_rate_hz = 30
+clock = "stepped"
+duration_s = 400.0
+template_paths = ["../templates"]
+
+[[network_adapters]]
+adapter = "test.net.loopback"
+name = "lb"
+[network_adapters.publish]
+heartbeat_s = 1.0
+[network_adapters.ghosts]
+timeout_s = 3.0
+
+[[network_adapters]]
+adapter = "test.network.net_ok"
+name = "left"
+params = { key_base = 3000 }
+[network_adapters.publish]
+heartbeat_s = 1.0
+[network_adapters.ghosts]
+timeout_s = 3.0
+
+[[network_adapters]]
+adapter = "test.network.peer_ok"
+name = "right"
+params = { key_base = 4000 }
+[network_adapters.publish]
+heartbeat_s = 1.0
+[network_adapters.ghosts]
+timeout_s = 3.0
+[[entities]]
+template = "tank.mbt_generic"
+name = "a-tank"
+force = "blue"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 90.0
+[entities.route]
+arrival_radius_m = 5.0
+cruise_speed_mps = 14.0
+waypoints = [
+  { lat_deg = 52.0, lon_deg = 4.0073 },
+  { lat_deg = 52.0045, lon_deg = 4.0073 },
+  { lat_deg = 52.0045, lon_deg = 4.0 },
+  { lat_deg = 52.0, lon_deg = 4.0 },
+]
+
+[[entities]]
+template = "truck.cargo"
+name = "a-truck"
+force = "blue"
+position = { lat_deg = 52.01, lon_deg = 4.0 }
+heading_deg = 0.0
+speed_mps = 0.0

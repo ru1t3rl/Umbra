@@ -41,10 +41,17 @@ pub enum KernelError {
     /// The initial kinematic state has a non-finite component.
     #[error("initial entity state is not finite")]
     InvalidState,
+    /// A remote timeout that is not a positive, finite number of seconds.
+    #[error("remote timeout is not a positive finite number of seconds")]
+    InvalidRemoteTimeout,
     /// The behavior could not be instantiated at the tick rate (ADR 0013 amendment).
     #[error(transparent)]
     Instantiate(#[from] umbra_core::InstantiateError),
     /// No entity with this id exists (never spawned, or already removed; ADR 0028).
     #[error("unknown entity {0}")]
     UnknownEntity(umbra_core::EntityId),
+    /// `update_remote` was called for an entity that has no remote track, an Owned one (REQ-K-5,
+    /// ADR 0032).
+    #[error("entity {0} has no remote track")]
+    NotRemote(umbra_core::EntityId),
 }

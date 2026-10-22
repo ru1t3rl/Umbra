@@ -164,12 +164,18 @@ fn diagnostic_json(d: &Diagnostic) -> serde_json::Value {
     v
 }
 
-/// The `validate --json` document: validity, checked files and every diagnostic.
-pub fn validation_json(files: &[std::path::PathBuf], diagnostics: &[Diagnostic]) -> String {
+/// The `validate --json` document: validity, checked files, every diagnostic and the warnings
+/// (same shape as a diagnostic; they do not affect `valid`, ASM-290).
+pub fn validation_json(
+    files: &[std::path::PathBuf],
+    diagnostics: &[Diagnostic],
+    warnings: &[Diagnostic],
+) -> String {
     json!({
         "valid": diagnostics.is_empty(),
         "files": files.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
         "diagnostics": diagnostics.iter().map(diagnostic_json).collect::<Vec<_>>(),
+        "warnings": warnings.iter().map(diagnostic_json).collect::<Vec<_>>(),
     })
     .to_string()
 }

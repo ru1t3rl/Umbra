@@ -64,8 +64,9 @@ fn every_intent_variant_converts() {
     );
     for p in &got {
         assert_eq!(
-            p.abi_version, UMBRA_ABI_VERSION,
-            "the SDK writes its own minor"
+            p.abi_version,
+            UMBRA_ABI_VERSION & 0xFFFF_0000,
+            "behavior calls write minor 0 (ADR 0033)"
         );
         assert_eq!(p.struct_size as usize, size_of::<UmbraIntent>());
         assert_eq!(p.item, 0);

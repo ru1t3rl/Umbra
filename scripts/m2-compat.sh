@@ -16,8 +16,12 @@
 # 2.  No M1/M2 test or benchmark file modified, deleted or renamed.
 # 2b. In an M2-era `src` file, no line from the first `#[cfg(test)]` onward (the whole file for
 #     `tests.rs`) is removed, changed or added to (an inserted `#[ignore]` or early `return;`
-#     would disable a test). There is no allowlist: the ADR 0011 edit of `all_lists_every_kind_once`
-#     in crates/umbra-core/src/registry.rs is part of the baseline.
+#     would disable a test). The ADR 0011 edit of `all_lists_every_kind_once` in
+#     crates/umbra-core/src/registry.rs is part of the baseline. The only allowlist is the H4 edit
+#     of the same test (M6 WI-3, human decision H4, ASM-266): in that file, the removed line
+#     `const COUNT: usize = 6;` and the added lines `const COUNT: usize = 7;` and
+#     `ComponentKind::NetworkAdapter => 6,`, each matched exactly and at most once. Any other
+#     changed or added line, in that test or elsewhere, still fails.
 # 3.  The M2 test-name baseline, regenerated from m2-done in a scratch worktree under target/ (the
 #     default target directory, never /tmp), is a subset of the test names now, keyed by
 #     package, test binary and name, after mapping cgf-<x> to umbra-<x>, cgf_<x> to umbra_<x> and the
@@ -93,10 +97,19 @@ check_2b() {
         esac
         [ -n "${start:-}" ] || continue
         _out=$(git diff -U0 "$_tag" -- "$f" | awk -v start="$start" -v file="$f" '
+            BEGIN {  # H4 allowlist (ASM-266): exact diff lines, each usable once, registry.rs only
+                if (file == "crates/umbra-core/src/registry.rs") {
+                    allow["-        const COUNT: usize = 6;"] = 1
+                    allow["+        const COUNT: usize = 7;"] = 1
+                    allow["+            ComponentKind::NetworkAdapter => 6,"] = 1
+                }
+            }
             /^@@/ { split($2, a, ","); old = substr(a[1], 2) + 0; if (a[2] == "0") old++; next }
             /^---/ || /^\+\+\+/ { next }
-            /^-/ { if (old >= start) print file ":" old ": " $0; old++; next }
-            /^\+/ { if (old > start) print file ":" old ": " $0 }')
+            /^-/ { if (old >= start && allow[$0] > 0) { allow[$0]--; old++; next }
+                   if (old >= start) print file ":" old ": " $0; old++; next }
+            /^\+/ { if (old > start && allow[$0] > 0) { allow[$0]--; next }
+                   if (old > start) print file ":" old ": " $0 }')
         if [ -n "$_out" ]; then echo "FAIL: changed or added test-region lines:"; echo "$_out"; _bad=1; fi
     done
     [ "$_bad" -eq 0 ] && echo ok
@@ -171,7 +184,7 @@ if [ "$self_test" -eq 1 ]; then
     echo "# mutation" >> examples/scenarios/walking_skeleton/README.md
     expect FAIL "modified walking-skeleton file" check_1_2 "$tag" "$scope_tag"
     git checkout -q -- examples/scenarios/walking_skeleton/README.md
-    f=$(git ls-files 'crates/umbra-templates/tests/fixtures/*' | head -n 1)
+    f=$(git ls-files 'crates/umbra-templates/tests/fixtures/dirs/*' | head -n 1)
     echo "# mutation" >> "$f"
     expect FAIL "modified M2 fixture file" check_1_2 "$tag" "$scope_tag"
     git checkout -q -- "$f"
@@ -199,6 +212,25 @@ if [ "$self_test" -eq 1 ]; then
     git checkout -q -- .
     sed -i '0,/fn all_lists_every_kind_once/s//&\n        let _ = 0;/' crates/umbra-core/src/registry.rs
     expect FAIL "edit of the ADR 0011 test is no longer allowlisted" check_2b "$tag" "$scope_tag"
+    git checkout -q -- .
+    # H4 allowlist (ASM-266): applied here because the tag and, until WI-3 is committed, HEAD lack it.
+    h4_apply() {
+        sed -i -e 's/^        const COUNT: usize = 6;$/        const COUNT: usize = 7;/' \
+            crates/umbra-core/src/registry.rs
+        grep -q 'ComponentKind::NetworkAdapter => 6,' crates/umbra-core/src/registry.rs || \
+            sed -i 's/^            ComponentKind::Action => 5,$/&\n            ComponentKind::NetworkAdapter => 6,/' crates/umbra-core/src/registry.rs
+    }
+    h4_apply
+    expect PASS "H4 edit alone is allowlisted" check_2b "$tag" "$scope_tag"
+    sed -i '0,/fn all_lists_every_kind_once/s//&\n        let _ = 0;/' crates/umbra-core/src/registry.rs
+    expect FAIL "H4 edit plus one extra line in the same test" check_2b "$tag" "$scope_tag"
+    git checkout -q -- .
+    h4_apply
+    sed -i 's/^            ComponentKind::NetworkAdapter => 6,$/&\n&/' crates/umbra-core/src/registry.rs
+    expect FAIL "H4 arm added twice" check_2b "$tag" "$scope_tag"
+    git checkout -q -- .
+    echo "            ComponentKind::NetworkAdapter => 6," >> crates/umbra-templates/src/diagnostic.rs
+    expect FAIL "H4 arm in another file" check_2b "$tag" "$scope_tag"
     git checkout -q -- .
     # Check 3 failure paths and the name mapping.
     expect PASS "name mapping: package, binary and unit-test binary" test "$(printf 'cgf-cli::cgf_cli::t\ncgf-core::cgf_core::u\ncgf-core::ids::cgf_x\n' | rename_names | tr '\n' ' ')" = "umbra-cli::umbra::t umbra-core::umbra_core::u umbra-core::ids::umbra_x "

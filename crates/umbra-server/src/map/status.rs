@@ -3,7 +3,9 @@
 use umbra_api_types as api;
 use umbra_engine::bus::{RunState, RunStatus, StopReason};
 use umbra_engine::handle::{EngineStatus, SessionInfo};
-use umbra_engine::{Diagnostic, PluginFault, SimTime, TickRate, TickRateSource};
+use umbra_engine::{
+    Diagnostic, NetFault, PluginFault, Severity, SimTime, TickRate, TickRateSource,
+};
 
 use super::clock_setting;
 
@@ -13,21 +15,28 @@ use super::clock_setting;
 /// status (ASM-194, ASM-197). The message of a plugin fault was written in display form by the engine.
 #[must_use]
 pub fn run_status(status: &RunStatus) -> api::RunStatus {
-    let (stop_reason, fault) = match &status.stop_reason {
-        None => (None, None),
-        Some(StopReason::Command) => (Some(api::StopReason::Command), None),
-        Some(StopReason::Duration) => (Some(api::StopReason::Duration), None),
+    let (stop_reason, fault, network_fault) = match &status.stop_reason {
+        None => (None, None, None),
+        Some(StopReason::Command) => (Some(api::StopReason::Command), None, None),
+        Some(StopReason::Duration) => (Some(api::StopReason::Duration), None, None),
         Some(StopReason::PluginFault(fault)) => (
             Some(api::StopReason::PluginFault),
             Some(plugin_fault(fault)),
+            None,
+        ),
+        Some(StopReason::NetworkFault(fault)) => (
+            Some(api::StopReason::NetworkFault),
+            None,
+            Some(Box::new(network_fault(fault))),
         ),
         // `Error`, and any reason added later (the enum is non-exhaustive) until it is mapped.
-        Some(_) => (Some(api::StopReason::Error), None),
+        Some(_) => (Some(api::StopReason::Error), None, None),
     };
     api::RunStatus {
         state: run_state(status.state),
         stop_reason,
         fault,
+        network_fault,
         clock: clock_setting(status.clock),
         session: status.session,
         tick: status.time.map(SimTime::tick),
@@ -80,6 +89,15 @@ pub fn plugin_fault(fault: &PluginFault) -> api::PluginFaultDto {
     }
 }
 
+/// The wire form of a network adapter fault.
+#[must_use]
+pub fn network_fault(fault: &NetFault) -> api::NetworkFaultDto {
+    api::NetworkFaultDto {
+        adapter: fault.adapter.clone(),
+        reason: fault.reason.clone(),
+    }
+}
+
 /// The wire scenario info; the engine already shows the path relative to the scenario root.
 #[must_use]
 pub fn scenario_info(info: &SessionInfo) -> api::ScenarioInfo {
@@ -92,6 +110,7 @@ pub fn scenario_info(info: &SessionInfo) -> api::ScenarioInfo {
         tick_rate_source: tick_rate_source(info.tick_rate_source),
         duration_ticks: info.duration_ticks,
         entity_count: info.entity_count as u64,
+        warnings: info.warnings.iter().map(diagnostic).collect(),
     }
 }
 
@@ -110,6 +129,12 @@ pub fn engine_status(status: &EngineStatus) -> api::EngineStatus {
 pub fn diagnostic(diagnostic: &Diagnostic) -> api::Diagnostic {
     let file = |path: &std::path::Path| path.to_string_lossy().into_owned();
     api::Diagnostic {
+        severity: match diagnostic.severity {
+            Severity::Warning => api::Severity::Warning,
+            // `Error`, and any severity added later (the enum is non-exhaustive) until it is
+            // mapped: the safe reading is that the input is rejected.
+            _ => api::Severity::Error,
+        },
         code: diagnostic.code.as_str().to_owned(),
         message: diagnostic.message.clone(),
         file: diagnostic.location.as_ref().map(|l| file(&l.path)),
@@ -125,5 +150,52 @@ pub fn diagnostic(diagnostic: &Diagnostic) -> api::Diagnostic {
                 column: note.location.as_ref().map(|l| l.column),
             })
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use umbra_engine::ClockMode;
+    use umbra_engine::bus::RunStatus as EngineRunStatus;
+
+    use super::*;
+
+    fn stopped(reason: StopReason) -> EngineRunStatus {
+        let mut status = EngineRunStatus::new(RunState::Stopped, ClockMode::Stepped, 1);
+        status.stop_reason = Some(reason);
+        status
+    }
+
+    #[test]
+    fn a_network_fault_stops_the_run_with_the_adapter_and_the_reason() {
+        let status = run_status(&stopped(StopReason::NetworkFault(NetFault::new(
+            "left",
+            "send broke",
+        ))));
+
+        assert_eq!(status.stop_reason, Some(api::StopReason::NetworkFault));
+        assert_eq!(
+            status.network_fault,
+            Some(Box::new(api::NetworkFaultDto {
+                adapter: "left".into(),
+                reason: "send broke".into()
+            }))
+        );
+        assert!(status.fault.is_none(), "not a plugin fault");
+        let json = serde_json::to_value(&status).expect("json");
+        assert_eq!(json["stop_reason"], "network_fault");
+        assert_eq!(json["network_fault"]["adapter"], "left");
+    }
+
+    #[test]
+    fn other_reasons_carry_no_network_fault() {
+        for reason in [
+            StopReason::Command,
+            StopReason::Duration,
+            StopReason::Error("boom".into()),
+        ] {
+            let status = run_status(&stopped(reason));
+            assert!(status.network_fault.is_none() && status.fault.is_none());
+        }
     }
 }

@@ -81,6 +81,36 @@ pub enum EngineError {
     /// ADR 0021).
     #[error("plugin {} faulted in {} of {}: {}", .0.plugin, .0.call, .0.capability, .0.message)]
     PluginFault(umbra_plugin_host::PluginFault),
+    /// A network adapter configuration was rejected by its factory (not expected after
+    /// validation, M6).
+    #[error("network adapter {adapter}: {source}")]
+    AdapterBuild {
+        /// The adapter's scenario name.
+        adapter: String,
+        /// The factory's error.
+        #[source]
+        source: BuildError,
+    },
+    /// The motion model of a template that inbound entities map to could not be built (M6).
+    #[error("template {template}: ghost motion model: {source}")]
+    GhostModelBuild {
+        /// The template.
+        template: umbra_core::TemplateId,
+        /// The factory's error.
+        #[source]
+        source: BuildError,
+    },
+    /// A template that inbound network entities map to is not in the scenario (not expected after
+    /// validation, M6).
+    #[error("template {0} is not in the scenario")]
+    UnknownTemplate(umbra_core::TemplateId),
+    /// A network adapter could not start (M6).
+    #[error(transparent)]
+    NetworkStart(umbra_core::net::NetError),
+    /// A network adapter faulted under the `abort` policy; the run stopped after the faulting
+    /// tick (M6, ASM-252).
+    #[error("{0}")]
+    NetworkFault(crate::net::NetFault),
     /// The plugin host is already attached to another engine (M4, ADR 0021).
     #[error("the plugin host is already attached to an engine")]
     PluginHostInUse,

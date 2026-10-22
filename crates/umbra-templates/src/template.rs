@@ -253,6 +253,11 @@ fn item_has_no_kind(item: &LValue) -> bool {
     matches!(item.kind(), LKind::Table(t) if t.get("kind").is_none())
 }
 
+/// The key of a `network.<adapter>` table that the engine reads itself (ASM-228): the adapter's
+/// type token of the template. `umbra_engine::MANAGER_TEMPLATE_KEYS` is built from it. A value that
+/// is not a string is ignored by the engine, with a scenario warning (ASM-457).
+pub const NETWORK_ENTITY_TYPE_KEY: &str = "entity_type";
+
 /// `network` is a table of tables named `[a-z][a-z0-9_]*`; the contents are kept as written.
 fn network(reader: &mut Reader<'_>, value: &LValue) -> BTreeMap<String, LTable> {
     let mut out = BTreeMap::new();
@@ -272,7 +277,7 @@ fn network(reader: &mut Reader<'_>, value: &LValue) -> BTreeMap<String, LTable> 
     out
 }
 
-fn is_adapter_name(name: &str) -> bool {
+pub(crate) fn is_adapter_name(name: &str) -> bool {
     let mut chars = name.chars();
     chars.next().is_some_and(|c| c.is_ascii_lowercase())
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')

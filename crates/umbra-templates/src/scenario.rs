@@ -3,8 +3,14 @@
 
 use std::path::PathBuf;
 
-use umbra_core::{Force, Meters, MetersPerSecond, Position, Radians, TemplateId, TickRate};
+use umbra_core::net::NetEntityType;
+pub use umbra_core::net::PublishSettings;
+use umbra_core::{
+    ComponentId, Force, Meters, MetersPerSecond, ParamValue, Position, Radians, Seconds,
+    TemplateId, TickRate,
+};
 
+use crate::diagnostic::Diagnostic;
 use crate::graph_resolve::GraphSet;
 use crate::resolve::{ComponentRef, TemplateSet};
 
@@ -69,6 +75,50 @@ pub enum TickRateSource {
     Default,
 }
 
+/// How an adapter's ghosts are kept (`[network_adapters.ghosts]`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GhostSettings {
+    /// A ghost silent for longer than this is removed.
+    pub timeout: Seconds,
+    /// At most this many ghosts; `>= 1`.
+    pub max: usize,
+    /// At most this many inbound messages applied per tick; `>= 1`.
+    pub max_inbound_per_tick: usize,
+    /// Template for types that map to none.
+    pub default_template: Option<TemplateId>,
+    /// Token to template overrides, ascending by token.
+    pub type_map: Vec<(NetEntityType, TemplateId)>,
+}
+
+impl Default for GhostSettings {
+    fn default() -> Self {
+        Self {
+            timeout: Seconds(12.0),
+            max: 10_000,
+            max_inbound_per_tick: 4096,
+            default_template: None,
+            type_map: Vec::new(),
+        }
+    }
+}
+
+/// One `[[network_adapters]]` entry (ADR 0030, ASM-227).
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetworkAdapterSpec {
+    /// The registered network adapter component.
+    pub adapter: ComponentId,
+    /// Unique name, `[a-z][a-z0-9_]*`; selects the templates' `[network.<name>]` table.
+    pub name: String,
+    /// Whether the adapter starts enabled.
+    pub enabled: bool,
+    /// Adapter parameters, as given (validated against the adapter's schema).
+    pub params: ParamValue,
+    /// Publish settings.
+    pub publish: PublishSettings,
+    /// Ghost settings.
+    pub ghosts: GhostSettings,
+}
+
 /// A scenario with its templates resolved.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scenario {
@@ -99,4 +149,9 @@ pub struct Scenario {
     pub plugin_paths: Vec<PathBuf>,
     /// What to do when a plugin faults (`[scenario] on_plugin_fault`, ADR 0021); default `abort`.
     pub on_plugin_fault: umbra_core::PluginFaultPolicy,
+    /// The `[[network_adapters]]` entries in file order; empty when the key is absent (M6, ADR 0030).
+    pub network_adapters: Vec<NetworkAdapterSpec>,
+    /// Warnings of a successful load, in the order found (ASM-290). Empty for a scenario without
+    /// anything suspicious; a load with errors returns the errors only.
+    pub warnings: Vec<Diagnostic>,
 }

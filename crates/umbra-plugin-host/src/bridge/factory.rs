@@ -86,7 +86,7 @@ impl Drop for BuildScope<'_> {
 }
 
 /// Whether `host`'s build scope is open on this thread.
-fn in_scope(host: &Arc<HostState>) -> bool {
+pub(crate) fn in_scope(host: &Arc<HostState>) -> bool {
     let id = identity(host);
     SCOPES
         .try_with(|s| s.borrow().contains(&id))

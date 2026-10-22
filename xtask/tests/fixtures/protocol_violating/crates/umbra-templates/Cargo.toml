@@ -1,0 +1,11 @@
+[package]
+name = "umbra-templates"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+dis-rs = "0.1"
+
+[lints]
+workspace = true

@@ -56,6 +56,7 @@ macro_rules! layout {
 
 /// Every struct of the ABI except the opaque handles (`UmbraBehavior`, `UmbraInstance`), which are
 /// incomplete types in C.
+/// ABI 0.1 adds the opaque handle `UmbraNetAdapter` (not listed either); its structs follow the 0.0 ones.
 #[expect(
     clippy::too_many_lines,
     reason = "one entry per ABI struct, kept as one table"
@@ -194,6 +195,53 @@ pub fn structs() -> Vec<StructLayout> {
             ctx,
             set
         }),
+        // ABI 0.1 (M6 WI-10, ADR 0033): the network adapter kind.
+        layout!(UmbraNetMessage {
+            abi_version,
+            struct_size,
+            kind,
+            dead_reckoning,
+            key,
+            other_key,
+            position,
+            velocity,
+            acceleration,
+            angular_velocity,
+            orientation,
+            entity_type,
+            force,
+            name,
+            weapon,
+            control,
+            reserved_0,
+        }),
+        layout!(UmbraNetBatch {
+            abi_version,
+            struct_size,
+            tick,
+            rate_hz,
+            reserved_0,
+            messages,
+            count,
+        }),
+        layout!(UmbraNetSink {
+            abi_version,
+            struct_size,
+            ctx,
+            push
+        }),
+        layout!(UmbraNetworkVTable {
+            abi_version,
+            struct_size,
+            configure,
+            destroy,
+            key_space,
+            start,
+            publish,
+            poll,
+            stop,
+            counters,
+        }),
     ]
 }
 
@@ -208,6 +256,10 @@ pub fn typedefs() -> Vec<(&'static str, usize)> {
         ("UmbraValueType", size_of::<UmbraValueType>()),
         ("UmbraLogLevel", size_of::<UmbraLogLevel>()),
         ("UmbraPluginEntry", size_of::<UmbraPluginEntry>()),
+        // ABI 0.1 (M6 WI-10, ADR 0033).
+        ("UmbraNetKind", size_of::<UmbraNetKind>()),
+        ("UmbraDeadReckoning", size_of::<UmbraDeadReckoning>()),
+        ("UmbraNetControl", size_of::<UmbraNetControl>()),
     ]
 }
 
@@ -268,5 +320,26 @@ pub fn constants() -> Vec<(&'static str, String)> {
         UMBRA_LOG_INFO,
         UMBRA_LOG_DEBUG,
         UMBRA_LOG_TRACE,
+        // ABI 0.1 (M6 WI-10, ADR 0033).
+        UMBRA_MAX_NET_POLL,
+        UMBRA_MAX_NET_COUNTERS,
+        UMBRA_NET_ENTITY_STATE,
+        UMBRA_NET_ENTITY_REMOVED,
+        UMBRA_NET_FIRE,
+        UMBRA_NET_DETONATION,
+        UMBRA_NET_CONTROL,
+        UMBRA_DR_STATIC,
+        UMBRA_DR_VELOCITY,
+        UMBRA_DR_VELOCITY_ROTATION,
+        UMBRA_DR_ACCELERATION_ROTATION,
+        UMBRA_DR_ACCELERATION,
+        UMBRA_DR_BODY_VELOCITY,
+        UMBRA_DR_BODY_VELOCITY_ROTATION,
+        UMBRA_DR_BODY_ACCELERATION_ROTATION,
+        UMBRA_DR_BODY_ACCELERATION,
+        UMBRA_NET_CONTROL_START,
+        UMBRA_NET_CONTROL_PAUSE,
+        UMBRA_NET_CONTROL_RESUME,
+        UMBRA_NET_CONTROL_STOP,
     ]
 }

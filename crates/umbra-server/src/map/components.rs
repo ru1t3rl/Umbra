@@ -17,6 +17,7 @@ pub(super) fn wire_kind(kind: ComponentKind) -> Option<api::ComponentKind> {
         ComponentKind::Sensor => api::ComponentKind::Sensor,
         ComponentKind::Condition => api::ComponentKind::Condition,
         ComponentKind::Action => api::ComponentKind::Action,
+        ComponentKind::NetworkAdapter => api::ComponentKind::NetworkAdapter,
         _ => return None,
     })
 }
@@ -60,6 +61,7 @@ pub fn component_kind_filter(kind: api::ComponentKind) -> ComponentKind {
         api::ComponentKind::Sensor => ComponentKind::Sensor,
         api::ComponentKind::Condition => ComponentKind::Condition,
         api::ComponentKind::Action => ComponentKind::Action,
+        api::ComponentKind::NetworkAdapter => ComponentKind::NetworkAdapter,
     }
 }
 

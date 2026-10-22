@@ -1,10 +1,11 @@
 //! Canonical simulation events, set v1 (REQ-C-5, ADR 0028).
 //!
 //! One event model for the snapshot stream (M5) and the network adapters (M6, D-9). The enums are
-//! `#[non_exhaustive]`: `Detonation`, `Collision` and `EntityStateUpdate` are added when they get a
+//! `#[non_exhaustive]`: `Collision` and `EntityStateUpdate` are added when they get a
 //! producer, so consumers must ignore unknown kinds. Events are output only: they are never hashed
 //! (ADR 0007) and never change simulation state.
 
+use crate::coords::Ecef;
 use crate::id::{ComponentId, EntityId, TemplateId, WeaponId};
 use crate::params::ParamValue;
 
@@ -12,7 +13,7 @@ use crate::params::ParamValue;
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SimEvent {
-    /// An entity was created at run time (API spawns only; the initial load emits none).
+    /// An entity was created at run time (API spawns, and ghosts from M6 ingest; the initial load emits none).
     EntityCreated {
         /// The new entity.
         entity: EntityId,
@@ -32,6 +33,15 @@ pub enum SimEvent {
         target: EntityId,
         /// The weapon used.
         weapon: WeaponId,
+    },
+    /// A weapon effect happened at a place (from a network peer, M6; no local producer yet).
+    Detonation {
+        /// The firing entity, if known and mapped to a local entity.
+        shooter: Option<EntityId>,
+        /// The entity hit, if known and mapped to a local entity.
+        target: Option<EntityId>,
+        /// Where it happened.
+        position: Ecef,
     },
     /// A component-defined event (from a `Custom` intent, or injected from outside).
     Custom {
@@ -71,6 +81,7 @@ impl SimEvent {
             Self::EntityCreated { .. } => "entity_created",
             Self::EntityRemoved { .. } => "entity_removed",
             Self::Fire { .. } => "fire",
+            Self::Detonation { .. } => "detonation",
             Self::Custom { .. } => "custom",
             Self::SimulationControl(_) => "simulation_control",
         }

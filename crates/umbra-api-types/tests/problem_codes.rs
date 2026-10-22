@@ -40,15 +40,32 @@ fn adr_table() -> BTreeMap<String, u16> {
     table
 }
 
+/// The codes added by API 1.1.0 (minor bump, ADR 0026): `adapter_not_found` and `adapter_faulted`
+/// from ADR 0035, `entity_remote` for the removal of a ghost (ASM-400, ASM-447).
+const ADDED_IN_1_1: [(&str, u16); 3] = [
+    ("adapter_not_found", 404),
+    ("adapter_faulted", 409),
+    ("entity_remote", 409),
+];
+
 #[test]
 fn the_status_table_equals_adr_0026() {
     let adr = adr_table();
     assert_eq!(adr.len(), 27, "the ADR lists 27 codes: {adr:?}");
     let ours: BTreeMap<String, u16> = ProblemCode::ALL
         .iter()
+        .filter(|c| !ADDED_IN_1_1.iter().any(|(code, _)| *code == c.as_str()))
         .map(|c| (c.as_str().to_string(), c.status()))
         .collect();
     assert_eq!(ours, adr);
+}
+
+#[test]
+fn the_codes_added_in_1_1_have_their_documented_status() {
+    for (code, status) in ADDED_IN_1_1 {
+        let found = ProblemCode::ALL.iter().find(|c| c.as_str() == code);
+        assert_eq!(found.map(|c| c.status()), Some(status), "{code}");
+    }
 }
 
 #[test]
@@ -76,6 +93,7 @@ fn every_variant_is_in_all() {
             | ProblemCode::HostNotAllowed
             | ProblemCode::OriginNotAllowed
             | ProblemCode::NotFound
+            | ProblemCode::AdapterNotFound
             | ProblemCode::EntityNotFound
             | ProblemCode::TemplateNotFound
             | ProblemCode::MethodNotAllowed
@@ -85,6 +103,8 @@ fn every_variant_is_in_all() {
             | ProblemCode::StepInProgress
             | ProblemCode::StepCancelled
             | ProblemCode::DuplicateName
+            | ProblemCode::EntityRemote
+            | ProblemCode::AdapterFaulted
             | ProblemCode::PayloadTooLarge
             | ProblemCode::UnsupportedMediaType
             | ProblemCode::ValidationFailed
@@ -98,5 +118,5 @@ fn every_variant_is_in_all() {
             | ProblemCode::TooManyConnections => {}
         };
     }
-    assert_eq!(ProblemCode::ALL.len(), 27);
+    assert_eq!(ProblemCode::ALL.len(), 30);
 }

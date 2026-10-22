@@ -27,7 +27,7 @@ const isOptRoute = (v: unknown): boolean =>
   v === undefined || v === null || (isRec(v) && isNum(v.len) && isNum(v.next));
 const OWNERSHIPS = ["owned", "remote", "unknown"] as const;
 const STATES = ["idle", "ready", "running", "paused", "stopped"] as const;
-const STOP_REASONS = ["command", "duration", "plugin_fault", "error"] as const;
+const STOP_REASONS = ["command", "duration", "plugin_fault", "network_fault", "error"] as const;
 const RATE_SOURCES = ["scenario", "default"] as const;
 
 function oneOf<T extends string>(values: readonly T[], v: unknown): T | undefined {

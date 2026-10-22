@@ -348,13 +348,14 @@ pub enum Intent<'a> {
     },
 }
 
-/// The first host refusal (RNG draw or intent) of one tick: the SDK ends the call with its code.
+/// The first host refusal of one call (an RNG draw or intent of a tick, a message of a network
+/// `poll`): the SDK ends the call with its code.
 #[derive(Debug, Default)]
 pub(crate) struct Fault(Cell<Option<(UmbraCode, &'static str)>>);
 
 impl Fault {
     /// Records `code` from `call` unless a fault is already recorded.
-    fn record(&self, code: UmbraCode, call: &'static str) {
+    pub(crate) fn record(&self, code: UmbraCode, call: &'static str) {
         if self.0.get().is_none() {
             self.0.set(Some((code, call)));
         }
