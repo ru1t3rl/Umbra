@@ -1,6 +1,6 @@
 # ADR 0059: Plugin-side math: `umbra_sdk::math` mirrors `umbra_core::math` (amends ADR 0003's "single point")
 
-- **Status**: Accepted by the human 2026-10-22 (proposed by architect, M7 WI-2 review). It it amends accepted
+- **Status**: Accepted by the human 2026-10-22 (proposed by architect, M7 WI-2 review). It amends accepted
   ADR 0003 (D-21 era determinism scope, "one `umbra-core` math module ... the single point where `libm`
   would be swapped in").
 - **Requirement IDs**: REQ-K-4, A-2, REQ-A-3, REQ-SDK-1, REQ-SDK-3, NFR-2, ADR 0003, ADR 0050, ADR 0056
