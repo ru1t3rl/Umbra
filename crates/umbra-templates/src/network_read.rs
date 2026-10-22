@@ -13,7 +13,7 @@ use crate::reader::Reader;
 use crate::resolve::{LoadedTemplates, missing_template_notes};
 use crate::scenario::{GhostSettings, NetworkAdapterSpec, PublishSettings};
 use crate::scenario_read::{non_negative, positive, required};
-use crate::template::is_adapter_name;
+use crate::template::{NETWORK_ENTITY_TYPE_KEY, is_adapter_name};
 use crate::value::{LKind, LTable, LValue, Origin};
 
 const ENTRY_KEYS: [&str; 6] = ["adapter", "name", "enabled", "params", "publish", "ghosts"];
@@ -92,6 +92,9 @@ impl Loader<'_> {
                 .map(|id| (id, v.origin()))
         });
         let name = required(reader, table, "name").and_then(|v| read_name(reader, v, names));
+        if let Some(name) = &name {
+            warn_bad_entity_types(templates.loaded, name, warnings);
+        }
         let enabled = match table.get("enabled") {
             Some(v) => reader.boolean("enabled", v),
             None => Some(true),
@@ -334,6 +337,25 @@ fn read_ghosts(
         default_template: default_template?,
         type_map: type_map?,
     })
+}
+
+/// A non-string `entity_type` in a template's table for this adapter is ignored by the engine, so
+/// the template maps through `default_template` only. A warning, not an error: tables are opaque
+/// to the template reader (REQ-T-4, A-001 freeze, ASM-457).
+fn warn_bad_entity_types(loaded: &LoadedTemplates, name: &str, warnings: &mut Vec<Diagnostic>) {
+    for template in loaded.set.iter() {
+        if let Some(at) = template.bad_entity_types.get(name) {
+            let message = format!(
+                "`network.{name}.{NETWORK_ENTITY_TYPE_KEY}` of template `{}` is not a string and is ignored",
+                template.id
+            );
+            warnings.push(Diagnostic::warning(
+                DiagnosticCode::SuspiciousValue,
+                message,
+                Some(at.location()),
+            ));
+        }
+    }
 }
 
 /// A ghost that times out before the next heartbeat would expire between two publications of a

@@ -5,6 +5,8 @@ Mapping between the canonical network model (`umbra_core::net`, seen by the adap
 REQ-N-6, REQ-N-5, REQ-SDK-3, NFR-2; ADR 0030..0034. Status: implemented. The codec for Entity State (v7
 and v6) is M6 WI-13, the codec for Fire, Detonation, Start/Resume and Stop/Freeze (v7 and v6) is WI-14, and
 the adapter layer (`translate`, `config`, `transport`, `adapter`, packaged as the plugin `dis`) is WI-15.
+What the engine does around any adapter (publish policy, ghosts, identity, echo handling, several adapters,
+determinism, faults) is in the network adapter guide, [`README.md`](README.md).
 
 Sources, named in the golden-packet README (`crates/umbra-net-dis/tests/fixtures/dis/README.md`):
 

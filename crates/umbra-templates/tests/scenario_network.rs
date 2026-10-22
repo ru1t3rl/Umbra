@@ -815,3 +815,57 @@ fn an_invalid_scenario_contributes_no_warnings_to_validate() {
         assert_eq!(report.warnings, vec![], "{rel}");
     }
 }
+
+// --- ASM-457: a non-string `entity_type` is ignored by the engine, with a warning ----------------
+
+fn tank_with_network(extra: &str) -> SourceFile {
+    src(
+        "scn/templates/tank.toml",
+        &format!(
+            "{}{extra}",
+            alpha_template("tank.mbt", Some("veh.base"), "3.0")
+        ),
+    )
+}
+
+fn load_with(text: &str, tank: SourceFile) -> Scenario {
+    let mut files = templates();
+    files.retain(|f| !f.path().ends_with("tank.toml"));
+    files.push(tank);
+    let registry = registry_with_adapter();
+    ok(loader(&registry).scenario_from_sources(&src(SCN, text), &files))
+}
+
+#[test]
+fn a_non_string_entity_type_for_a_scenario_adapter_is_a_located_warning_not_an_error() {
+    let text = entry(&[]);
+    let tank = "[network.lb]\nentity_type = 5\n";
+
+    let scenario = load_with(&text, tank_with_network(tank));
+
+    let template_text = tank_with_network(tank);
+    let at = pos_of(template_text.text(), "5\n");
+    assert_eq!(
+        rows(&scenario.warnings),
+        vec![row("suspicious_value", "scn/templates/tank.toml", at)]
+    );
+    assert_eq!(scenario.warnings[0].severity, Severity::Warning);
+    assert!(
+        scenario.warnings[0]
+            .message
+            .contains("network.lb.entity_type")
+    );
+}
+
+#[test]
+fn strings_and_tables_of_other_adapters_give_no_entity_type_warning() {
+    let text = entry(&[]);
+    for tank in [
+        "[network.lb]\nentity_type = \"tank\"\n",
+        "[network.other]\nentity_type = 5\n",
+        "[network.lb]\nother = 5\n",
+    ] {
+        let scenario = load_with(&text, tank_with_network(tank));
+        assert_eq!(scenario.warnings, vec![], "{tank}");
+    }
+}

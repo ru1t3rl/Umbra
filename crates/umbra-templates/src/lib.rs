@@ -42,6 +42,7 @@ pub use scenario::{
 pub use scenario_read::graph_document_id;
 pub use schema::{CompiledSchema, SchemaError};
 pub use source::SourceFile;
+pub use template::NETWORK_ENTITY_TYPE_KEY;
 pub use value::{LTable, LValue};
 
 /// Schema version of template and scenario files (ADR 0010, ASM-057).

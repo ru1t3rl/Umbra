@@ -14,7 +14,7 @@ use umbra_core::net::{
     NetMessage, NetworkAdapter, NetworkAdapterConfig, OwnedView,
 };
 use umbra_core::{
-    ControlAction, EntityId, KinematicState, Quaternion, RemoteSource, SimEvent, SimTime,
+    ControlAction, EntityId, KinematicState, Quaternion, RemoteSource, Seconds, SimEvent, SimTime,
     TemplateId, Vec3,
 };
 
@@ -103,10 +103,30 @@ pub struct AdapterStatus {
     /// Why the adapter was disabled by a fault; `None` unless `faulted` (ASM-288).
     pub fault_reason: Option<String>,
     /// Entity types refused as unmapped, ascending, at most [`MAX_UNMAPPED_TYPES`] distinct; the
-    /// engine warns once per token from this (ASM-236, ASM-286). `unmapped` still counts all.
+    /// engine warns once per token from [`NetworkManager::take_notices`] (ASM-236, ASM-286). `unmapped` still counts all.
     pub unmapped_types: Vec<NetEntityType>,
     /// The adapter's own counters.
     pub counters: AdapterCounters,
+}
+
+/// Something an operator should hear once; the engine logs it (ASM-236, ASM-457).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum NetNotice {
+    /// The first inbound entity of a type no template maps and no default covers. Only the first
+    /// [`MAX_UNMAPPED_TYPES`] distinct types of an adapter are noticed (the status list is
+    /// bounded the same way); `unmapped` still counts every refused entity.
+    UnmappedType {
+        /// The adapter's name.
+        adapter: String,
+        /// The refused type token.
+        entity_type: NetEntityType,
+    },
+    /// The first owned entity the adapter's key space had no key for.
+    KeysExhausted {
+        /// The adapter's name.
+        adapter: String,
+    },
 }
 
 /// A manager operation failed.
@@ -171,6 +191,8 @@ struct Runner {
     /// Messages to publish, reused every tick.
     out: Vec<NetMessage>,
     unmapped_types: BTreeSet<NetEntityType>,
+    /// Notices not yet taken by [`NetworkManager::take_notices`].
+    notices: Vec<NetNotice>,
     /// Owned entities refused a key, so each is counted once.
     exhausted: BTreeSet<EntityId>,
     inbox: Vec<NetMessage>,
@@ -197,6 +219,7 @@ impl Runner {
             expired: Vec::new(),
             out: Vec::new(),
             unmapped_types: BTreeSet::new(),
+            notices: Vec::new(),
             exhausted: BTreeSet::new(),
             inbox: Vec::new(),
             tally: Tally::default(),
@@ -381,8 +404,12 @@ impl Runner {
             if let (Some(t), true) = (
                 &s.entity_type,
                 self.unmapped_types.len() < MAX_UNMAPPED_TYPES,
-            ) {
-                self.unmapped_types.insert(t.clone());
+            ) && self.unmapped_types.insert(t.clone())
+            {
+                self.notices.push(NetNotice::UnmappedType {
+                    adapter: self.settings.name.clone(),
+                    entity_type: t.clone(),
+                });
             }
             return;
         };
@@ -485,6 +512,11 @@ impl Runner {
             Ok(key) => key,
             Err(IdentityError::KeysExhausted) => {
                 if self.exhausted.insert(v.id) {
+                    if self.tally.keys_exhausted == 0 {
+                        self.notices.push(NetNotice::KeysExhausted {
+                            adapter: self.settings.name.clone(),
+                        });
+                    }
                     self.tally.keys_exhausted += 1;
                 }
                 return;
@@ -682,6 +714,27 @@ impl NetworkManager {
             r.publish(now, owned, &order, meta, events);
         }
         self.order = order;
+    }
+
+    /// Each adapter's ghost source and ghost timeout, in scenario order: the one place that turns
+    /// an adapter name into its [`RemoteSource`]. The engine hands them to the kernel as the
+    /// dead-reckoning caps (ADR 0032).
+    #[must_use]
+    pub fn sources(&self) -> Vec<(RemoteSource, Seconds)> {
+        self.runners
+            .iter()
+            .map(|r| (r.source.clone(), r.settings.ghosts.timeout))
+            .collect()
+    }
+
+    /// The notices raised since the last call, in scenario order of the adapters and, within one,
+    /// in the order they arose (unmapped types by first arrival; the inbound order is fixed by the
+    /// adapter's delivery order). Each unmapped type and each exhaustion is noticed once.
+    pub fn take_notices(&mut self) -> Vec<NetNotice> {
+        self.runners
+            .iter_mut()
+            .flat_map(|r| std::mem::take(&mut r.notices))
+            .collect()
     }
 
     /// Publishes a run-control action on adapters whose policy has `control` set (ASM-244).

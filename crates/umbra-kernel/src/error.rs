@@ -41,6 +41,9 @@ pub enum KernelError {
     /// The initial kinematic state has a non-finite component.
     #[error("initial entity state is not finite")]
     InvalidState,
+    /// A remote timeout that is not a positive, finite number of seconds.
+    #[error("remote timeout is not a positive finite number of seconds")]
+    InvalidRemoteTimeout,
     /// The behavior could not be instantiated at the tick rate (ADR 0013 amendment).
     #[error(transparent)]
     Instantiate(#[from] umbra_core::InstantiateError),

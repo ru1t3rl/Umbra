@@ -14,7 +14,7 @@ use umbra_core::net::{
     NetworkAdapterConfig,
 };
 use umbra_core::{Force, SimEvent, SimTime};
-use umbra_net::{AdapterSlot, GhostPolicy, ManagerError, NetworkManager, OwnedMeta};
+use umbra_net::{AdapterSlot, GhostPolicy, ManagerError, NetNotice, NetworkManager, OwnedMeta};
 
 use common::{OWN_BASE, PEER_BASE, Rig, eid, settings, state, tick, tid, ty, type_map, view};
 
@@ -464,4 +464,74 @@ fn a_ghost_the_kernel_removed_itself_is_forgotten_silently() {
     assert_eq!(events, vec![], "the timeout finds nothing left");
     assert_eq!(rig.status().ghosts, 0);
     assert_eq!(rig.status().world_errors, 0);
+}
+
+fn notices(m: &mut NetworkManager) -> Vec<NetNotice> {
+    m.take_notices()
+}
+
+#[test]
+fn each_unmapped_type_is_noticed_once_per_adapter() {
+    let (mut manager, mut peers) = common::two_adapters();
+    let mut world = common::FakeWorld::default();
+    let mut events = Vec::new();
+    for round in 0..3_u64 {
+        for peer in &mut peers {
+            let msgs = [
+                state(PEER_BASE + 1, Some("zeta"), 1.0),
+                state(PEER_BASE + 2, Some("alpha"), 1.0),
+            ];
+            peer.publish(tick(round), &msgs).unwrap();
+        }
+        manager.ingest(tick(round), &mut world, &mut events);
+    }
+
+    let first = notices(&mut manager);
+
+    let want: Vec<_> = ["lb0", "lb1"]
+        .into_iter()
+        .flat_map(|a| {
+            ["zeta", "alpha"].map(|t| NetNotice::UnmappedType {
+                adapter: a.to_owned(),
+                entity_type: ty(t),
+            })
+        })
+        .collect();
+    assert_eq!(first, want);
+    assert_eq!(notices(&mut manager), vec![], "drained, and never repeated");
+    peers[0]
+        .publish(tick(9), &[state(PEER_BASE + 3, Some("zeta"), 1.0)])
+        .unwrap();
+    manager.ingest(tick(9), &mut world, &mut events);
+    assert_eq!(
+        notices(&mut manager),
+        vec![],
+        "a known type is not noticed again"
+    );
+}
+
+#[test]
+fn key_exhaustion_is_noticed_once_per_adapter() {
+    let (mut manager, _peers) = common::two_adapters();
+    let views: Vec<_> = (1..=5_u32)
+        .map(|n| view(eid(u64::from(n)), f64::from(n)))
+        .collect();
+    for round in 0..3_u64 {
+        manager.publish(tick(round), &views, &BTreeMap::new(), &[]);
+    }
+
+    let got = notices(&mut manager);
+
+    assert_eq!(
+        got,
+        vec![
+            NetNotice::KeysExhausted {
+                adapter: "lb0".to_owned()
+            },
+            NetNotice::KeysExhausted {
+                adapter: "lb1".to_owned()
+            },
+        ]
+    );
+    assert_eq!(notices(&mut manager), vec![]);
 }

@@ -27,6 +27,8 @@ fn the_sdk_list_equals_the_keys_the_engine_reads() {
         .filter(|k| !k.is_empty())
         .collect();
     assert_eq!(sdk, umbra_engine::MANAGER_TEMPLATE_KEYS);
+    // The template reader's key (it locates the warning for a non-string value, ASM-457).
+    assert_eq!(sdk, [umbra_templates::NETWORK_ENTITY_TYPE_KEY]);
     assert_eq!(
         sdk,
         ["entity_type"],

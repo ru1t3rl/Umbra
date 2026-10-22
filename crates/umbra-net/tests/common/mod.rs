@@ -277,3 +277,27 @@ impl Rig {
         self.manager.status().remove(0)
     }
 }
+
+/// Two adapters `lb0` and `lb1`, each on a hub of its own with a raw peer and two keys (ASM-410).
+pub fn two_adapters() -> (NetworkManager, Vec<Box<dyn NetworkAdapter>>) {
+    let mut slots = Vec::new();
+    let mut peers = Vec::new();
+    for n in 0..2_u64 {
+        let hub = LoopbackHub::new(64);
+        let id = format!("test.net.n{n}");
+        let input = serde_json::json!({"name": "x", "params": {}, "templates": {}});
+        let cfg = hub
+            .factory(
+                cid(&id),
+                KeySpace {
+                    base: OWN_BASE,
+                    count: 2,
+                },
+            )
+            .build(&input)
+            .unwrap();
+        slots.push(slot(settings(&format!("lb{n}")), cfg, type_map()));
+        peers.push(peer_on(&hub, &format!("test.net.p{n}")));
+    }
+    (NetworkManager::new(slots, tick(0)).unwrap(), peers)
+}

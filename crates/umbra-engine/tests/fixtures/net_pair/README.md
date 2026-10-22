@@ -10,6 +10,7 @@ Used by `crates/umbra-engine/tests/net_loopback.rs`, `net_determinism.rs` and (f
 - `a/` and `b/`: two peers on one loopback hub (adapter name `lb`). The tests register the loopback
   factory under `test.net.loopback` with a distinct key space per engine (a: 1000, b: 2000).
 - `c/`: a bridge with two adapters, `left` (`test.net.left`, hub 1) and `right` (`test.net.right`, hub 2).
+- `exhaust/` (from WI-18, ASM-457): as `c/` with a second owned entity, so that a key space of one key runs out on both adapters (`net_warnings.rs`).
 - Heartbeat 1 s and ghost timeout 3 s in every scenario, so a silent peer's ghosts disappear within
   100 ticks and a live peer's never flap.
 - `fault_abort_publish/`, `fault_abort_poll/`, `fault_disable_publish/` (from WI-9): one adapter,

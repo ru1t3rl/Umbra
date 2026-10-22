@@ -474,3 +474,79 @@ const PINNED: [&str; 5] = [
     "a005bfab0886018a",
     "c213e5593b8b50ad",
 ];
+
+#[test]
+fn given_a_remote_timeout_when_a_ghost_is_not_refreshed_then_elapsed_is_capped_at_the_timeout() {
+    // ADR 0032: the caller caps `elapsed` at the adapter's ghost timeout (ASM-457).
+    let model = still();
+    let mut k = kernel(1);
+    k.set_remote_timeouts([(&source(), Seconds(0.5))])
+        .expect("timeouts");
+    let remote = basis(0.0, Vec3::new(0.0, 10.0, 0.0), DeadReckoning::Velocity);
+    k.spawn_remote(init(&model, remote)).expect("spawn_remote");
+    let other = RemoteInit {
+        source: RemoteSource::new("net.other"),
+        ..init(&model, remote)
+    };
+    k.spawn_remote(other).expect("spawn_remote");
+
+    for _ in 0..60 {
+        k.tick().expect("tick");
+    }
+
+    let capped = extrapolate(&remote, Seconds(0.5));
+    assert_state_close(&ghost_state(&k, 0), &capped, "ghost with a timeout");
+    let free = extrapolate(&remote, Seconds(59.0 / HZ));
+    assert_state_close(
+        &ghost_state(&k, 1),
+        &free,
+        "ghost of a source without timeout",
+    );
+}
+
+#[test]
+fn given_invalid_timeouts_when_set_then_error_and_the_previous_caps_stay() {
+    let model = still();
+    let mut k = kernel(1);
+    k.set_remote_timeouts([(&source(), Seconds(0.5))])
+        .expect("timeouts");
+
+    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        let result = k.set_remote_timeouts([(&source(), Seconds(bad))]);
+        assert_eq!(result, Err(KernelError::InvalidRemoteTimeout), "{bad}");
+    }
+
+    let remote = basis(0.0, Vec3::new(0.0, 10.0, 0.0), DeadReckoning::Velocity);
+    k.spawn_remote(init(&model, remote)).expect("spawn_remote");
+    for _ in 0..60 {
+        k.tick().expect("tick");
+    }
+    assert_state_close(
+        &ghost_state(&k, 0),
+        &extrapolate(&remote, Seconds(0.5)),
+        "the first cap still applies",
+    );
+}
+
+#[test]
+fn given_new_timeouts_when_set_then_stale_caps_of_other_sources_are_dropped() {
+    let model = still();
+    let mut k = kernel(1);
+    k.set_remote_timeouts([(&source(), Seconds(0.5))])
+        .expect("timeouts");
+    let other = RemoteSource::new("net.other");
+    k.set_remote_timeouts([(&other, Seconds(0.5))])
+        .expect("timeouts");
+    let remote = basis(0.0, Vec3::new(0.0, 10.0, 0.0), DeadReckoning::Velocity);
+    k.spawn_remote(init(&model, remote)).expect("spawn_remote");
+
+    for _ in 0..60 {
+        k.tick().expect("tick");
+    }
+
+    assert_state_close(
+        &ghost_state(&k, 0),
+        &extrapolate(&remote, Seconds(59.0 / HZ)),
+        "uncapped",
+    );
+}

@@ -21,7 +21,7 @@ pub mod typemap;
 pub use ghosts::{GhostError, GhostSpec, GhostWorld};
 pub use identity::{IdentityError, IdentityMap, Role};
 pub use loopback::LoopbackHub;
-pub use manager::{AdapterSlot, AdapterStatus, ManagerError, NetworkManager, OwnedMeta};
+pub use manager::{AdapterSlot, AdapterStatus, ManagerError, NetNotice, NetworkManager, OwnedMeta};
 pub use policy::{AdapterSettings, GhostPolicy, PublishPolicy, PublishTracker};
 pub use typemap::{TypeMap, TypeMapWarning};
 

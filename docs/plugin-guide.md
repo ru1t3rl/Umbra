@@ -163,7 +163,10 @@ the owned entities' states and events (`publish`) and takes the remote ones from
 ordinary capability of kind 3 and needs a host of ABI 0.1 or newer. The crate docs of `umbra-sdk` have a
 complete minimal adapter; the fixture `crates/umbra-test-plugin/src/network.rs` (a mirror) is a fuller
 one, and `crates/umbra-net-dis` (the DIS adapter, [`docs/net/dis.md`](net/dis.md)) is a complete real one:
-UDP sockets, two I/O threads, bounded queues, built on the SDK only.
+UDP sockets, two I/O threads, bounded queues, built on the SDK only. What the engine does around an adapter
+(publish policy, ghosts, identity and key spaces, echo handling, several adapters at once, determinism,
+faults, the control API) and the rules every adapter follows are in the network adapter guide,
+[`docs/net/README.md`](net/README.md); this section covers the SDK side only.
 
 1. **Traits** (they mirror the engine's `NetworkAdapterConfig` and `NetworkAdapter` and the ABI
    lifecycle `configure -> key_space -> start -> (publish | poll | counters)* -> stop -> destroy`):
@@ -216,6 +219,11 @@ UDP sockets, two I/O threads, bounded queues, built on the SDK only.
    The descriptor then declares ABI 0.1, so the package's `plugin.toml` says `abi = "0.1"`; a
    behavior-only plugin built with the same SDK keeps declaring 0.0 and still loads in an ABI 0.0 host
    (the required-minor rule, ADR 0033, ASM-245).
+7. **Test** the adapter against the engine's contract suite (`umbra_core::network_adapter_contract_tests!`,
+   with `feed = ..` when it receives) through the real host: a plugin crate may depend on `umbra-sdk` only,
+   so the run lives in a crate that loads the built library, as `crates/umbra-engine/tests/dis_plugin.rs`
+   does for DIS. Add golden packets, malformed-input property tests and a two-instance exchange
+   ([`docs/net/README.md`](net/README.md), "Writing an adapter").
 
 What the SDK enforces for a network adapter (ASM-411..ASM-413): every host-written batch and message is
 validated before `publish` runs (only the fields the message's kind uses; malformed input is
@@ -368,8 +376,10 @@ On a fault (ADR 0020, ADR 0021, ASM-140):
   or a message the host refuses faults the capability; the messages of a faulted `poll` are discarded
   whole and afterwards only `stop` and `destroy` are called. Under `abort` the run ends after the tick
   with `EngineError::PluginFault` naming the plugin, the capability and the call; under
-  `disable_capability` the manager disables that adapter (its ghosts time out) and every other
-  adapter, built-in or plugin, of this or another image keeps running (ASM-410). A non-OK
+  `disable_capability` the manager disables that adapter (its ghosts time out). The fault belongs to the
+  capability in that host, so other adapters configured from the same capability (one capability under
+  several scenario names) fault at their next call and are disabled too; adapters of other capabilities
+  and images, and built-in ones, keep running (ASM-408 c, ASM-410). A non-OK
   `configure`, `key_space` or `start` is a build or start error, not a fault.
 
 ## Determinism

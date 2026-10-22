@@ -13,8 +13,8 @@ use crate::graph_resolve::GraphSet;
 use crate::loader::Loader;
 use crate::overlay::Overlay;
 use crate::source::SourceFile;
-use crate::template::{RawComponent, RawTemplate, read_template};
-use crate::value::{LEntry, LTable, Origin};
+use crate::template::{NETWORK_ENTITY_TYPE_KEY, RawComponent, RawTemplate, read_template};
+use crate::value::{LEntry, LKind, LTable, Origin};
 
 /// A component by ID with its parameters.
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +46,9 @@ pub struct ResolvedTemplate {
     pub sensors: Vec<ComponentRef>,
     /// The merged motion parameters with the origin of every value (for scenario overrides).
     pub(crate) located: LocatedMotion,
+    /// Per adapter, where the winning `network.<adapter>` table writes an `entity_type` that is
+    /// not a string (the engine ignores it; the scenario reader warns, ASM-457).
+    pub(crate) bad_entity_types: BTreeMap<String, Origin>,
 }
 
 /// The merged motion parameters of a template, located.
@@ -216,6 +219,7 @@ impl Overlay<'_> {
             description: head.description.clone(),
             motion: ComponentRef { id, params },
             network: merge_network(chain),
+            bad_entity_types: bad_entity_types(chain),
             source: head.source.clone(),
             behavior: behavior.ok()?,
             sensors: sensors?,
@@ -402,6 +406,22 @@ fn merge_network(chain: &[&RawTemplate]) -> BTreeMap<String, ParamValue> {
     for template in chain.iter().rev() {
         for (adapter, table) in &template.network {
             out.insert(adapter.clone(), table.to_param());
+        }
+    }
+    out
+}
+
+/// Where each adapter's winning table writes an `entity_type` that is not a string.
+fn bad_entity_types(chain: &[&RawTemplate]) -> BTreeMap<String, Origin> {
+    let mut out = BTreeMap::new();
+    for template in chain.iter().rev() {
+        for (adapter, table) in &template.network {
+            out.remove(adapter);
+            if let Some(v) = table.get(NETWORK_ENTITY_TYPE_KEY)
+                && !matches!(v.kind(), LKind::String(_))
+            {
+                out.insert(adapter.clone(), v.origin().clone());
+            }
         }
     }
     out

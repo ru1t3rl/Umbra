@@ -10,7 +10,8 @@ use std::sync::Arc;
 use umbra_core::dead_reckoning::{RemoteState, extrapolate};
 use umbra_core::{
     BehaviorBatch, BehaviorId, BehaviorInstance, Contact, Ecef, EntityId, Force, Intent,
-    KinematicState, MotionModel, Ownership, RngStream, Sensor, SimRng, SimTime, Status, StreamKey,
+    KinematicState, MotionModel, Ownership, RemoteSource, RngStream, Seconds, Sensor, SimRng,
+    SimTime, Status, StreamKey,
 };
 
 use crate::error::{KernelError, RouteParam};
@@ -144,6 +145,9 @@ pub(crate) struct World {
     sensor_owners: usize,
     /// Number of entities with a [`RemoteTrack`]; kept in sync with `index` like `sensor_owners`.
     remote_count: usize,
+    /// Per source: the longest a Remote entity is dead-reckoned past its basis (the adapter's
+    /// ghost timeout, ADR 0032). A source without an entry is not capped.
+    remote_timeouts: BTreeMap<RemoteSource, Seconds>,
     next_id: Option<EntityId>,
     /// Perception buffers reused across ticks (ASM-093 (f)); taken out while the phase runs.
     pub(crate) perception: Scratch,
@@ -207,6 +211,7 @@ impl World {
             behaviors: BTreeMap::new(),
             sensor_owners: 0,
             remote_count: 0,
+            remote_timeouts: BTreeMap::new(),
             next_id: EntityId::new(1),
             perception: Scratch::default(),
             batch: BatchScratch::default(),
@@ -346,19 +351,37 @@ impl World {
             return;
         }
         // Archetype order, not id order: each extrapolation reads only its own track.
-        for (track, state) in self.ecs.query_mut::<(&RemoteTrack, &mut KinematicState)>() {
+        let timeouts = &self.remote_timeouts;
+        for (track, state, ownership) in self
+            .ecs
+            .query_mut::<(&RemoteTrack, &mut KinematicState, &Ownership)>()
+        {
             let ticks = now.ticks_since(track.at);
             debug_assert!(
                 ticks.is_ok(),
                 "a track is never taken after the current time"
             );
-            let elapsed = ticks.map_or(0.0, |ticks| {
+            let mut elapsed = ticks.map_or(0.0, |ticks| {
                 #[expect(clippy::cast_precision_loss, reason = "ticks stay far below 2^53")]
                 let t = ticks as f64;
                 t / f64::from(now.rate().hz())
             });
+            if let Ownership::Remote { source } = ownership
+                && let Some(cap) = timeouts.get(source)
+            {
+                elapsed = elapsed.min(cap.0);
+            }
             *state = extrapolate(&track.basis, umbra_core::Seconds(elapsed));
         }
+    }
+
+    pub(crate) fn remote_timeout(&self, source: &RemoteSource) -> Option<Seconds> {
+        self.remote_timeouts.get(source).copied()
+    }
+
+    /// Replaces the dead-reckoning caps (the caller has validated them).
+    pub(crate) fn set_remote_timeouts(&mut self, timeouts: BTreeMap<RemoteSource, Seconds>) {
+        self.remote_timeouts = timeouts;
     }
 
     /// Visits every Owned entity in ascending id order as `(id, state, force)`.

@@ -18,7 +18,7 @@ use umbra_core::{
 use umbra_kernel::{Kernel, RemoteInit};
 use umbra_net::{
     AdapterSettings, AdapterSlot, AdapterStatus, GhostError, GhostPolicy, GhostSpec, GhostWorld,
-    ManagerError, NetworkManager, OwnedMeta, TypeMap,
+    ManagerError, NetNotice, NetworkManager, OwnedMeta, TypeMap,
 };
 use umbra_templates::{NetworkAdapterSpec, Scenario};
 
@@ -188,7 +188,7 @@ pub struct NetLink {
 }
 
 /// The key of a template's `network.<adapter>` table that maps a remote entity type to the template.
-const ENTITY_TYPE_KEY: &str = "entity_type";
+const ENTITY_TYPE_KEY: &str = umbra_templates::NETWORK_ENTITY_TYPE_KEY;
 
 /// Every key of a template's `network.<adapter>` table that the engine reads itself (ASM-228); all
 /// other keys belong to the adapter. `umbra_sdk::MANAGER_TEMPLATE_KEYS` must equal this list
@@ -408,8 +408,33 @@ impl NetLink {
         self.abort.take()
     }
 
-    /// Compares the faulted adapters with those seen before (ASM-252).
+    /// Logs what the manager noticed since the last call: one warning per unmapped entity type
+    /// and adapter, one per adapter whose key space ran out (ASM-236, ASM-457). Logging only; no
+    /// simulation state is touched.
+    fn log_notices(&mut self) {
+        for notice in self.manager.take_notices() {
+            match notice {
+                NetNotice::UnmappedType {
+                    adapter,
+                    entity_type,
+                } => tracing::warn!(
+                    "network adapter {adapter}: no template maps entity type {:?}; entities of \
+                     this type are not mirrored",
+                    entity_type.as_str()
+                ),
+                NetNotice::KeysExhausted { adapter } => tracing::warn!(
+                    "network adapter {adapter}: key space exhausted; further owned entities are \
+                     not published"
+                ),
+                _ => {}
+            }
+        }
+    }
+
+    /// Logs the manager's notices, then compares the faulted adapters with those seen before
+    /// (ASM-252).
     fn note_faults(&mut self) {
+        self.log_notices();
         let count = self.manager.faulted_count();
         if count <= self.faulted_seen {
             return;
@@ -478,6 +503,14 @@ impl Engine {
     /// Attaches the link; from then on every tick ingests before and publishes after the kernel
     /// tick (ASM-224).
     pub fn attach_network(&mut self, link: NetLink) {
+        let sources = link.manager.sources();
+        if let Err(e) = self
+            .kernel
+            .set_remote_timeouts(sources.iter().map(|(s, t)| (s, *t)))
+        {
+            // The scenario reader only accepts positive finite timeouts.
+            tracing::warn!("ghost timeouts not applied to the kernel: {e}");
+        }
         self.network = Some(link);
     }
 
@@ -491,5 +524,55 @@ impl Engine {
         let link = self.network.as_mut()?;
         link.publish_control(now, action);
         link.take_abort()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use umbra_core::net::KeySpace;
+    use umbra_core::{ComponentId, RemoteSource, Seconds};
+    use umbra_net::LoopbackHub;
+
+    use crate::builtins::builtin_registry;
+    use crate::scenario::{RunOptions, instantiate, load_scenario};
+    use umbra_kernel::{ClockMode, ManualWallClock};
+
+    /// Attaching the link hands every adapter's ghost timeout to the kernel as its dead-reckoning
+    /// cap (ADR 0032, ASM-457).
+    #[test]
+    fn attaching_the_link_sets_the_kernel_cap_of_every_adapter() {
+        let mut registry = builtin_registry().expect("builtin registry");
+        let hub = LoopbackHub::new(16);
+        for (id, base) in [("test.net.left", 1000), ("test.net.right", 2000)] {
+            let factory = hub.factory(
+                ComponentId::new(id).expect("id"),
+                KeySpace { base, count: 10 },
+            );
+            registry
+                .register_network_adapter(factory)
+                .expect("register");
+        }
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/net_pair/c/scenario.toml");
+        let scenario = load_scenario(&registry, &path).expect("scenario");
+        let run = instantiate(
+            &registry,
+            &scenario,
+            RunOptions {
+                wall: Box::new(ManualWallClock::default()),
+                seed: None,
+                clock: None::<ClockMode>,
+            },
+        )
+        .expect("instantiate");
+
+        let caps: Vec<_> = ["left", "right", "none"]
+            .iter()
+            .map(|n| run.engine.kernel.remote_timeout(&RemoteSource::new(n)))
+            .collect();
+
+        assert_eq!(caps, [Some(Seconds(3.0)), Some(Seconds(3.0)), None]);
     }
 }

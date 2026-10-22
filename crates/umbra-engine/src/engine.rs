@@ -104,7 +104,7 @@ pub struct RunSummary {
 
 /// The embeddable, synchronous engine.
 pub struct Engine {
-    kernel: Kernel,
+    pub(crate) kernel: Kernel,
     /// The network link, if the scenario has adapters (M6, ADR 0030). Declared before `plugins`, so
     /// it drops first and stops every adapter before the plugin host releases its images.
     pub(crate) network: Option<crate::net::NetLink>,

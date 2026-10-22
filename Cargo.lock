@@ -1427,6 +1427,7 @@ dependencies = [
 name = "umbra-net"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
  "serde_json",
  "thiserror",
