@@ -19,6 +19,7 @@ mod entities;
 mod network;
 mod plugins;
 mod problem;
+mod recording;
 mod run;
 mod seed;
 mod status;
@@ -34,6 +35,7 @@ pub use entities::{
 pub use network::{AdapterCountersDto, AdapterDto, KeySpaceDto, NetworkFaultDto};
 pub use plugins::{CapabilityDto, PluginDto, PluginFaultDto, PluginReport};
 pub use problem::{Problem, ProblemCode};
+pub use recording::{RecordingDto, RecordingState};
 pub use run::{LoadScenarioRequest, MAX_STEP_COUNT, StepRequest, StepResult, hex_state_hash};
 pub use seed::Seed;
 pub use status::{
@@ -51,7 +53,7 @@ pub use validation::{
 /// Version of the REST and stream contract (semver, additive changes only; ADR 0026).
 ///
 /// It is the `info.version` of the generated `OpenAPI` document, not the crate version.
-pub const API_VERSION: &str = "1.1.0";
+pub const API_VERSION: &str = "1.2.0";
 
 /// Every wire type as an `OpenAPI` component (review m6: no DTO is left out of the contract). The
 /// server merges these into its document (WI-11, WI-12); this type has no paths of its own.
@@ -90,6 +92,8 @@ pub const API_VERSION: &str = "1.1.0";
     Problem,
     ProblemCode,
     Provenance,
+    RecordingDto,
+    RecordingState,
     RouteProgress,
     RunState,
     RunStatus,

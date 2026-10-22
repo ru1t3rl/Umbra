@@ -599,6 +599,62 @@ async fn the_1_1_additions_are_in_the_served_document_and_nothing_was_taken_away
     assert!(required("AdapterDto").contains("enabled"));
 }
 
+// ---- API 1.2.0 additions (M7 WI-3, ADR 0057, ASM-680) ----
+
+#[tokio::test]
+async fn a_status_with_a_recording_conforms_and_the_field_stays_optional() {
+    // AT-21 (M7 WI-3, ADR 0057): `RunStatus.recording` is optional and closed.
+    let h = Harness::start("contract-recording");
+    let doc = served(&h).await;
+    assert!(properties(&doc, "RunStatus").contains("recording"));
+    assert!(properties(&doc, "RecordingDto").contains("last_tick"));
+    assert!(
+        !doc["components"]["schemas"]["RunStatus"]["required"]
+            .as_array()
+            .expect("required")
+            .iter()
+            .any(|f| f == "recording")
+    );
+    assert_eq!(
+        enum_values(&doc, "RecordingState"),
+        ["recording", "failed", "finished"].map(String::from).into()
+    );
+    let mut status = json!({
+        "state": "running", "clock": {"mode": "afap"}, "session": 1, "step_pending": false,
+        "recording": {"state": "recording", "file": "session-3.umbrarec.jsonl", "records": 3, "last_tick": 2}
+    });
+    let schema = &doc["components"]["schemas"]["RunStatus"];
+    schema_walk::validate_closed(&doc, schema, &status).expect("a recording status conforms");
+    let rejected = |status: &Value| schema_walk::validate_closed(&doc, schema, status).is_err();
+
+    let good = status["recording"].clone();
+    status["recording"]["state"] = json!("paused");
+    assert!(rejected(&status), "unknown state");
+    status["recording"] = good.clone();
+    status["recording"]["unknown"] = json!(1);
+    assert!(rejected(&status), "unknown property");
+    status["recording"] = good.clone();
+    status["recording"]
+        .as_object_mut()
+        .expect("object")
+        .remove("last_tick");
+    assert!(rejected(&status), "missing last_tick");
+    status["recording"] = good;
+    status["recording"]["records"] = json!(-1);
+    assert!(rejected(&status), "negative records");
+
+    // The server leaves the field out until the recorder exists (WI-16), on REST and on the stream.
+    let rest = h.get("/api/v1/status").await.assert_json(200);
+    assert!(rest["run"].get("recording").is_none(), "{rest}");
+    h.load_skeleton("stepped").await;
+    let addr = h.serve_on_loopback().await;
+    let mut ws = common::WsClient::connect(addr).await;
+    ws.hello().await;
+    ws.subscribe(json!({})).await;
+    let frame = ws.frame_until(|_| true).await;
+    assert!(frame["run"].get("recording").is_none(), "{frame}");
+}
+
 #[tokio::test]
 async fn a_status_with_a_network_fault_conforms_to_the_run_status_schema() {
     let h = Harness::start("contract-network-fault");
@@ -618,6 +674,7 @@ async fn a_status_with_a_network_fault_conforms_to_the_run_status_schema() {
         step_pending: false,
         tick_rate_hz: Some(30),
         tick_rate_source: Some(umbra_api_types::TickRateSource::Scenario),
+        recording: None,
     })
     .expect("json");
     let schema = &doc["components"]["schemas"]["RunStatus"];

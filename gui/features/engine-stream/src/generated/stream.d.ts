@@ -307,6 +307,7 @@ export interface RunStatus {
       };
   fault?: PluginFaultDto | null;
   network_fault?: NetworkFaultDto | null;
+  recording?: RecordingDto | null;
   /**
    * The session number; it changes with every load (0 before the first).
    */
@@ -367,6 +368,27 @@ export interface NetworkFaultDto {
    * Why it faulted.
    */
   reason: string;
+}
+/**
+ * The session recording; only when the server records (added in API 1.2.0, ADR 0057).
+ */
+export interface RecordingDto {
+  /**
+   * The file name inside the record directory, `/` separators, never absolute (ADR 0053, ADR 0058).
+   */
+  file: string;
+  /**
+   * The last tick recorded. Exact below 2^53.
+   */
+  last_tick: number;
+  /**
+   * Records written so far. Exact below 2^53.
+   */
+  records: number;
+  /**
+   * Where the recording stands.
+   */
+  state: "recording" | "failed" | "finished";
 }
 /**
  * A problem with a client message.

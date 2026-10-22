@@ -7,6 +7,7 @@ use utoipa::{PartialSchema, ToSchema};
 
 use crate::network::NetworkFaultDto;
 use crate::plugins::PluginFaultDto;
+use crate::recording::RecordingDto;
 use crate::validation::Diagnostic;
 
 /// The run lifecycle state (ADR 0026): `idle` -> `ready` -> `running` <-> `paused`, any loaded state
@@ -183,6 +184,10 @@ pub struct RunStatus {
     // absent (it does not change the JSON).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_fault: Option<Box<NetworkFaultDto>>,
+    /// The session recording; only when the server records (added in API 1.2.0, ADR 0057).
+    // Boxed like `network_fault`: it travels inside every stream frame and is almost always absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recording: Option<Box<RecordingDto>>,
     /// The current clock.
     pub clock: ClockSetting,
     /// The session number; it changes with every load (0 before the first).

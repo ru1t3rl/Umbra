@@ -26,7 +26,7 @@ builds the engine-only CLI without it (gate 16).
 
 ## Versioning and compatibility
 - All routes are under `/api/v1`. `info.version` in `api/openapi.json`, `api_version` in `GET /api/v1/status`
-  and in the stream `hello` is the API semver (`1.1.0`).
+  and in the stream `hello` is the API semver (`1.2.0`).
 - Within v1 every change is additive and bumps the minor version: a new endpoint, an optional request
   field, a response field, an enum value, a problem code, a stream message type. Clients must ignore
   unknown fields, enum values, event kinds and message types.
@@ -36,6 +36,10 @@ builds the engine-only CLI without it (gate 16).
   endpoints, the problem codes `adapter_not_found`, `adapter_faulted` and `entity_remote`, the `detonation`
   event kind, `remote_source` on entities, the stop reason `network_fault` with `network_fault` on the run
   status, `severity` on `Diagnostic` and `warnings` on `ScenarioInfo`.
+  1.2.0 adds the optional `recording` object of `RunStatus` (REST status, run-control replies and every
+  stream frame; M7 WI-3, ADR 0057): `{state: recording|failed|finished, file, records, last_tick}`, absent
+  when the session is not recorded (the server leaves it out until M7 WI-16).
+  The scenario listing and engine log endpoints of ADR 0058 follow under the same 1.2.0.
 - After a contract change, `frontend-engineer` runs the `generate-api-client` skill.
 
 ## Determinism

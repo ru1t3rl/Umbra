@@ -4,7 +4,7 @@
  * Do not edit manually.
  * Umbra control API
  * Umbra REST API and WebSocket stream over the engine handle.
- * OpenAPI spec version: 1.1.0
+ * OpenAPI spec version: 1.2.0
  */
 import {
   useMutation,
@@ -937,6 +937,39 @@ export const Provenance = {
 } as const;
 
 /**
+ * The recording of the current session, in `RunStatus.recording`; absent when not recording.
+ */
+export interface RecordingDto {
+  /** The file name inside the record directory, `/` separators, never absolute (ADR 0053, ADR 0058). */
+  file: string;
+  /**
+   * The last tick recorded. Exact below 2^53.
+   * @minimum 0
+   */
+  last_tick: number;
+  /**
+   * Records written so far. Exact below 2^53.
+   * @minimum 0
+   */
+  records: number;
+  /** Where the recording stands. */
+  state: RecordingState;
+}
+
+/**
+ * Where a session recording stands.
+ */
+export type RecordingState = typeof RecordingState[keyof typeof RecordingState];
+
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const RecordingState = {
+  recording: 'recording',
+  failed: 'failed',
+  finished: 'finished',
+} as const;
+
+/**
  * How far along its route an entity is.
  */
 export interface RouteProgress {
@@ -972,6 +1005,8 @@ export type RunStatusFault = PluginFaultDto | null;
 
 export type RunStatusNetworkFault = NetworkFaultDto | null;
 
+export type RunStatusRecording = RecordingDto | null;
+
 export type RunStatusStopReason = StopReason | null;
 
 /**
@@ -1001,6 +1036,7 @@ export interface RunStatus {
   clock: ClockSetting;
   fault?: RunStatusFault;
   network_fault?: RunStatusNetworkFault;
+  recording?: RunStatusRecording;
   /**
    * The session number; it changes with every load (0 before the first).
    * @minimum 0

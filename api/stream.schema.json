@@ -487,6 +487,47 @@
       ],
       "type": "object"
     },
+    "RecordingDto": {
+      "description": "The recording of the current session, in `RunStatus.recording`; absent when not recording.",
+      "properties": {
+        "file": {
+          "description": "The file name inside the record directory, `/` separators, never absolute (ADR 0053, ADR 0058).",
+          "type": "string"
+        },
+        "last_tick": {
+          "description": "The last tick recorded. Exact below 2^53.",
+          "format": "int64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "records": {
+          "description": "Records written so far. Exact below 2^53.",
+          "format": "int64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "state": {
+          "$ref": "#/$defs/RecordingState",
+          "description": "Where the recording stands."
+        }
+      },
+      "required": [
+        "state",
+        "file",
+        "records",
+        "last_tick"
+      ],
+      "type": "object"
+    },
+    "RecordingState": {
+      "description": "Where a session recording stands.",
+      "enum": [
+        "recording",
+        "failed",
+        "finished"
+      ],
+      "type": "string"
+    },
     "RouteProgress": {
       "description": "How far along its route an entity is.",
       "properties": {
@@ -543,6 +584,17 @@
             {
               "$ref": "#/$defs/NetworkFaultDto",
               "description": "The network adapter fault behind `stop_reason = network_fault` (added in API 1.1.0)."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recording": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RecordingDto",
+              "description": "The session recording; only when the server records (added in API 1.2.0, ADR 0057)."
             },
             {
               "type": "null"

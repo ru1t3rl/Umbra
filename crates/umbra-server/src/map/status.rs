@@ -37,6 +37,8 @@ pub fn run_status(status: &RunStatus) -> api::RunStatus {
         stop_reason,
         fault,
         network_fault,
+        // Always absent until the recorder lands (M7 WI-16, ADR 0057, ASM-680).
+        recording: None,
         clock: clock_setting(status.clock),
         session: status.session,
         tick: status.time.map(SimTime::tick),

@@ -38,7 +38,7 @@ fn serve_prints_listening_address_and_answers_status() {
     assert_ne!(served.addr.port(), 0, "the printed port is the bound one");
     let status = served.get("/api/v1/status").assert_json(200);
     assert_eq!(status["run"]["state"], "idle");
-    assert_eq!(status["api_version"], "1.1.0");
+    assert_eq!(status["api_version"], "1.2.0");
     assert_eq!(served.terminate(), Some(0));
     assert_eq!(
         served.rest_of_stdout(),
