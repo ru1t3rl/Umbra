@@ -100,8 +100,9 @@ pub struct SimTime {
 
 impl SimTime {
     /// The time at tick `tick` of a run at `rate_hz` (`rate_hz > 0`, checked by the SDK at the
-    /// boundary).
-    pub(crate) fn new(tick: u64, rate_hz: u32) -> Self {
+    /// boundary). Public so an adapter's tests can drive it without a host.
+    #[must_use]
+    pub fn new(tick: u64, rate_hz: u32) -> Self {
         Self { tick, rate_hz }
     }
 
@@ -354,6 +355,11 @@ impl Counters {
     }
 }
 
+/// The keys of a template's `[network.<adapter>]` table that the engine itself reads, whatever the
+/// adapter (ADR 0030, ASM-228). An adapter may validate its own keys outside this list. A test in
+/// `umbra-engine` pins this list to the keys the manager reads.
+pub const MANAGER_TEMPLATE_KEYS: &[&str] = &["entity_type"];
+
 /// The input of `configure` (ADR 0030): the scenario's adapter name, its parameters (the capability's
 /// param schema applies to these) and the `[network.<name>]` table of every template that has one.
 #[derive(Debug, Clone, PartialEq)]
@@ -364,6 +370,21 @@ pub struct ConfigureInput {
 }
 
 impl ConfigureInput {
+    /// A configure input built in code (adapter tests without a host); the host builds the same
+    /// value from the ADR 0030 wrapper.
+    #[must_use]
+    pub fn from_parts(
+        name: impl Into<String>,
+        params: serde_json::Value,
+        templates: BTreeMap<String, serde_json::Value>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            params,
+            templates,
+        }
+    }
+
     /// Parses the wrapper `{"name": <string>, "params": <value>, "templates": {<id>: <table>}}`.
     pub(crate) fn parse(json: &str) -> Result<Self, Error> {
         let bad =

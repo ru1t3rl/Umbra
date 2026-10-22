@@ -151,3 +151,34 @@ fn build_plugins_unknown_flag_is_exit_2() {
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     assert!(!target.join("plugins").exists());
 }
+
+/// Gate 12, M6 WI-15: the DIS adapter (`umbra-net-dis`, a network adapter plugin of ABI 0.1) is
+/// packaged as `dis` with its manifest, next to the examples.
+#[test]
+fn build_plugins_writes_the_dis_package() {
+    let target = fresh_target("dis");
+
+    let out = build_plugins(&target, &[]);
+
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let package = target.join("plugins/dis");
+    let files = names(&package);
+    assert_eq!(
+        files.iter().filter(|f| is_library(f)).count(),
+        1,
+        "{files:?}"
+    );
+    assert!(
+        files.iter().any(|f| f.contains("umbra_net_dis")),
+        "the library is the umbra-net-dis cdylib: {files:?}"
+    );
+    assert!(files.iter().any(|f| f == "plugin.toml"), "{files:?}");
+    let manifest = std::fs::read_to_string(package.join("plugin.toml")).unwrap_or_default();
+    assert!(manifest.contains("schema_version = 1"), "{manifest}");
+    assert!(manifest.contains("id = \"umbra.plugin.dis\""), "{manifest}");
+    assert!(manifest.contains("version = \"0.1.0\""), "{manifest}");
+    assert!(manifest.contains("abi = \"0.1\""), "{manifest}");
+    // The other packages are still there.
+    assert!(target.join("plugins/wander").is_dir());
+    assert!(target.join("plugins/c-circle").is_dir());
+}

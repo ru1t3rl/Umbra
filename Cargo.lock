@@ -1438,6 +1438,7 @@ name = "umbra-net-dis"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "socket2",
  "thiserror",
  "umbra-sdk",
 ]

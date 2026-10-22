@@ -176,13 +176,21 @@ pub struct NetLink {
     abort: Option<NetFault>,
 }
 
+/// The key of a template's `network.<adapter>` table that maps a remote entity type to the template.
+const ENTITY_TYPE_KEY: &str = "entity_type";
+
+/// Every key of a template's `network.<adapter>` table that the engine reads itself (ASM-228); all
+/// other keys belong to the adapter. `umbra_sdk::MANAGER_TEMPLATE_KEYS` must equal this list
+/// (`tests/manager_template_keys.rs`).
+pub const MANAGER_TEMPLATE_KEYS: &[&str] = &[ENTITY_TYPE_KEY];
+
 /// The scenario's `network.<adapter>.entity_type` of each template, as the adapter publishes it.
 fn declared_types(scenario: &Scenario, adapter: &str) -> Vec<(TemplateId, NetEntityType)> {
     scenario
         .templates
         .iter()
         .filter_map(|t| {
-            let token = t.network.get(adapter)?.get("entity_type")?.as_str()?;
+            let token = t.network.get(adapter)?.get(ENTITY_TYPE_KEY)?.as_str()?;
             Some((t.id.clone(), NetEntityType::new(token)))
         })
         .collect()

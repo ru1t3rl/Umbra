@@ -172,6 +172,10 @@
 /// by `export_plugin!` can name them as `$crate::abi::..` without its own dependency.
 pub use umbra_plugin_api as abi;
 
+/// `serde_json`, re-exported: the type of `ConfigureInput::params` and `templates`, so a plugin names
+/// `umbra_sdk::serde_json::Value` without its own dependency.
+pub use serde_json;
+
 mod behavior;
 mod convert;
 mod error;
@@ -190,5 +194,6 @@ pub use error::Error;
 pub use export::__private;
 pub use network::{
     ConfigureInput, ControlAction, Counters, DeadReckoning, EntityState, Euler, Inbox, KeySpace,
-    NetKey, NetMessage, NetworkAdapter, NetworkAdapterConfig, NetworkAdapterFactory, SimTime,
+    MANAGER_TEMPLATE_KEYS, NetKey, NetMessage, NetworkAdapter, NetworkAdapterConfig,
+    NetworkAdapterFactory, SimTime,
 };

@@ -162,7 +162,8 @@ A network adapter connects a scenario to a network (REQ-N-1, ADR 0030, ADR 0033)
 the owned entities' states and events (`publish`) and takes the remote ones from it (`poll`). It is an
 ordinary capability of kind 3 and needs a host of ABI 0.1 or newer. The crate docs of `umbra-sdk` have a
 complete minimal adapter; the fixture `crates/umbra-test-plugin/src/network.rs` (a mirror) is a fuller
-one.
+one, and `crates/umbra-net-dis` (the DIS adapter, [`docs/net/dis.md`](net/dis.md)) is a complete real one:
+UDP sockets, two I/O threads, bounded queues, built on the SDK only.
 
 1. **Traits** (they mirror the engine's `NetworkAdapterConfig` and `NetworkAdapter` and the ABI
    lifecycle `configure -> key_space -> start -> (publish | poll | counters)* -> stop -> destroy`):
@@ -181,6 +182,11 @@ one.
      adapter started. The SDK calls `stop` at most once and always before the adapter drops (also when
      the host destroys a started adapter without `stop`), and drops the adapter before its
      configuration.
+   Host-free tests: `SimTime::new(tick, rate_hz)` and `ConfigureInput::from_parts(name, params,
+   templates)` are public, and `umbra_sdk::serde_json` re-exports the JSON crate the params use, so an
+   adapter's `configure`, `start` and `publish` can be driven in a plain test (`poll` needs a host sink).
+   `umbra_sdk::MANAGER_TEMPLATE_KEYS` lists the keys of a template's `[network.<name>]` table that the engine
+   itself reads (`entity_type`); every other key is the adapter's to define and validate.
 2. **Messages** (`NetMessage`: entity state, entity removed, fire, detonation, run control) borrow their
    strings; ECEF metres, SI units, orientation as yaw, pitch, roll in radians, `None` for "not sent".
    Keep what you need from `publish` as owned data (the borrow ends with the call).
@@ -194,7 +200,9 @@ one.
    datagram as a decode error): a `force` is one ID segment, `[a-z][a-z0-9_]*` (for example `blue`,
    `opfor_2`); a `weapon` is a namespaced ID, `segment ("." segment)+` with the same segment rule, so at
    least two segments (for example `acme.cannon_120`); both at most `UMBRA_MAX_ID_LEN` (128) bytes, no
-   upper case, hyphens or spaces. A message the host refuses faults the capability, and the `poll`
+   upper case, hyphens or spaces.
+   (The DIS adapter's `decode_errors` also counts datagrams of another exercise and Fire PDUs of a munition
+   in no `weapons` entry; on a shared network these are normal traffic, not a fault.) A message the host refuses faults the capability, and the `poll`
    returns the host's code whatever the adapter returns. The `Inbox` cannot outlive the call or
    leave its thread (the sink token is valid only during the call, REQ-P-11).
 4. **Threads and blocking** (ADR 0033): `publish` and `poll` never block on I/O; move data to or from

@@ -32,7 +32,7 @@ pub use engine::{
     AgentInit, Engine, EngineConfig, Pumped, RouteSpec, RunSummary, RunUntil, SpawnSpec, TickView,
 };
 pub use error::{EngineError, SpawnParam};
-pub use net::{GhostInfo, NetFault, NetLink, net_summary};
+pub use net::{GhostInfo, MANAGER_TEMPLATE_KEYS, NetFault, NetLink, net_summary};
 pub use plugins::{
     CapabilityInfo, HostOptions, LoadedScenario, PluginError, PluginFault, PluginFaultPolicy,
     PluginHost, PluginInfo, PluginLog, instantiate_with_plugins, load_plugins,
