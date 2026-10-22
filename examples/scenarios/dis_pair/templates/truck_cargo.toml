@@ -1,0 +1,10 @@
+schema_version = 1
+id = "truck.cargo"
+extends = "ground_vehicle.base"
+description = "Cargo truck; published on DIS as entity type 1.1.225.4.1.0.0"
+
+[motion]
+params = { max_speed_mps = 22.0, max_accel_mps2 = 1.5 }
+
+[network.dis]
+entity_type = "1.1.225.4.1.0.0"

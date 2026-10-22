@@ -185,7 +185,7 @@ state (no statics, one pair of I/O threads per instance, counters per instance).
 
 Tests: two DIS instances exchanging unicast and three instances with per-instance counters, event IDs and
 request IDs (`tests/transport.rs`); one plugin image configured twice under two scenario names, and DIS
-next to the loopback in one process (`umbra-engine/tests/dis_plugin.rs`).
+next to the loopback in one process (`umbra-engine/tests/dis_plugin.rs`). Whole engines (M6 WI-16): v7, v6 and v6-to-v7 unicast, broadcast and multicast on loopback, multicast echo, DIS next to the loopback and a unicast plus a multicast DIS adapter in one scenario with no crosstalk or forwarding (`umbra-engine/tests/dis_exchange.rs`), and two `umbra run` processes on `examples/scenarios/dis_pair` (`umbra-cli/tests/cli_dis_pair.rs`).
 
 ## Configuration (`[[network_adapters]] params`)
 
