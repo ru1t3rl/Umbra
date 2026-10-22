@@ -1,5 +1,6 @@
 //! Helpers for the network engine tests (M6 step 4): the `net_pair` fixtures, a registry holding
-//! loopback factories, and per-engine stepping with event capture. Each test binary uses a subset.
+//! loopback factories, scenarios with plugin network adapters (WI-12), and per-engine stepping with
+//! event capture. Each test binary uses a subset.
 #![expect(
     dead_code,
     reason = "each test binary uses a subset of the shared helpers"
@@ -15,7 +16,10 @@ use umbra_core::net::KeySpace;
 use umbra_core::{EntityId, Registry, SimEvent, StateHash};
 use umbra_engine::builtins::builtin_registry;
 use umbra_engine::scenario::{RunOptions, ScenarioRun, instantiate, load_scenario};
-use umbra_engine::{ClockMode, Engine, EntitySnapshot, ManualWallClock, Ownership};
+use umbra_engine::{
+    ClockMode, Engine, EntitySnapshot, ManualWallClock, Ownership, instantiate_with_plugins,
+    load_scenario_with_plugins,
+};
 use umbra_net::LoopbackHub;
 
 pub fn fixture(dir: &str) -> PathBuf {
@@ -60,6 +64,29 @@ pub fn start(dir: &str, registry: &Registry, clock: Option<ClockMode>) -> Scenar
         },
     )
     .unwrap_or_else(|e| panic!("instantiating net_pair/{dir}: {e}"))
+}
+
+/// Loads `net_pair/<dir>` with the plugins under `plugins` (on top of `registry`) and instantiates it
+/// on a manual wall clock (M6 WI-12: plugin network adapters). The engine keeps the plugin host.
+pub fn start_with_plugins(
+    dir: &str,
+    registry: &Registry,
+    plugins: &[PathBuf],
+    clock: Option<ClockMode>,
+) -> ScenarioRun {
+    let loaded = load_scenario_with_plugins(registry, &fixture(dir), plugins)
+        .unwrap_or_else(|e| panic!("loading net_pair/{dir} with plugins: {e}"));
+    instantiate_with_plugins(
+        &loaded,
+        RunOptions {
+            wall: Box::new(ManualWallClock::with_auto_advance(Duration::from_micros(
+                500,
+            ))),
+            seed: None,
+            clock,
+        },
+    )
+    .unwrap_or_else(|e| panic!("instantiating net_pair/{dir} with plugins: {e}"))
 }
 
 /// One engine and what it has reported.

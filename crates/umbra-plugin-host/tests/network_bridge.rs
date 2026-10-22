@@ -17,9 +17,8 @@
 //! its capability, each image released after its own adapter); the core adapter contract suite
 //! through the bridge, fed through the plugin's echo path.
 //!
-//! The rows that need a real SDK-built library (the network capabilities of `umbra-test-plugin`, the
-//! `plugin_failures.rs` network rows and the engine-level `net_plugin_faults.rs`) come with the SDK
-//! network support in WI-12 (ASM-407).
+//! The rows that need a real SDK-built library (the network capabilities of `umbra-test-plugin`) are
+//! the `plugin_failures.rs` network rows and the engine-level `net_plugin_faults.rs` (WI-12, ASM-407).
 #![expect(unsafe_code, reason = "forged! publishes raw ABI entry functions")]
 #![expect(clippy::expect_used, reason = "tests build known-valid fixtures")]
 

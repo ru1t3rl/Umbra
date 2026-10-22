@@ -22,3 +22,13 @@ Used by `crates/umbra-engine/tests/net_loopback.rs`, `net_determinism.rs` and (f
 - `fault_abort_start/`, `fault_abort_stop/` (from WI-9): `test.net.fault` with `publish.control = true`, failing
   on any run-control message (`fail = "control"`) or on `Stop` only (`fail = "stop"`) (`net_fault.rs`).
 - `control_short/` (from WI-9): as `control/`, 0.2 s long, so a run reaches its duration in 6 ticks.
+- `plugins_a/`, `plugins_fault/` (from WI-12, ASM-410): as `a/` with two more adapters from two
+  distinct SDK-built plugin images: `left` (`test.network.net_ok` of `test.plugin.fixture`, feature
+  `network`, `key_base = 3000`) and `right` (`test.network.peer_ok` of `test.plugin.net_peer`, feature
+  `network_peer`, `key_base = 4000`); both mirror what they publish back as remote entities. In
+  `plugins_fault/`, `right` is `test.network.peer_panics_in_poll` (`panic_at_tick = 60`) under
+  `disable_capability` (`net_determinism.rs`).
+- `plugin_fault_abort/`, `plugin_fault_disable/`, `plugin_bad_params/` (from WI-12): one plugin adapter
+  `left`: `test.network.net_panics_in_poll` (`panic_at_tick = 5`) under `abort` and under
+  `disable_capability`, and `test.network.net_ok` with `remote_offset = 7`, which its `configure`
+  refuses (`net_plugin_faults.rs`).

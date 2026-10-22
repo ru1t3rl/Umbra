@@ -8,10 +8,18 @@
 //! bumps the kind's minor here (or the SDK keeps writing the old prefix); the surface table in the tests
 //! below pins this.
 
-use crate::abi::UMBRA_ABI_VERSION_MAJOR;
+use crate::abi::{UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR};
 
 /// The minor of the behavior kind: the newest minor that changed a struct of its call surface.
 pub(crate) const BEHAVIOR_MINOR: u32 = 0;
+
+/// The minor of the network adapter kind (ABI 0.1, ADR 0033): the kind and every struct of its call
+/// surface exist since minor 1.
+pub(crate) const NETWORK_ADAPTER_MINOR: u32 = 1;
+
+// A kind's minor never exceeds the minor of the `umbra-plugin-api` the SDK is built on (behavior 0
+// trivially).
+const _: () = assert!(NETWORK_ADAPTER_MINOR <= UMBRA_ABI_VERSION_MINOR);
 
 /// The packed `abi_version` of minor `minor` of this SDK's major.
 pub(crate) const fn abi_version(minor: u32) -> u32 {
@@ -38,6 +46,17 @@ mod tests {
         ("UmbraValueSink", 0),
     ];
 
+    /// Every struct of the network adapter call surface (ADR 0033) with the minor of its last layout
+    /// change. `UmbraCapability` and `UmbraErrorSink` are shared with the behavior kind.
+    const NETWORK_ADAPTER_SURFACE: [(&str, u32); 6] = [
+        ("UmbraCapability", 0),
+        ("UmbraErrorSink", 0),
+        ("UmbraNetworkVTable", 1),
+        ("UmbraNetBatch", 1),
+        ("UmbraNetMessage", 1),
+        ("UmbraNetSink", 1),
+    ];
+
     /// Whether a kind of minor `kind_minor` covers every struct of `surface`.
     fn covers(kind_minor: u32, surface: &[(&str, u32)]) -> bool {
         surface.iter().all(|&(_, changed)| changed <= kind_minor)
@@ -55,6 +74,15 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), BEHAVIOR_SURFACE.len(), "each struct once");
+    }
+
+    #[test]
+    fn the_network_adapter_minor_covers_its_call_surface_and_no_less_would() {
+        assert!(covers(NETWORK_ADAPTER_MINOR, &NETWORK_ADAPTER_SURFACE));
+        assert!(
+            !covers(NETWORK_ADAPTER_MINOR - 1, &NETWORK_ADAPTER_SURFACE),
+            "the kind's structs are defined by minor 1, so minor 0 cannot carry it"
+        );
     }
 
     #[test]

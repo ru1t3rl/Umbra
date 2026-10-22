@@ -130,3 +130,144 @@ fn a_behavior_only_plugin_writes_minor_0_everywhere() {
         assert_eq!(m, 0, "{what}");
     }
 }
+
+// ---------------------------------------------------------------- M6 WI-12: the network kind's rows
+
+mod net_harness;
+
+use umbra_sdk::__private::{Capabilities, OwnedDescriptor, Plugin};
+use umbra_sdk::abi::{
+    UMBRA_CAPABILITY_BEHAVIOR, UMBRA_CAPABILITY_NETWORK_ADAPTER, UmbraPluginDescriptor,
+};
+use umbra_sdk::{
+    ConfigureInput, Error, Inbox, KeySpace, NetKey, NetMessage, NetworkAdapter,
+    NetworkAdapterConfig, NetworkAdapterFactory, SimTime,
+};
+
+/// A network adapter whose `poll` pushes one message.
+struct MinorNet;
+struct MinorNetConfig;
+struct MinorNetAdapter;
+
+impl NetworkAdapterFactory for MinorNet {
+    const ID: &'static str = "test.network.minor";
+    const PARAM_SCHEMA: &'static str = r#"{"type":"object"}"#;
+    type Config = MinorNetConfig;
+    fn configure(_: &ConfigureInput) -> Result<MinorNetConfig, Error> {
+        Ok(MinorNetConfig)
+    }
+}
+
+impl NetworkAdapterConfig for MinorNetConfig {
+    type Adapter = MinorNetAdapter;
+    fn key_space(&self) -> KeySpace {
+        KeySpace::new(100, 10).expect("valid")
+    }
+    fn start(&mut self, _: SimTime) -> Result<MinorNetAdapter, Error> {
+        Ok(MinorNetAdapter)
+    }
+}
+
+impl NetworkAdapter for MinorNetAdapter {
+    fn publish(&mut self, _: SimTime, _: &[NetMessage<'_>]) -> Result<(), Error> {
+        Ok(())
+    }
+    fn poll(&mut self, _: SimTime, inbox: &mut Inbox<'_>) -> Result<(), Error> {
+        inbox.push(&NetMessage::EntityRemoved { key: NetKey(7) })
+    }
+    fn stop(&mut self) {}
+}
+
+/// A plugin with only a network adapter.
+struct NetworkOnly;
+impl Plugin for NetworkOnly {
+    const ID: &'static str = "test.plugin.minor_network";
+    const NAME: &'static str = "network only";
+    const VERSION: &'static str = "0.1.0";
+    fn capabilities(caps: &mut Capabilities) {
+        caps.network_adapter::<MinorNet>();
+    }
+}
+
+/// A plugin with a behavior and a network adapter.
+struct Mixed;
+impl Plugin for Mixed {
+    const ID: &'static str = "test.plugin.minor_mixed";
+    const NAME: &'static str = "mixed";
+    const VERSION: &'static str = "0.1.0";
+    fn capabilities(caps: &mut Capabilities) {
+        caps.behavior::<support::OkFactory>();
+        caps.network_adapter::<MinorNet>();
+    }
+}
+
+/// Every struct the SDK writes for `d`, with its declared minor: the descriptor, each capability and
+/// vtable (named by kind), and the message a network adapter's `poll` pushes.
+fn written_by(d: &UmbraPluginDescriptor) -> Vec<(&'static str, u32)> {
+    net_harness::reset();
+    let mut out = vec![("descriptor", minor(d.abi_version))];
+    for c in net_harness::capabilities(d) {
+        match c.kind {
+            UMBRA_CAPABILITY_BEHAVIOR => {
+                out.push(("behavior capability", minor(c.abi_version)));
+                // SAFETY: a behavior capability's vtable lives as long as the descriptor.
+                let vt = unsafe { &*(c.vtable.cast::<UmbraBehaviorVTable>()) };
+                out.push(("behavior vtable", minor(vt.abi_version)));
+            }
+            UMBRA_CAPABILITY_NETWORK_ADAPTER => {
+                out.push(("network capability", minor(c.abi_version)));
+                let vt = net_harness::net_vtable(c);
+                out.push(("network vtable", minor(vt.abi_version)));
+                let (code, h, err) = net_harness::configure(vt, "{}");
+                assert_eq!(code, UMBRA_OK, "{err:?}");
+                assert_eq!(net_harness::start(vt, h, 30).0, UMBRA_OK);
+                assert_eq!(net_harness::poll(vt, h, 4).0, UMBRA_OK);
+                net_harness::destroy(vt, h);
+                let pushed = net_harness::pushed();
+                assert_eq!(pushed.len(), 1, "the poll pushed one message");
+                out.push(("network message", minor(pushed[0].abi_version)));
+            }
+            other => panic!("unexpected kind {other}"),
+        }
+    }
+    out
+}
+
+#[test]
+fn a_network_adapter_plugin_declares_minor_1_and_writes_every_network_struct_in_minor_1() {
+    let built = OwnedDescriptor::build::<NetworkOnly>();
+
+    let written = written_by(built.descriptor());
+
+    assert_eq!(
+        written,
+        [
+            ("descriptor", 1),
+            ("network capability", 1),
+            ("network vtable", 1),
+            ("network message", 1),
+        ]
+    );
+}
+
+#[test]
+fn a_mixed_plugin_keeps_its_behavior_structs_at_minor_0_under_a_minor_1_descriptor() {
+    let built = OwnedDescriptor::build::<Mixed>();
+
+    let written = written_by(built.descriptor());
+
+    assert_eq!(
+        written,
+        [
+            ("descriptor", 1),
+            ("behavior capability", 0),
+            ("behavior vtable", 0),
+            ("network capability", 1),
+            ("network vtable", 1),
+            ("network message", 1),
+        ],
+        "each struct carries its kind's minor; the descriptor the highest"
+    );
+    let descriptor_minor = written[0].1;
+    assert!(written.iter().all(|(_, m)| *m <= descriptor_minor));
+}

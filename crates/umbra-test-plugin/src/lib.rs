@@ -22,8 +22,24 @@
 //! `init_fails`, `init_panics`, `shutdown_panics`, and `bad_schema` (adds `test.behavior.bad_schema`,
 //! whose param schema uses `anyOf`, outside the ADR 0009 subset). A library without the entry symbol,
 //! or with a null one, cannot be written in safe Rust; the host tests build those from C.
+//!
+//! Network adapters (ABI 0.1, M6 WI-12, module `network`): the feature `network` adds the network
+//! capabilities `test.network.net_ok`, `.net_panics_in_poll`, `.net_bad_message` and
+//! `.net_blocks_join`, so the descriptor declares ABI 0.1 (the default build stays 0.0, ADR 0033).
+//! The feature `network_peer` makes the crate a second, independent plugin, `test.plugin.net_peer`
+//! 0.1.0, with only `test.network.peer_ok` and `.peer_panics_in_poll` (ASM-410, ASM-414).
 
 #![forbid(unsafe_code)]
+#![cfg_attr(
+    feature = "network_peer",
+    expect(
+        dead_code,
+        reason = "the network peer exports only its network capabilities, not the behaviors"
+    )
+)]
+
+#[cfg(any(feature = "network", feature = "network_peer"))]
+mod network;
 
 use umbra_sdk::{
     Behavior, BehaviorFactory, BehaviorInstance, EntityView, Error, Intent, Intents, Interface,
@@ -369,9 +385,11 @@ fn shutdown() {
     panic!("shutdown_panics: shutdown panics on purpose");
 }
 
-/// Exports the plugin with the default capabilities plus `$extra`.
+/// Exports the plugin with the default capabilities plus the behaviors `$extra` and the network
+/// adapters `$net`.
+#[cfg(not(feature = "network_peer"))]
 macro_rules! fixture {
-    ($($extra:ty),*) => {
+    ([$($extra:ty),*], [$($net:ty),*]) => {
         export_plugin! {
             id: "test.plugin.fixture",
             name: "Umbra test fixture",
@@ -381,13 +399,53 @@ macro_rules! fixture {
                 PanicTick, PanicHalt, PanicHaltRunning, PanicSetInput, PanicOutput, PanicDestroy,
                 BadIntent, IntentFlood, BadValue, $($extra),*
             ],
+            network_adapters: [$($net),*],
             init: init,
             shutdown: shutdown,
         }
     };
 }
 
-#[cfg(not(feature = "bad_schema"))]
-fixture!();
-#[cfg(feature = "bad_schema")]
-fixture!(BadSchema);
+#[cfg(not(any(feature = "bad_schema", feature = "network", feature = "network_peer")))]
+fixture!([], []);
+#[cfg(all(
+    feature = "bad_schema",
+    not(any(feature = "network", feature = "network_peer"))
+))]
+fixture!([BadSchema], []);
+#[cfg(all(
+    feature = "network",
+    not(any(feature = "bad_schema", feature = "network_peer"))
+))]
+fixture!(
+    [],
+    [
+        network::NetOk,
+        network::NetPanicsInPoll,
+        network::NetBadMessage,
+        network::NetBlocksJoin
+    ]
+);
+#[cfg(all(
+    feature = "network",
+    feature = "bad_schema",
+    not(feature = "network_peer")
+))]
+fixture!(
+    [BadSchema],
+    [
+        network::NetOk,
+        network::NetPanicsInPoll,
+        network::NetBadMessage,
+        network::NetBlocksJoin
+    ]
+);
+#[cfg(feature = "network_peer")]
+export_plugin! {
+    id: "test.plugin.net_peer",
+    name: "Umbra test network peer",
+    version: "0.1.0",
+    network_adapters: [network::PeerOk, network::PeerPanicsInPoll],
+    init: init,
+    shutdown: shutdown,
+}

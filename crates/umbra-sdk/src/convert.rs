@@ -3,7 +3,8 @@
 //! size for a struct that declares a minor the SDK knows, a multiple of 8; non-null and aligned
 //! pointers; `len <= isize::MAX` and `checked_mul` before any slice; UTF-8; known enum values and the
 //! `BbValue` invariants. Structs the SDK writes during a behavior's calls (intents, values) carry the
-//! behavior kind's minor (`BEHAVIOR_MINOR`, ADR 0033) and its size.
+//! behavior kind's minor (`BEHAVIOR_MINOR`, ADR 0033) and its size. The network adapter kind's
+//! conversions (ABI 0.1) are in the child module `network`.
 #![expect(
     unsafe_code,
     reason = "turns host pointers into references after checking them (ADR 0019)"
@@ -33,9 +34,13 @@ use crate::minor::{BEHAVIOR_MINOR, abi_version};
 /// booleans and nullable function pointers only), so reading one from host memory is never undefined
 /// behavior once the memory is readable.
 pub(crate) trait Headed: Sized {
-    /// `sizeof` the struct at minor 0. The SDK is at minor 0, so this equals `size_of::<Self>()`; when
-    /// the SDK appends fields, readers must only touch fields inside `struct_size`.
+    /// `sizeof` the struct at [`Headed::FIRST_MINOR`]. No struct has grown since it was defined, so
+    /// this equals `size_of::<Self>()`; when the SDK appends fields, readers must only touch fields
+    /// inside `struct_size`.
     const MIN_SIZE: usize = size_of::<Self>();
+    /// The minor that defines the struct (0 for the ABI 0.0 structs, 1 for the network adapter
+    /// structs, ADR 0033); a header declaring an older minor is malformed.
+    const FIRST_MINOR: u32 = 0;
 }
 
 macro_rules! headed {
@@ -60,6 +65,7 @@ pub(crate) fn header_ok<T: Headed>(abi_version: u32, struct_size: u32) -> bool {
     };
     let newer_minor = abi_version & 0xFFFF > UMBRA_ABI_VERSION_MINOR;
     abi_version >> 16 == UMBRA_ABI_VERSION_MAJOR
+        && abi_version & 0xFFFF >= T::FIRST_MINOR
         && size >= T::MIN_SIZE
         && size % 8 == 0
         && (newer_minor || size <= size_of::<T>())
@@ -400,6 +406,11 @@ pub(crate) fn intent_out(intent: &Intent<'_>) -> UmbraIntent {
     }
     out
 }
+
+// ---------------------------------------------------------------- the network adapter kind
+
+mod network;
+pub(crate) use network::{NetSink, batch_in as net_batch_in, net_sink, sim_time};
 
 /// `size_of::<T>()` as the `u32` of a `struct_size` field (every ABI struct is far below 4 GiB).
 pub(crate) fn size_of_u32<T>() -> u32 {

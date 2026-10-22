@@ -9,8 +9,10 @@
 //! traits. Every trampoline runs its body under a panic guard (`guard::catch`) and validates every
 //! input before any trait call. Every struct the SDK writes carries the minor of the capability kind it
 //! belongs to (ADR 0033, `minor.rs`): a capability, its vtable and the structs of its calls the kind's
-//! minor (behavior 0), the descriptor the highest of its capabilities' minors, so a behavior-only plugin
-//! built with this SDK still loads and runs in an ABI 0.0 host.
+//! minor (behavior 0, network adapter 1), the descriptor the highest of its capabilities' minors, so a
+//! behavior-only plugin built with this SDK still loads and runs in an ABI 0.0 host, and only a plugin
+//! with a network adapter needs an ABI 0.1 host. The network adapter trampolines are in the child
+//! module `network`.
 //!
 //! Handles: a configured behavior and an instance are each one `Box<Handle<T>>`, whose first field is
 //! the `TypeId` of a per-capability tag. Every call checks the tag before touching the value, so a
@@ -26,9 +28,9 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 
 use crate::abi::{
     UMBRA_CAPABILITY_BEHAVIOR, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_PANIC, UMBRA_OK,
-    UmbraBehavior, UmbraBehaviorBatch, UmbraBehaviorVTable, UmbraCapability, UmbraCode,
-    UmbraErrorSink, UmbraHostApi, UmbraInstance, UmbraPluginDescriptor, UmbraStr, UmbraValue,
-    UmbraValueSink,
+    UmbraBehavior, UmbraBehaviorBatch, UmbraBehaviorVTable, UmbraCapability, UmbraCapabilityKind,
+    UmbraCode, UmbraErrorSink, UmbraHostApi, UmbraInstance, UmbraNetworkVTable,
+    UmbraPluginDescriptor, UmbraStr, UmbraValue, UmbraValueSink,
 };
 use crate::behavior::{
     Behavior, BehaviorFactory, BehaviorInstance, Contact, EntityView, Fault, Intents, Level,
@@ -44,11 +46,12 @@ use crate::minor::{BEHAVIOR_MINOR, abi_version};
 pub mod __private {
     use std::any::TypeId;
 
-    use super::{Built, Cap, DESCRIPTOR, behavior_cap};
+    use super::{Built, Cap, DESCRIPTOR, behavior_cap, network::network_cap};
     use crate::abi::{UmbraHostApi, UmbraPluginDescriptor};
     use crate::behavior::BehaviorFactory;
     use crate::error::Error;
     use crate::guard::catch;
+    use crate::network::NetworkAdapterFactory;
 
     /// What `export_plugin!` declares about a plugin; implemented by the marker type the macro
     /// generates inside `umbra_plugin_entry`.
@@ -83,6 +86,31 @@ pub mod __private {
         pub fn behavior<F: BehaviorFactory>(&mut self) {
             self.caps.push(behavior_cap::<F>());
         }
+
+        /// Adds the network adapter capability of factory `F` (ABI 0.1, ADR 0033).
+        pub fn network_adapter<F: NetworkAdapterFactory>(&mut self) {
+            self.caps.push(network_cap::<F>());
+        }
+    }
+
+    /// A descriptor of `P` built like the one the entry returns, but owned by the caller and not
+    /// stored: the entry keeps one descriptor per binary, so a test that inspects the descriptors of
+    /// several plugin declarations (the required-minor rule, ADR 0033) builds them with this. The
+    /// vtables call the same trampolines as the entry's. Not public API.
+    pub struct OwnedDescriptor(Built);
+
+    impl OwnedDescriptor {
+        /// Builds `P`'s descriptor (a panic in a capability's declaration propagates).
+        #[must_use]
+        pub fn build<P: Plugin>() -> Self {
+            Self(Built::new::<P>())
+        }
+
+        /// The descriptor; its pointers stay valid while `self` lives.
+        #[must_use]
+        pub fn descriptor(&self) -> &UmbraPluginDescriptor {
+            &self.0.descriptor
+        }
     }
 
     /// The body of the generated `umbra_plugin_entry` (REQ-P-1): validates the host API and stores it
@@ -116,6 +144,32 @@ use __private::{Capabilities, Plugin};
 
 // ---------------------------------------------------------------- the static descriptor
 
+/// The vtable of one capability, by kind.
+pub(crate) enum VTable {
+    /// `UMBRA_CAPABILITY_BEHAVIOR`.
+    Behavior(UmbraBehaviorVTable),
+    /// `UMBRA_CAPABILITY_NETWORK_ADAPTER` (ABI 0.1).
+    Network(UmbraNetworkVTable),
+}
+
+impl VTable {
+    /// The capability kind of this vtable.
+    fn kind(&self) -> UmbraCapabilityKind {
+        match self {
+            Self::Behavior(_) => UMBRA_CAPABILITY_BEHAVIOR,
+            Self::Network(_) => crate::abi::UMBRA_CAPABILITY_NETWORK_ADAPTER,
+        }
+    }
+
+    /// The address of the vtable struct (stable while `self` does not move).
+    fn as_ptr(&self) -> *const std::ffi::c_void {
+        match self {
+            Self::Behavior(v) => std::ptr::from_ref(v).cast(),
+            Self::Network(v) => std::ptr::from_ref(v).cast(),
+        }
+    }
+}
+
 /// One capability before it is laid out: its strings, its vtable and the minor of its kind.
 pub(crate) struct Cap {
     minor: u32,
@@ -123,7 +177,7 @@ pub(crate) struct Cap {
     version: &'static str,
     schema: &'static str,
     metadata: String,
-    vtable: UmbraBehaviorVTable,
+    vtable: VTable,
 }
 
 /// The descriptor and everything it points to; built once per binary, never mutated or freed.
@@ -133,7 +187,7 @@ pub(crate) struct Built {
     descriptor: UmbraPluginDescriptor,
     // The arrays and texts the descriptor points into (heap blocks: stable when `Built` moves).
     _capabilities: Box<[UmbraCapability]>,
-    _vtables: Box<[UmbraBehaviorVTable]>,
+    _vtables: Box<[VTable]>,
     _metadata: Box<[String]>,
 }
 
@@ -168,13 +222,13 @@ impl Built {
                 |(&(minor, id, version, schema), (vtable, meta))| UmbraCapability {
                     abi_version: abi_version(minor),
                     struct_size: size_of_u32::<UmbraCapability>(),
-                    kind: UMBRA_CAPABILITY_BEHAVIOR,
+                    kind: vtable.kind(),
                     reserved_0: 0,
                     id: umbra_str(id),
                     version: umbra_str(version),
                     param_schema: umbra_str(schema),
                     metadata: umbra_str(meta),
-                    vtable: std::ptr::from_ref(vtable).cast(),
+                    vtable: vtable.as_ptr(),
                 },
             )
             .collect();
@@ -234,7 +288,7 @@ fn behavior_cap<F: BehaviorFactory>() -> Cap {
         version: F::VERSION.unwrap_or(""),
         schema: F::PARAM_SCHEMA,
         metadata: interface.metadata(),
-        vtable,
+        vtable: VTable::Behavior(vtable),
     }
 }
 
@@ -583,6 +637,10 @@ unsafe extern "C" fn output<F: BehaviorFactory>(
     })
 }
 
+// ---------------------------------------------------------------- the network adapter vtable
+
+mod network;
+
 // ---------------------------------------------------------------- the macro
 
 /// Exports a plugin (REQ-P-1): generates exactly one item, `#[unsafe(no_mangle)] pub unsafe extern
@@ -596,6 +654,10 @@ unsafe extern "C" fn output<F: BehaviorFactory>(
 /// stored the host API; reset any global state there (ADR 0021). `shutdown` (optional) is a `fn()`
 /// run once at the end of a lifecycle in which `init` succeeded; `log` still works inside it.
 ///
+/// `behaviors` and `network_adapters` (ABI 0.1, ADR 0033) are each optional, in this order; the
+/// capabilities are declared in list order, behaviors first. The descriptor declares the lowest ABI
+/// minor that defines every listed kind: 0 for behaviors only, 1 with a network adapter.
+///
 /// Syntax (a complete plugin is in the crate docs):
 ///
 /// ```text
@@ -603,16 +665,18 @@ unsafe extern "C" fn output<F: BehaviorFactory>(
 ///     id: "example.plugin.wander",
 ///     name: "Wander example",
 ///     version: "0.1.0",
-///     behaviors: [WanderFactory],
-///     init: my_init,          // optional
-///     shutdown: my_shutdown,  // optional
+///     behaviors: [WanderFactory],          // optional
+///     network_adapters: [MyNetFactory],    // optional (ABI 0.1)
+///     init: my_init,                       // optional
+///     shutdown: my_shutdown,               // optional
 /// }
 /// ```
 #[macro_export]
 macro_rules! export_plugin {
     (
-        id: $id:literal, name: $name:literal, version: $version:literal,
-        behaviors: [$($factory:ty),* $(,)?]
+        id: $id:literal, name: $name:literal, version: $version:literal
+        $(, behaviors: [$($factory:ty),* $(,)?])?
+        $(, network_adapters: [$($net:ty),* $(,)?])?
         $(, init: $init:path)? $(, shutdown: $shutdown:path)? $(,)?
     ) => {
         /// The plugin entry point (REQ-P-1), generated by `umbra_sdk::export_plugin!`.
@@ -629,7 +693,9 @@ macro_rules! export_plugin {
                 const NAME: &'static str = $name;
                 const VERSION: &'static str = $version;
                 fn capabilities(caps: &mut $crate::__private::Capabilities) {
-                    $(caps.behavior::<$factory>();)*
+                    let _ = &caps;
+                    $($(caps.behavior::<$factory>();)*)?
+                    $($(caps.network_adapter::<$net>();)*)?
                 }
                 $(fn init() -> ::core::result::Result<(), $crate::Error> {
                     $init()

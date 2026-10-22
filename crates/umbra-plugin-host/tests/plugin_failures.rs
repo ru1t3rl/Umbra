@@ -740,3 +740,474 @@ fn the_library_exports_exactly_one_umbra_symbol() {
 
     assert_eq!(exported, ["umbra_plugin_entry"], "{text}");
 }
+
+// ------------------------------------------------------------- network rows (M6 WI-12, ASM-407)
+//
+// The network capabilities of the fixture (feature `network`, plugin `test.plugin.fixture` at ABI
+// 0.1) and of the second plugin image (feature `network_peer`, `test.plugin.net_peer`), built with
+// `umbra-sdk` (see `umbra-test-plugin/src/network.rs`). The raw-ABI rows the SDK cannot produce
+// (unknown kind, non-UTF-8 string, more than `max` pushes, a stale sink token) are in
+// `network_bridge.rs`.
+
+use umbra_core::PluginFaultPolicy;
+use umbra_core::net::{
+    AdapterStart, NetEntityState, NetEntityType, NetError, NetKey, NetMessage, NetworkAdapter,
+    NetworkAdapterConfig, configure_input,
+};
+use umbra_core::{BuildError, ComponentId, ComponentKind, SimTime, TickRate};
+
+/// The features of the fixture with network capabilities, and of the peer image.
+const NET: &[&str] = &["network"];
+const PEER: &[&str] = &["network_peer"];
+
+/// A plugin directory with the fixture built with `features` as package `variant` and a manifest
+/// for plugin `id` 0.1.0 declaring ABI 0.1 (the required-minor rule: a network adapter needs 0.1).
+fn net_package(variant: &str, features: &[&str], id: &str) -> PathBuf {
+    let lib = support::plugins::shared::library("umbra-test-plugin", features);
+    let dir = support::plugins::shared::plugins_dir(&[(variant, &lib)]);
+    std::fs::write(
+        dir.join(variant).join("plugin.toml"),
+        format!("schema_version = 1\nid = \"{id}\"\nversion = \"0.1.0\"\nabi = \"0.1\"\n"),
+    )
+    .expect("manifest");
+    dir
+}
+
+/// A run-mode host with every package of `dirs` loaded and registered under `policy`.
+fn net_host(dirs: &[PathBuf], policy: PluginFaultPolicy) -> (PluginHost, Registry, Arc<Recorder>) {
+    let (mut host, recorder) = logging_host();
+    for pkg in PluginHost::discover(dirs).expect("discover") {
+        host.load(&pkg).expect("load");
+    }
+    host.set_fault_policy(policy);
+    let mut registry = Registry::new();
+    host.register(&mut registry).expect("register");
+    (host, registry, recorder)
+}
+
+/// The fixture with its network capabilities in a new host under `policy`.
+fn net_fixture(variant: &str, policy: PluginFaultPolicy) -> (PluginHost, Registry, Arc<Recorder>) {
+    net_host(&[net_package(variant, NET, "test.plugin.fixture")], policy)
+}
+
+/// Builds adapter `name` of capability `test.network.<cap>` with the JSON `params`, inside the
+/// host's build scope.
+fn net_build(
+    host: &PluginHost,
+    registry: &Registry,
+    cap: &str,
+    name: &str,
+    params: &str,
+) -> Result<Arc<dyn NetworkAdapterConfig>, BuildError> {
+    let id = ComponentId::new(&format!("test.network.{cap}")).expect("valid id");
+    let factory = registry.network_adapter(&id).expect("registered");
+    let params: umbra_core::ParamValue = serde_json::from_str(params).expect("params JSON");
+    let _scope = host.build_scope();
+    factory.build(&configure_input(name, &params, []))
+}
+
+fn at(tick: u64) -> SimTime {
+    SimTime::at_tick(TickRate::new(30).expect("30 Hz"), tick)
+}
+
+fn net_start(config: &dyn NetworkAdapterConfig) -> Box<dyn NetworkAdapter> {
+    config.start(&AdapterStart { now: at(0) }).expect("start")
+}
+
+fn net_poll(adapter: &mut dyn NetworkAdapter, tick: u64) -> Result<Vec<NetMessage>, NetError> {
+    let mut into = Vec::new();
+    adapter.poll(at(tick), 64, &mut into).map(|()| into)
+}
+
+/// An owned entity state with key `key` as the manager publishes it.
+fn owned_state(key: u64) -> NetMessage {
+    NetMessage::EntityState(NetEntityState {
+        key: NetKey(key),
+        entity_type: Some(NetEntityType::new("tank")),
+        force: Some(umbra_core::Force::new("blue").expect("force")),
+        name: Some(Arc::from("a-tank")),
+        position: umbra_core::Ecef(umbra_core::Vec3 {
+            x: 3_900_000.0,
+            y: 300_000.0,
+            z: 5_000_000.0,
+        }),
+        velocity: umbra_core::Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        acceleration: umbra_core::Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        angular_velocity: umbra_core::Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        orientation: umbra_core::WorldEuler {
+            yaw: umbra_core::Radians(0.5),
+            pitch: umbra_core::Radians(0.0),
+            roll: umbra_core::Radians(0.0),
+        },
+        dead_reckoning: umbra_core::dead_reckoning::DeadReckoning::Velocity,
+    })
+}
+
+/// The plugin's log lines (messages only), in order.
+fn lines(recorder: &Recorder) -> Vec<String> {
+    recorder.all().into_iter().map(|(_, _, m)| m).collect()
+}
+
+#[test]
+fn the_network_fixture_loads_at_abi_0_1_and_registers_its_network_adapters() {
+    let (host, registry, _) = net_fixture("net-load", PluginFaultPolicy::Abort);
+
+    let info = &host.plugins()[0];
+    assert_eq!(
+        info.abi,
+        (0, 1),
+        "a network adapter makes the descriptor declare 0.1"
+    );
+    let net: Vec<&str> = info
+        .capabilities
+        .iter()
+        .filter(|c| c.kind == ComponentKind::NetworkAdapter)
+        .map(|c| c.id.as_str())
+        .collect();
+    assert_eq!(
+        net,
+        [
+            "test.network.net_ok",
+            "test.network.net_panics_in_poll",
+            "test.network.net_bad_message",
+            "test.network.net_blocks_join",
+        ]
+    );
+    for id in &net {
+        let id = ComponentId::new(id).expect("valid id");
+        assert!(
+            registry.network_adapter(&id).is_some(),
+            "{id} is registered"
+        );
+    }
+    assert!(
+        info.capabilities
+            .iter()
+            .any(|c| c.kind == ComponentKind::Behavior && c.id.as_str() == "test.behavior.ok"),
+        "the behaviors stay"
+    );
+}
+
+#[test]
+fn the_network_fixture_under_a_0_0_manifest_is_a_manifest_mismatch() {
+    let err = load_error("net-manifest-0-0", NET);
+
+    assert!(
+        matches!(err, PluginError::ManifestMismatch { .. }),
+        "{err:?}"
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains("0.0") && msg.contains("0.1"),
+        "names both ABIs: {msg}"
+    );
+}
+
+#[test]
+fn net_ok_mirrors_and_stop_and_destroy_run_once_before_shutdown() {
+    let (host, registry, recorder) = net_fixture("net-ok", PluginFaultPolicy::Abort);
+    let config =
+        net_build(&host, &registry, "net_ok", "left", r#"{"key_base":500}"#).expect("build");
+    assert_eq!(config.key_space().base, 500);
+    assert_eq!(config.key_space().count, 100);
+    let mut adapter = net_start(config.as_ref());
+
+    adapter
+        .publish(at(1), &[owned_state(501)])
+        .expect("publish");
+    let got = net_poll(adapter.as_mut(), 2).expect("poll");
+
+    let [NetMessage::EntityState(s)] = &got[..] else {
+        panic!("one mirrored state: {got:?}")
+    };
+    assert_eq!(
+        s.key,
+        NetKey(100_501),
+        "moved out of the own key space by remote_offset"
+    );
+    let NetMessage::EntityState(sent) = owned_state(501) else {
+        unreachable!()
+    };
+    assert_eq!(
+        NetEntityState {
+            key: NetKey(501),
+            ..s.clone()
+        },
+        sent
+    );
+    adapter.stop();
+    adapter.stop();
+    drop(adapter);
+    drop(config);
+    drop(registry);
+    drop(host);
+    let log = lines(&recorder);
+    let lifecycle: Vec<&str> = log
+        .iter()
+        .map(String::as_str)
+        .filter(|l| l.starts_with("net ") || *l == "shutdown")
+        .collect();
+    assert_eq!(
+        lifecycle,
+        [
+            "net configure left",
+            "net start left",
+            "net stop left",
+            "net destroy left",
+            "shutdown"
+        ],
+        "stop and destroy once each, before the image shuts down"
+    );
+}
+
+#[test]
+fn net_blocks_join_joins_its_io_thread_in_stop_before_destroy() {
+    let (host, registry, recorder) = net_fixture("net-join", PluginFaultPolicy::Abort);
+    let config = net_build(&host, &registry, "net_blocks_join", "io", "{}").expect("build");
+    let adapter = net_start(config.as_ref());
+
+    // Dropping the started adapter without `stop`: the bridge stops it, the SDK calls the
+    // adapter's `stop`, which releases and joins the thread.
+    drop(adapter);
+    drop(config);
+    drop(registry);
+    drop(host);
+
+    let log = lines(&recorder);
+    let pos = |line: &str| {
+        log.iter()
+            .position(|l| l == line)
+            .unwrap_or_else(|| panic!("no {line:?} in {log:?}"))
+    };
+    assert!(pos("net io thread joined io") < pos("net stop io"));
+    assert!(pos("net stop io") < pos("net destroy io"));
+    assert!(pos("net destroy io") < pos("shutdown"));
+}
+
+#[test]
+fn net_panics_in_poll_faults_the_capability_and_aborts_once() {
+    let (host, registry, _) = net_fixture("net-poll-panic", PluginFaultPolicy::Abort);
+    let config = net_build(
+        &host,
+        &registry,
+        "net_panics_in_poll",
+        "p",
+        r#"{"panic_at_tick":3}"#,
+    )
+    .expect("build");
+    let mut adapter = net_start(config.as_ref());
+    adapter
+        .publish(at(1), &[owned_state(10_001)])
+        .expect("publish");
+    assert!(
+        net_poll(adapter.as_mut(), 2).is_ok(),
+        "healthy before tick 3"
+    );
+
+    let result = net_poll(adapter.as_mut(), 3);
+
+    assert!(
+        matches!(&result, Err(NetError::Faulted(m)) if m.contains("test.network.net_panics_in_poll")),
+        "{result:?}"
+    );
+    let faults = host.faults();
+    assert_eq!(faults.len(), 1, "{faults:?}");
+    assert_eq!(
+        (
+            faults[0].plugin.as_str(),
+            faults[0].capability.as_str(),
+            faults[0].call
+        ),
+        (
+            "test.plugin.fixture",
+            "test.network.net_panics_in_poll",
+            "poll"
+        )
+    );
+    assert!(
+        faults[0]
+            .message
+            .contains("poll panics on purpose at tick 3"),
+        "{}",
+        faults[0].message
+    );
+    let abort = host.take_abort().expect("abort pending");
+    assert_eq!(abort.capability.as_str(), "test.network.net_panics_in_poll");
+    assert!(host.take_abort().is_none(), "handed out once");
+    assert!(
+        adapter.publish(at(4), &[]).is_err(),
+        "no call after the fault"
+    );
+}
+
+#[test]
+fn net_bad_message_is_refused_by_the_host_and_faults_the_capability() {
+    let (host, registry, _) = net_fixture("net-bad-message", PluginFaultPolicy::DisableCapability);
+    let config = net_build(&host, &registry, "net_bad_message", "bad", "{}").expect("build");
+    let mut adapter = net_start(config.as_ref());
+
+    let result = net_poll(adapter.as_mut(), 1);
+
+    assert!(matches!(result, Err(NetError::Faulted(_))), "{result:?}");
+    let faults = host.faults();
+    assert_eq!(faults.len(), 1, "{faults:?}");
+    assert_eq!(
+        (faults[0].capability.as_str(), faults[0].call),
+        ("test.network.net_bad_message", "poll")
+    );
+    assert!(
+        faults[0].message.contains("force"),
+        "names the field: {}",
+        faults[0].message
+    );
+    assert!(
+        host.take_abort().is_none(),
+        "no abort under disable_capability"
+    );
+}
+
+#[test]
+fn configure_with_bad_params_is_a_build_error_naming_the_capability_and_not_a_fault() {
+    let (host, registry, _) = net_fixture("net-bad-params", PluginFaultPolicy::Abort);
+
+    let err = net_build(&host, &registry, "net_ok", "left", r#"{"remote_offset":7}"#)
+        .err()
+        .expect("bad params");
+
+    assert!(
+        err.message.contains("test.network.net_ok"),
+        "{}",
+        err.message
+    );
+    assert!(err.message.contains("remote_offset"), "{}", err.message);
+    assert!(host.faults().is_empty(), "a configure error is not a fault");
+    assert!(
+        net_build(&host, &registry, "net_ok", "left", "{}").is_ok(),
+        "the capability still builds"
+    );
+}
+
+#[test]
+fn under_disable_capability_a_network_fault_leaves_the_other_capabilities_working() {
+    let (host, registry, _) = net_fixture("net-disable", PluginFaultPolicy::DisableCapability);
+    let healthy = net_build(&host, &registry, "net_ok", "ok", "{}").expect("build");
+    let faulty = net_build(
+        &host,
+        &registry,
+        "net_panics_in_poll",
+        "p",
+        r#"{"key_base":20000}"#,
+    )
+    .expect("build");
+    let (mut a, mut b) = (net_start(healthy.as_ref()), net_start(faulty.as_ref()));
+
+    assert!(net_poll(b.as_mut(), 0).is_err());
+
+    assert!(host.take_abort().is_none());
+    let info = &host.plugins()[0];
+    let faulted: Vec<&str> = info
+        .capabilities
+        .iter()
+        .filter(|c| c.faulted)
+        .map(|c| c.id.as_str())
+        .collect();
+    assert_eq!(faulted, ["test.network.net_panics_in_poll"]);
+    a.publish(at(1), &[owned_state(10_001)])
+        .expect("the other capability publishes");
+    assert_eq!(net_poll(a.as_mut(), 1).expect("and polls").len(), 1);
+}
+
+#[test]
+fn two_plugin_images_with_network_adapters_run_side_by_side_and_fault_independently() {
+    let fixture = net_package("net-two-a", NET, "test.plugin.fixture");
+    let peer = net_package("net-two-b", PEER, "test.plugin.net_peer");
+    let (host, registry, recorder) =
+        net_host(&[fixture, peer], PluginFaultPolicy::DisableCapability);
+    let ids: Vec<&str> = host.plugins().iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&"test.plugin.fixture") && ids.contains(&"test.plugin.net_peer"));
+
+    let left = net_build(&host, &registry, "net_ok", "left", r#"{"key_base":1000}"#).expect("a");
+    let right = net_build(&host, &registry, "peer_ok", "right", r#"{"key_base":2000}"#).expect("b");
+    let broken = net_build(
+        &host,
+        &registry,
+        "peer_panics_in_poll",
+        "broken",
+        r#"{"key_base":3000}"#,
+    )
+    .expect("c");
+    let (mut l, mut r, mut x) = (
+        net_start(left.as_ref()),
+        net_start(right.as_ref()),
+        net_start(broken.as_ref()),
+    );
+    l.publish(at(1), &[owned_state(1001)])
+        .expect("left publishes");
+    r.publish(at(1), &[owned_state(2001)])
+        .expect("right publishes");
+
+    assert!(
+        net_poll(x.as_mut(), 1).is_err(),
+        "the peer's panicking capability faults"
+    );
+    let got_l = net_poll(l.as_mut(), 1).expect("left still polls");
+    let got_r = net_poll(r.as_mut(), 1).expect("right, same image as the faulty one, still polls");
+
+    let keys = |m: &[NetMessage]| -> Vec<u64> {
+        m.iter()
+            .filter_map(|m| match m {
+                NetMessage::EntityState(s) => Some(s.key.0),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(
+        keys(&got_l),
+        [101_001],
+        "each adapter mirrors only its own messages"
+    );
+    assert_eq!(keys(&got_r), [102_001]);
+    let faults = host.faults();
+    assert_eq!(faults.len(), 1, "{faults:?}");
+    assert_eq!(
+        (faults[0].plugin.as_str(), faults[0].capability.as_str()),
+        ("test.plugin.net_peer", "test.network.peer_panics_in_poll")
+    );
+    drop((l, r, x, left, right, broken, registry, host));
+    let by_plugin = |plugin: &str| -> Vec<String> {
+        recorder
+            .all()
+            .into_iter()
+            .filter(|(p, _, m)| p == plugin && (m.starts_with("net destroy") || m == "shutdown"))
+            .map(|(_, _, m)| m)
+            .collect()
+    };
+    assert_eq!(
+        by_plugin("test.plugin.fixture"),
+        ["net destroy left", "shutdown"]
+    );
+    let peer_log = by_plugin("test.plugin.net_peer");
+    assert_eq!(
+        peer_log.last().map(String::as_str),
+        Some("shutdown"),
+        "{peer_log:?}"
+    );
+    assert_eq!(
+        peer_log.len(),
+        3,
+        "both peer adapters destroyed before its shutdown: {peer_log:?}"
+    );
+}
