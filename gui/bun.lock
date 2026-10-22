@@ -9,6 +9,7 @@
         "@umbra/engine-stream": "workspace:*",
         "@umbra/map-view": "workspace:*",
         "@umbra/runtime-config": "workspace:*",
+        "@umbra/settings": "workspace:*",
         "@umbra/shell-dashboard": "workspace:*",
         "@umbra/shell-showcase": "workspace:*",
         "@umbra/ui-kit": "workspace:*",
@@ -87,6 +88,7 @@
       "version": "0.0.0",
       "dependencies": {
         "@umbra/engine-stream": "workspace:*",
+        "@umbra/settings": "workspace:*",
         "@umbra/ui-kit": "workspace:*",
         "maplibre-gl": "5.9.0",
       },
@@ -106,6 +108,16 @@
       "version": "0.0.0",
       "dependencies": {
         "@umbra/engine-stream": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
+      },
+    },
+    "features/settings": {
+      "name": "@umbra/settings",
+      "version": "0.0.0",
+      "dependencies": {
         "@umbra/ui-kit": "workspace:*",
       },
       "peerDependencies": {
@@ -491,6 +503,8 @@
     "@umbra/runtime-config": ["@umbra/runtime-config@workspace:features/runtime-config"],
 
     "@umbra/scenario-control": ["@umbra/scenario-control@workspace:features/scenario-control"],
+
+    "@umbra/settings": ["@umbra/settings@workspace:features/settings"],
 
     "@umbra/shell-dashboard": ["@umbra/shell-dashboard@workspace:feature-shells/dashboard"],
 

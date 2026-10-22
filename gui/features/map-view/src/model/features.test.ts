@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { affiliationOf } from "./affiliation.ts";
+import { defaultAffiliationOf as affiliationOf } from "@umbra/settings";
 import { frameBounds, toFeatureCollection } from "./features.ts";
 import { entity, frameOf } from "./testing.ts";
 

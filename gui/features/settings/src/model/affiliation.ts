@@ -14,7 +14,7 @@ const BY_FORCE: Readonly<Record<string, Affiliation>> = {
 };
 
 /** `force` is free text in the contract. Case-insensitive; null, undefined or anything else is "unknown". */
-export function affiliationOf(force: string | null | undefined): Affiliation {
+export function defaultAffiliationOf(force: string | null | undefined): Affiliation {
   if (typeof force !== "string") return "unknown";
   // Own-keys lookup: "constructor" or "__proto__" must not resolve through the prototype.
   const key = force.trim().toLowerCase();

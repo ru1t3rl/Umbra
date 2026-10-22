@@ -62,4 +62,5 @@ export { useTheme } from "./hooks/useTheme.ts";
 export type { MessageParams } from "./i18n/defineMessages.ts";
 export { defineMessages } from "./i18n/defineMessages.ts";
 export type { ResolvedTheme, ThemePreference } from "./theme/model.ts";
+export { parsePreference, THEME_STORAGE_KEY } from "./theme/model.ts";
 export * from "./tokens/tokens.ts";

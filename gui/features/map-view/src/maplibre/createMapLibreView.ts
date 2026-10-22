@@ -1,8 +1,8 @@
 import type { EntityFrame } from "@umbra/engine-stream";
+import { defaultAffiliationOf as affiliationOf } from "@umbra/settings";
 import type { ResolvedTheme } from "@umbra/ui-kit";
 import { type GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
 import type { EntityPosition, MapInspection, MapView } from "../MapView.ts";
-import { affiliationOf } from "../model/affiliation.ts";
 import type { FitOptions } from "../model/camera.ts";
 import type { MapColors } from "../model/colors.ts";
 import {

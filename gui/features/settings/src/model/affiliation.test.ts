@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { affiliationOf } from "./affiliation.ts";
+import { defaultAffiliationOf as affiliationOf } from "./affiliation.ts";
 
 describe("affiliationOf (ASM-305)", () => {
   test.each([

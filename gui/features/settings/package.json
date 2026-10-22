@@ -1,0 +1,17 @@
+{
+  "name": "@umbra/settings",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "feature",
+    "tier": "foundation"
+  },
+  "dependencies": {
+    "@umbra/ui-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
+  }
+}
