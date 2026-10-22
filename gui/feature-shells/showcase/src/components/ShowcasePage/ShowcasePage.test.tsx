@@ -111,6 +111,37 @@ describe("ShowcasePage M8 additions (ADR 0073)", () => {
   });
 });
 
+describe("ShowcasePage VirtualList sample (ADR 0072)", () => {
+  test("shows a virtual listbox and a log by their accessible names", () => {
+    renderPage();
+    const listbox = screen.getByRole("listbox", { name: "Sample entities" });
+    expect(listbox.getAttribute("tabindex")).toBe("0");
+    expect(screen.getByRole("log", { name: "Sample event log" })).toBeTruthy();
+  });
+
+  test("the samples hold thousands of items but render only a window", () => {
+    renderPage();
+    const options = within(screen.getByRole("listbox", { name: "Sample entities" })).getAllByRole(
+      "option",
+    );
+    expect(options.length).toBeGreaterThan(0);
+    expect(options.length).toBeLessThan(100);
+    expect(options[0]).toHaveAttribute("aria-setsize", "10000");
+  });
+
+  test("the samples sit under their own heading inside the M8 group, not the M5b components group", () => {
+    const { container } = renderPage();
+    expect(screen.getByRole("heading", { name: "Virtual list", level: 3 })).toBeTruthy();
+    const group = container.querySelector("#showcase-m8") as HTMLElement;
+    for (const id of ["showcase-vlist-listbox", "showcase-vlist-log"]) {
+      const el = container.querySelector(`#${id}`);
+      expect(el).toBeTruthy();
+      expect(group.contains(el)).toBe(true);
+    }
+    expect(container.querySelector("#showcase-components #showcase-vlist-listbox")).toBeNull();
+  });
+});
+
 describe("headings", () => {
   test("one page h1, Tokens and Components as h2", () => {
     renderPage();

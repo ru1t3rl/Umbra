@@ -54,6 +54,8 @@ export type { ThemeToggleProps } from "./components/ThemeToggle/ThemeToggle.tsx"
 export { ThemeToggle } from "./components/ThemeToggle/ThemeToggle.tsx";
 export type { ToggleProps } from "./components/Toggle/Toggle.tsx";
 export { Toggle } from "./components/Toggle/Toggle.tsx";
+export type { VirtualListProps } from "./components/VirtualList/VirtualList.tsx";
+export { VirtualList } from "./components/VirtualList/VirtualList.tsx";
 export type { ThemeContextValue } from "./context/ThemeContext.ts";
 export { useAppNavigate } from "./hooks/useAppNavigate.ts";
 export { useTheme } from "./hooks/useTheme.ts";

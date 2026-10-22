@@ -12,6 +12,7 @@ import type { SliderProps } from "./Slider/Slider.tsx";
 import type { TableProps } from "./Table/Table.tsx";
 import type { TextFieldProps } from "./TextField/TextField.tsx";
 import type { ToggleProps } from "./Toggle/Toggle.tsx";
+import type { VirtualListProps } from "./VirtualList/VirtualList.tsx";
 
 export const ok: ButtonProps[] = [
   { children: "Start" },
@@ -204,3 +205,66 @@ export const providerNoPath: NavigationProviderProps = {
 // @ts-expect-error AppLink needs a target
 export const linkNoTo: AppLinkProps = { children: "x" };
 export const linkOk: AppLinkProps = { to: "/x", children: "x" };
+
+// VirtualList: a discriminated union on `role` (ASM-871).
+const common = {
+  label: "Entities",
+  count: 3,
+  rowHeight: "row-md",
+  renderRow: () => null,
+  getRowId: (i: number) => `r-${i}`,
+} as const;
+
+export const vlistListboxOk: VirtualListProps = {
+  ...common,
+  role: "listbox",
+  activeIndex: null,
+  onActiveIndexChange: () => {},
+  onActivate: () => {},
+};
+
+export const vlistLogOk: VirtualListProps = { ...common, role: "log", followEnd: true };
+
+// @ts-expect-error a listbox needs onActivate
+export const vlistNoActivate: VirtualListProps = {
+  ...common,
+  role: "listbox",
+  activeIndex: null,
+  onActiveIndexChange: () => {},
+};
+
+// @ts-expect-error a listbox needs activeIndex
+export const vlistNoActive: VirtualListProps = {
+  ...common,
+  role: "listbox",
+  onActiveIndexChange: () => {},
+  onActivate: () => {},
+};
+
+// @ts-expect-error a log has no activeIndex
+export const vlistLogActive: VirtualListProps = { ...common, role: "log", activeIndex: 1 };
+
+export const vlistListboxFollow: VirtualListProps = {
+  ...common,
+  role: "listbox",
+  activeIndex: null,
+  onActiveIndexChange: () => {},
+  onActivate: () => {},
+  // @ts-expect-error followEnd belongs to the log role only
+  followEnd: true,
+};
+
+// @ts-expect-error rowHeight is a token name, not a number
+export const vlistPxHeight: VirtualListProps = { ...common, role: "log", rowHeight: 24 };
+
+// @ts-expect-error role is "listbox" or "log"
+export const vlistBadRole: VirtualListProps = { ...common, role: "list" };
+
+// @ts-expect-error label is required
+export const vlistNoLabel: VirtualListProps = {
+  role: "log",
+  count: 1,
+  rowHeight: "row-sm",
+  renderRow: () => null,
+  getRowId: () => "x",
+};

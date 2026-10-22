@@ -1,0 +1,43 @@
+.vt-vlist {
+  position: relative;
+  overflow-y: auto;
+  height: 100%;
+  min-height: 0;
+  background: var(--surface-1);
+  color: var(--ink);
+}
+.vt-vlist:focus-visible {
+  outline: 2px solid var(--focus-ring); /* umbra-allow: 2px focus outline, same as the other controls */
+  outline-offset: -2px; /* umbra-allow: inset so the scroller keeps its box */
+}
+.vt-vlist-sizer {
+  position: relative;
+  width: 100%;
+}
+.vt-vlist-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  box-sizing: border-box;
+  overflow: hidden;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+.vt-vlist-listbox .vt-vlist-row {
+  cursor: pointer;
+}
+.vt-vlist-listbox .vt-vlist-row:hover {
+  background: var(--state-hover);
+}
+.vt-vlist-row[aria-selected="true"] {
+  background: var(--azure-dim);
+  box-shadow: inset 2px 0 0 var(--azure); /* umbra-allow: 2px azure selection edge as EntityRow (ASM-337) */
+}
+.vt-vlist-row[data-active] {
+  outline: 2px solid var(--focus-ring); /* umbra-allow: 2px outline, as the other focus treatments */
+  outline-offset: -2px; /* umbra-allow: inset so the row keeps its box */
+}

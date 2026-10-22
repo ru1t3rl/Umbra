@@ -79,7 +79,7 @@ for (const theme of THEMES) {
     await expect(bar.locator(".vt-panel")).toHaveCSS("background-color", surface2);
   });
 
-  for (const part of ["table", "select", "appnav"] as const) {
+  for (const part of ["table", "select", "appnav", "vlist-listbox", "vlist-log"] as const) {
     test(`showcase ${part} (${theme})`, async ({ page }) => {
       await openShowcase(page, theme);
       await expect(page.locator(`#showcase-${part}`)).toHaveScreenshot(
@@ -124,4 +124,54 @@ test("showcase navigation exposes the current page", async ({ page }) => {
   await openShowcase(page, "ops");
   const nav = page.locator("#showcase-appnav").getByRole("navigation", { name: "Pages" });
   await expect(nav.locator("[aria-current='page']")).toHaveCount(1);
+});
+
+test("showcase virtual listbox scrolls and moves the active row by keyboard", async ({ page }) => {
+  await openShowcase(page, "ops");
+  const list = page
+    .locator("#showcase-vlist-listbox")
+    .getByRole("listbox", { name: "Sample entities" });
+  await list.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(list).toHaveAttribute("aria-activedescendant", /.+/);
+  await page.keyboard.press("End");
+  await expect(list.getByRole("option").last()).toHaveAttribute("aria-posinset", "10000");
+  // far fewer DOM rows than items (real layout, NFR-1)
+  expect(await list.getByRole("option").count()).toBeLessThan(100);
+});
+
+test("showcase virtual log follows the end until scrolled up", async ({ page }) => {
+  await openShowcase(page, "ops");
+  const log = page.locator("#showcase-vlist-log").getByRole("log", { name: "Sample event log" });
+  const atEnd = () =>
+    log.evaluate((el) => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1);
+  await expect.poll(atEnd).toBe(true);
+  await log.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await expect.poll(atEnd).toBe(false);
+});
+
+test("showcase virtual log: add event stays at the end, stops after scrolling up, resumes at the end", async ({
+  page,
+}) => {
+  await openShowcase(page, "ops");
+  const host = page.locator("#showcase-vlist-log");
+  const log = host.getByRole("log", { name: "Sample event log" });
+  const add = page.locator("#showcase-m8").getByRole("button", { name: "Add event" });
+  const atEnd = () =>
+    log.evaluate((el) => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) <= 1);
+  await expect.poll(atEnd).toBe(true);
+  await add.click();
+  await expect.poll(atEnd).toBe(true);
+  await log.evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await add.click();
+  await expect.poll(atEnd).toBe(false);
+  await log.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  await add.click();
+  await expect.poll(atEnd).toBe(true);
 });

@@ -7,6 +7,7 @@ import { NavDemo } from "../NavDemo/NavDemo.tsx";
 import { Section } from "../Section/Section.tsx";
 import "./ShowcasePage.css";
 import { TokenSections } from "../TokenSections/TokenSections.tsx";
+import { VirtualListDemo } from "../VirtualListDemo/VirtualListDemo.tsx";
 
 /** Layout only: the design-system reference page (A-003). Route component, lazy-loaded. */
 export default function ShowcasePage(): ReactElement {
@@ -24,6 +25,9 @@ export default function ShowcasePage(): ReactElement {
         <div id="showcase-m8" className="showcase-group">
           <Section id="navigation" heading={t("nav.heading")}>
             <NavDemo />
+          </Section>
+          <Section id="virtual-list" heading={t("vlist.heading")}>
+            <VirtualListDemo />
           </Section>
         </div>
         <FloatingSample />
