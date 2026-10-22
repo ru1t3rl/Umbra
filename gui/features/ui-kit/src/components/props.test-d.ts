@@ -1,11 +1,15 @@
 // Type-level tests, checked by `tsc -b` (bun test does not run this file). Each @ts-expect-error
 // line must keep failing to compile; if the prop contract loosens, tsc reports "unused directive".
+import type { AppLinkProps } from "./AppLink/AppLink.tsx";
 import type { ButtonProps } from "./Button/Button.tsx";
 import type { CommandBarProps } from "./CommandBar/CommandBar.tsx";
 import type { EntityRowProps } from "./EntityRow/EntityRow.tsx";
+import type { NavItem, NavigationProviderProps } from "./NavigationProvider/NavigationProvider.tsx";
 import type { PanelProps } from "./Panel/Panel.tsx";
 import type { ReadoutProps } from "./Readout/Readout.tsx";
+import type { SelectProps } from "./Select/Select.tsx";
 import type { SliderProps } from "./Slider/Slider.tsx";
+import type { TableProps } from "./Table/Table.tsx";
 import type { TextFieldProps } from "./TextField/TextField.tsx";
 import type { ToggleProps } from "./Toggle/Toggle.tsx";
 
@@ -94,3 +98,109 @@ export const rowMissing: EntityRowProps = { id: "1" };
 
 // @ts-expect-error unknown affiliation
 export const rowBadAffiliation: EntityRowProps = { name: "A", affiliation: "ally" };
+
+// Table: caption, columns, rows and rowKey are required; align is start or end.
+interface TableRow {
+  id: string;
+}
+export const tableOk: TableProps<TableRow>[] = [
+  { caption: "C", columns: [{ key: "id", label: "Id" }], rows: [], rowKey: (r) => r.id },
+  {
+    caption: "C",
+    columns: [{ key: "id", label: "Id", mono: true, align: "end" }],
+    rows: [{ id: "1" }],
+    rowKey: (r) => r.id,
+    empty: "None",
+    dense: true,
+    captionHidden: true,
+  },
+];
+
+// @ts-expect-error a Table needs a caption to be named
+export const tableNoCaption: TableProps<TableRow> = { columns: [], rows: [], rowKey: (r) => r.id };
+
+// @ts-expect-error a Table needs rowKey
+export const tableNoRowKey: TableProps<TableRow> = { caption: "C", columns: [], rows: [] };
+
+export const tableBadAlign: TableProps<TableRow> = {
+  caption: "C",
+  // @ts-expect-error unknown align
+  columns: [{ key: "id", label: "Id", align: "middle" }],
+  rows: [],
+  rowKey: (r) => r.id,
+};
+
+export const tableUnknownColumnKey: TableProps<TableRow> = {
+  caption: "C",
+  // @ts-expect-error a column key must be a key of the row type
+  columns: [{ key: "nope", label: "Id" }],
+  rows: [],
+  rowKey: (r) => r.id,
+};
+
+// Select: label, options, value and onChange(value: string).
+export const selectOk: SelectProps[] = [
+  { label: "L", options: [{ value: "a", label: "A" }], value: "a", onChange: (_v: string) => {} },
+  {
+    label: "L",
+    options: [{ value: "a", label: "A", disabled: true }],
+    value: "a",
+    onChange: () => {},
+    help: "h",
+    invalid: true,
+    disabled: true,
+  },
+];
+
+// @ts-expect-error Select requires a label
+export const selectNoLabel: SelectProps = { options: [], value: "", onChange: () => {} };
+
+// @ts-expect-error Select requires options
+export const selectNoOptions: SelectProps = { label: "L", value: "", onChange: () => {} };
+
+export const selectNumberValue: SelectProps = {
+  label: "L",
+  options: [],
+  // @ts-expect-error Select value is a string
+  value: 1,
+  onChange: () => {},
+};
+
+export const selectOptionNoLabel: SelectProps = {
+  label: "L",
+  // @ts-expect-error an option needs a label
+  options: [{ value: "a" }],
+  value: "a",
+  onChange: () => {},
+};
+
+// NavItem and NavigationProvider.
+export const navItemOk: NavItem[] = [
+  { path: "/", label: "Map" },
+  { path: "/p", label: "P", icon: "map" },
+];
+
+// @ts-expect-error a NavItem needs a label
+export const navItemNoLabel: NavItem = { path: "/" };
+
+// @ts-expect-error a NavItem needs a path
+export const navItemNoPath: NavItem = { label: "Map" };
+
+// @ts-expect-error NavigationProvider requires navigate
+export const providerNoNavigate: NavigationProviderProps = {
+  items: [],
+  currentPath: "/",
+  children: null,
+};
+
+// @ts-expect-error NavigationProvider requires currentPath
+export const providerNoPath: NavigationProviderProps = {
+  items: [],
+  navigate: () => {},
+  children: null,
+};
+
+// AppLink: `to` is required.
+// @ts-expect-error AppLink needs a target
+export const linkNoTo: AppLinkProps = { children: "x" };
+export const linkOk: AppLinkProps = { to: "/x", children: "x" };

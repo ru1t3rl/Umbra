@@ -1,0 +1,4 @@
+/* Select needs only the shared .vt-field rules (shared/Field.css). */
+.vt-select select {
+  cursor: pointer;
+}

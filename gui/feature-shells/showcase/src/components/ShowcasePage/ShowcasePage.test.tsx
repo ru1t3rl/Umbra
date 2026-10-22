@@ -37,9 +37,9 @@ describe("ShowcasePage tokens", () => {
 describe("ShowcasePage components", () => {
   test("has the page banner with the theme switch", () => {
     const { container } = renderPage();
-    // only the first (docked) bar is a direct child of the page root, hence the page banner
+    // only the first (docked) bar is a direct child of the page root, hence the page banner (the fifth bar hosts AppNav, ASM-870)
     expect(container.firstElementChild?.matches("header.vt-cmdbar")).toBe(true);
-    expect(container.querySelectorAll(".vt-cmdbar").length).toBe(4);
+    expect(container.querySelectorAll(".vt-cmdbar").length).toBe(5);
     expect(screen.getByRole("switch", { name: "Day theme" })).toBeTruthy();
   });
 
@@ -84,6 +84,30 @@ describe("ShowcasePage components", () => {
     expect(bar?.querySelector(".vt-chip-glass")).toBeTruthy();
     expect(bar?.querySelector(".vt-panel")).toBeTruthy();
     expect(bar?.querySelector(".vt-readout-value")).toHaveTextContent("128");
+  });
+});
+
+describe("ShowcasePage M8 additions (ADR 0073)", () => {
+  test("shows Table, Select and AppNav by their accessible names", () => {
+    renderPage();
+    const table = screen.getByRole("table", { name: "Plugin capabilities" });
+    expect(table).toHaveClass("vt-table");
+    expect(within(table).getAllByRole("columnheader").length).toBeGreaterThan(1);
+    expect(screen.getByRole("combobox", { name: "Coordinate format" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Pages" })).toBeTruthy();
+  });
+
+  test("the sample navigation marks one current page", () => {
+    renderPage();
+    const nav = screen.getByRole("navigation", { name: "Pages" });
+    expect(nav.querySelectorAll("[aria-current='page']").length).toBe(1);
+  });
+
+  test("the new components sit in sections with the ids the screenshots use", () => {
+    const { container } = renderPage();
+    for (const id of ["showcase-table", "showcase-select", "showcase-appnav"]) {
+      expect(container.querySelector(`#${id}`)).toBeTruthy();
+    }
   });
 });
 

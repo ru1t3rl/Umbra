@@ -79,6 +79,16 @@ for (const theme of THEMES) {
     await expect(bar.locator(".vt-panel")).toHaveCSS("background-color", surface2);
   });
 
+  for (const part of ["table", "select", "appnav"] as const) {
+    test(`showcase ${part} (${theme})`, async ({ page }) => {
+      await openShowcase(page, theme);
+      await expect(page.locator(`#showcase-${part}`)).toHaveScreenshot(
+        `showcase-${part}-${theme}.png`,
+        SHOT,
+      );
+    });
+  }
+
   test(`showcase floating command bar (${theme})`, async ({ page }) => {
     await openShowcase(page, theme);
     await expect(page.locator("#showcase-floating")).toHaveScreenshot(
@@ -99,4 +109,19 @@ test("showcase slider arrow keys", async ({ page }) => {
   await page.keyboard.press("ArrowRight");
   await expect(value).toHaveText("61 Hz");
   await expect(slider).toHaveAttribute("aria-valuetext", "61 Hz");
+});
+
+test("showcase select changes by keyboard", async ({ page }) => {
+  await openShowcase(page, "ops");
+  const select = page.getByRole("combobox", { name: "Coordinate format" });
+  await select.focus();
+  // The e2e project runs Chromium on Linux/Windows, where ArrowDown changes a closed native select (macOS opens the popup).
+  await page.keyboard.press("ArrowDown");
+  await expect(select).not.toHaveValue("wgs84");
+});
+
+test("showcase navigation exposes the current page", async ({ page }) => {
+  await openShowcase(page, "ops");
+  const nav = page.locator("#showcase-appnav").getByRole("navigation", { name: "Pages" });
+  await expect(nav.locator("[aria-current='page']")).toHaveCount(1);
 });

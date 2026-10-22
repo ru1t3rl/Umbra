@@ -1,0 +1,28 @@
+.vt-nav-list {
+  display: flex;
+  flex-direction: row;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vt-nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--space-10);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.vt-nav-link:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+.vt-nav-link[aria-current="page"] {
+  background: var(--azure-dim);
+  color: var(--ink);
+}

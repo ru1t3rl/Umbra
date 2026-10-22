@@ -21,6 +21,12 @@ Vantage (this folder's `README.md` and `tactical-display.md`) is the visual lang
    To restore the original values, revert those two lines in `tokens.json` and accept the failing checks (not recommended).
 4. **Theme switching.** Dark (Ops) is the default. `data-theme="light"` on `<html>` selects Day. A `ThemeProvider` in `ui-kit` offers `dark | light | system` and persists the choice.
 
+## Umbra additions (ADR 0073)
+Components the reference does not have, added in M8 WI-1 under the same rules (tokens only, `vt-*` classes, both themes, ASM-837):
+- `Table`: `vt-table`, `vt-table-caption`, `vt-table-mono` (data style 13/18), `vt-table-end`, `vt-table-dense`, `vt-table-empty`. Headers use the label style (`vt-label`); cells use `space-2` by `space-3` padding; rules use `line` and `line-strong` on `surface-1`.
+- `Select`: `vt-select` on a `vt-field`; shares the frame and control rules with TextField (`shared/Field.css`, `.vt-field :is(input, select)`), label and help classes unchanged.
+- `AppNav`: `vt-nav`, `vt-nav-list`, `vt-nav-link`; horizontal, `space-10` high, `ink-muted` at rest, `azure-dim` background for `aria-current="page"`; sits inline in a `CommandBar`.
+
 ## Known informational warnings (not failures)
 `bun run check:contrast` reports WARN lines for affiliation fills on light surfaces and for text on glass over the worst-case map pixel. They are by design: symbols are always framed with `symbol-frame` (the frame is checked at 3:1), and glass legibility depends on the dark base map required by `tactical-display.md`. Do not "fix" them by changing affiliation fills (APP-6D standard colours).
 

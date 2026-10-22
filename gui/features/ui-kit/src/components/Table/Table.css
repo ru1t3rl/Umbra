@@ -1,0 +1,39 @@
+.vt-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface-1);
+  color: var(--ink);
+}
+.vt-table-caption {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-muted);
+}
+.vt-table th {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--line-strong);
+}
+.vt-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--line);
+}
+.vt-table-dense th,
+.vt-table-dense td {
+  padding-top: var(--space-1);
+  padding-bottom: var(--space-1);
+}
+.vt-table .vt-table-end {
+  text-align: right;
+}
+.vt-table .vt-table-mono {
+  font-family: var(--font-mono);
+  font-size: 13px; /* umbra-allow: reference size, equals .type-data (ASM-336) */
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.vt-table .vt-table-empty {
+  color: var(--ink-muted);
+  text-align: center;
+}
