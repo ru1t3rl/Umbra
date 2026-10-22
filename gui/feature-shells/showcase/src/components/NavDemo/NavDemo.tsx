@@ -49,8 +49,8 @@ export function NavDemo(): ReactElement {
   const [format, setFormat] = useState("wgs84");
   const [path, setPath] = useState("/");
   return (
-    <div className="showcase-col">
-      <div id="showcase-table">
+    <div className="showcase-col showcase-col-wide">
+      <div id="showcase-table" className="showcase-scroll-x">
         <Table
           caption={t("table.caption")}
           columns={COLUMNS}
@@ -68,7 +68,7 @@ export function NavDemo(): ReactElement {
           onChange={setFormat}
         />
       </div>
-      <div id="showcase-appnav">
+      <div id="showcase-appnav" className="showcase-scroll-x">
         <NavigationProvider items={PAGES} currentPath={path} navigate={setPath}>
           <CommandBar title={t("nav.bar-title")}>
             <AppNav />

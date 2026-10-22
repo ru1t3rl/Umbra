@@ -32,6 +32,13 @@
   gap: var(--space-3);
   max-width: 420px;
 }
+.showcase-col-wide {
+  max-width: 720px;
+}
+/* A demo wider than its column scrolls inside this wrapper instead of overflowing. */
+.showcase-scroll-x {
+  overflow-x: auto;
+}
 .showcase-vlist {
   height: calc(var(--row-md) * 8);
   border: 1px solid var(--line);

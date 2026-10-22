@@ -32,6 +32,7 @@
   font-size: 13px; /* umbra-allow: reference size, equals .type-data (ASM-336) */
   line-height: 18px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap; /* IDs, coordinates and times never wrap (ASM-930) */
 }
 .vt-table .vt-table-empty {
   color: var(--ink-muted);
