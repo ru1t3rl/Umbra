@@ -1,6 +1,6 @@
 # ADR 0058: Control API: engine log records and scenario listing (GUI gaps G-1, G-2), in API 1.2.0
 
-- **Status**: Proposed (architect, M7 plan `docs/plans/M7.md`, 2026-10-22). It follows the human decision
+- **Status**: Accepted by the human 2026-10-22 (pull endpoint for logs, both in API 1.2.0; proposed by architect, M7 plan `docs/plans/M7.md`, 2026-10-22). It follows the human decision
   H-10 of the M8 plan (2026-10-22): schedule G-1 and G-2 as low-priority, additive engine work items in M7.
 - **Requirement IDs**: REQ-X-3, REQ-X-4, REQ-X-5, REQ-X-7, REQ-X-8, REQ-X-9, REQ-K-4, REQ-K-6, NFR-4, D-44,
   D-45, ADR 0026, ADR 0027, ADR 0057
