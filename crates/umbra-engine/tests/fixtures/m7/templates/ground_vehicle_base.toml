@@ -1,0 +1,10 @@
+schema_version = 1
+id = "ground_vehicle.base"
+description = "Generic ground vehicle (copy of the net_pair base)"
+
+[motion]
+model = "builtin.ground.kinematic"
+params = { max_speed_mps = 18.0, max_turn_rate_dps = 40.0, max_accel_mps2 = 2.5 }
+
+[network.lb]
+entity_type = "tank"

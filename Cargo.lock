@@ -1398,6 +1398,7 @@ dependencies = [
  "umbra-motion",
  "umbra-net",
  "umbra-plugin-host",
+ "umbra-record",
  "umbra-templates",
 ]
 
@@ -1460,6 +1461,16 @@ dependencies = [
  "tracing",
  "umbra-core",
  "umbra-plugin-api",
+]
+
+[[package]]
+name = "umbra-record"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "umbra-core",
 ]
 
 [[package]]

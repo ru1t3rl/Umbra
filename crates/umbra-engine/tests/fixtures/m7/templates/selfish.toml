@@ -1,0 +1,7 @@
+schema_version = 1
+id = "m7.selfish"
+extends = "ground_vehicle.base"
+description = "Removes itself on its first tick"
+[behavior]
+ref = "test.behavior.launcher"
+params = { despawn_at = 1 }

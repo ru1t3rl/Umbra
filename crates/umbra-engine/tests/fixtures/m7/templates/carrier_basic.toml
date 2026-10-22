@@ -1,0 +1,7 @@
+schema_version = 1
+id = "m7.carrier_basic"
+extends = "ground_vehicle.base"
+description = "Spawns one m7.child on its second tick"
+[behavior]
+ref = "test.behavior.launcher"
+params = { spawn_at = [2], template = "m7.child", ping = true }

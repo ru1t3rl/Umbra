@@ -21,6 +21,7 @@ use umbra_core::{
 use crate::ghosts::{GhostClock, GhostSpec, GhostWorld};
 use crate::identity::{IdentityError, IdentityMap, Role};
 use crate::policy::{AdapterSettings, PublishTracker};
+use crate::tap::InboundTap;
 use crate::typemap::TypeMap;
 
 /// Per owned entity data the engine keeps for publishing.
@@ -676,6 +677,17 @@ impl NetworkManager {
             runners,
             order: Vec::new(),
         })
+    }
+
+    /// Attaches (or, with `None`, removes) the inbound tap (ADR 0053). M7 WI-12 implements it; until
+    /// then this is a stub.
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "M7 WI-1 stub: WI-12 stores the tap"
+    )]
+    pub fn set_tap(&mut self, tap: Option<Box<dyn InboundTap>>) {
+        let _ = tap;
+        unimplemented!("M7 WI-12")
     }
 
     /// Polls the enabled adapters in scenario order and applies the messages in delivery order:

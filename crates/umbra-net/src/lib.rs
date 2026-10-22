@@ -16,6 +16,8 @@ pub mod identity;
 pub mod loopback;
 pub mod manager;
 pub mod policy;
+pub mod replay;
+pub mod tap;
 pub mod typemap;
 
 pub use ghosts::{GhostError, GhostSpec, GhostWorld};
@@ -23,6 +25,8 @@ pub use identity::{IdentityError, IdentityMap, Role};
 pub use loopback::LoopbackHub;
 pub use manager::{AdapterSlot, AdapterStatus, ManagerError, NetNotice, NetworkManager, OwnedMeta};
 pub use policy::{AdapterSettings, GhostPolicy, PublishPolicy, PublishTracker};
+pub use replay::ReplaySource;
+pub use tap::InboundTap;
 pub use typemap::{TypeMap, TypeMapWarning};
 
 /// Name of this crate, as the registry and diagnostics spell it.

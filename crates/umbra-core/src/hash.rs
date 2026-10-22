@@ -18,6 +18,36 @@ use crate::geo::{Quaternion, Vec3};
 /// Version of the canonical encoding. Any change to what or how the kernel hashes bumps it.
 pub const STATE_HASH_VERSION: u32 = 2;
 
+/// Which canonical encoding a [`StateHasher`] and the kernel's state hash use (ADR 0055, D-30).
+///
+/// `V2` is the default and the encoding of every golden. `V3` is opt-in and additionally hashes
+/// behavior instance state (M7 WI-15; until then it is a stub).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
+pub enum StateHashVersion {
+    /// The M1 encoding ([`STATE_HASH_VERSION`] = 2).
+    V2,
+    /// The opt-in encoding that includes behavior instance digests (ADR 0055).
+    V3,
+}
+
+/// Whether a behavior instance wrote its state into the hasher it was given (ADR 0055).
+///
+/// Contract (clarified in the M7 WI-1 review): the kernel hands `BehaviorInstance::digest` a fresh
+/// scratch hasher (`StateHasher::with_version(V3)`), never the entity stream itself. If the instance
+/// returns `Written`, the kernel appends to the entity stream the tag `1` (`u8`) and the scratch
+/// hasher's `finish()` as a `u64`; if it returns `Opaque`, the kernel appends the tag `2` and
+/// discards the scratch. An `Opaque` implementation writes nothing (what it wrote is ignored). An
+/// entity without a behavior gets the tag `0`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum DigestSupport {
+    /// The instance wrote a canonical digest of its state.
+    Written,
+    /// The instance state is opaque (a plugin behavior); only the fixed tag `2` is hashed.
+    Opaque,
+}
+
 const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 const CANONICAL_NAN_BITS: u64 = 0x7FF8_0000_0000_0000;
@@ -47,6 +77,15 @@ impl StateHasher {
         };
         hasher.write_u32(STATE_HASH_VERSION);
         hasher
+    }
+
+    /// A hasher for `version`: [`StateHashVersion::V2`] equals [`StateHasher::new`].
+    ///
+    /// M7 WI-15 implements it (ADR 0055); until then it is a stub.
+    #[must_use]
+    pub fn with_version(version: StateHashVersion) -> Self {
+        let _ = version;
+        unimplemented!("M7 WI-15")
     }
 
     fn write_raw(&mut self, bytes: &[u8]) {

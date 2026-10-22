@@ -9,7 +9,7 @@ pub use umbra_core::net::OwnedView;
 use umbra_core::{
     Behavior, BehaviorId, Contact, Ecef, EntityId, Force, Intent, KinematicState, Meters,
     MetersPerSecond, MotionModel, MotionModelId, Ownership, RemoteSource, Seconds, Sensor,
-    SimEvent, SimRng, SimTime, StateHash, Status, TerrainProvider, TickRate,
+    SimEvent, SimRng, SimTime, StateHash, StateHashVersion, Status, TerrainProvider, TickRate,
 };
 
 use crate::clock::{Clock, ClockMode, WallClock};
@@ -217,6 +217,8 @@ impl Kernel {
             overrun,
             lag: self.clock.behind(),
             events: sim_events,
+            // M7 WI-4 fills this (ADR 0052); empty until then.
+            lifecycle: Vec::new(),
         })
     }
 
@@ -279,6 +281,13 @@ impl Kernel {
     /// The canonical state hash (ADR 0007), entities walked in id order.
     pub fn state_hash(&self) -> StateHash {
         state::state_hash(self.clock.now(), &self.world)
+    }
+
+    /// The canonical state hash in the given encoding (ADR 0055). `V2` equals
+    /// [`Kernel::state_hash`]. M7 WI-15 implements `V3`; until then this is a stub.
+    pub fn state_hash_with(&self, version: StateHashVersion) -> StateHash {
+        let _ = version;
+        unimplemented!("M7 WI-15")
     }
 
     /// An immutable copy of the current state, sorted by id.

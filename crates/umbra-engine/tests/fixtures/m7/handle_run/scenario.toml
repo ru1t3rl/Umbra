@@ -1,0 +1,50 @@
+# m7 fixture handle_run. See ../README.md.
+schema_version = 1
+
+[scenario]
+name = "m7_handle_run"
+seed = 12
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 4000.0
+template_paths = ["../templates"]
+
+[[network_adapters]]
+adapter = "test.net.loopback"
+name = "lb"
+[network_adapters.publish]
+heartbeat_s = 1.0
+[network_adapters.ghosts]
+timeout_s = 3.0
+
+[[entities]]
+template = "m7.child"
+name = "runner-1"
+force = "blue"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 90.0
+speed_mps = 0.0
+[entities.route]
+arrival_radius_m = 5.0
+cruise_speed_mps = 14.0
+waypoints = [
+  { lat_deg = 52.0, lon_deg = 4.0073 },
+  { lat_deg = 52.0045, lon_deg = 4.0073 },
+  { lat_deg = 52.0045, lon_deg = 4.0 },
+  { lat_deg = 52.0, lon_deg = 4.0 },
+]
+
+[[entities]]
+template = "m7.child"
+name = "runner-2"
+force = "red"
+position = { lat_deg = 52.01, lon_deg = 4.0 }
+heading_deg = 0.0
+speed_mps = 0.0
+[entities.route]
+arrival_radius_m = 5.0
+cruise_speed_mps = 10.0
+waypoints = [
+  { lat_deg = 52.012, lon_deg = 4.0 },
+  { lat_deg = 52.012, lon_deg = 4.004 },
+]

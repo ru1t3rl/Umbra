@@ -76,7 +76,7 @@ pub use graph::{
     SubgraphRef, SubstituteError, TimedDef, TransitionDef, TransitionTarget, Trigger, Version,
     VersionReq, reserved_form,
 };
-pub use hash::{STATE_HASH_VERSION, StateHash, StateHasher};
+pub use hash::{DigestSupport, STATE_HASH_VERSION, StateHash, StateHashVersion, StateHasher};
 pub use id::{
     BehaviorId, ComponentId, EntityId, IdError, MAX_ID_LEN, MotionModelId, NameError, PluginId,
     TemplateId, WeaponId, validate_name,

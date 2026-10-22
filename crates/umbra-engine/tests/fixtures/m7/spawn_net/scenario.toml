@@ -1,0 +1,26 @@
+# m7 fixture spawn_net. See ../README.md.
+schema_version = 1
+
+[scenario]
+name = "m7_spawn_net"
+seed = 11
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 60.0
+template_paths = ["../templates"]
+
+[[network_adapters]]
+adapter = "test.net.loopback"
+name = "lb"
+[network_adapters.publish]
+heartbeat_s = 1.0
+[network_adapters.ghosts]
+timeout_s = 3.0
+
+[[entities]]
+template = "m7.carrier_net"
+name = "carrier"
+force = "blue"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 90.0
+speed_mps = 0.0

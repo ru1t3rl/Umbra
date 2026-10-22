@@ -130,6 +130,10 @@ pub struct HandleConfig {
     pub wall: Arc<dyn Fn() -> Box<dyn WallClock> + Send + Sync>,
     /// Receives the log messages of the plugins of every session; `None` logs to `tracing`.
     pub plugin_log: Option<Arc<dyn PluginLog>>,
+    /// Records every session load to its own file in this directory (`serve --record-dir`,
+    /// ADR 0053, ASM-632); `None` records nothing. M7 WI-13 implements it; until then it is
+    /// ignored.
+    pub record_dir: Option<std::path::PathBuf>,
 }
 
 impl HandleConfig {
@@ -144,6 +148,7 @@ impl HandleConfig {
             max_wait: Duration::from_millis(10),
             wall: Arc::new(|| -> Box<dyn WallClock> { Box::new(StdWallClock::new()) }),
             plugin_log: None,
+            record_dir: None,
         }
     }
 }

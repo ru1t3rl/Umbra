@@ -1,0 +1,26 @@
+# m7 fixture spawn_order. See ../README.md.
+schema_version = 1
+
+[scenario]
+name = "m7_spawn_order"
+seed = 6
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 10.0
+template_paths = ["../templates"]
+
+
+[[entities]]
+template = "m7.carrier_a"
+name = "carrier-a"
+force = "blue"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 90.0
+speed_mps = 0.0
+[[entities]]
+template = "m7.carrier_b"
+name = "carrier-b"
+force = "red"
+position = { lat_deg = 52.01, lon_deg = 4.0 }
+heading_deg = 90.0
+speed_mps = 0.0

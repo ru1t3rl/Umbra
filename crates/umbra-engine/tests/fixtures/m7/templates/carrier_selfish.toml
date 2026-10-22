@@ -1,0 +1,7 @@
+schema_version = 1
+id = "m7.carrier_selfish"
+extends = "ground_vehicle.base"
+description = "Spawns one m7.selfish on its second tick"
+[behavior]
+ref = "test.behavior.launcher"
+params = { spawn_at = [2], template = "m7.selfish" }

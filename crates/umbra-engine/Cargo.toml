@@ -15,6 +15,7 @@ umbra-kernel = { path = "../umbra-kernel" }
 umbra-motion = { path = "../umbra-motion" }
 umbra-net = { path = "../umbra-net" }
 umbra-plugin-host = { path = "../umbra-plugin-host" }
+umbra-record = { path = "../umbra-record" }
 umbra-templates = { path = "../umbra-templates" }
 thiserror.workspace = true
 tracing = { workspace = true, features = ["std"] }

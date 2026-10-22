@@ -2,7 +2,7 @@
 
 use core::time::Duration;
 
-use umbra_core::{Seconds, SimEvent, SimTime, TerrainProvider};
+use umbra_core::{EntityId, Intent, Seconds, SimEvent, SimTime, TerrainProvider};
 
 /// The number of tick phases.
 pub const PHASE_COUNT: usize = 6;
@@ -78,4 +78,8 @@ pub struct TickReport {
     /// The canonical events of this tick: Owned entities in id order, each entity's `Fire` and
     /// `Custom` intents in emission order (REQ-C-5, ADR 0028). Never hashed.
     pub events: Vec<SimEvent>,
+    /// The `Spawn` and `Despawn` intents of Owned entities, in entity id order and, within an
+    /// entity, in emission order, for the engine to apply after the tick (ADR 0052, REQ-B-2). A
+    /// bare kernel applies none of them. Never hashed. M7 WI-4 fills it; empty until then.
+    pub lifecycle: Vec<(EntityId, Intent)>,
 }

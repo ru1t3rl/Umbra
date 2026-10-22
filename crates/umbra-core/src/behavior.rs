@@ -17,6 +17,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use crate::coords::Ecef;
+use crate::hash::{DigestSupport, StateHasher};
 use crate::id::{BehaviorId, ComponentId, EntityId};
 use crate::intent::Intent;
 use crate::motion::KinematicState;
@@ -280,6 +281,16 @@ pub trait BehaviorInstance: Send {
     /// # Errors
     /// The blackboard's error: undeclared param, not an input key, wrong type or non-finite number.
     fn set_input(&mut self, param: &str, value: Option<BbValue>) -> Result<(), BlackboardError>;
+
+    /// Writes a canonical digest of this instance's state into `hasher` for state hash v3
+    /// (ADR 0055, M7). `hasher` is a scratch hasher the kernel supplies; it folds the result into
+    /// the entity stream as tag `1` plus the scratch `finish()`, or tag `2` for
+    /// [`DigestSupport::Opaque`] (see [`DigestSupport`]). The default writes nothing and reports
+    /// `Opaque`; built-in instances override it in M7 WI-15.
+    fn digest(&self, hasher: &mut StateHasher) -> DigestSupport {
+        let _ = hasher;
+        DigestSupport::Opaque
+    }
 
     /// Lets a [`BehaviorBatch`] recognise its own instances by downcasting (ADR 0020). Default:
     /// `None`. Only `'static` types can return `Some(self)` (`dyn Any` requires `'static`); an

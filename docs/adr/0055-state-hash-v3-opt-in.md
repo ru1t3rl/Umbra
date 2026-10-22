@@ -50,3 +50,15 @@ Option 3.
 - No migration: v2 unchanged; no golden or frozen test changes.
 - Revisit when plugin instance digests are wanted (ABI), or when v3 should become the default (would need
   a goldens migration ADR).
+
+## Clarification
+Clarified 2026-10-22, M7 WI-1 review: wording only, no decision change. (1) The behavior digest bytes
+of the encoding are produced by handing the instance a fresh scratch `StateHasher::with_version(V3)`;
+for `Written` the entity stream gets the tag `1` (`u8`) and the scratch hasher's `finish()` as a `u64`
+(the "digest bytes"); for `Opaque` it gets the tag `2` and the scratch is discarded, so an `Opaque`
+implementation writes nothing that counts; an entity without a behavior gets the tag `0`. (2) The
+remote track's model `u32` is the declaration index of `DeadReckoning` (`Static` 0, `Velocity` 1,
+`VelocityRotation` 2, `AccelerationRotation` 3, `Acceleration` 4, `BodyVelocity` 5,
+`BodyVelocityRotation` 6, `BodyAccelerationRotation` 7, `BodyAcceleration` 8), the basis kinematic
+state is position, velocity, orientation, followed by acceleration, angular velocity (both `Vec3`) and
+the basis tick (`u64`).

@@ -8,8 +8,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod air;
 pub mod factory;
 pub mod ground;
+pub mod sea;
 
-pub use factory::{GroundKinematicFactory, register_builtins};
+pub use air::{AIR_KINEMATIC_ID, AirKinematic, AirKinematicParams};
+pub use factory::{
+    AirKinematicFactory, GroundKinematicFactory, SeaKinematicFactory, register_builtins,
+};
 pub use ground::{GROUND_KINEMATIC_ID, GroundKinematic, GroundKinematicParams, MotionParamError};
+pub use sea::{SEA_KINEMATIC_ID, SeaKinematic, SeaKinematicParams};

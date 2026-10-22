@@ -300,6 +300,8 @@ fn rules_table_matches_plan_table() {
         ("umbra-behavior", &["umbra-core"]),
         ("umbra-templates", &["umbra-core"]),
         ("umbra-net", &["umbra-core"]),
+        // M7 WI-1 (ADR 0053, ASM-635): the recording format depends on core only.
+        ("umbra-record", &["umbra-core"]),
         ("umbra-plugin-api", &[]),
         ("umbra-plugin-host", &["umbra-core", "umbra-plugin-api"]),
         ("umbra-sdk", &["umbra-plugin-api"]),
@@ -315,6 +317,7 @@ fn rules_table_matches_plan_table() {
                 "umbra-net",
                 "umbra-plugin-api",
                 "umbra-plugin-host",
+                "umbra-record",
                 "umbra-templates",
             ],
         ),

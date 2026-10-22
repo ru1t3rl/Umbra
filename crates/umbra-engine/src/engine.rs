@@ -10,7 +10,8 @@ use std::time::Duration;
 use umbra_core::Enu;
 use umbra_core::{
     EntityId, Euler, KinematicState, LocalFrame, Meters, MetersPerSecond, MotionModel, Ownership,
-    Position, Radians, SimRng, SimTime, StateHash, TerrainProvider, TickRate, Vec3, math,
+    Position, Radians, SimRng, SimTime, StateHash, StateHashVersion, TerrainProvider, TickRate,
+    Vec3, math,
 };
 pub use umbra_kernel::AgentInit;
 use umbra_kernel::{
@@ -84,6 +85,12 @@ impl TickView<'_> {
     /// The state hash after this tick.
     pub fn state_hash(&self) -> StateHash {
         self.kernel.state_hash()
+    }
+
+    /// The state hash after this tick in the given encoding (ADR 0055; v3 is implemented in M7
+    /// WI-15, until then it panics).
+    pub fn state_hash_with(&self, version: StateHashVersion) -> StateHash {
+        self.kernel.state_hash_with(version)
     }
 
     /// A snapshot after this tick.
@@ -319,6 +326,12 @@ impl Engine {
     /// The canonical state hash.
     pub fn state_hash(&self) -> StateHash {
         self.kernel.state_hash()
+    }
+
+    /// The state hash in the given encoding (ADR 0055; v3 is implemented in M7 WI-15, until then it
+    /// panics).
+    pub fn state_hash_with(&self, version: StateHashVersion) -> StateHash {
+        self.kernel.state_hash_with(version)
     }
 
     /// An immutable snapshot of all entities, sorted by id.

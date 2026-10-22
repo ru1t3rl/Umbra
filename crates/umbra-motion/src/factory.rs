@@ -103,6 +103,80 @@ impl Factory<dyn MotionModel> for GroundKinematicFactory {
     }
 }
 
+/// Builds [`crate::SeaKinematic`] from validated parameters. M7 WI-1 stub: implemented, with its schema
+/// `schemas/builtin.sea.kinematic.json`, in M7 WI-5 (ADR 0051); not yet registered by [`register_builtins`].
+pub struct SeaKinematicFactory {
+    _private: (),
+}
+
+impl SeaKinematicFactory {
+    /// The factory.
+    ///
+    /// # Panics
+    /// Always, until M7 WI-5.
+    pub fn new() -> Self {
+        unimplemented!("M7 WI-5")
+    }
+}
+
+impl Default for SeaKinematicFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Factory<dyn MotionModel> for SeaKinematicFactory {
+    fn id(&self) -> &ComponentId {
+        unimplemented!("M7 WI-5")
+    }
+
+    fn param_schema(&self) -> &ParamSchema {
+        unimplemented!("M7 WI-5")
+    }
+
+    fn build(&self, params: &ParamValue) -> Result<Arc<dyn MotionModel>, BuildError> {
+        let _ = params;
+        unimplemented!("M7 WI-5")
+    }
+}
+
+/// Builds [`crate::AirKinematic`] from validated parameters. M7 WI-1 stub: implemented, with its schema
+/// `schemas/builtin.air.kinematic.json`, in M7 WI-6 (ADR 0051); not yet registered by [`register_builtins`].
+pub struct AirKinematicFactory {
+    _private: (),
+}
+
+impl AirKinematicFactory {
+    /// The factory.
+    ///
+    /// # Panics
+    /// Always, until M7 WI-6.
+    pub fn new() -> Self {
+        unimplemented!("M7 WI-6")
+    }
+}
+
+impl Default for AirKinematicFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Factory<dyn MotionModel> for AirKinematicFactory {
+    fn id(&self) -> &ComponentId {
+        unimplemented!("M7 WI-6")
+    }
+
+    fn param_schema(&self) -> &ParamSchema {
+        unimplemented!("M7 WI-6")
+    }
+
+    fn build(&self, params: &ParamValue) -> Result<Arc<dyn MotionModel>, BuildError> {
+        let _ = params;
+        unimplemented!("M7 WI-6")
+    }
+}
+
 /// Registers every built-in motion model.
 ///
 /// # Errors

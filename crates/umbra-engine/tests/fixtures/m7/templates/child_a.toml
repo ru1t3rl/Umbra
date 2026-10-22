@@ -1,0 +1,5 @@
+schema_version = 1
+id = "m7.child_a"
+extends = "ground_vehicle.base"
+description = "Passive spawned entity, kind a"
+

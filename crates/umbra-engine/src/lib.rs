@@ -21,8 +21,11 @@ pub mod error;
 pub mod handle;
 pub mod net;
 pub mod plugins;
+pub mod record;
+pub mod replay;
 pub mod scenario;
 pub mod session;
+mod spawner;
 pub mod validate;
 mod visual;
 
@@ -39,16 +42,19 @@ pub use plugins::{
     load_scenario_with_plugins, load_scenario_with_plugins_and_settings, resolve_plugin_paths,
     validate_path_with_plugins, validate_path_with_plugins_and_settings,
 };
+pub use record::{RecordOptions, Recorder, RecordingState, RecordingStatus};
+pub use replay::{ReplayError, ReplayOptions, ReplaySummary, replay};
 pub use scenario::{EntityInfo, LoadSettings, ScenarioError};
 pub use session::{Session, SessionError, SessionOptions, TemplateSpawn};
+pub use spawner::{LifecycleCounters, MAX_ENTITIES, MAX_SPAWNS_PER_TICK};
 /// The result of ticking a behavior (REQ-B-8), as an entity snapshot reports it.
 pub use umbra_core::Status as BehaviorStatus;
 pub use umbra_core::net::KeySpace;
 pub use umbra_core::{
     Catalog, CatalogEntry, CatalogKind, ComponentId, ComponentKind, ControlAction, EntityId,
     FlatTerrain, Force, Geodetic, Meters, MetersPerSecond, Ownership, ParamSchema, ParamValue,
-    Position, Provenance, Radians, Registry, SimEvent, SimTime, StateHash, TemplateId,
-    TerrainProvider, TickRate, TimeError, Version,
+    Position, Provenance, Radians, Registry, SimEvent, SimTime, StateHash, StateHashVersion,
+    TemplateId, TerrainProvider, TickRate, TimeError, Version,
 };
 pub use umbra_kernel::{
     ClockError, ClockMode, EntitySnapshot, ManualWallClock, Snapshot, StdWallClock, TickReport,

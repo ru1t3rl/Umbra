@@ -72,6 +72,7 @@ pub const RULES: RuleSet = RuleSet {
         rule("umbra-behavior", &["umbra-core"], "section 4"),
         rule("umbra-templates", &["umbra-core"], "section 4"),
         rule("umbra-net", &["umbra-core"], "section 4"),
+        rule("umbra-record", &["umbra-core"], "ASM-635"),
         CrateRule {
             name: "umbra-plugin-api",
             allowed_workspace_deps: &[],
@@ -96,6 +97,7 @@ pub const RULES: RuleSet = RuleSet {
                 "umbra-net",
                 "umbra-plugin-api",
                 "umbra-plugin-host",
+                "umbra-record",
                 "umbra-templates",
             ],
             "section 4",
