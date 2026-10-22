@@ -16,6 +16,9 @@ numbers from its own reserved block instead of the next free number:
 - M5b: ASM-300..ASM-379, ADR 0040..0049, decision rows D-56..D-62.
 - Overflow blocks (coordinator decision 2026-10-21, when the first blocks were nearly used up): M6 continues at
   ASM-400..ASM-499, M5b at ASM-500..ASM-599. ADR and decision-row blocks are unchanged.
+**Parallel tracks (M7 and M8, from 2026-10-22, ADR 0047).** ADR 0047 and decision row D-63 are the ordering decision itself.
+- M7: ASM-600..ASM-799, ADR 0050..0069, decision rows D-64..D-79;
+- M8: ASM-800..ASM-999, ADR 0070..0089, decision rows D-80..D-95.
 Gaps left in a block stay unused. After both close, numbering continues after the highest number used.
 
 | Milestone | File | IDs | Entries |

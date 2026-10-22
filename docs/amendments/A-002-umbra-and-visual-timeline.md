@@ -84,7 +84,7 @@ Rows marked **new** or **changed (scope)** are A-002 changes. All other rows are
 1. The mandatory engine milestones M0, M1, M2, M3, M4, M5, M6, M7, M9 keep strict order (root `CLAUDE.md` rule 1). The rename (ADR 0018) is a work item between M3 and M4, not a milestone.
 2. **M3b** is optional. It may be picked up any time after M3 passes, only when the human asks. No milestone depends on it; M4 may start without it. When picked up, it runs in its own work items and commits, never mixed into another milestone's work item.
 3. **M5b** may start once M5's acceptance criteria pass. It runs on the GUI track and may run alongside M6 and M7; no engine milestone waits for it, and it changes no engine milestone.
-4. **M8** starts after M7 (as today) **and** after M5b. M8b follows M8 (as today).
+4. **M8** starts after M7 (as today) **and** after M5b. M8b follows M8 (as today). *Amended 2026-10-22 (ADR 0047, D-63, human decision):* M8 may start once M5b passes and run alongside M7; its M7-dependent work items (plugin/adapter status for the new kinds, forms for parameter schemas or contract additions from M7) wait for the M7 change they consume, and M8 is accepted and tagged only after `m7-done`.
 
 ## Decision log rows (to add to spec section 2 on acceptance)
 | ID | Decision | Why | Rejected alternatives |
