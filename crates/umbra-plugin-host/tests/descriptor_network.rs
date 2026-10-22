@@ -4,9 +4,8 @@
 //!
 //! Kind 3 needs a descriptor declaring minor 1 or newer; with minor 0 it is rejected naming
 //! `capabilities[i].kind`. With minor 1 the capability passes the header, kind, schema, metadata and
-//! vtable checks; this host has no network bridge before WI-11, so the load then ends with
-//! `Unsupported` (kind 3), never with an ABI or descriptor error. A descriptor declaring minor 0
-//! (every plugin built before ABI 0.1) still loads.
+//! vtable checks and loads as a network adapter (the bridge is WI-11's, `network_bridge.rs`). A
+//! descriptor declaring minor 0 (every plugin built before ABI 0.1) still loads.
 #![expect(unsafe_code, reason = "forges raw ABI structs")]
 #![expect(
     clippy::cast_possible_truncation,
@@ -149,12 +148,11 @@ fn kind_3_names_the_index_of_the_offending_capability() {
 
 #[test]
 fn kind_3_in_a_minor_1_descriptor_passes_every_descriptor_check() {
-    let err = load!(network_parts(1, |_| {})).expect_err("no network bridge before WI-11");
+    let info = load!(network_parts(1, |_| {})).expect("a valid network adapter loads (WI-11)");
 
-    assert!(
-        matches!(&err, PluginError::Unsupported { capability, kind: 3, .. } if capability == "test.net.forge"),
-        "header, kind, schema and vtable are accepted; only the missing bridge refuses: {err:?}"
-    );
+    assert_eq!(info.abi, (0, 1));
+    assert_eq!(info.capabilities[0].kind, ComponentKind::NetworkAdapter);
+    assert_eq!(info.capabilities[0].id.as_str(), "test.net.forge");
 }
 
 #[test]
@@ -162,12 +160,9 @@ fn the_optional_counters_entry_is_accepted() {
     unsafe extern "C" fn counters(_: *mut UmbraNetAdapter, _: *mut u64, _: usize) -> UmbraCode {
         UMBRA_OK
     }
-    let err = load!(network_parts(1, |vt| vt.counters = Some(counters))).expect_err("no bridge");
+    let info = load!(network_parts(1, |vt| vt.counters = Some(counters))).expect("loads");
 
-    assert!(
-        matches!(err, PluginError::Unsupported { kind: 3, .. }),
-        "{err:?}"
-    );
+    assert_eq!(info.capabilities[0].kind, ComponentKind::NetworkAdapter);
 }
 
 #[test]

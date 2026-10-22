@@ -41,8 +41,11 @@ kind's minor, or the SDK must keep writing the old prefix. A major bump needs an
 - Host ceiling: a nested descriptor header (capability, vtable) declaring a minor above the
   descriptor's is a descriptor error at `<prefix>.abi_version`; an intent or value declaring a minor
   above the plugin's declared minor faults the capability (`intent.abi_version`, `value.abi_version`).
-- Host: the network adapter's descriptor entries are validated at load; the host bridge follows in M6
-  WI-11 (until then such a capability ends the load as unsupported).
+- Host: the network adapter's descriptor entries are validated at load, and the capability is registered
+  as `ComponentKind::NetworkAdapter` through the host bridge (M6 WI-11, ASM-408). Host-written network
+  structs (`UmbraNetBatch`, `UmbraNetMessage`, `UmbraNetSink`) carry the plugin's declared minor in
+  `abi_version` and its size; pushed messages are read with the declared minor as the ceiling and only
+  the fields their `kind` uses are checked. No layout change.
 
 ## 0.0 (M4, frozen at `m4-done`)
 - First ABI. Layouts: the table in `docs/plans/M4.md` ("Layout table"), pinned by

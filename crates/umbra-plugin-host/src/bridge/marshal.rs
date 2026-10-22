@@ -5,7 +5,12 @@
 //! the layout of the plugin's declared minor (R-B3). ABI v0 has one minor, so that is the host's
 //! own layout; [`written_size`] is the one place a later minor adds its size table.
 //!
-//! **Plugin-written structs** (intents, output values) are read like the descriptor: pointer
+//! **Network messages** (ABI 0.1, ADR 0033): [`net_message_out`] writes a host message in the plugin's
+//! declared minor (version and size), borrowing its strings from the core message for the call;
+//! [`net_message_within`] reads a plugin message like the other plugin-written structs (the struct
+//! exists since minor 1), checking only the fields its `kind` uses.
+//!
+//! **Plugin-written structs** (intents, output values, network messages) are read like the descriptor: pointer
 //! non-null and 8-byte aligned, the major equal and the minor not newer than the host's nor than the
 //! plugin's declared minor (the ceiling: a struct written during a capability's call carries at most
 //! the capability's minor, ADR 0033 clarified 2026-10-21),
@@ -27,21 +32,30 @@
 use std::mem::size_of;
 use std::sync::Arc;
 
+use umbra_core::dead_reckoning::DeadReckoning;
+use umbra_core::net::{NetEntityState, NetEntityType, NetKey, NetMessage};
 use umbra_core::{
-    BbType, BbValue, ComponentId, Ecef, EntityId, EntityView, Intent, MAX_ID_LEN, MetersPerSecond,
-    ParamValue, Radians, Status, TemplateId, Vec3, WeaponId,
+    BbType, BbValue, ComponentId, ControlAction, Ecef, EntityId, EntityView, Force, Intent,
+    MAX_ID_LEN, MetersPerSecond, ParamValue, Radians, Status, TemplateId, Vec3, WeaponId,
+    WorldEuler,
 };
 use umbra_plugin_api::{
-    UMBRA_ABI_VERSION, UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_INTENT_CUSTOM,
+    UMBRA_ABI_VERSION, UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_DR_ACCELERATION,
+    UMBRA_DR_ACCELERATION_ROTATION, UMBRA_DR_BODY_ACCELERATION,
+    UMBRA_DR_BODY_ACCELERATION_ROTATION, UMBRA_DR_BODY_VELOCITY, UMBRA_DR_BODY_VELOCITY_ROTATION,
+    UMBRA_DR_STATIC, UMBRA_DR_VELOCITY, UMBRA_DR_VELOCITY_ROTATION, UMBRA_INTENT_CUSTOM,
     UMBRA_INTENT_DESPAWN, UMBRA_INTENT_FIRE, UMBRA_INTENT_FOLLOW_ROUTE, UMBRA_INTENT_HOLD,
     UMBRA_INTENT_MOVE_TO, UMBRA_INTENT_SET_HEADING, UMBRA_INTENT_SET_SPEED, UMBRA_INTENT_SPAWN,
-    UMBRA_STATUS_FAILURE, UMBRA_STATUS_RUNNING, UMBRA_STATUS_SUCCESS, UMBRA_VALUE_BOOL,
-    UMBRA_VALUE_ENTITY, UMBRA_VALUE_INTEGER, UMBRA_VALUE_NUMBER, UMBRA_VALUE_POSITION,
-    UMBRA_VALUE_STRING, UmbraBehavior, UmbraBehaviorItem, UmbraContact, UmbraEntityView,
-    UmbraInstance, UmbraIntent, UmbraQuat, UmbraStatus, UmbraStr, UmbraValue, UmbraVec3,
+    UMBRA_MAX_ID_LEN, UMBRA_NET_CONTROL, UMBRA_NET_CONTROL_PAUSE, UMBRA_NET_CONTROL_RESUME,
+    UMBRA_NET_CONTROL_START, UMBRA_NET_CONTROL_STOP, UMBRA_NET_DETONATION,
+    UMBRA_NET_ENTITY_REMOVED, UMBRA_NET_ENTITY_STATE, UMBRA_NET_FIRE, UMBRA_STATUS_FAILURE,
+    UMBRA_STATUS_RUNNING, UMBRA_STATUS_SUCCESS, UMBRA_VALUE_BOOL, UMBRA_VALUE_ENTITY,
+    UMBRA_VALUE_INTEGER, UMBRA_VALUE_NUMBER, UMBRA_VALUE_POSITION, UMBRA_VALUE_STRING,
+    UmbraBehavior, UmbraBehaviorItem, UmbraContact, UmbraEntityView, UmbraInstance, UmbraIntent,
+    UmbraNetMessage, UmbraQuat, UmbraStatus, UmbraStr, UmbraValue, UmbraVec3,
 };
 
-use crate::descriptor::{Headed, read_header, read_prefix};
+use crate::descriptor::{Headed, NETWORK_ADAPTER_MINOR, read_header, read_prefix};
 use crate::host_api::{abi_size, bytes};
 use crate::tokens::BatchCall;
 
@@ -51,12 +65,21 @@ const HOST_MINORS: usize = UMBRA_ABI_VERSION_MINOR as usize + 1;
 /// Minor 1 (ADR 0033) changed neither struct.
 const INTENT_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraIntent>(), size_of::<UmbraIntent>()];
 const VALUE_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraValue>(), size_of::<UmbraValue>()];
+/// `UmbraNetMessage` exists since minor 1 (ADR 0033); the minor-0 entry is never read.
+pub(crate) const NET_MESSAGE_SIZES: [usize; HOST_MINORS] = [0, size_of::<UmbraNetMessage>()];
 
 /// `struct_size` of a host-written struct `T` for a plugin of minor `minor`: no host-written 0.0 struct
 /// changed in minor 1 (ADR 0033), so it is the host's own size (R-B3; a minor that grows one adds a
 /// size table here).
 pub(crate) const fn written_size<T>(_minor: u32) -> u32 {
     abi_size::<T>()
+}
+
+/// `abi_version` of a host-written network struct for a plugin of minor `minor` (at most the host's,
+/// checked at load): the plugin's declared ABI, so a plugin built against an older minor never reads
+/// a newer one in a struct written for it (ADR 0033, clarified 2026-10-21).
+pub(crate) const fn written_version(minor: u32) -> u32 {
+    (UMBRA_ABI_VERSION_MAJOR << 16) | minor
 }
 
 /// Where one member's contacts and route start in the scratch arrays.
@@ -234,12 +257,13 @@ pub(crate) fn status(value: UmbraStatus) -> Result<Status, String> {
     }
 }
 
-/// Checks the header of a plugin-written struct of a plugin declaring minor `ceiling`; returns the
-/// number of bytes to read.
+/// Checks the header of a plugin-written struct that exists since minor `first`, of a plugin
+/// declaring minor `ceiling`; returns the number of bytes to read.
 fn header(
     what: &str,
     (abi_version, struct_size): (u32, u32),
     sizes: [usize; HOST_MINORS],
+    first: u32,
     ceiling: u32,
 ) -> Result<usize, String> {
     let (major, minor) = (abi_version >> 16, abi_version & 0xFFFF);
@@ -255,8 +279,13 @@ fn header(
              {major}.{ceiling}"
         ));
     }
+    if minor < first {
+        return Err(format!(
+            "{what}.abi_version {major}.{minor} is older than ABI {major}.{first}, which defines it"
+        ));
+    }
     let size = struct_size as usize;
-    let (min, max) = (sizes[0], sizes[minor as usize]);
+    let (min, max) = (sizes[first as usize], sizes[minor as usize]);
     if size < min || size > max || !size.is_multiple_of(8) {
         return Err(format!(
             "{what}.struct_size is {size}; expected a multiple of 8 between {min} and {max}"
@@ -274,6 +303,7 @@ unsafe fn read<T: Headed>(
     ptr: *const T,
     what: &str,
     sizes: &[usize; HOST_MINORS],
+    first: u32,
     ceiling: u32,
 ) -> Result<T, String> {
     if ptr.is_null() {
@@ -283,7 +313,7 @@ unsafe fn read<T: Headed>(
         return Err(format!("{what} pointer is not 8-byte aligned"));
     }
     // SAFETY: non-null and aligned (checked); a headed struct starts with its header (caller).
-    let size = header(what, unsafe { read_header(ptr) }, *sizes, ceiling)?;
+    let size = header(what, unsafe { read_header(ptr) }, *sizes, first, ceiling)?;
     // SAFETY: `size` bytes are readable (caller) and `size <= size_of::<T>()` (checked).
     Ok(unsafe { read_prefix(ptr, size) })
 }
@@ -333,7 +363,7 @@ pub(crate) unsafe fn intent_within(
     ceiling: u32,
 ) -> Result<Intent, String> {
     // SAFETY: forwarded caller contract.
-    let i = unsafe { read(ptr, "intent", &INTENT_SIZES, ceiling) }?;
+    let i = unsafe { read(ptr, "intent", &INTENT_SIZES, 0, ceiling) }?;
     let finite = |v: f64, what: &str| {
         if v.is_finite() {
             Ok(v)
@@ -408,7 +438,7 @@ pub(crate) unsafe fn value_within(
         return Ok(None);
     }
     // SAFETY: forwarded caller contract.
-    let v = unsafe { read(ptr, "value", &VALUE_SIZES, ceiling) }?;
+    let v = unsafe { read(ptr, "value", &VALUE_SIZES, 0, ceiling) }?;
     Ok(Some(match v.ty {
         UMBRA_VALUE_BOOL => match v.boolean {
             0 => BbValue::Bool(false),
@@ -428,6 +458,283 @@ pub(crate) unsafe fn value_within(
         UMBRA_VALUE_POSITION => BbValue::Position(finite_vec3(v.position, "value position")?),
         other => return Err(format!("value has unknown type {other}")),
     }))
+}
+
+/// The ABI code of a dead-reckoning model (ADR 0032 order); `None` for a model this ABI has no code
+/// for (`DeadReckoning` is non-exhaustive).
+fn dead_reckoning_code(model: DeadReckoning) -> Option<u32> {
+    Some(match model {
+        DeadReckoning::Static => UMBRA_DR_STATIC,
+        DeadReckoning::Velocity => UMBRA_DR_VELOCITY,
+        DeadReckoning::VelocityRotation => UMBRA_DR_VELOCITY_ROTATION,
+        DeadReckoning::AccelerationRotation => UMBRA_DR_ACCELERATION_ROTATION,
+        DeadReckoning::Acceleration => UMBRA_DR_ACCELERATION,
+        DeadReckoning::BodyVelocity => UMBRA_DR_BODY_VELOCITY,
+        DeadReckoning::BodyVelocityRotation => UMBRA_DR_BODY_VELOCITY_ROTATION,
+        DeadReckoning::BodyAccelerationRotation => UMBRA_DR_BODY_ACCELERATION_ROTATION,
+        DeadReckoning::BodyAcceleration => UMBRA_DR_BODY_ACCELERATION,
+        _ => return None,
+    })
+}
+
+/// The model of an ABI dead-reckoning code.
+fn dead_reckoning(code: u32) -> Result<DeadReckoning, String> {
+    Ok(match code {
+        UMBRA_DR_STATIC => DeadReckoning::Static,
+        UMBRA_DR_VELOCITY => DeadReckoning::Velocity,
+        UMBRA_DR_VELOCITY_ROTATION => DeadReckoning::VelocityRotation,
+        UMBRA_DR_ACCELERATION_ROTATION => DeadReckoning::AccelerationRotation,
+        UMBRA_DR_ACCELERATION => DeadReckoning::Acceleration,
+        UMBRA_DR_BODY_VELOCITY => DeadReckoning::BodyVelocity,
+        UMBRA_DR_BODY_VELOCITY_ROTATION => DeadReckoning::BodyVelocityRotation,
+        UMBRA_DR_BODY_ACCELERATION_ROTATION => DeadReckoning::BodyAccelerationRotation,
+        UMBRA_DR_BODY_ACCELERATION => DeadReckoning::BodyAcceleration,
+        other => {
+            return Err(format!(
+                "dead_reckoning {other} is not a model (expected 1..=9)"
+            ));
+        }
+    })
+}
+
+/// The ABI code of a run-control action; `None` for an action the ABI cannot carry (`Step`, and
+/// future variants of the non-exhaustive enum).
+fn control_code(action: ControlAction) -> Option<u32> {
+    Some(match action {
+        ControlAction::Start => UMBRA_NET_CONTROL_START,
+        ControlAction::Pause => UMBRA_NET_CONTROL_PAUSE,
+        ControlAction::Resume => UMBRA_NET_CONTROL_RESUME,
+        ControlAction::Stop => UMBRA_NET_CONTROL_STOP,
+        _ => return None,
+    })
+}
+
+/// The run-control action of an ABI code.
+fn control(code: u32) -> Result<ControlAction, String> {
+    Ok(match code {
+        UMBRA_NET_CONTROL_START => ControlAction::Start,
+        UMBRA_NET_CONTROL_PAUSE => ControlAction::Pause,
+        UMBRA_NET_CONTROL_RESUME => ControlAction::Resume,
+        UMBRA_NET_CONTROL_STOP => ControlAction::Stop,
+        other => return Err(format!("control {other} is not an action (expected 1..=4)")),
+    })
+}
+
+/// An all-zero message of `kind` in the layout of minor `minor` (unused fields stay zero).
+fn net_blank(kind: u32, minor: u32) -> UmbraNetMessage {
+    let zero = UmbraVec3 {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    };
+    UmbraNetMessage {
+        abi_version: written_version(minor),
+        struct_size: written_size::<UmbraNetMessage>(minor),
+        kind,
+        dead_reckoning: 0,
+        key: 0,
+        other_key: 0,
+        position: zero,
+        velocity: zero,
+        acceleration: zero,
+        angular_velocity: zero,
+        orientation: zero,
+        entity_type: text(""),
+        force: text(""),
+        name: text(""),
+        weapon: text(""),
+        control: 0,
+        reserved_0: 0,
+    }
+}
+
+/// The host-written form of `message` for a plugin of minor `minor`, its strings borrowed from
+/// `message` (valid while `message` lives); `None` for a message the ABI cannot carry (a `Step`
+/// control action, a dead-reckoning model or message variant newer than this ABI).
+pub(crate) fn net_message_out(message: &NetMessage, minor: u32) -> Option<UmbraNetMessage> {
+    let key = |k: Option<NetKey>| k.map_or(0, |k| k.0);
+    Some(match message {
+        NetMessage::EntityState(s) => {
+            let mut out = net_blank(UMBRA_NET_ENTITY_STATE, minor);
+            out.dead_reckoning = dead_reckoning_code(s.dead_reckoning)?;
+            out.key = s.key.0;
+            out.position = ecef(s.position);
+            out.velocity = vec3(s.velocity);
+            out.acceleration = vec3(s.acceleration);
+            out.angular_velocity = vec3(s.angular_velocity);
+            out.orientation = UmbraVec3 {
+                x: s.orientation.yaw.0,
+                y: s.orientation.pitch.0,
+                z: s.orientation.roll.0,
+            };
+            // The ABI bounds every string by `UMBRA_MAX_ID_LEN` (ASM-409): an opaque type token is
+            // not cut (a prefix would be another token), so an over-long one is sent as none; a
+            // display name is cut at a char boundary. `force` and `weapon` are bounded by their
+            // grammar.
+            out.entity_type = text(
+                s.entity_type
+                    .as_ref()
+                    .map(NetEntityType::as_str)
+                    .filter(|t| t.len() <= UMBRA_MAX_ID_LEN)
+                    .unwrap_or(""),
+            );
+            out.force = text(s.force.as_ref().map_or("", Force::as_str));
+            out.name = text(bounded_prefix(
+                s.name.as_deref().unwrap_or(""),
+                UMBRA_MAX_ID_LEN,
+            ));
+            out
+        }
+        NetMessage::EntityRemoved { key } => {
+            let mut out = net_blank(UMBRA_NET_ENTITY_REMOVED, minor);
+            out.key = key.0;
+            out
+        }
+        NetMessage::Fire {
+            shooter,
+            target,
+            weapon,
+            position,
+        } => {
+            let mut out = net_blank(UMBRA_NET_FIRE, minor);
+            out.key = shooter.0;
+            out.other_key = key(*target);
+            out.weapon = text(weapon.as_str());
+            out.position = ecef(*position);
+            out
+        }
+        NetMessage::Detonation {
+            shooter,
+            target,
+            position,
+        } => {
+            let mut out = net_blank(UMBRA_NET_DETONATION, minor);
+            out.key = key(*shooter);
+            out.other_key = key(*target);
+            out.position = ecef(*position);
+            out
+        }
+        NetMessage::SimulationControl(action) => {
+            let mut out = net_blank(UMBRA_NET_CONTROL, minor);
+            out.control = control_code(*action)?;
+            out
+        }
+        _ => return None,
+    })
+}
+
+/// The longest prefix of `s` of at most `max` bytes that ends at a char boundary.
+fn bounded_prefix(s: &str, max: usize) -> &str {
+    &s[..s.floor_char_boundary(max)]
+}
+
+/// An optional string of at most `MAX_ID_LEN` bytes; empty is `None`.
+///
+/// # Safety
+/// As [`string`].
+unsafe fn optional_text(s: UmbraStr, what: &str) -> Result<Option<String>, String> {
+    // SAFETY: forwarded caller contract.
+    let t = unsafe { id_text(s, what) }?;
+    Ok(if t.is_empty() { None } else { Some(t) })
+}
+
+/// A key that must name something (`0` is never a key).
+fn subject(key: u64, what: &str) -> Result<NetKey, String> {
+    if key == 0 {
+        Err(format!("{what} is 0"))
+    } else {
+        Ok(NetKey(key))
+    }
+}
+
+/// A key where `0` means none.
+fn optional_key(key: u64) -> Option<NetKey> {
+    (key != 0).then_some(NetKey(key))
+}
+
+fn finite_plain(v: UmbraVec3, what: &str) -> Result<Vec3, String> {
+    finite_vec3(v, what).map(|e| e.0)
+}
+
+/// The core message of a plugin-written `UmbraNetMessage` (ABI 0.1) of a plugin declaring minor
+/// `ceiling`. Only the fields the message's `kind` uses are checked (ADR 0033): known codes, finite
+/// numbers, UTF-8 strings of at most `UMBRA_MAX_ID_LEN` bytes, a non-zero subject key, a non-empty
+/// weapon ID for `FIRE`; the entity type token is passed through unchanged. `Err` names the problem.
+///
+/// # Safety
+/// `ptr` is what the plugin passed to the message sink: null, or valid for the call with its
+/// strings.
+pub(crate) unsafe fn net_message_within(
+    ptr: *const UmbraNetMessage,
+    ceiling: u32,
+) -> Result<NetMessage, String> {
+    // SAFETY: forwarded caller contract.
+    let m = unsafe {
+        read(
+            ptr,
+            "message",
+            &NET_MESSAGE_SIZES,
+            NETWORK_ADAPTER_MINOR,
+            ceiling,
+        )
+    }?;
+    Ok(match m.kind {
+        UMBRA_NET_ENTITY_STATE => {
+            let o = finite_plain(m.orientation, "ENTITY_STATE orientation")?;
+            // SAFETY: the message's strings are valid for the call (caller).
+            let entity_type = unsafe { optional_text(m.entity_type, "ENTITY_STATE entity_type") }?;
+            // SAFETY: as above.
+            let force = unsafe { optional_text(m.force, "ENTITY_STATE force") }?
+                .map(|f| Force::new(&f).map_err(|e| format!("ENTITY_STATE force {f:?}: {e}")))
+                .transpose()?;
+            // SAFETY: as above.
+            let name = unsafe { optional_text(m.name, "ENTITY_STATE name") }?;
+            NetMessage::EntityState(NetEntityState {
+                key: subject(m.key, "ENTITY_STATE key")?,
+                entity_type: entity_type.map(NetEntityType::new),
+                force,
+                name: name.map(Arc::from),
+                position: finite_vec3(m.position, "ENTITY_STATE position")?,
+                velocity: finite_plain(m.velocity, "ENTITY_STATE velocity")?,
+                acceleration: finite_plain(m.acceleration, "ENTITY_STATE acceleration")?,
+                angular_velocity: finite_plain(
+                    m.angular_velocity,
+                    "ENTITY_STATE angular_velocity",
+                )?,
+                orientation: WorldEuler {
+                    yaw: Radians(o.x),
+                    pitch: Radians(o.y),
+                    roll: Radians(o.z),
+                },
+                dead_reckoning: dead_reckoning(m.dead_reckoning)
+                    .map_err(|e| format!("ENTITY_STATE {e}"))?,
+            })
+        }
+        UMBRA_NET_ENTITY_REMOVED => NetMessage::EntityRemoved {
+            key: subject(m.key, "ENTITY_REMOVED key")?,
+        },
+        UMBRA_NET_FIRE => {
+            // SAFETY: the message's strings are valid for the call (caller).
+            let weapon = unsafe { optional_text(m.weapon, "FIRE weapon") }?
+                .ok_or_else(|| "FIRE weapon is empty (required for FIRE)".to_owned())?;
+            NetMessage::Fire {
+                shooter: subject(m.key, "FIRE key (the shooter)")?,
+                target: optional_key(m.other_key),
+                weapon: WeaponId::new(&weapon)
+                    .map_err(|e| format!("FIRE weapon {weapon:?}: {e}"))?,
+                position: finite_vec3(m.position, "FIRE position")?,
+            }
+        }
+        UMBRA_NET_DETONATION => NetMessage::Detonation {
+            shooter: optional_key(m.key),
+            target: optional_key(m.other_key),
+            position: finite_vec3(m.position, "DETONATION position")?,
+        },
+        UMBRA_NET_CONTROL => {
+            NetMessage::SimulationControl(control(m.control).map_err(|e| format!("CONTROL {e}"))?)
+        }
+        other => return Err(format!("message kind {other} is unknown (expected 1..=5)")),
+    })
 }
 
 /// A host-written value for `set_input`, its string borrowed from `value` (valid while `value`

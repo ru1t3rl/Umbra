@@ -10,8 +10,11 @@
 //!
 //! `publish` and `poll` never block on I/O (ASM-288): they move data to or from bounded queues.
 //! Transient I/O problems (a full queue, a dropped or undecodable datagram, a send error) are counted
-//! (see `counters`) and the call still returns `UMBRA_OK`. A non-`UMBRA_OK` result of any call faults
-//! the capability; after a fault the host calls only `stop` and `destroy`.
+//! (see `counters`) and the call still returns `UMBRA_OK`. A non-`UMBRA_OK` result (a panic included)
+//! of `configure`, `key_space` or `start` is a build or start error naming the capability, not a
+//! fault (as `configure` and `instantiate` of a behavior). A non-`UMBRA_OK` result of `publish`,
+//! `poll`, `counters` or `stop`, or a sink misuse, faults the capability; after a fault the host
+//! calls only `stop` and `destroy`.
 //!
 //! Every struct the host passes into a call is written by the host in the plugin's declared minor and
 //! is valid only during that call (REQ-P-11), like every pointer inside it. Messages from the plugin
@@ -130,7 +133,8 @@ pub struct UmbraNetworkVTable {
     pub struct_size: u32,
     /// Builds a configured adapter into `*out` from `params`: JSON text, borrowed during the call, the
     /// wrapper `{"name", "params", "templates"}` (ADR 0030; the capability's param schema applies to
-    /// `params`, errors point at `/params/<key>`). No I/O. Required. `UMBRA_OK` with a null `*out` is a
+    /// `params`, errors point at `/params/<key>`). No I/O. Required. A non-`UMBRA_OK` result (a panic
+    /// included) or `UMBRA_OK` with a null `*out` is a build error naming the capability, not a
     /// fault.
     pub configure: Option<
         unsafe extern "C" fn(
@@ -143,7 +147,8 @@ pub struct UmbraNetworkVTable {
     /// Valid after `configure` in every state (also without `start` or `stop`, and after a fault).
     pub destroy: Option<unsafe extern "C" fn(adapter: *mut UmbraNetAdapter)>,
     /// Writes the adapter's own key space (`base < key <= base + count`) into `*base` and `*count`.
-    /// Required. `count >= 1` and `base + count` must not overflow `u64` (the host checks both).
+    /// Required. `count >= 1` and `base + count` must not overflow `u64` (the host checks both); a
+    /// non-`UMBRA_OK` result or a bad key space is a build error, not a fault.
     pub key_space: Option<
         unsafe extern "C" fn(
             adapter: *mut UmbraNetAdapter,
@@ -152,7 +157,9 @@ pub struct UmbraNetworkVTable {
         ) -> UmbraCode,
     >,
     /// Starts the adapter's I/O at tick `tick` of a run at `rate_hz`; at most once. Required entry; an
-    /// optional lifecycle step (a dry-run build never starts).
+    /// optional lifecycle step (a dry-run build never starts). A non-`UMBRA_OK` result (a panic
+    /// included) is a start error naming the capability, not a fault; the host still calls `stop`
+    /// and `destroy`.
     pub start: Option<
         unsafe extern "C" fn(
             adapter: *mut UmbraNetAdapter,

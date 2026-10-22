@@ -930,7 +930,8 @@ typedef struct {
   /**
    * Builds a configured adapter into `*out` from `params`: JSON text, borrowed during the call, the
    * wrapper `{"name", "params", "templates"}` (ADR 0030; the capability's param schema applies to
-   * `params`, errors point at `/params/<key>`). No I/O. Required. `UMBRA_OK` with a null `*out` is a
+   * `params`, errors point at `/params/<key>`). No I/O. Required. A non-`UMBRA_OK` result (a panic
+   * included) or `UMBRA_OK` with a null `*out` is a build error naming the capability, not a
    * fault.
    */
   UmbraCode (*configure)(UmbraStr params, UmbraNetAdapter **out, const UmbraErrorSink *err);
@@ -941,12 +942,15 @@ typedef struct {
   void (*destroy)(UmbraNetAdapter *adapter);
   /**
    * Writes the adapter's own key space (`base < key <= base + count`) into `*base` and `*count`.
-   * Required. `count >= 1` and `base + count` must not overflow `u64` (the host checks both).
+   * Required. `count >= 1` and `base + count` must not overflow `u64` (the host checks both); a
+   * non-`UMBRA_OK` result or a bad key space is a build error, not a fault.
    */
   UmbraCode (*key_space)(UmbraNetAdapter *adapter, uint64_t *base, uint64_t *count);
   /**
    * Starts the adapter's I/O at tick `tick` of a run at `rate_hz`; at most once. Required entry; an
-   * optional lifecycle step (a dry-run build never starts).
+   * optional lifecycle step (a dry-run build never starts). A non-`UMBRA_OK` result (a panic
+   * included) is a start error naming the capability, not a fault; the host still calls `stop`
+   * and `destroy`.
    */
   UmbraCode (*start)(UmbraNetAdapter *adapter,
                      uint64_t tick,

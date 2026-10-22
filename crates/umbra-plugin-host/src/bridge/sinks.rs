@@ -1,11 +1,13 @@
 //! The host's copying sinks for plugin output (ADR 0019 "Memory", ADR 0021 "Host-side guards"): the
-//! intent sink of a `tick_batch` call and the value sink of an `output` call.
+//! intent sink of a `tick_batch` call, the value sink of an `output` call and the message sink of a
+//! network adapter's `poll` call (ABI 0.1, ADR 0033).
 //!
 //! Both are `extern "C"` leaves: they catch panics, resolve their token against the calling
 //! thread's top call record only, copy what the plugin passed and never call into a plugin. No
 //! record is `UMBRA_ERR_STATE` without any lookup; with a record, every misuse records a breach on
 //! it (the call then faults the capability) and returns `UMBRA_ERR_STATE` (a token of another call
-//! or sink) or `UMBRA_ERR_INVALID_ARGUMENT` (a bad item index, intent or value).
+//! or sink) or `UMBRA_ERR_INVALID_ARGUMENT` (a bad item index, intent, value or message, or a push
+//! beyond the poll's `max`).
 
 #![expect(
     unsafe_code,
@@ -14,11 +16,11 @@
 
 use umbra_plugin_api::{
     UMBRA_ABI_VERSION, UMBRA_ERR_INTERNAL, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_STATE,
-    UMBRA_MAX_INTENTS_PER_ITEM, UMBRA_OK, UmbraCode, UmbraIntent, UmbraIntentSink, UmbraToken,
-    UmbraValue, UmbraValueSink,
+    UMBRA_MAX_INTENTS_PER_ITEM, UMBRA_OK, UmbraCode, UmbraIntent, UmbraIntentSink, UmbraNetMessage,
+    UmbraNetSink, UmbraToken, UmbraValue, UmbraValueSink,
 };
 
-use super::marshal::{self, written_size};
+use super::marshal::{self, written_size, written_version};
 use crate::host_api::guarded;
 use crate::tokens::{self, CallRecord, Sink};
 
@@ -39,6 +41,17 @@ pub(crate) fn value_sink(ctx: UmbraToken, minor: u32) -> UmbraValueSink {
         struct_size: written_size::<UmbraValueSink>(minor),
         ctx,
         set: Some(value_set),
+    }
+}
+
+/// The message sink of a network adapter's `poll` call whose sink token is `ctx`, written in the
+/// plugin's declared minor `minor` (ABI 0.1).
+pub(crate) fn net_sink(ctx: UmbraToken, minor: u32) -> UmbraNetSink {
+    UmbraNetSink {
+        abi_version: written_version(minor),
+        struct_size: written_size::<UmbraNetSink>(minor),
+        ctx,
+        push: Some(net_push),
     }
 }
 
@@ -156,6 +169,60 @@ unsafe extern "C" fn value_set(ctx: UmbraToken, value: *const UmbraValue) -> Umb
                 r,
                 UMBRA_ERR_INVALID_ARGUMENT,
                 format!("output value: {why}"),
+            ),
+        })
+        .map_or(UMBRA_ERR_STATE, |r| r.err().unwrap_or(UMBRA_OK))
+    })
+}
+
+/// Appends a copy of `*message` to the current `poll` call (handed to the caller only after a clean
+/// call), at most the call's `max` pushes. The message is read with the plugin's declared minor as
+/// the ceiling (ADR 0033).
+unsafe extern "C" fn net_push(ctx: UmbraToken, message: *const UmbraNetMessage) -> UmbraCode {
+    guarded(UMBRA_ERR_INTERNAL, || {
+        // Phase 1: the token and the cap, against the top record.
+        let checked = tokens::with_top(|r| {
+            let ours = r.sink(Sink::NetPoll) == ctx;
+            let Some(poll) = r.poll.as_ref().filter(|_| ours) else {
+                return refuse(
+                    r,
+                    UMBRA_ERR_STATE,
+                    "message sink: stale or foreign token (not this call's message sink)"
+                        .to_owned(),
+                );
+            };
+            if poll.messages.len() >= poll.max {
+                let max = poll.max;
+                return refuse(
+                    r,
+                    UMBRA_ERR_INVALID_ARGUMENT,
+                    format!("message sink: more than max = {max} messages in one poll"),
+                );
+            }
+            Ok(r.minor)
+        });
+        let minor = match checked {
+            None => return UMBRA_ERR_STATE,
+            Some(Err(code)) => return code,
+            Some(Ok(minor)) => minor,
+        };
+        // Phase 2: copy and check the message (no stack borrow while reading plugin memory).
+        // SAFETY: the plugin passes the message (null is refused) and its strings borrowed for the
+        // duration of this call (ADR 0019).
+        let converted = unsafe { marshal::net_message_within(message, minor) };
+        // Phase 3: store it.
+        tokens::with_top(|r| match converted {
+            Ok(m) => match r.poll.as_mut() {
+                Some(poll) => {
+                    poll.messages.push(m);
+                    Ok(())
+                }
+                None => Err(UMBRA_ERR_STATE),
+            },
+            Err(why) => refuse(
+                r,
+                UMBRA_ERR_INVALID_ARGUMENT,
+                format!("message sink: {why}"),
             ),
         })
         .map_or(UMBRA_ERR_STATE, |r| r.err().unwrap_or(UMBRA_OK))

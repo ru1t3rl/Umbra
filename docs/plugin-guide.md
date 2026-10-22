@@ -401,8 +401,16 @@ scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Load
 ## Not in v0
 - Kinds other than `behavior`: motion model, sensor, component, condition, action (M7). Their kind
   numbers are reserved; a capability of such a kind is rejected as unsupported. The network adapter
-  kind (3) is defined in ABI 0.1 (ADR 0033): its structs are in the header, and the host validates its
-  descriptor entries; loading one through the host bridge comes with M6 WI-11, the SDK trait with WI-12.
+  kind (3) is defined in ABI 0.1 (ADR 0033): its structs are in the header, the host validates its
+  descriptor entries and registers it as a network adapter through the host bridge (M6 WI-11: `configure`
+  and `key_space` at build, `start` once, `publish`/`poll` on the tick path, `counters` read after each
+  `poll` and before `stop`, `stop` and `destroy` exactly once; a non-OK `publish`, `poll`, `counters` or
+  `stop`, an invalid pushed message or more than `max` pushes faults the capability, after which only
+  `stop` and `destroy` are called; a non-OK `configure`, `key_space` or `start` is a build or start
+  error, not a fault). Host-written strings respect `UMBRA_MAX_ID_LEN`: a longer display `name` arrives
+  cut at a UTF-8 char boundary, a longer `entity_type` arrives empty (ASM-409). Several network adapters
+  may run at once, from one plugin or several and one capability under several names; each has its own
+  handle, key space and sink (ASM-410). The SDK trait for writing one comes with WI-12.
 - Host API beyond `log` and RNG: terrain queries and event emit come with M7 (REQ-P-5 is staged);
   there is no memory helper and no runtime registration call (the descriptor is the only registration).
 - Saving and restoring instance state (replay, M7); hot reload; plugin-level configuration in scenarios;

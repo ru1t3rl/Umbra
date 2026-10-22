@@ -13,9 +13,8 @@
 //!
 //! ABI 0.1 (ADR 0033): a capability kind is accepted only in a descriptor declaring at least the minor
 //! that defines the kind (behavior 0, network adapter 1; [`required_minor`]). A network adapter's
-//! schema, metadata (empty in 0.1) and vtable (a struct that exists since minor 1) are validated here;
-//! the host has no network bridge before WI-11, so such a capability then ends the load as
-//! `Unsupported`.
+//! schema, metadata (empty in 0.1) and vtable (a struct that exists since minor 1) are validated here
+//! and copied into a [`KindVTable::Network`]; the network bridge (`bridge::network`) uses it.
 
 #![expect(
     unsafe_code,
@@ -31,8 +30,8 @@ use umbra_plugin_api::{
     UMBRA_CAPABILITY_NETWORK_ADAPTER, UMBRA_MAX_CAPABILITIES, UMBRA_MAX_ID_LEN,
     UMBRA_MAX_METADATA_LEN, UMBRA_MAX_SCHEMA_LEN, UmbraBehavior, UmbraBehaviorBatch,
     UmbraBehaviorVTable, UmbraCapability, UmbraCapabilityKind, UmbraCode, UmbraErrorSink,
-    UmbraHostApi, UmbraInstance, UmbraIntent, UmbraNetAdapter, UmbraNetBatch, UmbraNetSink,
-    UmbraNetworkVTable, UmbraPluginDescriptor, UmbraStr, UmbraValue, UmbraValueSink,
+    UmbraHostApi, UmbraInstance, UmbraIntent, UmbraNetAdapter, UmbraNetBatch, UmbraNetMessage,
+    UmbraNetSink, UmbraNetworkVTable, UmbraPluginDescriptor, UmbraStr, UmbraValue, UmbraValueSink,
 };
 
 use crate::error::PluginError;
@@ -75,7 +74,7 @@ pub(crate) const fn required_minor(kind: UmbraCapabilityKind) -> Option<u32> {
 }
 
 /// The minor that defines the network adapter kind and its structs (ADR 0033).
-const NETWORK_ADAPTER_MINOR: u32 = 1;
+pub(crate) const NETWORK_ADAPTER_MINOR: u32 = 1;
 // Every kind this host knows is defined in a minor it knows.
 const _: () = assert!(NETWORK_ADAPTER_MINOR <= UMBRA_ABI_VERSION_MINOR);
 
@@ -107,7 +106,7 @@ pub(crate) struct Descriptor {
 /// One copied, validated capability.
 #[derive(Debug, Clone)]
 pub(crate) struct Capability {
-    /// In 0.1 only behaviors reach this struct (network adapters from WI-11).
+    /// `Behavior` or `NetworkAdapter` (the kinds ABI 0.1 defines).
     pub(crate) kind: ComponentKind,
     /// Component id.
     pub(crate) id: ComponentId,
@@ -118,10 +117,19 @@ pub(crate) struct Capability {
     pub(crate) schema: ParamSchema,
     /// The schema's top-level `description` (empty without one).
     pub(crate) description: String,
-    /// The behavior metadata (ADR 0020).
+    /// The behavior metadata (ADR 0020); empty for a network adapter (ABI 0.1 defines none).
     pub(crate) metadata: Metadata,
-    /// The behavior vtable, copied.
-    pub(crate) vtable: BehaviorVTable,
+    /// The vtable of the capability's kind, copied.
+    pub(crate) vtable: KindVTable,
+}
+
+/// The copied vtable of one capability, by kind (ADR 0033).
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum KindVTable {
+    /// A behavior (`UMBRA_CAPABILITY_BEHAVIOR`).
+    Behavior(BehaviorVTable),
+    /// A network adapter (`UMBRA_CAPABILITY_NETWORK_ADAPTER`, ABI 0.1).
+    Network(NetworkVTable),
 }
 
 /// Behavior metadata (ADR 0020): types of interface params and outputs, result text.
@@ -177,9 +185,8 @@ pub(crate) struct BehaviorVTable {
 }
 
 /// The network adapter vtable entries this host knows, copied from the plugin (ADR 0033; required
-/// ones are non-null). Used by the network bridge (from WI-11).
+/// ones are non-null). Used by the network bridge (`bridge::network`).
 #[derive(Debug, Clone, Copy)]
-#[expect(dead_code, reason = "the network bridge reads the entries from WI-11")]
 pub(crate) struct NetworkVTable {
     pub(crate) configure: unsafe extern "C" fn(
         params: UmbraStr,
@@ -237,6 +244,8 @@ unsafe impl Headed for UmbraNetworkVTable {}
 unsafe impl Headed for UmbraIntent {}
 // SAFETY: as above; integers, `f64`s, a byte array, `UmbraStr` and `UmbraVec3`.
 unsafe impl Headed for UmbraValue {}
+// SAFETY: as above; integers, `UmbraVec3`s (three `f64`) and `UmbraStr`s (ABI 0.1).
+unsafe impl Headed for UmbraNetMessage {}
 
 /// Context for error construction: the origin of the load.
 struct Ctx<'a> {
@@ -569,9 +578,16 @@ unsafe fn capability(
             ));
         }
         // SAFETY: forwarded caller contract for the vtable pointer.
-        let _vtable = unsafe { network_vtable(cx, &vtable_field, cap.vtable.cast(), minor) }?;
-        // The network bridge arrives in WI-11; until then a valid network adapter is unsupported.
-        return Err(unsupported(id_text));
+        let vtable = unsafe { network_vtable(cx, &vtable_field, cap.vtable.cast(), minor) }?;
+        return Ok(Capability {
+            kind: ComponentKind::NetworkAdapter,
+            id,
+            version,
+            schema,
+            description,
+            metadata: Metadata::default(),
+            vtable: KindVTable::Network(vtable),
+        });
     }
     let metadata = metadata(cx, &metadata_field, &metadata_text)?;
     // SAFETY: forwarded caller contract for the vtable pointer.
@@ -585,7 +601,7 @@ unsafe fn capability(
         schema,
         description,
         metadata,
-        vtable,
+        vtable: KindVTable::Behavior(vtable),
     })
 }
 
