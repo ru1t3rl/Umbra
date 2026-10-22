@@ -1,0 +1,25 @@
+[package]
+name = "umbra-net-dis"
+description = "Umbra DIS network adapter plugin (IEEE 1278.1 v7 and v6): codec, version strategy (M6, REQ-N-6, ADR 0034)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# `cdylib` is the plugin (packaged by `cargo xtask build-plugins` from WI-15); `rlib` lets the
+# integration tests link the codec (ADR 0034).
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# REQ-SDK-3, REQ-A-3: the only workspace dependency is umbra-sdk (checked by `cargo xtask check-deps`).
+[dependencies]
+umbra-sdk = { path = "../umbra-sdk" }
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

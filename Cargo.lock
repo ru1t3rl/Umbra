@@ -1434,6 +1434,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "umbra-net-dis"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "thiserror",
+ "umbra-sdk",
+]
+
+[[package]]
 name = "umbra-plugin-api"
 version = "0.1.0"
 
