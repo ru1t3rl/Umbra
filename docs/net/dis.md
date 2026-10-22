@@ -3,8 +3,8 @@
 Mapping between the canonical network model (`umbra_core::net`, seen by the adapter as the
 `umbra-sdk` mirror types) and the Distributed Interactive Simulation wire protocol. Requirements:
 REQ-N-6, REQ-N-5, REQ-SDK-3, NFR-2; ADR 0030..0034. Status: the codec for Entity State (v7 and v6) is
-implemented (M6 WI-13); the sections marked "(WI-15, specified)" describe the adapter layer still to be built; the other PDU families (WI-14), `translate`, `config` and `transport` (WI-15)
-follow the tables below. Rows marked **(WI-14)** or **(WI-15)** are specified here and not implemented yet.
+implemented (M6 WI-13); the codec for Fire, Detonation, Start/Resume and Stop/Freeze (v7 and v6) is implemented (M6 WI-14); the sections marked "(WI-15, specified)" describe the adapter layer still to be built (`translate`, `config`, `transport`)
+follow the tables below. Rows marked **(WI-15)** are specified here and not implemented yet.
 
 Sources, named in the golden-packet README (`crates/umbra-net-dis/tests/fixtures/dis/README.md`):
 
@@ -26,7 +26,7 @@ The wire is **big-endian** throughout. One datagram carries exactly one PDU (no 
 | 3 | 1 | Protocol family | see families | same |
 | 4 | 4 | Timestamp | bit 0 = 0 relative (ASM-237) | same |
 | 8 | 2 | Length (whole PDU, bytes) | same | same |
-| 10 | 1 | **PDU status** | bit field (TEI, LVC, CEI) | **padding (0)** |
+| 10 | 1 | **PDU status** | bit field: bit 0 TEI, bits 1-2 LVC, bit 3 CEI, bit 4 Fire Type Indicator (Fire), bits 4-5 Detonation Type Indicator (Detonation) | **padding (0)** |
 | 11 | 1 | Padding | 0 | 0 |
 
 The v6/v7 difference in the header is exactly byte 0 and byte 10; `version::HeaderStrategy` is the only
@@ -36,10 +36,10 @@ encoder writes the configured one. v6 decode ignores byte 10 (padding, any value
 | PDU | Type | Family | Version-specific layout |
 |---|---|---|---|
 | Entity State | 1 | 1 (Entity Information/Interaction) | none |
-| Fire **(WI-14)** | 2 | 2 (Warfare) | none |
-| Detonation **(WI-14)** | 3 | 2 (Warfare) | none |
-| Start/Resume **(WI-14)** | 13 | 5 (Simulation Management) | none |
-| Stop/Freeze **(WI-14)** | 14 | 5 (Simulation Management) | none |
+| Fire | 2 | 2 (Warfare) | none |
+| Detonation | 3 | 2 (Warfare) | none |
+| Start/Resume | 13 | 5 (Simulation Management) | none |
+| Stop/Freeze | 14 | 5 (Simulation Management) | none |
 
 Other types are not an error of the stream: the codec reports `UnsupportedPduType` and the transport
 skips the datagram and counts it. Versions other than 6 and 7 are `UnsupportedVersion`.
@@ -111,10 +111,10 @@ through `extrapolate` (ADR 0032; body-frame models approximated, ASM-229).
 | `EntityState.orientation` | psi, theta, phi | yaw, pitch, roll copied (ADR 0032); **frame caveat below** |
 | `EntityState.dead_reckoning` | DR algorithm | DRM table |
 | `EntityRemoved { key }` | Entity State | final PDU with appearance bit 23 set (deactivated); inbound deactivated -> `EntityRemoved` **(WI-15)** |
-| `Fire` | Fire PDU | firing entity <- shooter; target; munition type from config `weapons`; event ID from an adapter counter; location <- position **(WI-14/15)** |
-| `Detonation` | Detonation PDU | firing entity, target, location in world <- position; result 5 "detonation" **(WI-14/15)** |
-| `SimulationControl(Start / Resume)` | Start/Resume PDU | **(WI-14/15)** |
-| `SimulationControl(Pause / Stop)` | Stop/Freeze PDU | reason 2 recess / 3 termination **(WI-14/15)** |
+| `Fire` | Fire PDU | firing entity <- shooter; target; munition type from config `weapons`; event ID from an adapter counter; location <- position **(WI-15)** |
+| `Detonation` | Detonation PDU | firing entity, target, location in world <- position; result 5 "detonation" **(WI-15)** |
+| `SimulationControl(Start / Resume)` | Start/Resume PDU | **(WI-15)** |
+| `SimulationControl(Pause / Stop)` | Stop/Freeze PDU | reason 2 recess / 3 termination **(WI-15)** |
 
 Inbound Start/Resume and Stop/Freeze are decoded, counted and ignored (ASM-235). Values that are not
 finite after conversion (NaN, infinity, f64 outside f32 range for velocity) make the datagram dropped
@@ -189,12 +189,12 @@ state (no statics, one pair of I/O threads per instance, counters per instance).
 A non-loopback bind, broadcast or multicast logs one warning ("accepts unauthenticated DIS traffic
 from the network", NFR-4). Datagrams over 8192 bytes are dropped and counted.
 
-## Further PDU tables (implemented in WI-14, from the same standard sections)
+## Fire, Detonation, Start/Resume and Stop/Freeze (WI-14)
 
 | PDU | Length | Body after the 12-byte header |
 |---|---|---|
-| Fire | 96 | firing entity ID 6, target entity ID 6, munition ID 6, event ID 6, fire mission index u32, location 3 x f64, burst descriptor 16 (munition type 8, warhead u16, fuse u16, quantity u16, rate u16), velocity 3 x f32, range f32 |
-| Detonation | 104 + 16 n | firing 6, target 6, munition 6, event 6, velocity 3 x f32, location 3 x f64, burst descriptor 16, location in entity coordinates 3 x f32, result u8, articulation count u8, padding u16 |
+| Fire | 96 | firing entity ID 6, target entity ID 6, munition ID 6, event ID 6, fire mission index u32, location 3 x f64, descriptor 16 (see the forms below; munition form: type 8, warhead u16, fuse u16, quantity u16, rate u16), velocity 3 x f32, range f32 |
+| Detonation | 104 + 16 n | firing 6, target 6, munition 6, event 6, velocity 3 x f32, location 3 x f64, descriptor 16, location in entity coordinates 3 x f32, result u8, articulation count u8, padding u16 |
 | Start/Resume | 44 | originating 6, receiving 6, real-world time (hour i32, time past hour u32), simulation time 8, request ID u32 |
 | Stop/Freeze | 40 | originating 6, receiving 6, real-world time 8, reason u8, frozen behavior u8, padding u16, request ID u32 |
 
@@ -207,3 +207,30 @@ from the network", NFR-4). Datagrams over 8192 bytes are dropped and counted.
 - Alternative entity type, DR other parameters and capabilities are carried by the codec and not
   mapped to anything canonical.
 - Absolute timestamps, authentication, encryption (DIS has none), PDU bundling, fragmentation.
+
+## Warfare and simulation management notes (WI-14)
+
+- v6 and v7 lay these four PDUs out identically; only the common header differs (version byte and
+  v7 status byte), so the golden files of the two versions differ in byte 0 and, when the v7 file has a
+  non-zero status, in byte 10. The decoder checks the exact length (Fire 96, Start/Resume 44,
+  Stop/Freeze 40) or `104 + 16 n` (Detonation, `n` = byte 101).
+- Descriptor forms (v7 only; v6 has the munition form alone and ignores byte 10). The 16-byte descriptor of
+  Fire and Detonation has three forms, named by the v7 PDU status: the Fire Type Indicator (Fire, bit 4:
+  0 munition, 1 expendable) and the Detonation Type Indicator (Detonation, bits 4-5: 0 munition,
+  1 expendable, 2 non-munition explosion, 3 reserved). Munition: entity type 8, warhead u16, fuse u16,
+  quantity u16, rate u16. Expendable: entity type 8, 8 bytes of padding. Explosion: entity type 8,
+  explosive material u16, padding u16, explosive force f32. The codec's `Descriptor` enum carries the
+  form; the decoder reads the form from the status bits (a reserved Detonation indicator is
+  `DecodeError::ReservedDescriptorForm`, counted as malformed), the encoder refuses a form that the status
+  bits do not name (`EncodeError::DescriptorStatusMismatch`) and any non-munition form for v6
+  (`DescriptorNeedsV7`). Other status bits (TEI, LVC, CEI, Fire bit 5) are carried unchanged. Padding is
+  ignored on decode and written as zero.
+- Detonation's munition field is called "exploding entity" in v7. Detonation parameter records after the
+  fixed part are validated by length and dropped (v7 calls them variable parameter records), padding
+  bytes (Detonation 102-103, Stop/Freeze 34-35) are ignored on decode and written as zero.
+- `codec::DecodeCounters` is the per-adapter-instance counter: PDU types the codec does not know are
+  skipped and counted by type byte, other versions and malformed datagrams are counted apart.
+- Cross-checked against Open-DIS Python (dis7 classes decode all five families, v6 files included).
+  Open-DIS ignores the type indicators and reads every descriptor as the munition form, so it cannot verify
+  the expendable and explosion forms beyond their entity type; for those the generator's second whole-PDU
+  `struct` format and a raw-byte check in `xcheck_opendis.py` are the check.

@@ -3,8 +3,8 @@
 //! No I/O, no clock, no allocation beyond the output vector. Big-endian per IEEE 1278.1. Input is
 //! untrusted: every read is bounds-checked, every length is checked before use, and the module
 //! denies indexing, unchecked arithmetic, `unwrap` and `expect` (the lints below), so no datagram
-//! can make [`decode`] panic. M6 WI-13 covers the header and Entity State; WI-14 adds the other
-//! families as further [`Body`] variants.
+//! can make [`decode`] panic. Families: Entity State (WI-13); Fire, Detonation, Start/Resume and
+//! Stop/Freeze (WI-14).
 //!
 //! One datagram is one PDU: the header length must equal the datagram length ([`DecodeError`]
 //! distinguishes truncated and extended datagrams from bad structure).
@@ -17,24 +17,48 @@
 )]
 
 mod common;
+mod detonation;
 mod entity_state;
+mod fire;
 mod reader;
+mod simulation;
 
-pub use common::{EntityId, EntityType};
+use std::collections::BTreeMap;
+
+pub use common::{
+    BurstDescriptor, ClockTime, Descriptor, DescriptorForm, EntityId, EntityType, EventId,
+};
+pub use detonation::{DETONATION_LEN, Detonation};
 pub use entity_state::{
     APPEARANCE_DEACTIVATED, DeadReckoningAlgorithm, DeadReckoningParameters, ENTITY_STATE_LEN,
     EntityState, Marking,
 };
+pub use fire::{FIRE_LEN, Fire};
+pub use simulation::{START_RESUME_LEN, STOP_FREEZE_LEN, StartResume, StopFreeze};
 
 use crate::version::DisVersion;
+use common::{detonation_form, fire_form};
 use reader::Reader;
 
 /// Length of the common PDU header, both versions.
 pub const HEADER_LEN: usize = 12;
 /// PDU type of the Entity State PDU.
 pub const PDU_TYPE_ENTITY_STATE: u8 = 1;
+/// PDU type of the Fire PDU.
+pub const PDU_TYPE_FIRE: u8 = 2;
+/// PDU type of the Detonation PDU.
+pub const PDU_TYPE_DETONATION: u8 = 3;
+/// PDU type of the Start/Resume PDU.
+pub const PDU_TYPE_START_RESUME: u8 = 13;
+/// PDU type of the Stop/Freeze PDU.
+pub const PDU_TYPE_STOP_FREEZE: u8 = 14;
 /// Protocol family of the Entity Information/Interaction PDUs.
 pub const FAMILY_ENTITY_INFORMATION: u8 = 1;
+/// Protocol family of the Warfare PDUs.
+pub const FAMILY_WARFARE: u8 = 2;
+/// Protocol family of the Simulation Management PDUs.
+pub const FAMILY_SIMULATION_MANAGEMENT: u8 = 5;
+
 /// A supported PDU type with the protocol family it belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct PduKind {
@@ -48,8 +72,32 @@ const ENTITY_STATE: PduKind = PduKind {
     family: FAMILY_ENTITY_INFORMATION,
 };
 
-/// Every supported PDU type: the one table decoding looks types up in (WI-14 adds rows).
-const KINDS: &[PduKind] = &[ENTITY_STATE];
+/// Fire.
+const FIRE: PduKind = PduKind {
+    pdu_type: PDU_TYPE_FIRE,
+    family: FAMILY_WARFARE,
+};
+
+/// Detonation.
+const DETONATION: PduKind = PduKind {
+    pdu_type: PDU_TYPE_DETONATION,
+    family: FAMILY_WARFARE,
+};
+
+/// Start/Resume.
+const START_RESUME: PduKind = PduKind {
+    pdu_type: PDU_TYPE_START_RESUME,
+    family: FAMILY_SIMULATION_MANAGEMENT,
+};
+
+/// Stop/Freeze.
+const STOP_FREEZE: PduKind = PduKind {
+    pdu_type: PDU_TYPE_STOP_FREEZE,
+    family: FAMILY_SIMULATION_MANAGEMENT,
+};
+
+/// Every supported PDU type: the one table decoding looks types up in.
+const KINDS: &[PduKind] = &[ENTITY_STATE, FIRE, DETONATION, START_RESUME, STOP_FREEZE];
 
 /// Offset of the length field in the header.
 const LENGTH_OFFSET: usize = 8;
@@ -71,6 +119,14 @@ pub struct Header {
 pub enum Body {
     /// Entity State PDU (type 1).
     EntityState(EntityState),
+    /// Fire PDU (type 2).
+    Fire(Fire),
+    /// Detonation PDU (type 3).
+    Detonation(Detonation),
+    /// Start/Resume PDU (type 13).
+    StartResume(StartResume),
+    /// Stop/Freeze PDU (type 14).
+    StopFreeze(StopFreeze),
 }
 
 impl Body {
@@ -78,13 +134,26 @@ impl Body {
     fn kind(&self) -> PduKind {
         match self {
             Body::EntityState(_) => ENTITY_STATE,
+            Body::Fire(_) => FIRE,
+            Body::Detonation(_) => DETONATION,
+            Body::StartResume(_) => START_RESUME,
+            Body::StopFreeze(_) => STOP_FREEZE,
         }
     }
 
     /// Reads the body of a PDU of type `pdu_type` after the header.
-    fn read(pdu_type: u8, r: &mut Reader<'_>, length: u16) -> Result<Self, DecodeError> {
+    fn read(
+        pdu_type: u8,
+        r: &mut Reader<'_>,
+        length: u16,
+        status: u8,
+    ) -> Result<Self, DecodeError> {
         match pdu_type {
             PDU_TYPE_ENTITY_STATE => Ok(Body::EntityState(EntityState::read(r, length)?)),
+            PDU_TYPE_FIRE => Ok(Body::Fire(Fire::read(r, length, status)?)),
+            PDU_TYPE_DETONATION => Ok(Body::Detonation(Detonation::read(r, length, status)?)),
+            PDU_TYPE_START_RESUME => Ok(Body::StartResume(StartResume::read(r, length)?)),
+            PDU_TYPE_STOP_FREEZE => Ok(Body::StopFreeze(StopFreeze::read(r, length)?)),
             other => Err(DecodeError::UnsupportedPduType(other)),
         }
     }
@@ -133,6 +202,14 @@ pub enum DecodeError {
         /// Datagram length.
         actual: usize,
     },
+    /// The v7 status bits name a reserved descriptor form (Detonation Type Indicator 3).
+    #[error("PDU type {pdu_type} has the reserved descriptor indicator {indicator}")]
+    ReservedDescriptorForm {
+        /// The PDU type byte.
+        pdu_type: u8,
+        /// The indicator value.
+        indicator: u8,
+    },
     /// The length is consistent with the datagram but not valid for the PDU type.
     #[error("PDU type {pdu_type} cannot have length {length}")]
     BadLength {
@@ -150,13 +227,84 @@ pub enum EncodeError {
     /// The PDU is longer than the 16-bit length field can state.
     #[error("PDU of {0} bytes does not fit the 16-bit length field")]
     TooLong(usize),
+    /// A non-munition descriptor cannot be sent in v6, which has only the munition form.
+    #[error("PDU type {pdu_type} has a non-munition descriptor, which needs DIS v7")]
+    DescriptorNeedsV7 {
+        /// The PDU type byte.
+        pdu_type: u8,
+    },
+    /// The descriptor form disagrees with the type indicator bits of the PDU status.
+    #[error("PDU type {pdu_type}: status {status:#04x} does not name the descriptor form")]
+    DescriptorStatusMismatch {
+        /// The PDU type byte.
+        pdu_type: u8,
+        /// The PDU status.
+        status: u8,
+    },
+}
+
+/// What happened to the datagrams an adapter instance received (WI-15 owns one per instance, ASM-410,
+/// so nothing is global). Counts decoded PDUs and why the rest was dropped; PDU types this codec does
+/// not know are skipped and counted per type (at most 256 keys).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DecodeCounters {
+    /// Datagrams decoded into a PDU.
+    pub decoded: u64,
+    /// The skipped datagrams by PDU type byte.
+    pub skipped_by_type: BTreeMap<u8, u64>,
+    /// Datagrams of an unsupported protocol version.
+    pub unsupported_version: u64,
+    /// Datagrams that are malformed in any other way (truncated, wrong length or family).
+    pub malformed: u64,
+}
+
+impl DecodeCounters {
+    /// Datagrams of an unsupported PDU type that were skipped (the sum of `skipped_by_type`).
+    #[must_use]
+    pub fn skipped_unsupported_type(&self) -> u64 {
+        self.skipped_by_type
+            .values()
+            .fold(0, |sum, n| u64::saturating_add(sum, *n))
+    }
+
+    /// Decodes `datagram`, counts the outcome and returns the PDU if there is one.
+    pub fn decode(&mut self, datagram: &[u8]) -> Option<(DisVersion, Pdu)> {
+        match decode(datagram) {
+            Ok(pdu) => {
+                self.decoded = self.decoded.saturating_add(1);
+                Some(pdu)
+            }
+            Err(DecodeError::UnsupportedPduType(t)) => {
+                let n = self.skipped_by_type.entry(t).or_insert(0);
+                *n = n.saturating_add(1);
+                None
+            }
+            Err(DecodeError::UnsupportedVersion(_)) => {
+                self.unsupported_version = self.unsupported_version.saturating_add(1);
+                None
+            }
+            Err(
+                DecodeError::Truncated { .. }
+                | DecodeError::WrongFamily { .. }
+                | DecodeError::LengthMismatch { .. }
+                | DecodeError::ReservedDescriptorForm { .. }
+                | DecodeError::BadLength { .. },
+            ) => {
+                self.malformed = self.malformed.saturating_add(1);
+                None
+            }
+        }
+    }
 }
 
 /// Appends the datagram for `pdu` in `version` to `out`. On error `out` is left as it was.
 ///
 /// # Errors
-/// [`EncodeError::TooLong`] if the PDU exceeds 65535 bytes (not reachable with the families so far).
+/// [`EncodeError::TooLong`] if the PDU exceeds 65535 bytes (not reachable with the families so far);
+/// [`EncodeError::DescriptorNeedsV7`] or [`EncodeError::DescriptorStatusMismatch`] if a Fire or
+/// Detonation descriptor form cannot be sent in `version` with the PDU status of `pdu`.
 pub fn encode(pdu: &Pdu, version: DisVersion, out: &mut Vec<u8>) -> Result<(), EncodeError> {
+    check_descriptor(pdu, version)?;
     let start = out.len();
     let kind = pdu.body.kind();
     let strategy = version.header();
@@ -168,9 +316,37 @@ pub fn encode(pdu: &Pdu, version: DisVersion, out: &mut Vec<u8>) -> Result<(), E
     out.extend_from_slice(&[0, 0]); // length, patched below
     out.extend_from_slice(&strategy.encode_status(pdu.header.status));
     match &pdu.body {
-        Body::EntityState(es) => es.write(out),
+        Body::EntityState(b) => b.write(out),
+        Body::Fire(b) => b.write(out),
+        Body::Detonation(b) => b.write(out),
+        Body::StartResume(b) => b.write(out),
+        Body::StopFreeze(b) => b.write(out),
     }
     patch_length(out, start)
+}
+
+/// Checks that the descriptor form of a Fire or Detonation can be sent in `version` with the PDU
+/// status of `pdu`: v6 has only the munition form, v7 names the form in the status bits.
+fn check_descriptor(pdu: &Pdu, version: DisVersion) -> Result<(), EncodeError> {
+    let status = pdu.header.status;
+    let (pdu_type, form, named) = match &pdu.body {
+        Body::Fire(f) => (PDU_TYPE_FIRE, f.descriptor.form(), Some(fire_form(status))),
+        Body::Detonation(d) => (
+            PDU_TYPE_DETONATION,
+            d.descriptor.form(),
+            detonation_form(status, PDU_TYPE_DETONATION).ok(),
+        ),
+        _ => return Ok(()),
+    };
+    match version {
+        DisVersion::V6 if form != DescriptorForm::Munition => {
+            Err(EncodeError::DescriptorNeedsV7 { pdu_type })
+        }
+        DisVersion::V7 if named != Some(form) => {
+            Err(EncodeError::DescriptorStatusMismatch { pdu_type, status })
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Writes the PDU length (everything appended since `start`) into the header, or rolls back.
@@ -221,7 +397,7 @@ pub fn decode(datagram: &[u8]) -> Result<(DisVersion, Pdu), DecodeError> {
         timestamp,
         status: version.header().decode_status(status_bytes),
     };
-    let body = Body::read(pdu_type, &mut r, length)?;
+    let body = Body::read(pdu_type, &mut r, length, header.status)?;
     Ok((version, Pdu { header, body }))
 }
 

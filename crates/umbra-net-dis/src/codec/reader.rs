@@ -42,6 +42,10 @@ impl<'a> Reader<'a> {
         self.array().map(u32::from_be_bytes)
     }
 
+    pub(super) fn i32(&mut self) -> Result<i32, DecodeError> {
+        self.array().map(i32::from_be_bytes)
+    }
+
     pub(super) fn f32(&mut self) -> Result<f32, DecodeError> {
         self.array().map(f32::from_be_bytes)
     }

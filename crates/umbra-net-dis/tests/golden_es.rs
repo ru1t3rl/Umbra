@@ -6,45 +6,14 @@
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
 #![forbid(unsafe_code)]
 
-use std::fs;
-use std::path::PathBuf;
-
 use umbra_net_dis::codec::{
     APPEARANCE_DEACTIVATED, Body, DeadReckoningAlgorithm, DeadReckoningParameters, DecodeError,
     ENTITY_STATE_LEN, EntityId, EntityState, EntityType, HEADER_LEN, Header, Marking, Pdu, decode,
     encode,
 };
+mod support;
+use support::{VERSIONS, assert_standard_malformed, fixtures_with_prefix, load};
 use umbra_net_dis::version::{DisVersion, HeaderStrategy, V6Header, V7Header};
-
-fn fixture_dir(version: DisVersion) -> PathBuf {
-    let sub = match version {
-        DisVersion::V6 => "v6",
-        DisVersion::V7 => "v7",
-    };
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/dis")
-        .join(sub)
-}
-
-/// Parses an annotated hex file: `#` starts a comment, the rest is hex byte pairs.
-fn parse_hex(text: &str) -> Vec<u8> {
-    let digits: String = text
-        .lines()
-        .map(|l| l.split('#').next().unwrap_or(""))
-        .flat_map(str::chars)
-        .filter(|c| !c.is_whitespace())
-        .collect();
-    assert_eq!(digits.len() % 2, 0, "odd number of hex digits");
-    (0..digits.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&digits[i..i + 2], 16).expect("hex digit"))
-        .collect()
-}
-
-fn load(version: DisVersion, name: &str) -> Vec<u8> {
-    let path = fixture_dir(version).join(format!("{name}.hex"));
-    parse_hex(&fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())))
-}
 
 fn type_225() -> EntityType {
     EntityType {
@@ -151,16 +120,8 @@ fn expected(name: &str, version: DisVersion) -> Option<Pdu> {
 }
 
 fn fixtures(version: DisVersion) -> Vec<String> {
-    let mut names: Vec<String> = fs::read_dir(fixture_dir(version))
-        .expect("fixture dir")
-        .map(|e| e.expect("entry").file_name().to_string_lossy().into_owned())
-        .filter_map(|f| f.strip_suffix(".hex").map(str::to_owned))
-        .collect();
-    names.sort();
-    names
+    fixtures_with_prefix(version, &["es_"])
 }
-
-const VERSIONS: [DisVersion; 2] = [DisVersion::V7, DisVersion::V6];
 
 #[test]
 fn every_golden_file_is_covered_by_a_test() {
@@ -232,6 +193,13 @@ fn articulation_parameters_are_validated_and_dropped() {
         assert_eq!(bytes.len(), ENTITY_STATE_LEN + 32);
         let (_, pdu) = decode(&bytes).expect("decode");
         assert_eq!(Some(pdu), expected("es_articulated", version));
+    }
+}
+
+#[test]
+fn standard_malformed_rows() {
+    for version in VERSIONS {
+        assert_standard_malformed(&format!("{version:?} es_basic"), &load(version, "es_basic"));
     }
 }
 
@@ -489,7 +457,7 @@ fn unknown_versions_and_pdu_types_are_distinct_errors() {
             Err(DecodeError::UnsupportedVersion(version_byte))
         );
     }
-    for pdu_type in [0u8, 2, 3, 13, 14, 200] {
+    for pdu_type in [0u8, 4, 12, 15, 200] {
         let mut bytes = load(DisVersion::V6, "es_basic");
         bytes[2] = pdu_type;
         assert_eq!(

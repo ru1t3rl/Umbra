@@ -3,7 +3,11 @@
 //! Fixed part 144 bytes after which `n` articulation parameters of 16 bytes may follow. The codec
 //! validates them by length and drops their content (unsupported, `docs/net/dis.md`); it writes none.
 
-use super::{DecodeError, EntityId, EntityType, PDU_TYPE_ENTITY_STATE, reader::Reader};
+use super::{
+    DecodeError, EntityId, EntityType, PDU_TYPE_ENTITY_STATE,
+    common::{put_f32s, put_f64s},
+    reader::Reader,
+};
 
 /// Length of an Entity State PDU without articulation parameters.
 pub const ENTITY_STATE_LEN: usize = 144;
@@ -189,9 +193,7 @@ impl EntityState {
         self.entity_type.write(out);
         self.alternative_entity_type.write(out);
         put_f32s(out, &self.linear_velocity);
-        for v in self.location {
-            out.extend_from_slice(&v.to_be_bytes());
-        }
+        put_f64s(out, &self.location);
         put_f32s(out, &self.orientation);
         out.extend_from_slice(&self.appearance.to_be_bytes());
         out.push(self.dead_reckoning.algorithm);
@@ -201,11 +203,5 @@ impl EntityState {
         out.push(self.marking.character_set);
         out.extend_from_slice(&self.marking.characters);
         out.extend_from_slice(&self.capabilities.to_be_bytes());
-    }
-}
-
-fn put_f32s(out: &mut Vec<u8>, values: &[f32; 3]) {
-    for v in values {
-        out.extend_from_slice(&v.to_be_bytes());
     }
 }

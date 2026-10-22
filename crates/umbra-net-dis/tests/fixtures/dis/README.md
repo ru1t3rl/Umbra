@@ -1,18 +1,20 @@
 # DIS golden packets
 
-Entity State PDUs (M6 WI-13) for DIS version 7 (`v7/`) and version 6 (`v6/`), used by
-`tests/golden_es.rs`. Fixtures for the other families come with WI-14.
+Entity State PDUs (M6 WI-13, `gen_es.py`; `tests/golden_es.rs`) and Fire, Detonation, Start/Resume and
+Stop/Freeze PDUs (M6 WI-14, `gen_warfare.py`; `tests/golden_fire.rs`, `golden_detonation.rs`,
+`golden_siman.rs`) for DIS version 7 (`v7/`) and version 6 (`v6/`). `tests/fixture_coverage.rs` checks
+that every file belongs to a family test.
 
 ## Provenance
 
 These bytes were **not** produced by the Rust codec (that would be circular). They are produced by
-`gen_es.py` in this directory (python3, `struct`, big-endian), which places every field at an explicit
+`gen_es.py` and `gen_warfare.py` in this directory (python3, `struct`, big-endian), which places every field at an explicit
 offset taken from the standard's field tables:
 
 | Fixture set | Source of the field table |
 |---|---|
-| `v7/` | IEEE Std 1278.1-2012, "PDU header" (12 bytes, protocol version 7, byte 10 = PDU status) and "Entity State PDU" (fixed part 144 bytes, 16 bytes per articulation parameter) |
-| `v6/` | IEEE Std 1278.1a-1998, "PDU header" (byte 10 and 11 = padding) and "Entity State PDU" (same layout) |
+| `v7/` | IEEE Std 1278.1-2012, "Fire PDU", "Detonation PDU", "Start/Resume PDU", "Stop/Freeze PDU" (same layout in both versions) and "PDU header" (12 bytes, protocol version 7, byte 10 = PDU status) and "Entity State PDU" (fixed part 144 bytes, 16 bytes per articulation parameter) |
+| `v6/` | IEEE Std 1278.1a-1998, the same four PDUs and "PDU header" (byte 10 and 11 = padding) and "Entity State PDU" (same layout) |
 | enumerations | SISO-REF-010: entity kind/domain, force ID, dead reckoning algorithm 0..9, appearance bit 23 (state: deactivated), marking character set 1 = ASCII |
 
 The standards are not in this repository and no network access was available while writing them: the
@@ -31,6 +33,7 @@ it is ever run.
 | Date | Tool and version | Result |
 |---|---|---|
 | 2026-10-22 | Open-DIS Python `opendis` 1.0 (dis7 `createPdu`), `xcheck_opendis.py` | all 31 MATCH (16 v7, 15 v6) after the field-distinctness revision: exercise, timestamp, ids, force, both entity types, location, velocity, orientation, appearance, DRM 0..9, other parameters, acceleration, angular velocity, marking, capabilities, v7 status, lengths 144/176, 2 articulation parameters |
+| 2026-10-22 | Open-DIS Python `opendis` 1.0, WI-14 families (`xcheck_opendis.py`, every annotated field must be read back) | after the review fixes: Fire 6/6 MATCH, Detonation 10/10 (incl. 2 parameter records), Start/Resume 2/2, Stop/Freeze 4/4; Entity State 31/31 as before. Open-DIS ignores the v7 type indicators and reads every descriptor as the munition form, so for the expendable and explosion files only the entity type is compared with it and the last 8 bytes are checked by `xcheck_opendis.py` against the annotations; it cannot verify those forms |
 | 2026-10-22 | `tshark` | not available |
 
 ## Format
@@ -53,3 +56,32 @@ carry their own hand-written expected values and fail if the files drift.
 | `es_drm_0.hex` .. `es_drm_9.hex` | dead reckoning algorithm codes 0 to 9 |
 
 Every field of `es_basic` has a value different from its neighbours of the same width (entity types `1.2.225.3.4.5.6` and alternative `1.2.222.7.8.9.10`, distinct velocity, acceleration, angular velocity components, a multi-byte appearance and capabilities, distinct articulation bytes), so a swapped pair of fields cannot pass the golden tests.
+
+## WI-14 files (each in `v7/` and `v6/`)
+
+| File | Edge case |
+|---|---|
+| `fire_basic.hex` | every field distinct (ids 1.2.3, 4.5.6, 7.8.9, event 10.11.12, burst descriptor `2.2.225.3.4.5.6` + warhead/fuse/quantity/rate) |
+| `fire_no_target.hex` | target entity 0.0.0 |
+| `det_basic.hex` | result 5, no parameter records |
+| `det_result_1.hex` | result 1 (entity impact) |
+| `det_no_target.hex` | target entity 0.0.0 |
+| `det_articulated.hex` | two parameter records, length 136 (decode only) |
+| `start_resume_basic.hex` | real-world and simulation times and request ID distinct |
+| `stop_freeze_basic.hex` | reason 3 (termination), frozen behavior 6 |
+| `stop_freeze_recess.hex` | reason 2 (recess) |
+
+Added by the WI-14 review (v7 only, the non-munition descriptor forms and the status bits exist only
+there; `det_basic` and its siblings, `start_resume_basic`, `stop_freeze_*` now carry a non-zero v7 status, the v6 file has padding 0):
+
+| File | Edge case |
+|---|---|
+| `fire_status.hex` (v7) | status 0x0D: TEI, LVC 2, CEI; munition |
+| `fire_expendable.hex` (v7) | Fire Type Indicator 1 (status 0x11): expendable descriptor, 8 zero padding bytes |
+| `det_expendable.hex` (v7) | Detonation Type Indicator 1 (status 0x10): expendable |
+| `det_explosion.hex` (v7) | Detonation Type Indicator 2 (status 0x21): explosion, material 0x1234, force 12.5 |
+
+The indicator positions (Fire: bit 4; Detonation: bits 4-5) and the explosion layout come from the
+implementer's knowledge of IEEE 1278.1-2012 (the standard is not in the repository). Rows for a v6 packet
+with bits 4-5 set in byte 10, the reserved indicator 3, and a record count the length cannot hold are
+built from these files inside `golden_fire.rs` and `golden_detonation.rs`.
