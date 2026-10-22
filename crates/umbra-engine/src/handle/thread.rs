@@ -259,7 +259,9 @@ impl Worker {
         let Some(run) = self.run.as_mut() else {
             return true;
         };
-        match run.session.engine_mut().pump(max_wait) {
+        let pumped = run.session.engine_mut().pump(max_wait);
+        run.session.sync_lifecycle();
+        match pumped {
             Ok(Pumped::Ticked(report)) => self.after_tick(report),
             Ok(Pumped::Aborted { report, fault }) => self.after_abort(report, &fault),
             Ok(Pumped::NetAborted { report, fault }) => self.after_net_abort(report, &fault),

@@ -32,6 +32,10 @@ Option 1. `pub const INTENT_SET_VERSION: u32 = 1;` Variants added (existing ones
   the M3 open questions.
 - Revisit when Events-phase resolution (`Fire` -> `Fire` event, REQ-C-5) and the spawn path (M5) land.
 
+## Note (2026-10-22, M7 WI-4; ADR 0052)
+`Spawn` and `Despawn` are applied by the engine after the tick from `TickReport::lifecycle`; a bare kernel still
+records them only.
+
 ## Note (2026-10-20, M5 WI-19; ADR 0028, human-approved 2026-10-19)
 The text "recorded only until M5" now reads **until M7** for `Spawn` and `Despawn` (decision 5): they stay
 recorded and unapplied through M5, because applying them in the kernel breaks the frozen M3 tests, and are

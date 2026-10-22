@@ -58,3 +58,7 @@ Option 1.
 - **Plugin fault (M9).** Events of a tick that faulted under `abort` are kept. `Engine::pump` returns
   `Pumped::Aborted { report, fault }`, and the faulting tick's frame carries those events (ADR 0024
   amendment).
+
+## Note (2026-10-22, M7 WI-4)
+The revisit for the spawn path is done by ADR 0052: the kernel reports `Spawn` and `Despawn` in
+`TickReport::lifecycle`, the engine applies them; the frozen M3 tests are untouched.

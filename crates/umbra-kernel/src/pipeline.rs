@@ -80,6 +80,6 @@ pub struct TickReport {
     pub events: Vec<SimEvent>,
     /// The `Spawn` and `Despawn` intents of Owned entities, in entity id order and, within an
     /// entity, in emission order, for the engine to apply after the tick (ADR 0052, REQ-B-2). A
-    /// bare kernel applies none of them. Never hashed. M7 WI-4 fills it; empty until then.
+    /// bare kernel applies none of them. Never hashed.
     pub lifecycle: Vec<(EntityId, Intent)>,
 }

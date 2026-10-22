@@ -482,8 +482,10 @@ every Owned entity in `EntityId` order, its `Fire` and `Custom` intents (in emis
 the `Custom` intent). They reach the stream as `fire` and `custom` events (`docs/api.md`, "The stream"),
 best-effort: a slow client can lose some, and `dropped` and `events_truncated` say so. Events change no
 state and are not part of the state hash, so a plugin cannot influence a run through them.
-`Spawn` and `Despawn` intents are accepted by the ABI and recorded in the snapshot, but are **not applied
-until M7**; a plugin that emits them today creates and removes nothing. The plugin list of the loaded
+`Spawn` and `Despawn` intents are applied by the engine right after the tick (M7, ADR 0052): the entity is
+created from the template with the emitter's force and acts from the next tick; `Despawn` removes the
+emitting entity (its instance is destroyed on the engine thread). Limits: 256 spawns per tick, 100,000
+entities; the excess and spawns of unknown templates are dropped, not faults. The plugin list of the loaded
 scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Loading a scenario again (or
 `POST /api/v1/scenario` over a running session) starts a new plugin lifecycle: `init` runs again.
 

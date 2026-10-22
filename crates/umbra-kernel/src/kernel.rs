@@ -201,11 +201,18 @@ impl Kernel {
         };
         let mut phase_wall = [Duration::ZERO; PHASE_COUNT];
         let mut sim_events = Vec::new();
+        let mut lifecycle = Vec::new();
         let tick_started = self.clock.wall_now();
         for (slot, phase) in phase_wall.iter_mut().zip(Phase::ALL) {
             let _span = tracing::trace_span!("phase", phase = phase.name()).entered();
             let started = self.clock.wall_now();
-            run_phase(phase, &mut self.world, &ctx, &mut sim_events);
+            run_phase(
+                phase,
+                &mut self.world,
+                &ctx,
+                &mut sim_events,
+                &mut lifecycle,
+            );
             *slot = self.clock.wall_now().saturating_sub(started);
         }
         let took = self.clock.wall_now().saturating_sub(tick_started);
@@ -217,8 +224,7 @@ impl Kernel {
             overrun,
             lag: self.clock.behind(),
             events: sim_events,
-            // M7 WI-4 fills this (ADR 0052); empty until then.
-            lifecycle: Vec::new(),
+            lifecycle,
         })
     }
 
@@ -385,7 +391,13 @@ impl Kernel {
 /// Runs the systems of one phase. Perception, Behavior and Motion act for `Owned` entities only
 /// (REQ-K-5), and so does Events, which turns `Fire` and `Custom` intents into `events` (ADR 0028);
 /// Ingest dead-reckons Remote entities (ADR 0032); Publish has no systems yet.
-fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>, events: &mut Vec<SimEvent>) {
+fn run_phase(
+    phase: Phase,
+    world: &mut World,
+    ctx: &TickContext<'_>,
+    events: &mut Vec<SimEvent>,
+    lifecycle: &mut Vec<(EntityId, Intent)>,
+) {
     match phase {
         Phase::Perception => perception::run(world, ctx),
         Phase::Behavior => behavior::run_phase(world, ctx),
@@ -394,7 +406,10 @@ fn run_phase(phase: Phase, world: &mut World, ctx: &TickContext<'_>, events: &mu
                 motion::step(e.motion, e.state, &e.intents.0, ctx);
             }
         }),
-        Phase::Events => events::run(world, events),
+        Phase::Events => {
+            events::run(world, events);
+            events::collect_lifecycle(world, lifecycle);
+        }
         Phase::Ingest => ingest::run(world, ctx),
         Phase::Publish => {}
     }

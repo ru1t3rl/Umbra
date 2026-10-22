@@ -2,9 +2,9 @@
 //! Owned entities for the engine to apply. Requirements: REQ-B-2, REQ-K-5, D-46, ADR 0052,
 //! ASM-600, ASM-602, ASM-605.
 //!
-//! Written in M7 WI-1 against the stub: `lifecycle` is always empty until M7 WI-4, so the rows that
-//! need content are ignored. The compatibility rows (a bare kernel applies nothing; an empty
-//! report when nothing is emitted; lifecycle intents are not hashed) pass now and stay green.
+//! Written in M7 WI-1 against the stub, live since M7 WI-4. The compatibility rows (a bare kernel
+//! applies nothing; an empty report when nothing is emitted; lifecycle intents are not hashed)
+//! passed from the start and stay green.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -70,7 +70,6 @@ fn add(k: &mut Kernel, y: f64, remote: bool, intents: Vec<Intent>) {
 /// ADR 0052: Owned entities' lifecycle intents appear in id order and, within an entity, in
 /// emission order; other intents are not copied; the report holds the tick's intents only.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_owned_emitters_when_ticked_then_lifecycle_is_in_id_then_emission_order() {
     let mut k = kernel(3);
     let fire = Intent::Fire {
@@ -111,7 +110,6 @@ fn given_owned_emitters_when_ticked_then_lifecycle_is_in_id_then_emission_order(
 
 /// REQ-K-5: a Remote entity is never ticked, so it contributes no lifecycle intents.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_remote_entity_with_a_behavior_when_ticked_then_it_contributes_nothing() {
     let mut k = kernel(3);
     add(
@@ -129,7 +127,6 @@ fn given_a_remote_entity_with_a_behavior_when_ticked_then_it_contributes_nothing
 
 /// ADR 0052: the field describes one tick: a behavior that emits only once reports only once.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_an_emitter_that_stops_when_ticked_twice_then_the_second_report_is_empty() {
     let mut k = kernel(3);
     let model = Stub::new("test.model.still", Motion::Stationary);

@@ -20,6 +20,7 @@ use crate::confine::Confinement;
 use crate::engine::{AgentInit, Engine, EngineConfig, RouteSpec, SpawnSpec};
 use crate::error::EngineError;
 use crate::net::NetLink;
+use crate::spawner::Spawner;
 
 /// Overrides and the wall clock for one run.
 pub struct RunOptions {
@@ -310,6 +311,11 @@ pub(crate) fn instantiate_in(
     if let Some(link) = NetLink::connect(registry, scenario, engine.now())? {
         engine.attach_network(link);
     }
+    engine.attach_spawner(Spawner::new(
+        registry.clone(),
+        scenario.templates.clone(),
+        scenario.entities.len(),
+    ));
     let mut entities = Vec::with_capacity(scenario.entities.len());
     for (index, placement) in scenario.entities.iter().enumerate() {
         let id = spawn_placement(&mut engine, registry, index, placement)?;

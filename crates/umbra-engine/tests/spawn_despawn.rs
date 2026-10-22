@@ -4,9 +4,9 @@
 //!
 //! The emitting behavior is `test.behavior.launcher` (`m7_support`), the scenarios are
 //! `fixtures/m7/spawn_*`. Written in M7 WI-1 against the `Spawner` stub: every row that needs the
-//! application is ignored until M7 WI-4; the fixtures row passes now.
+//! application was ignored until M7 WI-4 and is live since.
 //!
-//! Not covered here (WI-4 adds them with the implementation): spawns that build inside the plugin
+//! Not covered here (deferred, ASM-686): spawns that build inside the plugin
 //! build scope (needs the built `example-wander`), the 100,000-entity total cap, and the
 //! one-warning-per-template log lines.
 
@@ -76,7 +76,6 @@ fn given_the_m7_fixtures_when_loaded_then_each_scenario_instantiates() {
 /// ADR 0052, ASM-600: a spawn emitted in tick 2 is applied at the end of tick 2: the entity exists
 /// in tick 2's snapshot with the next id, and its `EntityCreated` is in tick 2's events.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_spawn_intent_when_the_tick_ends_then_the_entity_exists_with_the_next_id() {
     let mut s = stepper("spawn_basic");
 
@@ -90,7 +89,6 @@ fn given_a_spawn_intent_when_the_tick_ends_then_the_entity_exists_with_the_next_
 /// ADR 0052, ASM-601: the spawned entity takes the spawner's force, the intent's position and
 /// heading, speed 0, no route, and is Owned.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_spawn_intent_then_the_entity_inherits_force_and_takes_position_and_heading() {
     let mut s = stepper("spawn_basic");
     s.ticks(2);
@@ -111,7 +109,6 @@ fn given_a_spawn_intent_then_the_entity_inherits_force_and_takes_position_and_he
 /// ADR 0052, ASM-644: the spawned entity first acts in the next tick. A child that removes itself on
 /// its first tick therefore exists after tick 2 (spawned) and is gone after tick 3.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_self_removing_child_when_spawned_then_it_acts_one_tick_later_and_is_removed() {
     let mut s = stepper("spawn_selfish");
 
@@ -128,7 +125,6 @@ fn given_a_self_removing_child_when_spawned_then_it_acts_one_tick_later_and_is_r
 /// ADR 0052, ASM-602: spawns apply in (spawner id, emission order) and get monotonic new ids; each
 /// child takes its own spawner's force.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_two_spawners_when_they_spawn_in_one_tick_then_ids_follow_spawner_then_emission_order() {
     let mut s = stepper("spawn_order");
 
@@ -155,7 +151,6 @@ fn given_two_spawners_when_they_spawn_in_one_tick_then_ids_follow_spawner_then_e
 /// ADR 0052, ASM-602: all spawns of a tick come before the despawns, so an entity that spawns and
 /// despawns itself in one tick still spawns first, and the child keeps the (gone) spawner's force.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_spawner_that_despawns_itself_when_it_spawns_then_the_child_exists_and_the_spawn_came_first()
  {
     let mut s = stepper("spawn_leaver");
@@ -179,7 +174,6 @@ fn given_a_spawner_that_despawns_itself_when_it_spawns_then_the_child_exists_and
 
 /// ADR 0052: the spawner's events come after the kernel's events of the same tick.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_kernel_event_and_a_spawn_in_one_tick_then_the_spawn_event_comes_after_it() {
     let mut s = stepper("spawn_basic");
 
@@ -199,7 +193,6 @@ fn given_a_kernel_event_and_a_spawn_in_one_tick_then_the_spawn_event_comes_after
 /// ASM-603: at most `MAX_SPAWNS_PER_TICK` spawns apply per tick; the rest are dropped in order and
 /// counted.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_300_spawns_in_one_tick_when_applied_then_the_first_256_exist_and_44_are_counted_capped() {
     let mut s = stepper("spawn_flood");
 
@@ -219,7 +212,6 @@ fn given_300_spawns_in_one_tick_when_applied_then_the_first_256_exist_and_44_are
 /// ASM-604: a spawn of an unknown template is dropped and counted; it is not a fault and the run
 /// goes on.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_an_unknown_template_when_spawned_then_it_is_dropped_counted_and_the_run_continues() {
     let mut s = stepper("spawn_missing");
 
@@ -233,7 +225,6 @@ fn given_an_unknown_template_when_spawned_then_it_is_dropped_counted_and_the_run
 /// ASM-606: the entity directory (the control API's view) follows spawns and removals with the
 /// template and no name.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_spawned_and_removed_entities_when_queried_through_the_handle_then_the_directory_follows() {
     let mut config = HandleConfig::new(launcher_registry());
     config.wall = std::sync::Arc::new(|| -> Box<dyn umbra_engine::WallClock> {
@@ -261,7 +252,6 @@ fn given_spawned_and_removed_entities_when_queried_through_the_handle_then_the_d
 /// peer mirrors it within a few ticks; the test looks at tick 10) and its removal reaches the peer
 /// as `EntityRemoved`, over the loopback adapter.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_peer_when_an_entity_is_spawned_and_later_despawned_then_the_peer_gets_and_loses_a_ghost()
 {
     let hub = LoopbackHub::new(4096);

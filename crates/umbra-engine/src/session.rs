@@ -27,6 +27,7 @@ use crate::scenario::{
     EntityInfo, LoadSettings, RunOptions, ScenarioError, instantiate_in, scenario_registry,
     spawn_placement,
 };
+use crate::spawner::DirectoryChange;
 use crate::validate::{GraphValidation, validate_with_others};
 
 /// How to load a session.
@@ -219,6 +220,21 @@ impl Session {
             plugins,
             path: path.to_path_buf(),
         })
+    }
+
+    /// Brings the directory up to date with the entities the engine's spawner created and removed
+    /// from `Spawn` and `Despawn` intents (ADR 0052, ASM-606). The driver calls it after every tick.
+    pub fn sync_lifecycle(&mut self) {
+        for change in self.engine.take_directory_changes() {
+            match change {
+                DirectoryChange::Created(info) => {
+                    self.directory.insert(info.id, info);
+                }
+                DirectoryChange::Removed(id) => {
+                    self.directory.remove(&id);
+                }
+            }
+        }
     }
 
     /// The scenario file as loaded: with a confinement, the request resolved against the scenario

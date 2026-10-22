@@ -6,8 +6,7 @@
 //! Requirements: REQ-K-3, REQ-K-4, REQ-B-2, ADR 0052, ASM-602, ASM-603.
 //!
 //! On the first divergent tick the failure names the entity and the field (`common`). Written in
-//! M7 WI-1: ignored until M7 WI-4 applies the intents (before it every run is trivially equal and
-//! proves nothing about the spawner).
+//! M7 WI-1; live since M7 WI-4 (before the spawner every run was trivially equal and proved nothing).
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -37,10 +36,26 @@ fn baseline(dir: &str) -> Trace {
     run_to(engine(dir, Duration::from_micros(500), None), TICKS, false)
 }
 
+/// WI-2 review note: a compare row must not be vacuous. The baseline's entity count differs from
+/// the count at load on some tick of the run, so the trace compared holds spawned or removed
+/// entities.
+fn assert_population_changes(dir: &str, baseline: &Trace) {
+    let loaded = engine(dir, Duration::from_micros(500), None)
+        .snapshot()
+        .entities
+        .len();
+    assert!(
+        baseline
+            .snapshots
+            .iter()
+            .any(|s| s.entities.len() != loaded),
+        "{dir}: the entity count never changes from {loaded}, the comparison would be vacuous"
+    );
+}
+
 /// The spawner changes the world: the entity count grows or shrinks in these scenarios, so the
 /// comparisons below compare something.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_the_scenarios_then_their_runs_spawn_and_despawn_entities() {
     let counts = |dir: &str| -> Vec<usize> {
         baseline(dir)
@@ -57,28 +72,25 @@ fn given_the_scenarios_then_their_runs_spawn_and_despawn_entities() {
 
 /// REQ-K-4: two runs with different wall-time scripts hash alike on every tick.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_spawning_scenario_when_run_twice_with_different_wall_scripts_then_hashes_are_identical()
 {
     for dir in SCENARIOS {
         let other = run_to(engine(dir, Duration::from_micros(1700), None), TICKS, false);
+        let want = baseline(dir);
+        assert_population_changes(dir, &want);
 
-        assert_same_trace(
-            &format!("{dir}: afap, other wall script"),
-            &other,
-            &baseline(dir),
-        );
+        assert_same_trace(&format!("{dir}: afap, other wall script"), &other, &want);
     }
 }
 
 /// REQ-K-3, REQ-K-4: stepped (several chunkings), scaled and real-time runs, each with and without
 /// a pause/resume at tick 100, give the as-fast-as-possible hashes.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_spawning_scenario_when_run_in_each_clock_mode_then_hashes_match_afap() {
     let scaled = ClockMode::Scaled(TimeScale::new(4.0).expect("valid scale"));
     for dir in SCENARIOS {
         let want = baseline(dir);
+        assert_population_changes(dir, &want);
         for pause in [false, true] {
             for (name, chunks) in [
                 ("stepped x1", &[1_u64; 300][..]),
@@ -112,10 +124,12 @@ fn given_a_spawning_scenario_when_run_in_each_clock_mode_then_hashes_match_afap(
 
 /// REQ-K-3: a clock mode switch in the middle of a spawn burst changes no hash.
 #[test]
-#[ignore = "M7 WI-4"]
 fn given_a_mode_switch_around_the_spawn_tick_then_hashes_match_afap() {
     let mut e = engine("spawn_order", Duration::from_micros(500), None);
     let mut got = Trace::default();
+
+    let want = baseline("spawn_order");
+    assert_population_changes("spawn_order", &want);
 
     run_traced(&mut e, RunUntil::Ticks(1), &mut got);
     e.set_clock(ClockMode::RealTime);
@@ -123,9 +137,5 @@ fn given_a_mode_switch_around_the_spawn_tick_then_hashes_match_afap() {
     e.set_clock(ClockMode::Stepped);
     step_traced(&mut e, TICKS - 3, &mut got);
 
-    assert_same_trace(
-        "spawn_order: afap -> realtime -> stepped",
-        &got,
-        &baseline("spawn_order"),
-    );
+    assert_same_trace("spawn_order: afap -> realtime -> stepped", &got, &want);
 }

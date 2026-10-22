@@ -117,6 +117,9 @@ pub struct Engine {
     pub(crate) network: Option<crate::net::NetLink>,
     /// The plugin host bound by `attach_plugins` (M4, ADR 0021); checked after every tick.
     pub(crate) plugins: Option<Arc<PluginHost>>,
+    /// Applies `Spawn` and `Despawn` intents after every tick (M7, ADR 0052). `None` for an engine
+    /// built without a scenario, which applies neither, like a bare kernel. Taken out while it runs.
+    pub(crate) spawner: Option<crate::spawner::Spawner>,
 }
 
 impl Engine {
@@ -144,6 +147,7 @@ impl Engine {
             kernel: Kernel::new(kernel_config, Box::new(terrain), wall),
             network: None,
             plugins: None,
+            spawner: None,
         }
     }
 
@@ -463,6 +467,18 @@ impl Engine {
         Ok(())
     }
 
+    /// Applies the tick's `Spawn` and `Despawn` intents (ADR 0052). The spawner is taken out of the
+    /// engine for the call, so it can borrow the engine mutably; it is put back afterwards.
+    fn apply_lifecycle(&mut self, report: &mut TickReport) {
+        if report.lifecycle.is_empty() {
+            return;
+        }
+        if let Some(mut spawner) = self.spawner.take() {
+            spawner.apply(self, &report.lifecycle, &mut report.events);
+            self.spawner = Some(spawner);
+        }
+    }
+
     /// One tick with the network around it (ASM-224): ingest, tick, publish, then the abort checks.
     /// The ghost events are prepended to the report's (ASM-248). Without a link it is a plain tick.
     fn tick_once(&mut self) -> Result<Ticked, EngineError> {
@@ -474,6 +490,7 @@ impl Engine {
         // lost with it: the ghosts exist in the kernel but no report announces them. That is the
         // end of the run in any case, so nothing is kept for a retry.
         let mut report = self.kernel.tick()?;
+        self.apply_lifecycle(&mut report);
         let mut net_fault = None;
         if let Some(link) = self.network.as_mut() {
             report.events.splice(0..0, ingested);

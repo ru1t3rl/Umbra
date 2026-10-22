@@ -817,12 +817,19 @@ stand-in's intents for that tick (`SetSpeed` + `MoveTo` toward the next waypoint
 later `FollowRoute`s in the same tick are dropped, and without a route it is dropped. `SetHeading` is
 steered to by `builtin.ground.kinematic` (no built-in action emits it yet).
 
-**`Spawn` and `Despawn` are recorded, not applied, until M7; `Fire` and `Custom` become events** (human
-decision 2026-10-17, amended by ADR 0028): all four appear in `EntitySnapshot::intents` for that tick. In the
+**`Fire` and `Custom` become events; `Spawn` and `Despawn` are applied by the engine after the tick (M7, ADR 0052)** (human
+decision 2026-10-17, amended by ADR 0028 and ADR 0052): all four appear in `EntitySnapshot::intents` for that tick. In the
 Events phase an Owned entity's `Fire` and `Custom` intents become `SimEvent::Fire` and `SimEvent::Custom`
 in `TickReport::events` (entity id order, then emission order); events change no state and are not part
-of the state hash. `Fire` does not damage, destroy or even notify its target; `Spawn` creates no entity;
-`Despawn` removes nothing. Nothing else consumes `Custom` yet.
+of the state hash. `Fire` does not damage, destroy or even notify its target. Nothing else consumes `Custom` yet.
+`Spawn` and `Despawn` of Owned entities are listed in `TickReport::lifecycle` (not hashed). A bare `Kernel`
+applies neither; the `Engine` of a scenario applies them right after the tick and before the network
+publish: every `Spawn` first, in (spawner id, emission) order, then every `Despawn`. A spawned entity takes
+the template named by the intent, its position and heading, speed 0, no route, no name, the **spawner's
+force**, and the next entity id; it first acts in the next tick. `EntityCreated` and `EntityRemoved` events
+follow the kernel's events of that tick. At most 256 spawns are applied per tick and 100,000 entities exist
+in total; the excess is dropped and counted (`Engine::lifecycle_counters`), as is a spawn of an unknown
+template or one that fails to build (one warning per template).
 `umbra run` does not print intents; embedders read them from the snapshot. An entity whose behavior
 emits no intent in a tick gets none (it slows to a stop); an Owned entity without a behavior follows its
 route exactly as in M2.

@@ -2,9 +2,10 @@
 //!
 //! Turns the `Fire` and `Custom` intents of this tick into canonical events, Owned entities in id
 //! order, each entity's intents in emission order. It only reads: no state changes and nothing is
-//! hashed. `Spawn` and `Despawn` stay recorded and unapplied until M7 (ADR 0016, ADR 0028).
+//! hashed. `Spawn` and `Despawn` are not applied here: they are collected into the tick report for
+//! the engine to apply after the tick (ADR 0052; a bare kernel applies neither).
 
-use umbra_core::{Intent, SimEvent};
+use umbra_core::{EntityId, Intent, SimEvent};
 
 use crate::world::World;
 
@@ -29,6 +30,23 @@ pub(crate) fn run(world: &World, out: &mut Vec<SimEvent>) {
                 _ => {}
             }
         }
+    });
+}
+
+/// Appends the `Spawn` and `Despawn` intents of Owned entities to `out`, entities in id order and
+/// each entity's intents in emission order (ADR 0052, REQ-B-2, REQ-K-5).
+pub(crate) fn collect_lifecycle(world: &World, out: &mut Vec<(EntityId, Intent)>) {
+    world.for_each(|e| {
+        if !e.ownership.is_owned() {
+            return;
+        }
+        out.extend(
+            e.intents
+                .0
+                .iter()
+                .filter(|i| matches!(i, Intent::Spawn { .. } | Intent::Despawn))
+                .map(|i| (e.id, i.clone())),
+        );
     });
 }
 
