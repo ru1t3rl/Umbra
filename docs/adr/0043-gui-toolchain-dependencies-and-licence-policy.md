@@ -47,7 +47,57 @@ Option 1.
   app runtime touches the network (ADR 0041).
 - **Package entries.** A package's `exports` is `./src/index.ts`; a package that ships CSS may add exactly
   one more entry, `./styles.css` (ui-kit, map-view). The app imports each once. Components never import
-  CSS (bun test has no CSS loader). This extends `gui/CLAUDE.md` rule 5.
+  CSS (bun test has no CSS loader). This extends `gui/CLAUDE.md` rule 5. *(Superseded in part
+  2026-10-22, see "Amended 2026-10-22": components import their own co-located CSS; `./styles.css` is
+  optional.)*
+
+## Amended 2026-10-22 (human decision): components import their own CSS
+The 2026-10-20 bullet "Package entries" said:
+- "components never import CSS (bun test has no CSS loader)";
+- every package that ships CSS exposes it through one `./styles.css` entry, imported once by the app.
+
+M5b shipped something different, and it works:
+- every ui-kit component imports its co-located `<Name>.css` and the package-internal
+  `../shared/*.css` it needs;
+- the dashboard and showcase pages import their `<Name>Page.css`;
+- M8's `SchemaForm` imports `SchemaForm.css`;
+- `bun test` loads these imports.
+
+The human chose option (a) on 2026-10-22: the rule follows the code.
+
+**Rule from 2026-10-22**
+- **A component imports its own CSS.** It may import its co-located CSS file
+  (`./<Name>.css`, beside `<Name>.tsx` per ADR 0046) and package-internal shared CSS
+  (`../shared/<x>.css`) by relative path. It never imports another package's CSS file.
+- **CSS rules are unchanged.** CSS stays token-only (`check:tokens`) and co-located with its component.
+- **`./styles.css` is optional.** A package does not need one. A package may still declare that one
+  extra export for styles that must load globally, once.
+- **What the app imports globally today** (`gui/src/main.tsx`, the same pair in
+  `gui/scripts/measure-map/entry.ts`):
+  1. `@umbra/ui-kit/styles.css`: fonts, `tokens/tokens.css`, `base.css`. Its `@import` list of
+     component CSS files duplicates the components' own imports; the bundler loads each file once.
+  2. `@umbra/map-view/styles.css`: the MapLibre vendor CSS and the `LiveMap` container and error
+     rules.
+- **No other package has a `./styles.css` entry.** Shells and the other features rely on the
+  component-level imports. Shell pages load their CSS with the lazy page chunk.
+
+**Option not chosen: (b) per-package `styles.css` cleanup.** It would have removed every
+component-level CSS import, made each package that ships CSS aggregate its files in one
+`./styles.css`, and made the app import each entry once.
+- Rejected: it rewrites working M5b code and gives up co-location and code-splitting of page CSS.
+- Rejected: every new feature with CSS would need a new app import.
+- Rejected: the original reason (no CSS loader in `bun test`) no longer holds.
+
+**Consequences of the amendment**
+- Easier: a component carries its styles. Lazy pages and features need no change in `src/main.tsx`.
+- Harder: the global order of component CSS follows module import order, not one list. Component
+  rules therefore stay scoped to their `vt-*` or `umbra-*` class and must not depend on cascade order
+  between components. Global tokens and base styles still load first, from the app.
+- Unchanged: the dependency-cruiser deep-import rule. A relative import inside one package is not a
+  deep import; `@umbra/x/src/...` stays forbidden.
+- Superseded: ASM-302 and the old wording of `gui/CLAUDE.md` rule 5. Decision row D-59 carries a
+  dated note.
+- Optional later cleanup, not required: trim ui-kit's `styles.css` to fonts, tokens and base.
 
 ## Consequences
 - Easier: reproducible installs, licence regressions caught locally (gate 15), offline afterwards.

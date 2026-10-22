@@ -11,6 +11,7 @@ description: Structured review of a GUI change against the frontend architecture
    - Layering: src -> shells -> domain features -> foundation features. Domain features never import each other. No shell->shell, feature->shell, deep imports (`@umbra/x/src/...`) or cycles. `bun run check:deps` passes.
    - Public API minimal, documented in the package README, exported only via `src/index.ts`. `package.json` has correct name, `exports`, `umbra.tier`, `workspace:*` deps.
    - File layout (ADR 0046): one component per file in `src/components/<Name>/<Name>.tsx`, one hook per file in `src/hooks/use<Name>.ts(x)`, contexts in `src/context/<Name>Context.ts`, tests and CSS beside their subject; `bun run check:layout` passes and no exemption was added without an ASM.
+   - CSS (ADR 0043, amended 2026-10-22): a component imports only its own co-located CSS and package-internal `../shared/*.css`, never another package's CSS. CSS is token-only. A new `./styles.css` export is justified only for global styles and is imported once by the app.
 3. **Shells**: no fetch, no generated-client use, no business logic.
 4. **TypeScript/React**: strict, no `any`/`@ts-ignore`; generated files untouched; logic in `model/`/hooks; small components; stable keys; effects clean up; no state derived in effects that could be computed.
 5. **Performance**: no per-entity React renders; imperative map layer; batched per frame; virtualized lists; narrow store selectors; lazy-loaded shells.

@@ -27,7 +27,7 @@ Authority: `docs/design-system/README.md`, `docs/design-system/tactical-display.
 ## Adding or porting a component
 1. Read `reference/vantage/<Name>/README.md` and `preview.html`, the styles in `reference/vantage/bundle.css` (`.vt-<name>` rules), the behaviour in `bundle.js`, and the props in `reference/vantage/index.d.ts`.
 2. Tests first (role/label queries, keyboard operation, disabled and invalid states, both themes where visual).
-3. Implement `src/components/<Name>/<Name>.tsx` + `<Name>.css` with the **same props and class names** as the reference; styles use tokens only. Export from `src/index.ts`.
+3. Implement `src/components/<Name>/<Name>.tsx` + `<Name>.css` with the **same props and class names** as the reference; styles use tokens only. The component imports its own `./<Name>.css` (and any `../shared/*.css` it uses) by relative path (ADR 0043, amended 2026-10-22); never import another package's CSS. Export from `src/index.ts`.
 4. Add it to the showcase route and a Playwright screenshot in both themes.
 5. If the design needs a component Vantage does not have, compose from existing ones; if truly new, propose it (ADR) and describe it in `docs/design-system/` before coding.
 
