@@ -100,6 +100,12 @@ impl ApiError {
                     map::run_state_name(*state)
                 ),
             ),
+            HandleError::AdapterNotFound(_) => {
+                Self::new(ProblemCode::AdapterNotFound, error.to_string())
+            }
+            HandleError::AdapterFaulted(_) => {
+                Self::new(ProblemCode::AdapterFaulted, error.to_string())
+            }
             HandleError::NotStepped => Self::new(ProblemCode::NotStepped, error.to_string()),
             HandleError::StepInProgress => {
                 Self::new(ProblemCode::StepInProgress, error.to_string())
@@ -147,6 +153,9 @@ impl ApiError {
             SessionError::EntityNotFound(_) => {
                 Self::new(ProblemCode::EntityNotFound, error.to_string())
             }
+            SessionError::EntityRemote(_) => {
+                Self::new(ProblemCode::EntityRemote, error.to_string())
+            }
             // `SessionError` is non-exhaustive.
             _ => library(ProblemCode::Internal, error),
         }
@@ -163,5 +172,39 @@ impl IntoResponse for ApiError {
             .headers_mut()
             .insert(CONTENT_TYPE, HeaderValue::from_static(PROBLEM_JSON));
         response
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use umbra_engine::EntityId;
+
+    use super::*;
+
+    #[test]
+    fn network_failures_have_their_own_codes() {
+        let ghost = EntityId::new(7).expect("entity id");
+        let cases = [
+            (
+                HandleError::AdapterNotFound("left".into()),
+                ProblemCode::AdapterNotFound,
+                404,
+            ),
+            (
+                HandleError::AdapterFaulted("left".into()),
+                ProblemCode::AdapterFaulted,
+                409,
+            ),
+            (
+                HandleError::Session(SessionError::EntityRemote(ghost)),
+                ProblemCode::EntityRemote,
+                409,
+            ),
+        ];
+        for (error, code, status) in cases {
+            let problem = ApiError::from_handle_error(&error).into_problem();
+            assert_eq!((problem.code, problem.status), (code, status), "{error}");
+            assert_eq!(problem.detail, error.to_string());
+        }
     }
 }

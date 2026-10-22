@@ -35,6 +35,17 @@ pub struct NetFault {
     pub reason: String,
 }
 
+impl NetFault {
+    /// A fault of the adapter named `adapter`.
+    #[must_use]
+    pub fn new(adapter: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            adapter: adapter.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
 impl fmt::Display for NetFault {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

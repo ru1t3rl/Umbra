@@ -164,6 +164,13 @@
           "$ref": "#/$defs/Ownership",
           "description": "Owned or remote."
         },
+        "remote_source": {
+          "description": "The name of the network adapter a remote entity comes from (`name` in\n`GET /network/adapters`); only when `ownership` is `remote` (added in API 1.1.0).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "route": {
           "oneOf": [
             {
@@ -210,14 +217,14 @@
       "description": "An event on the stream (best-effort; `dropped` and `events_truncated` make loss visible).",
       "properties": {
         "detail": {
-          "description": "A `custom` event: `{\"kind\": <component id>, \"payload\": <the payload>}`. A\n`simulation_control`: `{\"action\": \"start\" | \"pause\" | \"resume\" | \"stop\" | \"step\"}`, with\n`\"count\"` for `step`.",
+          "description": "A `custom` event: `{\"kind\": <component id>, \"payload\": <the payload>}`. A\n`simulation_control`: `{\"action\": \"start\" | \"pause\" | \"resume\" | \"stop\" | \"step\"}`, with\n`\"count\"` for `step`. A `detonation`: `{\"position\": {\"lat_deg\", \"lon_deg\", \"alt_m\"}}`, WGS-84\nlike the entities; the shooter and target are `entity_id` and `target_id` when they are\nmapped to entities of this engine.",
           "type": [
             "object",
             "null"
           ]
         },
         "entity_id": {
-          "description": "The main entity: created, removed, shooter or source.",
+          "description": "The main entity: created, removed, shooter (`fire`, `detonation`) or source.",
           "format": "int64",
           "minimum": 0,
           "type": [
@@ -226,11 +233,11 @@
           ]
         },
         "kind": {
-          "description": "The kind: `entity_created`, `entity_removed`, `fire`, `custom` or `simulation_control`.",
+          "description": "The kind: `entity_created`, `entity_removed`, `fire`, `detonation`, `custom` or\n`simulation_control` (`detonation` since API 1.1.0). Clients ignore kinds they do not know.",
           "type": "string"
         },
         "target_id": {
-          "description": "The target of a `fire`.",
+          "description": "The target of a `fire` or a `detonation`.",
           "format": "int64",
           "minimum": 0,
           "type": [
@@ -426,6 +433,24 @@
       ],
       "type": "object"
     },
+    "NetworkFaultDto": {
+      "description": "The network adapter fault behind `stop_reason = network_fault`.",
+      "properties": {
+        "adapter": {
+          "description": "The adapter's name in the scenario.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why it faulted.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter",
+        "reason"
+      ],
+      "type": "object"
+    },
     "Ownership": {
       "description": "Who simulates an entity.",
       "enum": [
@@ -507,6 +532,17 @@
             {
               "$ref": "#/$defs/PluginFaultDto",
               "description": "The plugin fault behind `stop_reason = plugin_fault`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "network_fault": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/NetworkFaultDto",
+              "description": "The network adapter fault behind `stop_reason = network_fault` (added in API 1.1.0)."
             },
             {
               "type": "null"
@@ -664,7 +700,8 @@
         "command",
         "duration",
         "plugin_fault",
-        "error"
+        "error",
+        "network_fault"
       ],
       "type": "string"
     },

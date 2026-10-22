@@ -30,9 +30,23 @@ pub struct DiagnosticNote {
     pub column: Option<u32>,
 }
 
-/// A located error from the loader or validator.
+/// How serious a diagnostic is (added in API 1.1.0).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Severity {
+    /// The input is rejected.
+    #[default]
+    Error,
+    /// The input is accepted; the author may want to look.
+    Warning,
+}
+
+/// A located error or warning from the loader or validator.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct Diagnostic {
+    /// `error` or `warning`; a client that does not know the field reads `error` (added in API 1.1.0).
+    #[serde(default)]
+    pub severity: Severity,
     /// The stable diagnostic code.
     pub code: String,
     /// The message.

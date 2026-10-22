@@ -123,6 +123,16 @@ impl LoopbackHub {
         self.started.load(Ordering::SeqCst)
     }
 
+    /// Closes every endpoint of the hub without stopping it: from now on the `publish` and `poll`
+    /// of each fail with [`NetError::Faulted`], and nothing is delivered to it. A test aid for
+    /// adapter faults (the control API's `network_fault`, M6 WI-17); a hub that is never closed
+    /// behaves as before. Use a hub of its own, because every adapter on it faults.
+    pub fn close(&self) {
+        for ep in lock(&self.endpoints).iter() {
+            ep.open.store(false, Ordering::SeqCst);
+        }
+    }
+
     /// Delivers `out` from endpoint `sender` to the open endpoints in start order.
     fn deliver(&self, sender: usize, base: u64, out: &[NetMessage]) {
         if let Some(capture) = &self.capture {

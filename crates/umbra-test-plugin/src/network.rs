@@ -8,7 +8,12 @@
 //! the inbox takes; the rest wait for the next poll. The ghosts it produces depend only on the run, so
 //! a scenario using it is deterministic. Params (all optional): `key_base` (integer, the key space
 //! is `(key_base, key_base + 100]`, default 10000) and `remote_offset` (integer, default 100000);
-//! `net_panics_in_poll` adds `panic_at_tick` (integer, default 0).
+//! `net_panics_in_poll` adds `panic_at_tick` (integer, default 0). Every capability also takes
+//! `detonate_at_tick` (integer, default none: no detonation, M6 WI-17): at that tick `poll` pushes two
+//! `Detonation` messages at `detonate_position` (ECEF metres, an array of three numbers, default
+//! `[6378237, 0, 0]`: latitude 0, longitude 0, 100 m above the ellipsoid), one whose shooter is the
+//! mirrored key of the first entity the adapter was handed (so it maps to that entity's ghost) and one
+//! without a shooter.
 //!
 //! | Capability (feature `network`) | Behavior |
 //! |---|---|
@@ -71,6 +76,8 @@ pub(crate) struct NetFixture {
     keys: KeySpace,
     remote_offset: u64,
     panic_at_tick: u64,
+    detonate_at_tick: Option<u64>,
+    detonate_position: [f64; 3],
 }
 
 impl NetFixture {
@@ -91,12 +98,37 @@ impl NetFixture {
                 "`remote_offset` {remote_offset} must exceed the key space size 100"
             )));
         }
+        let detonate_position = match params.get("detonate_position") {
+            None => [6_378_237.0, 0.0, 0.0],
+            Some(v) => {
+                let numbers: Option<Vec<f64>> = v
+                    .as_array()
+                    .map(|a| a.iter().map(|n| n.as_f64()).collect::<Option<_>>())
+                    .unwrap_or(None);
+                match numbers.as_deref() {
+                    Some(&[x, y, z]) => [x, y, z],
+                    _ => {
+                        return Err(Error::params(
+                            "`detonate_position` must be three numbers".to_owned(),
+                        ));
+                    }
+                }
+            }
+        };
+        let detonate_at_tick = match params.get("detonate_at_tick") {
+            None => None,
+            Some(v) => Some(v.as_u64().ok_or_else(|| {
+                Error::params("`detonate_at_tick` must be a non-negative integer".to_owned())
+            })?),
+        };
         let fixture = Self {
             mode,
             name: input.name().to_owned(),
             keys: KeySpace::new(key_base, 100)?,
             remote_offset,
             panic_at_tick: integer("panic_at_tick", 0)?,
+            detonate_at_tick,
+            detonate_position,
         };
         log(Level::Info, &format!("net configure {}", fixture.name));
         Ok(fixture)
@@ -131,6 +163,9 @@ impl NetworkAdapterConfig for NetFixture {
             name: self.name.clone(),
             remote_offset: self.remote_offset,
             panic_at_tick: self.panic_at_tick,
+            detonate_at_tick: self.detonate_at_tick,
+            detonate_position: self.detonate_position,
+            first_key: None,
             pending: Vec::new(),
             io,
         })
@@ -143,6 +178,10 @@ pub(crate) struct NetAdapter {
     name: String,
     remote_offset: u64,
     panic_at_tick: u64,
+    detonate_at_tick: Option<u64>,
+    detonate_position: [f64; 3],
+    /// The key of the first entity state handed to `publish`.
+    first_key: Option<NetKey>,
     pending: Vec<Pending>,
     /// `net_blocks_join`: the release channel and the I/O thread.
     io: Option<(Sender<()>, JoinHandle<()>)>,
@@ -169,18 +208,21 @@ impl NetworkAdapter for NetAdapter {
     fn publish(&mut self, _now: SimTime, out: &[NetMessage<'_>]) -> Result<(), Error> {
         for m in out {
             match m {
-                NetMessage::EntityState(s) => self.pending.push(Pending::State(Kept {
-                    key: s.key,
-                    entity_type: s.entity_type.map(str::to_owned),
-                    force: s.force.map(str::to_owned),
-                    name: s.name.map(str::to_owned),
-                    position: s.position,
-                    velocity: s.velocity,
-                    acceleration: s.acceleration,
-                    angular_velocity: s.angular_velocity,
-                    orientation: s.orientation,
-                    dead_reckoning: s.dead_reckoning,
-                })),
+                NetMessage::EntityState(s) => {
+                    self.first_key.get_or_insert(s.key);
+                    self.pending.push(Pending::State(Kept {
+                        key: s.key,
+                        entity_type: s.entity_type.map(str::to_owned),
+                        force: s.force.map(str::to_owned),
+                        name: s.name.map(str::to_owned),
+                        position: s.position,
+                        velocity: s.velocity,
+                        acceleration: s.acceleration,
+                        angular_velocity: s.angular_velocity,
+                        orientation: s.orientation,
+                        dead_reckoning: s.dead_reckoning,
+                    }));
+                }
                 NetMessage::EntityRemoved { key } => self.pending.push(Pending::Removed(*key)),
                 _ => {}
             }
@@ -241,6 +283,16 @@ impl NetworkAdapter for NetAdapter {
                 Pending::Removed(_) => inbox.push(&NetMessage::EntityRemoved { key: remote })?,
             }
         }
+        if self.detonate_at_tick == Some(now.tick()) {
+            let shooter = self.first_key.and_then(|k| self.remote(k));
+            for shooter in [shooter, None] {
+                inbox.push(&NetMessage::Detonation {
+                    shooter,
+                    target: None,
+                    position: self.detonate_position,
+                })?;
+            }
+        }
         Ok(())
     }
 
@@ -270,7 +322,7 @@ macro_rules! network_capability {
             const PARAM_SCHEMA: &'static str = concat!(
                 r#"{"type":"object","description":""#,
                 $what,
-                r#"","properties":{"key_base":{"type":"integer","minimum":0},"remote_offset":{"type":"integer","minimum":0},"panic_at_tick":{"type":"integer","minimum":0}},"additionalProperties":false}"#
+                r#"","properties":{"key_base":{"type":"integer","minimum":0},"remote_offset":{"type":"integer","minimum":0},"panic_at_tick":{"type":"integer","minimum":0},"detonate_at_tick":{"type":"integer","minimum":0},"detonate_position":{"type":"array","items":{"type":"number"},"minItems":3,"maxItems":3}},"additionalProperties":false}"#
             );
             type Config = NetFixture;
 

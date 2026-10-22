@@ -42,6 +42,10 @@ pub struct EntitySummary {
     pub force: Option<String>,
     /// Owned or remote.
     pub ownership: Ownership,
+    /// The name of the network adapter a remote entity comes from (`name` in
+    /// `GET /network/adapters`); only when `ownership` is `remote` (added in API 1.1.0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_source: Option<String>,
     /// Latitude, degrees (WGS-84).
     pub lat_deg: f64,
     /// Longitude, degrees.

@@ -3,6 +3,7 @@
 pub mod catalog;
 pub mod components;
 pub mod entities;
+pub mod network;
 pub mod plugins;
 pub mod run;
 pub mod scenario;

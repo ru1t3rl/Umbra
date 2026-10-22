@@ -28,6 +28,121 @@ import type {
 import { engineFetch } from '../fetcher';
 import type { ErrorType , BodyType } from '../fetcher';
 /**
+ * The counters of one adapter. Every counter only grows during a session.
+ */
+export interface AdapterCountersDto {
+  /**
+   * Inbound run-control messages ignored.
+   * @minimum 0
+   */
+  control_ignored: number;
+  /**
+   * Inbound datagrams or frames that could not be decoded.
+   * @minimum 0
+   */
+  decode_errors: number;
+  /**
+   * Inbound messages dropped as echoes of this engine's own entities.
+   * @minimum 0
+   */
+  echo_dropped: number;
+  /**
+   * Ghosts refused because the ghost limit was reached.
+   * @minimum 0
+   */
+  ghosts_capped: number;
+  /**
+   * Inbound entity states with a value that is not finite, refused.
+   * @minimum 0
+   */
+  invalid_state: number;
+  /**
+   * I/O errors the adapter saw.
+   * @minimum 0
+   */
+  io_errors: number;
+  /**
+   * Local keys refused because the key space is used up.
+   * @minimum 0
+   */
+  keys_exhausted: number;
+  /**
+   * Messages handed to the adapter.
+   * @minimum 0
+   */
+  published: number;
+  /**
+   * Messages taken from the adapter.
+   * @minimum 0
+   */
+  received: number;
+  /**
+   * Inbound messages the adapter dropped (queue full).
+   * @minimum 0
+   */
+  rx_dropped: number;
+  /**
+   * Outbound messages the adapter dropped (queue full or send failed).
+   * @minimum 0
+   */
+  tx_dropped: number;
+  /**
+   * Inbound entities whose type maps to no template.
+   * @minimum 0
+   */
+  unmapped: number;
+  /**
+   * Inbound messages of a kind this version does not know.
+   * @minimum 0
+   */
+  unsupported: number;
+  /**
+   * Ghost operations the world refused.
+   * @minimum 0
+   */
+  world_errors: number;
+}
+
+/**
+ * Why the adapter faulted; only when `faulted`.
+ */
+export type AdapterDtoFaultReason = string | null;
+
+/**
+ * The plugin that provides the adapter; absent for a built-in adapter.
+ */
+export type AdapterDtoPlugin = string | null;
+
+/**
+ * A network adapter of the loaded scenario: `GET /network/adapters` and the answer of enable and
+disable.
+ */
+export interface AdapterDto {
+  /** The registered adapter component the scenario uses (`adapter` in `[[network_adapters]]`). */
+  adapter: string;
+  /** Its counters. */
+  counters: AdapterCountersDto;
+  /** Whether the adapter is polled and published to. */
+  enabled: boolean;
+  /** Why the adapter faulted; only when `faulted`. */
+  fault_reason?: AdapterDtoFaultReason;
+  /** Whether a fault disabled the adapter for the rest of the session. */
+  faulted: boolean;
+  /**
+   * Live ghosts from this adapter.
+   * @minimum 0
+   */
+  ghosts: number;
+  /** The keys it issues. */
+  key_space: KeySpaceDto;
+  /** The adapter's name in the scenario; it addresses the adapter in the enable and disable paths
+and is the `remote_source` of its ghosts. */
+  name: string;
+  /** The plugin that provides the adapter; absent for a built-in adapter. */
+  plugin?: AdapterDtoPlugin;
+}
+
+/**
  * `GET /catalog/behavior`.
  */
 export interface BehaviorCatalog {
@@ -271,7 +386,7 @@ export type DiagnosticFile = string | null;
 export type DiagnosticLine = number | null;
 
 /**
- * A located error from the loader or validator.
+ * A located error or warning from the loader or validator.
  */
 export interface Diagnostic {
   /** The stable diagnostic code. */
@@ -292,6 +407,8 @@ export interface Diagnostic {
   message: string;
   /** Extra locations. */
   notes?: DiagnosticNote[];
+  /** `error` or `warning`; a client that does not know the field reads `error` (added in API 1.1.0). */
+  severity?: Severity;
 }
 
 /**
@@ -405,6 +522,12 @@ export type EntitySummaryGroup = string | null;
  */
 export type EntitySummaryName = string | null;
 
+/**
+ * The name of the network adapter a remote entity comes from (`name` in
+`GET /network/adapters`); only when `ownership` is `remote` (added in API 1.1.0).
+ */
+export type EntitySummaryRemoteSource = string | null;
+
 export type EntitySummaryRoute = RouteProgress | null;
 
 /**
@@ -444,6 +567,9 @@ export interface EntitySummary {
   name?: EntitySummaryName;
   /** Owned or remote. */
   ownership: Ownership;
+  /** The name of the network adapter a remote entity comes from (`name` in
+`GET /network/adapters`); only when `ownership` is `remote` (added in API 1.1.0). */
+  remote_source?: EntitySummaryRemoteSource;
   route?: EntitySummaryRoute;
   /** Ground speed, metres per second. */
   speed_mps: number;
@@ -456,25 +582,29 @@ export interface EntitySummary {
 /**
  * A `custom` event: `{"kind": <component id>, "payload": <the payload>}`. A
 `simulation_control`: `{"action": "start" | "pause" | "resume" | "stop" | "step"}`, with
-`"count"` for `step`.
+`"count"` for `step`. A `detonation`: `{"position": {"lat_deg", "lon_deg", "alt_m"}}`, WGS-84
+like the entities; the shooter and target are `entity_id` and `target_id` when they are
+mapped to entities of this engine.
  */
 export type EventDtoDetailAnyOf = { [key: string]: unknown };
 
 /**
  * A `custom` event: `{"kind": <component id>, "payload": <the payload>}`. A
 `simulation_control`: `{"action": "start" | "pause" | "resume" | "stop" | "step"}`, with
-`"count"` for `step`.
+`"count"` for `step`. A `detonation`: `{"position": {"lat_deg", "lon_deg", "alt_m"}}`, WGS-84
+like the entities; the shooter and target are `entity_id` and `target_id` when they are
+mapped to entities of this engine.
  */
 export type EventDtoDetail = EventDtoDetailAnyOf | null;
 
 /**
- * The main entity: created, removed, shooter or source.
+ * The main entity: created, removed, shooter (`fire`, `detonation`) or source.
  * @minimum 0
  */
 export type EventDtoEntityId = number | null;
 
 /**
- * The target of a `fire`.
+ * The target of a `fire` or a `detonation`.
  * @minimum 0
  */
 export type EventDtoTargetId = number | null;
@@ -495,17 +625,20 @@ export type EventDtoWeapon = string | null;
 export interface EventDto {
   /** A `custom` event: `{"kind": <component id>, "payload": <the payload>}`. A
 `simulation_control`: `{"action": "start" | "pause" | "resume" | "stop" | "step"}`, with
-`"count"` for `step`. */
+`"count"` for `step`. A `detonation`: `{"position": {"lat_deg", "lon_deg", "alt_m"}}`, WGS-84
+like the entities; the shooter and target are `entity_id` and `target_id` when they are
+mapped to entities of this engine. */
   detail?: EventDtoDetail;
   /**
-   * The main entity: created, removed, shooter or source.
+   * The main entity: created, removed, shooter (`fire`, `detonation`) or source.
    * @minimum 0
    */
   entity_id?: EventDtoEntityId;
-  /** The kind: `entity_created`, `entity_removed`, `fire`, `custom` or `simulation_control`. */
+  /** The kind: `entity_created`, `entity_removed`, `fire`, `detonation`, `custom` or
+`simulation_control` (`detonation` since API 1.1.0). Clients ignore kinds they do not know. */
   kind: string;
   /**
-   * The target of a `fire`.
+   * The target of a `fire` or a `detonation`.
    * @minimum 0
    */
   target_id?: EventDtoTargetId;
@@ -619,6 +752,22 @@ export interface Hello {
   settings: StreamSettings;
 }
 
+/**
+ * The keys an adapter issues for the entities of this engine: `(base, base + count]`.
+ */
+export interface KeySpaceDto {
+  /**
+   * The key just below the first issued key.
+   * @minimum 0
+   */
+  base: number;
+  /**
+   * How many keys are issued.
+   * @minimum 0
+   */
+  count: number;
+}
+
 export type LoadScenarioRequestClock = ClockSetting | null;
 
 export type LoadScenarioRequestSeed = Seed | null;
@@ -631,6 +780,16 @@ export interface LoadScenarioRequest {
   /** The scenario file: relative to the scenario root, or absolute inside it. */
   path: string;
   seed?: LoadScenarioRequestSeed;
+}
+
+/**
+ * The network adapter fault behind `stop_reason = network_fault`.
+ */
+export interface NetworkFaultDto {
+  /** The adapter's name in the scenario. */
+  adapter: string;
+  /** Why it faulted. */
+  reason: string;
 }
 
 /**
@@ -739,6 +898,7 @@ export const ProblemCode = {
   host_not_allowed: 'host_not_allowed',
   origin_not_allowed: 'origin_not_allowed',
   not_found: 'not_found',
+  adapter_not_found: 'adapter_not_found',
   entity_not_found: 'entity_not_found',
   template_not_found: 'template_not_found',
   method_not_allowed: 'method_not_allowed',
@@ -748,6 +908,8 @@ export const ProblemCode = {
   step_in_progress: 'step_in_progress',
   step_cancelled: 'step_cancelled',
   duplicate_name: 'duplicate_name',
+  entity_remote: 'entity_remote',
+  adapter_faulted: 'adapter_faulted',
   payload_too_large: 'payload_too_large',
   unsupported_media_type: 'unsupported_media_type',
   validation_failed: 'validation_failed',
@@ -808,6 +970,8 @@ export const RunState = {
 
 export type RunStatusFault = PluginFaultDto | null;
 
+export type RunStatusNetworkFault = NetworkFaultDto | null;
+
 export type RunStatusStopReason = StopReason | null;
 
 /**
@@ -836,6 +1000,7 @@ export interface RunStatus {
   /** The current clock. */
   clock: ClockSetting;
   fault?: RunStatusFault;
+  network_fault?: RunStatusNetworkFault;
   /**
    * The session number; it changes with every load (0 before the first).
    * @minimum 0
@@ -893,6 +1058,9 @@ export interface ScenarioInfo {
   tick_rate_hz: number;
   /** Where the tick rate came from. */
   tick_rate_source: TickRateSource;
+  /** The scenario's warnings, each with `severity = warning`; absent when there are none (added in
+API 1.1.0). */
+  warnings?: Diagnostic[];
 }
 
 /**
@@ -955,6 +1123,18 @@ export type ServerMessageOneOfSeven = StreamError & ServerMessageOneOfSevenAllOf
  * Server -> client messages.
  */
 export type ServerMessage = ServerMessageOneOf | ServerMessageOneOfFour | ServerMessageOneOfSeven;
+
+/**
+ * How serious a diagnostic is (added in API 1.1.0).
+ */
+export type Severity = typeof Severity[keyof typeof Severity];
+
+
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const Severity = {
+  error: 'error',
+  warning: 'warning',
+} as const;
 
 /**
  * A force.
@@ -1042,6 +1222,7 @@ export const StopReason = {
   duration: 'duration',
   plugin_fault: 'plugin_fault',
   error: 'error',
+  network_fault: 'network_fault',
 } as const;
 
 /**
@@ -1976,6 +2157,255 @@ export function useGetEntity<TData = Awaited<ReturnType<typeof getEntity>>, TErr
 
 
 
+/**
+ * @summary The network adapters of the loaded scenario in scenario order, with their state and counters;
+an empty list when the scenario has none.
+ */
+export const getListNetworkAdaptersUrl = () => {
+
+
+  
+
+  return `/api/v1/network/adapters`
+}
+
+export const listNetworkAdapters = async ( options?: RequestInit): Promise<AdapterDto[]> => {
+  
+  return engineFetch<AdapterDto[]>(getListNetworkAdaptersUrl(),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getListNetworkAdaptersQueryKey = () => {
+    return [
+    `/api/v1/network/adapters`
+    ] as const;
+    }
+
+    
+export const getListNetworkAdaptersQueryOptions = <TData = Awaited<ReturnType<typeof listNetworkAdapters>>, TError = ErrorType<Problem>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listNetworkAdapters>>, TError, TData>>, request?: SecondParameter<typeof engineFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListNetworkAdaptersQueryKey();
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listNetworkAdapters>>> = ({ signal }) => listNetworkAdapters({ signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listNetworkAdapters>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListNetworkAdaptersQueryResult = NonNullable<Awaited<ReturnType<typeof listNetworkAdapters>>>
+export type ListNetworkAdaptersQueryError = ErrorType<Problem>
+
+
+export function useListNetworkAdapters<TData = Awaited<ReturnType<typeof listNetworkAdapters>>, TError = ErrorType<Problem>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listNetworkAdapters>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listNetworkAdapters>>,
+          TError,
+          Awaited<ReturnType<typeof listNetworkAdapters>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof engineFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListNetworkAdapters<TData = Awaited<ReturnType<typeof listNetworkAdapters>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listNetworkAdapters>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listNetworkAdapters>>,
+          TError,
+          Awaited<ReturnType<typeof listNetworkAdapters>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof engineFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListNetworkAdapters<TData = Awaited<ReturnType<typeof listNetworkAdapters>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listNetworkAdapters>>, TError, TData>>, request?: SecondParameter<typeof engineFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary The network adapters of the loaded scenario in scenario order, with their state and counters;
+an empty list when the scenario has none.
+ */
+
+export function useListNetworkAdapters<TData = Awaited<ReturnType<typeof listNetworkAdapters>>, TError = ErrorType<Problem>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listNetworkAdapters>>, TError, TData>>, request?: SecondParameter<typeof engineFetch>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListNetworkAdaptersQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+
+
+/**
+ * @summary Disables the adapter: it is neither published to nor polled (its sockets stay open) and its
+ghosts time out normally. Idempotent; applied between ticks; allowed for a faulted adapter.
+ */
+export const getDisableNetworkAdapterUrl = (name: string,) => {
+
+
+  
+
+  return `/api/v1/network/adapters/${name}/disable`
+}
+
+export const disableNetworkAdapter = async (name: string, options?: RequestInit): Promise<AdapterDto> => {
+  
+  return engineFetch<AdapterDto>(getDisableNetworkAdapterUrl(name),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+
+
+
+
+export const getDisableNetworkAdapterMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disableNetworkAdapter>>, TError,{name: string}, TContext>, request?: SecondParameter<typeof engineFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disableNetworkAdapter>>, TError,{name: string}, TContext> => {
+
+const mutationKey = ['disableNetworkAdapter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disableNetworkAdapter>>, {name: string}> = (props) => {
+          const {name} = props ?? {};
+
+          return  disableNetworkAdapter(name,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisableNetworkAdapterMutationResult = NonNullable<Awaited<ReturnType<typeof disableNetworkAdapter>>>
+    
+    export type DisableNetworkAdapterMutationError = ErrorType<Problem>
+
+    /**
+ * @summary Disables the adapter: it is neither published to nor polled (its sockets stay open) and its
+ghosts time out normally. Idempotent; applied between ticks; allowed for a faulted adapter.
+ */
+export const useDisableNetworkAdapter = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disableNetworkAdapter>>, TError,{name: string}, TContext>, request?: SecondParameter<typeof engineFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof disableNetworkAdapter>>,
+        TError,
+        {name: string},
+        TContext
+      > => {
+
+      const mutationOptions = getDisableNetworkAdapterMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    
+/**
+ * @summary Enables the adapter: it is polled and published to again, and every owned entity is sent afresh.
+Idempotent; applied between ticks; valid in every state with a scenario.
+ */
+export const getEnableNetworkAdapterUrl = (name: string,) => {
+
+
+  
+
+  return `/api/v1/network/adapters/${name}/enable`
+}
+
+export const enableNetworkAdapter = async (name: string, options?: RequestInit): Promise<AdapterDto> => {
+  
+  return engineFetch<AdapterDto>(getEnableNetworkAdapterUrl(name),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+
+
+
+
+export const getEnableNetworkAdapterMutationOptions = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enableNetworkAdapter>>, TError,{name: string}, TContext>, request?: SecondParameter<typeof engineFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof enableNetworkAdapter>>, TError,{name: string}, TContext> => {
+
+const mutationKey = ['enableNetworkAdapter'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof enableNetworkAdapter>>, {name: string}> = (props) => {
+          const {name} = props ?? {};
+
+          return  enableNetworkAdapter(name,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EnableNetworkAdapterMutationResult = NonNullable<Awaited<ReturnType<typeof enableNetworkAdapter>>>
+    
+    export type EnableNetworkAdapterMutationError = ErrorType<Problem>
+
+    /**
+ * @summary Enables the adapter: it is polled and published to again, and every owned entity is sent afresh.
+Idempotent; applied between ticks; valid in every state with a scenario.
+ */
+export const useEnableNetworkAdapter = <TError = ErrorType<Problem>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof enableNetworkAdapter>>, TError,{name: string}, TContext>, request?: SecondParameter<typeof engineFetch>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof enableNetworkAdapter>>,
+        TError,
+        {name: string},
+        TContext
+      > => {
+
+      const mutationOptions = getEnableNetworkAdapterMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    
 /**
  * @summary `GET /api/v1/openapi.json`.
  */

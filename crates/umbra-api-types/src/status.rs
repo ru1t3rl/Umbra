@@ -5,7 +5,9 @@ use utoipa::openapi::schema::{AdditionalProperties, ObjectBuilder, OneOfBuilder,
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
 
+use crate::network::NetworkFaultDto;
 use crate::plugins::PluginFaultDto;
+use crate::validation::Diagnostic;
 
 /// The run lifecycle state (ADR 0026): `idle` -> `ready` -> `running` <-> `paused`, any loaded state
 /// -> `stopped`.
@@ -36,6 +38,9 @@ pub enum StopReason {
     PluginFault,
     /// A kernel error.
     Error,
+    /// A network adapter fault under the `abort` policy; the status carries `network_fault` (added in
+    /// API 1.1.0).
+    NetworkFault,
 }
 
 /// Where the tick rate came from (ADR 0010 note, ADR 0026).
@@ -173,6 +178,11 @@ pub struct RunStatus {
     /// The plugin fault behind `stop_reason = plugin_fault`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fault: Option<PluginFaultDto>,
+    /// The network adapter fault behind `stop_reason = network_fault` (added in API 1.1.0).
+    // Boxed because the status travels inside every stream frame and the field is almost always
+    // absent (it does not change the JSON).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_fault: Option<Box<NetworkFaultDto>>,
     /// The current clock.
     pub clock: ClockSetting,
     /// The session number; it changes with every load (0 before the first).
@@ -212,6 +222,10 @@ pub struct ScenarioInfo {
     pub duration_ticks: u64,
     /// Entities at load time.
     pub entity_count: u64,
+    /// The scenario's warnings, each with `severity = warning`; absent when there are none (added in
+    /// API 1.1.0).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<Diagnostic>,
 }
 
 /// `GET /status`.

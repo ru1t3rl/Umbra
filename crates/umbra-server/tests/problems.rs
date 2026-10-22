@@ -15,7 +15,7 @@ use umbra_api_types::ProblemCode::{self, *};
 use umbra_server::ApiError;
 
 /// The status table of ADR 0026 (amended, m7), one row per code.
-const STATUS_TABLE: [(ProblemCode, u16); 27] = [
+const STATUS_TABLE: [(ProblemCode, u16); 30] = [
     (BadRequest, 400),
     (InvalidBody, 400),
     (UnsupportedEncoding, 400),
@@ -23,6 +23,7 @@ const STATUS_TABLE: [(ProblemCode, u16); 27] = [
     (HostNotAllowed, 403),
     (OriginNotAllowed, 403),
     (NotFound, 404),
+    (AdapterNotFound, 404),
     (EntityNotFound, 404),
     (TemplateNotFound, 404),
     (MethodNotAllowed, 405),
@@ -32,6 +33,8 @@ const STATUS_TABLE: [(ProblemCode, u16); 27] = [
     (StepInProgress, 409),
     (StepCancelled, 409),
     (DuplicateName, 409),
+    (EntityRemote, 409),
+    (AdapterFaulted, 409),
     (PayloadTooLarge, 413),
     (UnsupportedMediaType, 415),
     (ValidationFailed, 422),

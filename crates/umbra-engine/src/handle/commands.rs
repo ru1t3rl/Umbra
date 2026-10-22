@@ -73,6 +73,12 @@ impl Worker {
             Command::Components { kind, reply } => reply.complete(Ok(self.components(kind))),
             Command::Catalog { reply } => reply.complete(Ok(self.catalog())),
             Command::Plugins { reply } => reply.complete(Ok(self.plugins())),
+            Command::NetworkAdapters { reply } => reply.complete(self.network_adapters()),
+            Command::SetAdapterEnabled {
+                name,
+                enabled,
+                reply,
+            } => reply.complete(self.set_adapter_enabled(&name, enabled)),
             Command::ValidateGraph {
                 name,
                 document,
@@ -197,6 +203,11 @@ impl Worker {
             tick_rate_source: scenario.tick_rate_source,
             duration_ticks: session.duration_ticks(),
             entity_count: session.entities().len(),
+            warnings: scenario
+                .warnings
+                .iter()
+                .map(|w| self.shown_diagnostic(w.clone()))
+                .collect(),
         };
         self.bus.set_tick_rate(Some(info.tick_rate));
         self.run = Some(Run {

@@ -113,6 +113,13 @@ describe("decodeJson", () => {
     expect(none.run?.stop_reason).toBeUndefined();
     expect(known.run?.stop_reason).toBe("duration");
   });
+  test("the network_fault stop reason (API 1.1.0) is kept, not read as unknown", () => {
+    const d = dec(
+      frame(0, 1, [], { run: run(1, { state: "stopped", stop_reason: "network_fault" }) }),
+    );
+    if (d.kind !== "frame") throw new Error("expected a frame");
+    expect(d.run?.stop_reason).toBe("network_fault");
+  });
   test("a scaled clock keeps its scale; null optional run fields are tolerated", () => {
     const d = dec(
       frame(0, 1, [], {

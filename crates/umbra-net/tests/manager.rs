@@ -295,6 +295,34 @@ fn inbound_detonation_with_an_own_space_shooter_is_counted_as_an_echo() {
 }
 
 #[test]
+fn an_inbound_detonation_at_a_non_finite_point_is_refused_and_counted() {
+    let mut rig = Rig::new();
+    let detonation = |position| NetMessage::Detonation {
+        shooter: None,
+        target: None,
+        position,
+    };
+    let mut nan = common::at(1.0);
+    nan.0.x = f64::NAN;
+    let mut infinite = common::at(1.0);
+    infinite.0.z = f64::INFINITY;
+    rig.peer_sends(0, &[detonation(nan), detonation(infinite)]);
+
+    let events = rig.ingest(0);
+
+    assert_eq!(
+        events,
+        vec![],
+        "no event leaves for a point that is not finite"
+    );
+    assert_eq!(rig.status().invalid_state, 2);
+    // A finite one still passes.
+    rig.peer_sends(1, &[detonation(common::at(1.0))]);
+    assert_eq!(rig.ingest(1).len(), 1);
+    assert_eq!(rig.status().invalid_state, 2);
+}
+
+#[test]
 fn a_refused_update_removes_the_ghost_instead_of_orphaning_it() {
     let mut rig = Rig::new();
     rig.peer_sends(0, &[state(PEER_BASE + 1, Some("tank"), 1.0)]);

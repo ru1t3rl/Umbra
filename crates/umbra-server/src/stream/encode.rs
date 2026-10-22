@@ -297,4 +297,54 @@ mod tests {
         assert!(out.entities.is_empty() && out.state_hash.is_none());
         assert!(build_frame(&delivery(Vec::new()), &wanted(Filter::default(), 1)).is_none());
     }
+
+    fn detonation(shooter: Option<u64>, target: Option<u64>) -> SimEvent {
+        let place = umbra_engine::Geodetic::from_degrees(52.0, 4.0, 10.0).expect("position");
+        SimEvent::Detonation {
+            shooter: shooter.map(id),
+            target: target.map(id),
+            position: place.to_ecef(),
+        }
+    }
+
+    #[test]
+    fn a_detonation_follows_the_kind_and_entity_filters() {
+        let events = vec![
+            detonation(Some(1), Some(2)),
+            detonation(None, None),
+            detonation(Some(3), None),
+            custom(1),
+        ];
+        let d = delivery(vec![frame(events, vec![1, 2, 3, 4])]);
+        let filter = |wire: api::StreamFilter| Filter::from_wire(Some(&wire), 10).expect("filter");
+        let kind = |k: &str| {
+            filter(api::StreamFilter {
+                event_kinds: Some(vec![k.to_owned()]),
+                ..api::StreamFilter::default()
+            })
+        };
+        let out = build_frame(&d, &wanted(kind("detonation"), 10)).expect("frame");
+        assert_eq!(
+            kinds_and_ticks(&out),
+            [
+                ("detonation".to_owned(), 1),
+                ("detonation".to_owned(), 2),
+                ("detonation".to_owned(), 3)
+            ]
+        );
+        let out = build_frame(&d, &wanted(kind("fire"), 10)).expect("frame");
+        assert!(out.events.is_empty(), "other kinds do not pass");
+
+        // The target counts as concerned, the unknown shooter and target of tick 2 keep the event.
+        let by_id = filter(api::StreamFilter {
+            entity_ids: Some(vec![2]),
+            ..api::StreamFilter::default()
+        });
+        let out = build_frame(&d, &wanted(by_id, 10)).expect("frame");
+        assert_eq!(
+            kinds_and_ticks(&out),
+            [("detonation".to_owned(), 1), ("detonation".to_owned(), 2)],
+            "shooter 3 and source 1 are filtered out"
+        );
+    }
 }

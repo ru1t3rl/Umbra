@@ -323,6 +323,13 @@ impl Runner {
                     self.tally.echo_dropped += 1;
                     return;
                 }
+                // A burst point that is not finite would reach the display conversion and the
+                // peers' view of the event: refused and counted like a state (ASM-286).
+                let p = position.0;
+                if !(p.x.is_finite() && p.y.is_finite() && p.z.is_finite()) {
+                    self.tally.invalid_state += 1;
+                    return;
+                }
                 events.push(SimEvent::Detonation {
                     shooter: shooter.and_then(|k| self.entity_of(k)),
                     target: target.and_then(|k| self.entity_of(k)),

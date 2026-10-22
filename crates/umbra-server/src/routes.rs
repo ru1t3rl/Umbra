@@ -15,7 +15,7 @@ use umbra_engine::handle::EngineHandle;
 
 use crate::config::ServerSettings;
 use crate::handlers::{
-    catalog, components, entities, plugins, run, scenario, status, templates, validate,
+    catalog, components, entities, network, plugins, run, scenario, status, templates, validate,
 };
 use crate::layers::{host, mutating};
 use crate::openapi;
@@ -57,6 +57,7 @@ impl Server {
             .route("/api/v1/templates/{id}", get(templates::get_template))
             .route("/api/v1/components", get(components::list_components))
             .route("/api/v1/plugins", get(plugins::get_plugins))
+            .route("/api/v1/network/adapters", get(network::list_adapters))
             .route(
                 "/api/v1/catalog/behavior",
                 get(catalog::get_behavior_catalog),
@@ -74,6 +75,14 @@ impl Server {
                 .route("/api/v1/scenario", delete(scenario::unload_scenario))
                 .route("/api/v1/entities", post(entities::spawn_entity))
                 .route("/api/v1/entities/{id}", delete(entities::remove_entity))
+                .route(
+                    "/api/v1/network/adapters/{name}/enable",
+                    post(network::enable_adapter),
+                )
+                .route(
+                    "/api/v1/network/adapters/{name}/disable",
+                    post(network::disable_adapter),
+                )
                 .route("/api/v1/run/start", post(run::start_run))
                 .route("/api/v1/run/pause", post(run::pause_run))
                 .route("/api/v1/run/resume", post(run::resume_run))
