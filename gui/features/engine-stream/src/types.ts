@@ -1,4 +1,5 @@
 import type {
+  EventDto,
   Hello,
   RouteProgress,
   Subscription,
@@ -79,4 +80,41 @@ export interface WebSocketLike {
   onmessage: ((event: { data: unknown }) => void) | null;
   onclose: ((event: { code: number; reason: string }) => void) | null;
   onerror: (() => void) | null;
+}
+
+/**
+ * An event of a frame as received (`EventDto`, ADR 0071). Only `kind` and `tick` are validated; unknown
+ * kinds and unknown fields are kept verbatim for forward compatibility.
+ */
+export type EventSummary = Readonly<EventDto & Record<string, unknown>>;
+
+export type JournalSourceName = "event" | "run" | "connection" | "engine-process" | "gui";
+export type JournalLevel = "info" | "warning" | "error";
+
+/** One line of the log (ADR 0071 / ASM-825). `seq` counts from 1 and never restarts; order is arrival. */
+export interface JournalRecord {
+  readonly seq: number;
+  readonly source: JournalSourceName;
+  readonly level: JournalLevel;
+  /** Unknown event kinds stay verbatim. */
+  readonly kind: string;
+  readonly message: string;
+  readonly tick?: number;
+  readonly time_s?: number;
+  readonly session?: number;
+  readonly entity_id?: number;
+  readonly detail?: unknown;
+  /** Wall clock (ms) when the GUI received it; for display only (ASM-852). */
+  readonly received_at: number;
+}
+
+/** Imperative read access to the journal, so a log view does not re-render per record (ADR 0071). */
+export interface JournalSource {
+  /** Frozen; the same array until the next publish (usable with `useSyncExternalStore`). */
+  snapshot(): readonly JournalRecord[];
+  /** Called at most once per animation frame, in the flush of the entity store. */
+  subscribe(listener: () => void): () => void;
+  readonly capacity: number;
+  /** Records dropped from the ring so far (oldest first). */
+  evicted(): number;
 }

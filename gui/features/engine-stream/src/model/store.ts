@@ -16,7 +16,7 @@ export function createStreamStore(): StreamStore {
 const sameClock = (a: RunStatus["clock"], b: RunStatus["clock"]): boolean =>
   a.mode === b.mode && (a.mode !== "scaled" || (b.mode === "scaled" && a.scale === b.scale));
 
-const sameFault = (a: RunStatus["fault"], b: RunStatus["fault"]): boolean =>
+export const sameFault = (a: RunStatus["fault"], b: RunStatus["fault"]): boolean =>
   a === b ||
   (!!a &&
     !!b &&

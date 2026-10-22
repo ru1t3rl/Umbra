@@ -23,7 +23,7 @@ export const DEFAULT_SETTINGS: Settings = {
   appearance: { theme: null },
   stream: { maxRateHz: 30 },
   map: { affiliationOverrides: {} },
-  journal: { capacity: 10_000 },
+  journal: { capacity: 5000 },
   scenarios: { recent: [] },
   engine: { mode: "managed", remoteUrl: "", scenarioRoot: "", pluginPath: "" },
 };

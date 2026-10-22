@@ -3,6 +3,8 @@
 // injectable so tests run without a browser, a network or real time.
 import { backoffDelay } from "./model/backoff.ts";
 import { DECODERS, type Decoded, STREAM_PROTOCOL } from "./model/decode.ts";
+import { INITIAL_RECORDER_STATE, recordFrame } from "./model/frameRecords.ts";
+import { createJournal, type JournalDraft } from "./model/journal.ts";
 import {
   createStreamStore,
   flushPending,
@@ -12,6 +14,7 @@ import {
 import type {
   EntityFrame,
   EntitySource,
+  JournalSource,
   StreamState,
   Subscription,
   WebSocketLike,
@@ -19,6 +22,8 @@ import type {
 
 /** Application close code (browsers only allow 1000 and 3000-4999): the server speaks another protocol. */
 export const CLOSE_UNSUPPORTED_PROTOCOL = 4002;
+
+export const DEFAULT_JOURNAL_CAPACITY = 5000;
 
 export const DEFAULT_SUBSCRIPTION: Subscription = { max_rate_hz: 30 };
 
@@ -34,6 +39,10 @@ export interface EngineStreamOptions {
   /** Default: `requestAnimationFrame`. Returns an opaque handle for `cancelFrame`. */
   scheduleFrame?: (callback: () => void) => unknown;
   cancelFrame?: (handle: unknown) => void;
+  /** Records the journal keeps (ADR 0071). Default 5,000; the app passes `settings.journal.capacity`. */
+  journalCapacity?: number;
+  /** Wall clock for `JournalRecord.received_at`, display only. Default `Date.now`. */
+  now?: () => number;
   /** Default: `setTimeout`/`clearTimeout`. */
   setTimer?: (callback: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
@@ -42,6 +51,8 @@ export interface EngineStreamOptions {
 export interface EngineStreamConnection {
   readonly store: StreamStore;
   readonly source: EntitySource;
+  /** Lossless event journal (ADR 0071, amends ADR 0045 for events); spans reconnects and sessions. */
+  readonly journal: JournalSource;
   getState(): StreamState;
   /** Replace the subscription; sent at once when open and again after every reconnect. */
   setSubscription(subscription: Subscription): void;
@@ -101,6 +112,12 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
     options.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
 
   const store = createStreamStore();
+  const journal = createJournal(options.journalCapacity ?? DEFAULT_JOURNAL_CAPACITY, options.now);
+  let recorder = INITIAL_RECORDER_STATE;
+  let wasOpen = false;
+  let socketOpened = false; // the current socket received its hello
+  let failureNoted = false; // one `connect_failed` per outage, not one per retry
+  let clientClosed = false;
   let subscription: Subscription = options.subscription ?? DEFAULT_SUBSCRIPTION;
   let socket: WebSocketLike | undefined;
   let attempt = 0;
@@ -116,6 +133,13 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
     const p = pending;
     pending = undefined;
     if (p) flushPending(store, p);
+    journal.publish();
+  };
+
+  /** Stage a connection record; it is published by the next flush, which it schedules if none is pending. */
+  const note = (draft: JournalDraft): void => {
+    journal.append(draft);
+    if (frameHandle === undefined) frameHandle = scheduleFrame(flush);
   };
 
   const queue = (frame: EntityFrame, run: PendingFrame["run"], skipped: number): void => {
@@ -136,18 +160,45 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
           // A different protocol version: do not subscribe, do not retry (ASM-356).
           closed = true;
           store.setState({ status: "incompatible", hello: message.hello });
+          note({
+            source: "connection",
+            level: "error",
+            kind: "incompatible",
+            message: `The server speaks ${message.hello.protocol}, this client ${STREAM_PROTOCOL}`,
+          });
           from.close(CLOSE_UNSUPPORTED_PROTOCOL, "unsupported protocol");
           return;
         }
         attempt = 0; // backoff resets on hello
+        socketOpened = true;
+        failureNoted = false;
         store.setState({ status: "open", hello: message.hello });
+        note({
+          source: "connection",
+          level: "info",
+          kind: wasOpen ? "reconnected" : "connected",
+          message: wasOpen ? "Reconnected to the engine" : "Connected to the engine",
+        });
+        wasOpen = true;
         send();
         return;
-      case "frame":
+      case "frame": {
+        // Journal every decoded frame before coalescing: the events of a skipped frame are not lost (ADR 0071).
+        const recorded = recordFrame(recorder, message);
+        recorder = recorded.next;
+        for (const draft of recorded.drafts) journal.append(draft);
         queue(message.frame, message.run, message.skipped);
         return;
+      }
       case "error":
         store.setState((s) => ({ errors: s.errors + 1 }));
+        note({
+          source: "connection",
+          level: "warning",
+          kind: "server_error",
+          message: `${message.code}: ${message.message}`,
+          detail: { code: message.code, message: message.message },
+        });
         return;
       case "ignored":
         store.setState((s) => ({ ignored: s.ignored + 1 }));
@@ -155,6 +206,18 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
       default:
         return;
     }
+  };
+
+  /** Journals the first failed attempt of an outage (startup, or after an open connection was lost). */
+  const noteConnectFailed = (): void => {
+    if (failureNoted) return;
+    failureNoted = true;
+    note({
+      source: "connection",
+      level: "warning",
+      kind: "connect_failed",
+      message: "Could not connect to the engine; retrying",
+    });
   };
 
   /** The socket was lost, or could not be created: retry after the next backoff delay. */
@@ -175,10 +238,12 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
       current = createSocket(options.url);
     } catch (error) {
       console.error("engine stream: could not create the socket", error);
+      noteConnectFailed();
       scheduleRetry();
       return;
     }
     socket = current;
+    socketOpened = false;
     store.setState({
       status: attempt === 0 && !store.getState().hello ? "connecting" : "reconnecting",
     });
@@ -192,6 +257,16 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
     };
     current.onclose = () => {
       if (socket !== current || closed) return;
+      if (socketOpened) {
+        note({
+          source: "connection",
+          level: "warning",
+          kind: "disconnected",
+          message: "The connection to the engine was lost",
+        });
+      } else {
+        noteConnectFailed();
+      }
       scheduleRetry();
     };
   };
@@ -223,12 +298,15 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
   return {
     store,
     source,
+    journal: journal.source,
     getState: () => store.getState(),
     setSubscription(next) {
       subscription = next;
       if (store.getState().status === "open") send();
     },
     close() {
+      if (clientClosed) return;
+      clientClosed = true;
       closed = true;
       if (retryTimer !== undefined) clearTimer(retryTimer);
       retryTimer = undefined;
@@ -239,6 +317,13 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
       socket = undefined;
       s?.close(1000, "client closed");
       store.setState({ status: "closed" });
+      journal.append({
+        source: "connection",
+        level: "info",
+        kind: "closed",
+        message: "The connection to the engine was closed",
+      });
+      journal.publish();
     },
   };
 }

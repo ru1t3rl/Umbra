@@ -2,13 +2,21 @@
 // type guards; nothing is cast. Unknown message types, unknown enum values and unknown fields are
 // tolerated (docs/api.md, "clients must ignore unknown fields, enum values and message types").
 import type { Hello } from "../generated/stream";
-import type { Clock, EntityFrame, EntitySummary, RunStatus } from "../types.ts";
+import type { Clock, EntityFrame, EntitySummary, EventSummary, RunStatus } from "../types.ts";
 
 export const STREAM_PROTOCOL = "umbra.stream.v1";
 
 export type Decoded =
   | { kind: "hello"; hello: Hello }
-  | { kind: "frame"; frame: EntityFrame; run: RunStatus | undefined; skipped: number }
+  | {
+      kind: "frame";
+      frame: EntityFrame;
+      run: RunStatus | undefined;
+      skipped: number;
+      /** The frame's events in order, for the journal (ADR 0071); never stored in the entity store. */
+      events: readonly EventSummary[];
+      events_truncated: boolean;
+    }
   | { kind: "error"; code: string; message: string }
   /** Not understood (bad JSON, unknown `type`, invalid shape); counted, never applied. */
   | { kind: "ignored"; reason: string };
@@ -149,6 +157,20 @@ function helloOf(v: Rec): Hello | undefined {
   };
 }
 
+function eventOf(v: unknown): EventSummary | undefined {
+  return isRec(v) && isStr(v.kind) && isNum(v.tick) ? (v as EventSummary) : undefined;
+}
+
+function eventsOf(v: unknown): EventSummary[] {
+  if (!Array.isArray(v)) return [];
+  const events: EventSummary[] = [];
+  for (const raw of v as readonly unknown[]) {
+    const e = eventOf(raw);
+    if (e) events.push(e);
+  }
+  return events;
+}
+
 function frameOf(v: Rec): Decoded {
   if (
     !isNum(v.session) ||
@@ -175,7 +197,14 @@ function frameOf(v: Rec): Decoded {
     dropped: isNum(v.dropped) ? v.dropped : 0,
     entities: Object.freeze(entities),
   };
-  return { kind: "frame", frame, run: runOf(v.run), skipped };
+  return {
+    kind: "frame",
+    frame,
+    run: runOf(v.run),
+    skipped,
+    events: eventsOf(v.events),
+    events_truncated: v.events_truncated === true,
+  };
 }
 
 export const decodeJson: Decoder = (raw) => {

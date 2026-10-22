@@ -162,3 +162,10 @@ export const frame = (
   run: run(tick),
   ...extra,
 });
+
+/** A wire event (`EventDto`); extra fields are kept so tests can send unknown kinds and fields. */
+export const ev = (kind: string, tick: number, extra: Record<string, unknown> = {}) => ({
+  kind,
+  tick,
+  ...extra,
+});
