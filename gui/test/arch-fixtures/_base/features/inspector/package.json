@@ -1,0 +1,1 @@
+{ "name": "@umbra/inspector", "version": "0.0.0", "private": true, "type": "module", "umbra": { "tier": "domain" }, "exports": { ".": "./src/index.ts" } }

@@ -1,0 +1,28 @@
+.vt-card {
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+}
+.vt-card-1 {
+  background: var(--surface-1);
+}
+.vt-card-3 {
+  background: var(--surface-3);
+}
+.vt-card-outline {
+  background: transparent;
+  border: 1px solid var(--line);
+}
+.vt-card-title {
+  margin: 0 0 var(--space-1);
+  font-size: 16px; /* umbra-allow: reference size, equals .type-title-sm (ASM-336) */
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.vt-card-sub {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 12px; /* umbra-allow: reference size, equals .type-caption (ASM-336) */
+  line-height: 16px;
+}

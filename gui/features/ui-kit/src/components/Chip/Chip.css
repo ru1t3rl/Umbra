@@ -1,0 +1,47 @@
+.vt-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 32px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px; /* umbra-allow: reference chip size (ASM-335) */
+  font-weight: 600;
+  cursor: pointer;
+  overflow: hidden;
+}
+.vt-chip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.vt-chip:hover::after {
+  background: var(--state-hover);
+}
+.vt-chip[aria-pressed="true"] {
+  background: var(--azure-dim);
+  color: var(--azure);
+  border-color: transparent;
+}
+.vt-chip-glass {
+  background: var(--glass);
+  backdrop-filter: blur(var(--blur-sm));
+  -webkit-backdrop-filter: blur(var(--blur-sm));
+  border-color: var(--glass-stroke);
+}
+.vt-chip-glass[aria-pressed="true"] {
+  background: var(--azure-dim);
+}
+.vt-chip:disabled {
+  cursor: default;
+  opacity: var(--opacity-disabled);
+}
+.vt-chip:disabled::after {
+  display: none;
+}

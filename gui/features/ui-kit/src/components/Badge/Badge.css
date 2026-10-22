@@ -1,0 +1,37 @@
+.vt-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 20px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-xs);
+  font-size: 12px; /* umbra-allow: reference badge size, equals .type-caption (ASM-335) */
+  line-height: 16px;
+  font-weight: 600;
+  background: var(--surface-3);
+  color: var(--ink);
+  white-space: nowrap;
+}
+.vt-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+.vt-badge-success {
+  background: var(--success-dim);
+  color: var(--success);
+}
+.vt-badge-warning {
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+.vt-badge-danger {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+.vt-badge-info {
+  background: var(--cyan-dim);
+  color: var(--info);
+}

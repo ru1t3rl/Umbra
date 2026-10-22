@@ -1,0 +1,35 @@
+.vt-affil {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 24px;
+  padding: 0 var(--space-2) 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 11px; /* umbra-allow: reference size, equals .type-data-sm (ASM-335) */
+  line-height: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.vt-affil svg {
+  display: block;
+}
+.vt-affil-frame {
+  fill: none;
+  stroke: var(--symbol-frame);
+  stroke-width: 1.5;
+}
+.vt-affil-friend .vt-affil-fill {
+  fill: var(--affil-friend);
+}
+.vt-affil-hostile .vt-affil-fill {
+  fill: var(--affil-hostile);
+}
+.vt-affil-neutral .vt-affil-fill {
+  fill: var(--affil-neutral);
+}
+.vt-affil-unknown .vt-affil-fill {
+  fill: var(--affil-unknown);
+}

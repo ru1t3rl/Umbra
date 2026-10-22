@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/shell-dashboard.tsbuildinfo",
+    "types": ["bun", "vite/client"]
+  },
+  "include": ["src", "../../test/jest-dom.d.ts"],
+  "references": [
+    { "path": "../../features/engine-stream" },
+    { "path": "../../features/map-view" },
+    { "path": "../../features/runtime-config" },
+    { "path": "../../features/scenario-control" },
+    { "path": "../../features/ui-kit" }
+  ]
+}

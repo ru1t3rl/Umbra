@@ -27,3 +27,8 @@ Rules for the live map and everything drawn on it. The map is `surface-0`; base-
 
 - Engagements, detonations and faults raise an `Alert` banner anchored to the top of the map, below the CommandBar; banners stack at most two deep and the rest go to the event log.
 - A map marker for an alert is a 12px `danger` or `warning` disc framed in `symbol-frame`, with the count in `data-sm`, `on-warning` on a warning disc or `ink` on a danger disc.
+
+## Remote entities
+
+- An entity that is not known to be owned by this simulation (ownership `remote`, or `unknown` when the client cannot tell) keeps the affiliation frame and fill and gains a 1px `ink-muted` ring 3px outside the frame. Only entities known to be owned have no ring; the ring matches the rule that controls are offered for owned entities only.
+- The ring is the only marker: no dashed frame (APP-6D means "planned"), no `opacity-track` (reserved for stale) and no colour change (forbidden on the map).

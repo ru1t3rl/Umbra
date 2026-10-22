@@ -1,0 +1,53 @@
+.vt-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 480px;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border-left: 0;
+}
+.vt-alert-text {
+  flex: 1;
+}
+.vt-alert-title {
+  font-weight: 600;
+}
+.vt-alert-body {
+  color: var(--ink-muted);
+}
+.vt-alert-icon {
+  font-weight: 700;
+  font-family: var(--font-mono);
+  width: 20px;
+  text-align: center;
+}
+.vt-alert-warning {
+  background: var(--warning-dim);
+}
+.vt-alert-warning .vt-alert-icon,
+.vt-alert-warning .vt-alert-title {
+  color: var(--warning);
+}
+.vt-alert-danger {
+  background: var(--danger-dim);
+}
+.vt-alert-danger .vt-alert-icon,
+.vt-alert-danger .vt-alert-title {
+  color: var(--danger);
+}
+.vt-alert-success {
+  background: var(--success-dim);
+}
+.vt-alert-success .vt-alert-icon,
+.vt-alert-success .vt-alert-title {
+  color: var(--success);
+}
+.vt-alert-info {
+  background: var(--cyan-dim);
+}
+.vt-alert-info .vt-alert-icon,
+.vt-alert-info .vt-alert-title {
+  color: var(--info);
+}

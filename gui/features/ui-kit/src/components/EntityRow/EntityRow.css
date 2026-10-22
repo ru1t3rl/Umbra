@@ -1,0 +1,44 @@
+.vt-entity {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vt-entity:hover {
+  background: var(--state-hover);
+}
+.vt-entity[aria-selected="true"] {
+  background: var(--azure-dim);
+  box-shadow: inset 2px 0 0 var(--azure); /* umbra-allow: the 2px azure selection edge is specified by the reference, no shadow token (ASM-337) */
+}
+.vt-entity-name {
+  font-weight: 600;
+}
+.vt-entity-id {
+  font-family: var(--font-mono);
+  font-size: 12px; /* umbra-allow: reference size; mono 12px has no .type-* class (ASM-337) */
+  color: var(--ink-muted);
+  margin-left: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+.vt-entity-meta {
+  display: block; /* a span here (valid inside a button); the reference used a div */
+  font-family: var(--font-mono);
+  font-size: 12px; /* umbra-allow: reference size; mono 12px has no .type-* class (ASM-337) */
+  line-height: 16px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vt-entity-stale {
+  opacity: var(--opacity-track);
+}

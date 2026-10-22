@@ -1,0 +1,13 @@
+{
+  "name": "@umbra/shell-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@umbra/inspector": "workspace:*",
+    "@umbra/map-view": "workspace:*"
+  }
+}

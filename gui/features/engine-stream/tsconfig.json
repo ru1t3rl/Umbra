@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/engine-stream.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["src", "../../test/jest-dom.d.ts"]
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/dist-e2e",
+      "!**/.tsbuild",
+      "!**/test-results",
+      "!**/playwright-report",
+      "!**/generated",
+      "!**/arch-fixtures",
+      "!**/reference",
+      "!**/tokens.css",
+      "!**/tokens.ts",
+      "!**/tokens.json",
+      "!scripts/gen-tokens.mjs",
+      "!scripts/check-tokens.mjs",
+      "!scripts/check-contrast.mjs"
+    ]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "linter": {
+    "rules": {
+      "preset": "recommended",
+      "suspicious": { "noExplicitAny": "error" },
+      "style": { "noDefaultExport": "error" }
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "feature-shells/*/src/components/*Page/*Page.tsx",
+        "vite.config.ts",
+        "features/data/orval.config.ts",
+        "playwright.config.ts",
+        "e2e/global-*.ts"
+      ],
+      "linter": { "rules": { "style": { "noDefaultExport": "off" } } }
+    }
+  ]
+}
