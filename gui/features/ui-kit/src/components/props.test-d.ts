@@ -2,6 +2,7 @@
 // line must keep failing to compile; if the prop contract loosens, tsc reports "unused directive".
 import type { AppLinkProps } from "./AppLink/AppLink.tsx";
 import type { ButtonProps } from "./Button/Button.tsx";
+import type { ChipGroupProps } from "./ChipGroup/ChipGroup.tsx";
 import type { CommandBarProps } from "./CommandBar/CommandBar.tsx";
 import type { EntityRowProps } from "./EntityRow/EntityRow.tsx";
 import type { NavItem, NavigationProviderProps } from "./NavigationProvider/NavigationProvider.tsx";
@@ -268,3 +269,6 @@ export const vlistNoLabel: VirtualListProps = {
   renderRow: () => null,
   getRowId: () => "x",
 };
+
+export const toggleDescribed: ToggleProps = { checked: true, label: "x", "aria-describedby": "h" };
+export const chipGroupDescribed: ChipGroupProps = { label: "x", "aria-describedby": "h" };

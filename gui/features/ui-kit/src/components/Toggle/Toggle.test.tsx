@@ -71,3 +71,15 @@ test("an unnamed toggle warns in development only", () => {
   expect(warn).not.toHaveBeenCalled();
   warn.mockRestore();
 });
+
+test("aria-describedby is forwarded to the switch", () => {
+  render(
+    <>
+      <Toggle label="Enabled" checked aria-describedby="h" />
+      <p id="h">Turns it on.</p>
+    </>,
+  );
+  expect(screen.getByRole("switch", { name: "Enabled" })).toHaveAccessibleDescription(
+    "Turns it on.",
+  );
+});

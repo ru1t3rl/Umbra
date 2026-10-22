@@ -9,6 +9,7 @@
         "@umbra/engine-stream": "workspace:*",
         "@umbra/map-view": "workspace:*",
         "@umbra/runtime-config": "workspace:*",
+        "@umbra/schema-form": "workspace:*",
         "@umbra/settings": "workspace:*",
         "@umbra/shell-dashboard": "workspace:*",
         "@umbra/shell-showcase": "workspace:*",
@@ -108,6 +109,16 @@
       "version": "0.0.0",
       "dependencies": {
         "@umbra/engine-stream": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
+      },
+    },
+    "features/schema-form": {
+      "name": "@umbra/schema-form",
+      "version": "0.0.0",
+      "dependencies": {
         "@umbra/ui-kit": "workspace:*",
       },
       "peerDependencies": {
@@ -503,6 +514,8 @@
     "@umbra/runtime-config": ["@umbra/runtime-config@workspace:features/runtime-config"],
 
     "@umbra/scenario-control": ["@umbra/scenario-control@workspace:features/scenario-control"],
+
+    "@umbra/schema-form": ["@umbra/schema-form@workspace:features/schema-form"],
 
     "@umbra/settings": ["@umbra/settings@workspace:features/settings"],
 

@@ -7,6 +7,8 @@ interface ToggleBaseProps {
   onChange?: (next: boolean) => void;
   disabled?: boolean;
   className?: string;
+  /** Id of the element that describes the switch (help text). */
+  "aria-describedby"?: string;
 }
 
 /** Visible label: it names the switch. */
@@ -34,6 +36,7 @@ export function Toggle({
   className,
   "aria-label": ariaLabel,
   "aria-labelledby": ariaLabelledBy,
+  "aria-describedby": ariaDescribedBy,
 }: ToggleProps): ReactElement {
   const unnamed = !label && !ariaLabel && !ariaLabelledBy;
   useEffect(() => {
@@ -49,6 +52,7 @@ export function Toggle({
       aria-checked={checked}
       aria-label={ariaLabel}
       aria-labelledby={ariaLabelledBy}
+      aria-describedby={ariaDescribedBy}
       className={classes}
       disabled={disabled}
       onClick={() => onChange?.(!checked)}

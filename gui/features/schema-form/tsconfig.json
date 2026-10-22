@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/schema-form.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["src", "test", "test/fixtures/*.json", "../../test/jest-dom.d.ts"]
+}

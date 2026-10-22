@@ -31,6 +31,7 @@
     "@umbra/engine-stream": "workspace:*",
     "@umbra/map-view": "workspace:*",
     "@umbra/runtime-config": "workspace:*",
+    "@umbra/schema-form": "workspace:*",
     "@umbra/settings": "workspace:*",
     "@umbra/shell-dashboard": "workspace:*",
     "@umbra/shell-showcase": "workspace:*",

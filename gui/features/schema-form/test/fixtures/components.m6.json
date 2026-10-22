@@ -1,0 +1,344 @@
+[
+  {
+    "kind": "motion_model",
+    "id": "builtin.ground.kinematic",
+    "version": "1.0.0",
+    "description": "Kinematic ground vehicle limits. Units are given by key suffix.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.ground.kinematic parameters",
+      "description": "Kinematic ground vehicle limits. Units are given by key suffix.",
+      "type": "object",
+      "properties": {
+        "max_speed_mps": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Maximum speed in meters per second."
+        },
+        "max_turn_rate_dps": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "description": "Maximum heading change rate in degrees per second."
+        },
+        "max_accel_mps2": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Maximum acceleration and deceleration in meters per second squared."
+        }
+      },
+      "required": ["max_speed_mps", "max_turn_rate_dps", "max_accel_mps2"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "max_speed_mps": 18,
+          "max_turn_rate_dps": 40,
+          "max_accel_mps2": 2.5
+        }
+      ]
+    }
+  },
+  {
+    "kind": "sensor",
+    "id": "builtin.visual",
+    "version": "1.0.0",
+    "description": "Visual sensor with perfect detection: an entity is a contact when it is within `range_m` meters (3D distance, inclusive), inside the horizontal field of view centred on the heading (`fov_deg` degrees, edge inclusive) and visible from this entity's eyes, `eye_height_m` meters above its position, to the other entity's eyes (terrain line of sight). With `eye_height_m = 0` two entities on smooth ground never see each other.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.visual parameters",
+      "description": "Visual sensor with perfect detection: an entity is a contact when it is within `range_m` meters (3D distance, inclusive), inside the horizontal field of view centred on the heading (`fov_deg` degrees, edge inclusive) and visible from this entity's eyes, `eye_height_m` meters above its position, to the other entity's eyes (terrain line of sight). With `eye_height_m = 0` two entities on smooth ground never see each other.",
+      "type": "object",
+      "properties": {
+        "range_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 100000,
+          "description": "Maximum 3D detection distance in meters."
+        },
+        "fov_deg": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 360,
+          "description": "Horizontal field of view in degrees, centred on the heading; 360 sees all around."
+        },
+        "eye_height_m": {
+          "type": "number",
+          "minimum": 0,
+          "default": 2,
+          "description": "Height of the eyes above the entity's position in meters, for the line-of-sight test."
+        }
+      },
+      "required": ["range_m", "fov_deg"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "range_m": 3000,
+          "fov_deg": 120
+        },
+        {
+          "range_m": 1200,
+          "fov_deg": 360,
+          "eye_height_m": 1.5
+        }
+      ]
+    }
+  },
+  {
+    "kind": "terrain",
+    "id": "builtin.terrain.flat",
+    "version": "1.0.0",
+    "description": "Flat terrain at a constant height above the WGS-84 ellipsoid.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.terrain.flat parameters",
+      "description": "Flat terrain at a constant height above the WGS-84 ellipsoid.",
+      "type": "object",
+      "properties": {
+        "height_m": {
+          "type": "number",
+          "minimum": -1000,
+          "maximum": 10000,
+          "description": "Terrain height above the WGS-84 ellipsoid in meters."
+        }
+      },
+      "required": ["height_m"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "height_m": 0
+        },
+        {
+          "height_m": 100
+        }
+      ]
+    }
+  },
+  {
+    "kind": "action",
+    "id": "builtin.action.fire",
+    "version": "1.0.0",
+    "description": "Fires the weapon named by `weapon` at the entity stored in the blackboard key `target_key` and succeeds in the same tick. Fails, without firing, when the key is unset or the entity is not a current contact. Firing is only recorded in this version; it has no effect on the target. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.action.fire parameters",
+      "description": "Fires the weapon named by `weapon` at the entity stored in the blackboard key `target_key` and succeeds in the same tick. Fails, without firing, when the key is unset or the entity is not a current contact. Firing is only recorded in this version; it has no effect on the target. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+      "type": "object",
+      "properties": {
+        "target_key": {
+          "type": "string",
+          "description": "Blackboard key of type entity that holds the target. The leaf only reads this key."
+        },
+        "weapon": {
+          "type": "string",
+          "description": "Weapon label in the namespaced id form, for example example.weapon.main_gun."
+        }
+      },
+      "required": ["target_key", "weapon"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "target_key": "target",
+          "weapon": "example.weapon.main_gun"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "action",
+    "id": "builtin.action.follow_route",
+    "version": "1.0.0",
+    "description": "Follows the route and cruise speed given in the scenario. Running until the last waypoint is reached, then Success; it keeps holding at the last waypoint after Success. Fails when the entity has no route. Takes no parameters.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.action.follow_route parameters",
+      "description": "Follows the route and cruise speed given in the scenario. Running until the last waypoint is reached, then Success; it keeps holding at the last waypoint after Success. Fails when the entity has no route. Takes no parameters.",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false,
+      "examples": [{}]
+    }
+  },
+  {
+    "kind": "action",
+    "id": "builtin.action.move_to",
+    "version": "1.0.0",
+    "description": "Moves toward the entity stored in the blackboard key `target_key` at `speed_mps`. Running while the target is farther than `arrival_radius_m`, Success once it is within that distance. Fails when the key is unset or the entity is not a current contact. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.action.move_to parameters",
+      "description": "Moves toward the entity stored in the blackboard key `target_key` at `speed_mps`. Running while the target is farther than `arrival_radius_m`, Success once it is within that distance. Fails when the key is unset or the entity is not a current contact. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+      "type": "object",
+      "properties": {
+        "target_key": {
+          "type": "string",
+          "description": "Blackboard key of type entity that holds the target. The leaf only reads this key."
+        },
+        "speed_mps": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Cruise speed in meters per second (the motion model clamps it to its limits)."
+        },
+        "arrival_radius_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Distance in meters at or below which the action succeeds."
+        }
+      },
+      "required": ["target_key", "speed_mps", "arrival_radius_m"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "target_key": "target",
+          "speed_mps": 8,
+          "arrival_radius_m": 50
+        }
+      ]
+    }
+  },
+  {
+    "kind": "action",
+    "id": "builtin.action.wait",
+    "version": "1.0.0",
+    "description": "Holds position for `duration_s` seconds, rounded up to whole ticks and counted from the node's first tick. Running until then, then Success. Starts over after it has finished or has been halted.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.action.wait parameters",
+      "description": "Holds position for `duration_s` seconds, rounded up to whole ticks and counted from the node's first tick. Running until then, then Success. Starts over after it has finished or has been halted.",
+      "type": "object",
+      "properties": {
+        "duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "How long to wait in seconds."
+        }
+      },
+      "required": ["duration_s"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "duration_s": 5
+        }
+      ]
+    }
+  },
+  {
+    "kind": "condition",
+    "id": "builtin.cond.chance",
+    "version": "1.0.0",
+    "description": "Succeeds with the given `probability`. Every evaluation draws exactly one number from the entity's own random stream, so results depend on the scenario seed and repeat exactly with the same seed. Probability 0 never succeeds and 1 always does.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.cond.chance parameters",
+      "description": "Succeeds with the given `probability`. Every evaluation draws exactly one number from the entity's own random stream, so results depend on the scenario seed and repeat exactly with the same seed. Probability 0 never succeeds and 1 always does.",
+      "type": "object",
+      "properties": {
+        "probability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Chance of Success per evaluation"
+        }
+      },
+      "required": ["probability"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "probability": 0.5
+        }
+      ]
+    }
+  },
+  {
+    "kind": "condition",
+    "id": "builtin.cond.enemy_in_range",
+    "version": "1.0.0",
+    "description": "Succeeds when a hostile contact is within `range_m` meters. Hostile means both entities have a force and the forces differ; an entity without a force is neutral and never hostile. With `store_as`, the nearest hostile contact (ties: lowest entity id) is written to that blackboard key. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.cond.enemy_in_range parameters",
+      "description": "Succeeds when a hostile contact is within `range_m` meters. Hostile means both entities have a force and the forces differ; an entity without a force is neutral and never hostile. With `store_as`, the nearest hostile contact (ties: lowest entity id) is written to that blackboard key. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+      "type": "object",
+      "properties": {
+        "range_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Maximum distance in meters (3D range of the contact, inclusive)."
+        },
+        "store_as": {
+          "type": "string",
+          "description": "Optional blackboard key of type entity that receives the nearest hostile contact on success. The key must be declared in the graph's [blackboard] table. Left unchanged on failure."
+        }
+      },
+      "required": ["range_m"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "range_m": 1500
+        },
+        {
+          "range_m": 900,
+          "store_as": "target"
+        }
+      ]
+    }
+  },
+  {
+    "kind": "condition",
+    "id": "builtin.cond.target_in_range",
+    "version": "1.0.0",
+    "description": "Succeeds when the entity stored in the blackboard key `target_key` is a current contact within `range_m` meters. Fails when the key is unset or the entity is not (or no longer) a contact. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.cond.target_in_range parameters",
+      "description": "Succeeds when the entity stored in the blackboard key `target_key` is a current contact within `range_m` meters. Fails when the key is unset or the entity is not (or no longer) a contact. Contacts are the entities this entity's sensors see this tick; without a sensor there are none.",
+      "type": "object",
+      "properties": {
+        "target_key": {
+          "type": "string",
+          "description": "Blackboard key of type entity that holds the target. The leaf only reads this key."
+        },
+        "range_m": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Maximum distance in meters (3D range of the contact, inclusive)."
+        }
+      },
+      "required": ["target_key", "range_m"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "target_key": "target",
+          "range_m": 1500
+        }
+      ]
+    }
+  },
+  {
+    "kind": "condition",
+    "id": "builtin.cond.timer_elapsed",
+    "version": "1.0.0",
+    "description": "Succeeds once the simulation time since the start of the run is at least `duration_s` seconds, rounded up to whole ticks. It measures the run, not the time since the node last ran; for a relative delay use builtin.action.wait.",
+    "provenance": "builtin",
+    "params_schema": {
+      "title": "builtin.cond.timer_elapsed parameters",
+      "description": "Succeeds once the simulation time since the start of the run is at least `duration_s` seconds, rounded up to whole ticks. It measures the run, not the time since the node last ran; for a relative delay use builtin.action.wait.",
+      "type": "object",
+      "properties": {
+        "duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Run time in seconds after which the condition succeeds."
+        }
+      },
+      "required": ["duration_s"],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "duration_s": 30
+        }
+      ]
+    }
+  }
+]

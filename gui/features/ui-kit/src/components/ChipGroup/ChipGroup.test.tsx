@@ -16,3 +16,15 @@ test("ChipGroup is a labelled group", () => {
   expect(group).toHaveClass("vt-chipgroup", "extra");
   expect(group.querySelectorAll("button")).toHaveLength(2);
 });
+
+test("aria-describedby is forwarded to the group", () => {
+  render(
+    <>
+      <ChipGroup label="Mode" aria-describedby="h">
+        <Chip>a</Chip>
+      </ChipGroup>
+      <p id="h">Radar mode.</p>
+    </>,
+  );
+  expect(screen.getByRole("group", { name: "Mode" })).toHaveAccessibleDescription("Radar mode.");
+});

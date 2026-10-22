@@ -17,7 +17,7 @@ Milestone column (A-002, D-36): M5b (live map) is the first GUI slice and delive
 | `@umbra/data` | feature | foundation | The REST data layer: orval-generated client and TanStack Query `useQuery`/`useMutation` hooks for every operation in `api/openapi.json`, query keys, the fetch mutator (runtime base URL, `ApiProblem` from problem+json), `DataProvider` (QueryClient); the only package features use for REST data (human decision 2026-10-20) | M5b (WI-9) |
 | `@umbra/engine-stream` | feature | foundation | WebSocket connection, encoding negotiation (json/msgpack), subscription filters, entity store | M5b (WI-9, WI-10): `connectEngineStream`, JSON decoder behind a `Decoder` interface (the negotiation hook), the Zustand store of full snapshots, `EngineStreamProvider`, narrow selector hooks, `EntitySource` for the map |
 | `@umbra/settings` | feature | foundation | Versioned settings model, per-platform backends (localStorage, desktop file), `useAffiliationOf` (the ASM-305 table moves here), setting editors (editors arrive with the settings shell) | M8 (WI-4): `SettingsProvider`, `useSettings`, `useUpdateSettings`, `useAffiliationOf`, `defaultAffiliationOf`, `parseSettings`, `DEFAULT_SETTINGS`, `createLocalStorageBackend`, `useThemeStorage` (ADR 0074 Accepted) |
-| `@umbra/schema-form` | feature | foundation | Read-only parameter forms from JSON Schema (subset plus JSON fallback); editable in M8b | M8 (planned, ADR 0070 Accepted) |
+| `@umbra/schema-form` | feature | foundation | Read-only parameter forms from JSON Schema (subset plus JSON fallback); editable in M8b | M8 (WI-6): `SchemaForm`, `SchemaFormProps` (ADR 0070 Accepted) |
 | `@umbra/desktop` | feature | foundation | Tauri bridge (engine process status, restart, output, desktop settings backend, engine connection settings); the only package that may import `@tauri-apps/*`; no-op in the web build | M8 (planned, ADRs 0075, 0076 Accepted) |
 | `@umbra/map-view` | feature | domain | `MapView` interface + implementation (library chosen at M5b by ADR), entity layer; public API `LiveMap`, `LiveMapProps`, `./styles.css`; MapLibre is confined to this package; the bundled Natural Earth basemap lives in its `assets/` | M5b (WI-11..WI-13) |
 | `@umbra/entity-inspector` | feature | domain | Entity list/detail panel | M8 |
@@ -64,7 +64,14 @@ feature-shells/<name>/
 ```
 
 ### Entry points a package may export besides `.`
-A package whose components need CSS declares one extra export `./styles.css` (ASM-302, ADR 0043): `@umbra/ui-kit` (fonts, tokens, base, all component CSS) and `@umbra/map-view` (container, error rules and the MapLibre CSS). The app imports each once in `src/main.tsx`; components never import another package's CSS and a package may import its own CSS (shell pages do, lazily). This is the only second entry point; it is not a deep import, because it is declared in `exports`. Anything else is imported from `@umbra/<name>` alone.
+CSS rule (ADR 0043, amended 2026-10-22, human decision; supersedes ASM-302):
+- **Components.** A component imports its own co-located CSS (`./<Name>.css`, ADR 0046) and package-internal shared CSS (`../shared/*.css`) by relative path; it never imports another package's CSS. CSS stays token-only. Shell pages load their CSS with the lazy page chunk.
+- **Global styles.** A package with styles that must load globally may declare one extra export `./styles.css`, and the app imports it once in `src/main.tsx`. Today there are two:
+  - `@umbra/ui-kit`: fonts, tokens, base; its component `@import`s duplicate the components' own imports and are harmless;
+  - `@umbra/map-view`: the MapLibre CSS, container and error rules.
+- **Optional.** Other packages need no `./styles.css`.
+
+This is the only second entry point; it is not a deep import, because it is declared in `exports`. Anything else is imported from `@umbra/<name>` alone.
 
 ## 5. Data flow
 - Commands and config: the orval-generated TanStack Query hooks of `@umbra/data` (`useQuery` for reads, `useMutation` for commands, invalidation by generated query keys).
