@@ -1,6 +1,6 @@
 # ADR 0076: Desktop engine launch model: managed sidecar by default, remote engine as an option
 
-- **Status**: Proposed (frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
+- **Status**: Accepted by the human 2026-10-22 (H-3: the bundled example scenarios are the default root; proposed by frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
 - **Requirement IDs**: D-13 ("can spawn engine sidecar"), REQ-G-1, REQ-G-6, spec section 13 ("may spawn `umbra` as a sidecar or connect to a remote engine URL"), A-002 M8 ("sidecar `umbra`"), ASM-311
 - **Affected**: `gui/src-tauri`, `@umbra/desktop`, `@umbra/shell-settings`, decision row D-86
 

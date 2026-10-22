@@ -1,6 +1,6 @@
 # ADR 0072: List virtualization: a fixed-row-height `VirtualList` in ui-kit, no new dependency
 
-- **Status**: Proposed (frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
+- **Status**: Accepted by the human 2026-10-22 (H-7; proposed by frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
 - **Requirement IDs**: NFR-1 (10,000 entities), `gui/CLAUDE.md` ("virtualize long lists"), A-003, WAI-ARIA APG listbox, M5b deferral ("EntityList virtualization", "single roving tab stop")
 - **Affected**: `@umbra/ui-kit` (new `VirtualList`), `@umbra/entity-inspector`, `@umbra/log-view`, decision row D-82
 

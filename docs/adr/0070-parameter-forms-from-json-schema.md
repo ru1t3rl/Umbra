@@ -1,6 +1,6 @@
 # ADR 0070: Parameter forms from JSON Schema: an own renderer in a foundation package
 
-- **Status**: Proposed (frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
+- **Status**: Accepted by the human 2026-10-22 (H-1; proposed by frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
 - **Requirement IDs**: REQ-X-5 ("list templates (with param schemas)"), spec section 13 ("template browser", "editing UI ... driven by JSON Schemas"), A-001 / M8b ("property forms from catalog JSON Schemas"), A-003 (Vantage only), F-4, `gui/CLAUDE.md` rules 4 and 6
 - **Affected**: new foundation package `@umbra/schema-form`, `@umbra/template-browser` (M8), `@umbra/behavior-editor` (M8b), decision row D-80
 

@@ -1,6 +1,6 @@
 # ADR 0071: Log view data: a lossless event journal in engine-stream, pluggable log sources
 
-- **Status**: Proposed (frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
+- **Status**: Accepted by the human 2026-10-22 (with the M8 plan; G-1 scheduled as a low-priority engine WI on the M7 side, H-10; proposed by frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
 - **Requirement IDs**: spec section 13 ("log view"), REQ-X-6, REQ-X-7, NFR-1, ADR 0045 (amended here), ASM-300
 - **Affected**: `@umbra/engine-stream` (journal), new domain feature `@umbra/log-view`, `@umbra/desktop` (engine process output), decision row D-81
 

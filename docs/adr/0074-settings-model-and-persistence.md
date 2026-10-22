@@ -1,6 +1,6 @@
 # ADR 0074: Settings: a versioned model in a foundation package, persisted per platform
 
-- **Status**: Proposed (frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
+- **Status**: Accepted by the human 2026-10-22 (with the M8 plan; proposed by frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
 - **Requirement IDs**: spec section 13 ("connect to engine"), A-002 M8 ("settings"), ASM-301 (theme), ASM-304 (runtime config), ASM-305 (affiliation), ASM-315 (stream rate), ADR 0075, ADR 0076
 - **Affected**: new foundation package `@umbra/settings`, `@umbra/ui-kit` (`ThemeProvider` storage), `@umbra/desktop`, `@umbra/shell-settings`, `gui/src`, decision row D-84
 

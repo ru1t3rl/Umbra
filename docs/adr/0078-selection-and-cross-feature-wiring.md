@@ -1,6 +1,6 @@
 # ADR 0078: Entity selection: lifted into the dashboard shell, map selection by hit test, one DOM label
 
-- **Status**: Proposed (frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
+- **Status**: Accepted by the human 2026-10-22 (with the M8 plan; proposed by frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
 - **Requirement IDs**: M8 acceptance ("selecting an entity shows its details in the inspector"), `gui/CLAUDE.md` rules 2 and 4 (shells wire, domain features never import each other), NFR-1, ADR 0045, ASM-306, ASM-314
 - **Affected**: `@umbra/map-view`, `@umbra/entity-inspector`, `@umbra/shell-dashboard`, decision row D-88
 

@@ -1,6 +1,6 @@
 # ADR 0077: Tauri packaging and verification: own Cargo workspace, opt-in Tauri step in gate 15, Windows checked by the human
 
-- **Status**: Proposed (frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22); needs human decisions (H-3, H-4, H-5, H-6)
+- **Status**: Accepted by the human 2026-10-22 (H-3: NSIS per-user, WebView2 `embedBootstrapper`, unsigned, examples bundled, identifier `org.umbra.desktop`; H-4: dependencies accepted, work stops on a licence failure; H-5: opt-in `--tauri` step; H-6: the human runs the Windows checklist after WI-23 and at close-out; proposed by frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
 - **Requirement IDs**: D-13, D-19 / ADR 0004 (no CI, local gates), ADR 0044 (gate 15), NFR-3, NFR-4, root `CLAUDE.md` rules 5 and 8, REQ-A-4
 - **Affected**: `gui/src-tauri` (new), `gui/package.json` scripts, `scripts/gates.sh` (gate 15 block only), `docs/build.md` (row 15, prerequisites), `deny.toml` (read, not changed, unless H-4 says so), decision row D-87
 

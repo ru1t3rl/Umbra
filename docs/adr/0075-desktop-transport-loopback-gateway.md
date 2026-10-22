@@ -1,6 +1,6 @@
 # ADR 0075: Desktop transport: a loopback gateway in the Tauri app, same origin as the web build
 
-- **Status**: Proposed (frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22); needs a human decision (H-2), because option 2 would need an engine change
+- **Status**: Accepted by the human 2026-10-22 (H-2: option 1, the loopback gateway; no engine change, G-3 not requested; proposed by frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
 - **Requirement IDs**: D-13, REQ-G-6, REQ-A-4, REQ-X-8, spec section 13 ("Tauri shell loading the same build"), ADR 0047 (no engine or contract change in M8), `docs/api.md` ("Confinement, Host and Origin": Tauri origins are M8 work)
 - **Affected**: `gui/src-tauri` (new), `@umbra/desktop`, `docs/api.md` (one note at close-out), decision row D-85
 
@@ -42,7 +42,7 @@ change `crates/` or `api/`.
      version; e2e of the web path does not cover the desktop path.
 
 ## Decision
-Option 1, pending the human's choice (H-2).
+Option 1 (human decision H-2, 2026-10-22).
 - The gateway lives in `gui/src-tauri/src/gateway/`. It uses the async HTTP stack Tauri already
   brings: `tokio` plus `hyper`/`axum` and `tokio-tungstenite`, versions recorded in the WI.
 - It forwards method, path, query, body and the `Content-Type`, `Accept`, `Upgrade`,

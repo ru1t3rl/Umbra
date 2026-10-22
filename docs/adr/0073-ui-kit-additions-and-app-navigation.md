@@ -1,6 +1,6 @@
 # ADR 0073: M8 ui-kit additions (Table, Select, AppNav, VirtualList) and app navigation without the router in features
 
-- **Status**: Proposed (frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
+- **Status**: Accepted by the human 2026-10-22 (H-7; proposed by frontend-architect, M8 plan `docs/plans/M8.md`, 2026-10-22)
 - **Requirement IDs**: A-003 ("new components ... only via ADR"), `gui/CLAUDE.md` (design system; layering rules 1-5; `react-router` only in `src/`, M5b WI-2), spec section 13
 - **Affected**: `@umbra/ui-kit`, `gui/src` (router composition), every M8 shell, `docs/design-system/UMBRA-IMPLEMENTATION.md`, decision row D-83
 
