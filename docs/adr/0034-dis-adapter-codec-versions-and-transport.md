@@ -65,6 +65,12 @@ Option 1, both versions in M6 (human decision requested with this recommendation
   multicast must be configured explicitly and logs one warning ("accepts unauthenticated DIS traffic
   from the network"). Inbound input is bounded at every layer (datagram size, queue length, ghosts per
   adapter, poll per tick).
+- **Clarified 2026-10-22 (human-approved, wording only, decision unchanged):**
+  - DIS v6 (protocol version 6) is IEEE 1278.1a-1998, not 1278.1-1995 (protocol version 5); read the
+    "1278.1-1995" mentions above as 1278.1a-1998 (ASM-416).
+  - The v7 `PDU status` field is header byte 10 (v6: padding), not byte 7; byte 11 stays padding in both
+    (ASM-416). In v7 it also carries the Fire and Detonation Type Indicators that select the burst
+    descriptor form (ASM-424).
 
 ## Consequences
 - Easier: no dependency or licence risk; full control of malformed-input behavior; v6 and v7 tested side

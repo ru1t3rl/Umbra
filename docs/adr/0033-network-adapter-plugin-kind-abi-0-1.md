@@ -71,6 +71,13 @@ Option 1 (ABI **0.1**; final layout by the plugin-abi-engineer under ADR 0019 ru
   it exports (behavior 0, network adapter 1), and each vtable header carries the minor of its own layout.
   A plugin built with a newer SDK no longer needs a newer host unless it uses a newer kind.
 - **Clarified 2026-10-21 (human-approved):** structs written during a capability's calls carry the capability's minor.
+- **Clarified 2026-10-22 (human-approved, wording only, decision unchanged):**
+  - *Faults:* a non-OK result (or a panic) of `configure`, `key_space` or `start` is a build or start error
+    naming the capability, as for behavior factories (R-M9); the fault rule above applies to the calls of a
+    built adapter (`publish`, `poll`, `counters`, `stop`) and to invalid messages and token misuse (ASM-408 b).
+  - *SDK message types:* the SDK mirror type is `NetMessage<'a>`, which borrows its strings for the duration
+    of a call instead of owning them (no allocation per string per tick); adapters cannot keep the borrows
+    (ASM-411).
 - **M4 test edits (human decision):** the three "newer minor" tests change their literal minor 1 to
   `UMBRA_ABI_VERSION_MINOR + 1` (manifest text `"0.2"`), and `examples/plugins/c-circle/plugin.toml`
   (and its README line) change `abi = "0.0"` to `"0.1"`. No struct, field or behavior of ABI 0.0 changes;
