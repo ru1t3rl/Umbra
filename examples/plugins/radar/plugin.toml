@@ -1,0 +1,8 @@
+# Package manifest of the radar example (ADR 0022). Checked by the host before the library is opened;
+# `id`, `version` and `abi` must equal the plugin descriptor (the lowest minor that defines its
+# kind, ADR 0033).
+schema_version = 1
+id = "example.plugin.radar"
+version = "0.1.0"
+abi = "0.2"
+name = "Radar example"

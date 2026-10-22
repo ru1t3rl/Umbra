@@ -1,0 +1,20 @@
+[package]
+name = "example-hover"
+description = "Example Umbra plugin: motion model `example.motion.hover`, a multirotor-style model holding a height above ground through the terrain service (M7 WI-17, ADR 0056)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# cdylib for the host, rlib so the crate's own contract tests can link the plugin types (ADR 0056).
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Third-party style (ADR 0023, ADR 0056): the SDK is the only workspace dependency.
+[dependencies]
+umbra-sdk = { path = "../../../crates/umbra-sdk" }
+
+[lints]
+workspace = true

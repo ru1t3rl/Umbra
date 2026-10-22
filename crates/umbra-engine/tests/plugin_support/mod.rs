@@ -156,6 +156,30 @@ pub fn dis() -> PathBuf {
     dir
 }
 
+/// A plugin directory with the example plugins `names` (`hover`, `radar`, `bearing`, `dispatch`,
+/// `net-jsonl`; M7 WI-2, ADR 0056) as packages of the same names: the library built from the crate
+/// `example-<name>` and the `plugin.toml` the example ships, the layout `cargo xtask build-plugins`
+/// writes.
+pub fn example_plugins(names: &[&str]) -> PathBuf {
+    let libraries: Vec<(String, PathBuf)> = names
+        .iter()
+        .map(|name| ((*name).to_owned(), library(&format!("example-{name}"), &[])))
+        .collect();
+    let refs: Vec<(&str, &Path)> = libraries
+        .iter()
+        .map(|(n, l)| (n.as_str(), l.as_path()))
+        .collect();
+    let dir = plugins_dir(&refs);
+    for name in names {
+        std::fs::copy(
+            workspace_root().join(format!("examples/plugins/{name}/plugin.toml")),
+            dir.join(name).join("plugin.toml"),
+        )
+        .expect("copy the shipped plugin.toml");
+    }
+    dir
+}
+
 /// `examples/scenarios/dis_pair` (M6 WI-16).
 pub fn dis_pair_example_dir() -> PathBuf {
     workspace_root().join("examples/scenarios/dis_pair")

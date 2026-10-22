@@ -1211,3 +1211,302 @@ fn two_plugin_images_with_network_adapters_run_side_by_side_and_fault_independen
         "both peer adapters destroyed before its shutdown: {peer_log:?}"
     );
 }
+
+// ----------------------------------------------------- ABI 0.2 kinds rows (M7 WI-2, ADR 0050, ASM-668)
+//
+// The fixture is `umbra-test-plugin` built with the feature `kinds` (plugin `test.plugin.kinds`, ABI
+// 0.2; capabilities in its `kinds` module), loaded through the shared build helper. Rows that a safe
+// SDK plugin cannot produce (a stale or foreign service token, an unset condition result) are in the
+// raw-ABI files written with WI-8/9. Ignored until the bridge of their kind exists (and WI-10, the SDK
+// side): motion models and sensors WI-8, conditions and actions WI-9.
+
+mod kinds_rows {
+    use super::support::kinds::{
+        Ctx, Env, assert_one_fault, board, check, env, env_with, flat, ids, instance, sense,
+        state_at, step, tick, world,
+    };
+    use umbra_core::{
+        BbType, BbValue, Blackboard, ComponentKind, Intent, PluginFaultPolicy, Status, Vec3,
+    };
+
+    /// The ids of the faulted capabilities of the one loaded plugin.
+    fn faulted_ids(env: &Env) -> Vec<String> {
+        env.host.plugins()[0]
+            .capabilities
+            .iter()
+            .filter(|c| c.faulted)
+            .map(|c| c.id.as_str().to_owned())
+            .collect()
+    }
+
+    /// The entity keeps position and orientation with zero velocity (ASM-614).
+    fn assert_held(start: &umbra_core::KinematicState, next: &umbra_core::KinematicState) {
+        assert_eq!(next.position, start.position);
+        assert_eq!(next.orientation, start.orientation);
+        assert_eq!(next.velocity, Vec3::ZERO);
+    }
+
+    #[test]
+    #[ignore = "M7 WI-9"]
+    fn the_kinds_fixture_loads_at_abi_0_2_and_registers_every_new_kind() {
+        let env = env();
+
+        let info = &env.host.plugins()[0];
+
+        assert_eq!(info.id.as_str(), "test.plugin.kinds");
+        assert_eq!(info.abi, (0, 2));
+        let of_kind = |kind: ComponentKind| -> Vec<&str> {
+            info.capabilities
+                .iter()
+                .filter(|c| c.kind == kind)
+                .map(|c| c.id.as_str())
+                .collect()
+        };
+        assert_eq!(
+            of_kind(ComponentKind::MotionModel),
+            [
+                "test.motion.coast",
+                "test.motion.terrain_echo",
+                "test.motion.non_unit",
+                "test.motion.nan",
+                "test.motion.panic_step"
+            ]
+        );
+        assert_eq!(of_kind(ComponentKind::Sensor).len(), 5);
+        assert_eq!(of_kind(ComponentKind::Condition).len(), 7);
+        assert_eq!(of_kind(ComponentKind::Action).len(), 5);
+        assert_eq!(env.host.faults(), Vec::new());
+    }
+
+    macro_rules! motion_fault {
+        ($name:ident, $capability:literal, $needle:literal) => {
+            #[test]
+            #[ignore = "M7 WI-8"]
+            fn $name() {
+                let env = env();
+                let model = env
+                    .motion(concat!("test.motion.", $capability), "{}")
+                    .expect("build");
+                let start = state_at(4.0, 50.0, 12.0);
+
+                let next = step(model.as_ref(), &start, &[], &flat());
+
+                assert_held(&start, &next);
+                assert_one_fault(&env, concat!("test.motion.", $capability), "step", $needle);
+                let abort = env.host.take_abort().expect("abort pending");
+                assert_eq!(
+                    abort.capability.as_str(),
+                    concat!("test.motion.", $capability)
+                );
+                assert!(env.host.take_abort().is_none(), "handed out once");
+            }
+        };
+    }
+
+    motion_fault!(
+        a_motion_model_returning_a_non_unit_orientation_holds_the_entity_and_faults,
+        "non_unit",
+        "unit"
+    );
+    motion_fault!(
+        a_motion_model_returning_a_nan_position_holds_the_entity_and_faults,
+        "nan",
+        "finite"
+    );
+    motion_fault!(
+        a_panic_in_motion_step_holds_the_entity_and_faults,
+        "panic_step",
+        "panic"
+    );
+
+    /// ADR 0021: under `disable_capability` the run goes on and the other capabilities keep working.
+    #[test]
+    #[ignore = "M7 WI-8"]
+    fn under_disable_capability_a_faulty_motion_model_is_marked_faulted_and_another_still_steps() {
+        let env = env_with(PluginFaultPolicy::DisableCapability);
+        let bad = env.motion("test.motion.nan", "{}").expect("build");
+        let good = env.motion("test.motion.coast", "{}").expect("build");
+        let start = state_at(4.0, 50.0, 12.0);
+
+        let held = step(bad.as_ref(), &start, &[], &flat());
+        let moved = step(good.as_ref(), &start, &[], &flat());
+
+        assert_held(&start, &held);
+        assert_ne!(moved.position, start.position, "the healthy model moved");
+        assert!(
+            env.host.take_abort().is_none(),
+            "no abort under disable_capability"
+        );
+        assert_eq!(faulted_ids(&env), ["test.motion.nan"]);
+        let again = step(bad.as_ref(), &start, &[], &flat());
+        assert_held(&start, &again);
+        assert_eq!(
+            env.host.faults().len(),
+            1,
+            "a disabled capability faults only once"
+        );
+    }
+
+    fn assert_no_contacts_and_one_sense_fault(env: &Env, capability: &str, needle: &str) {
+        let sensor = env.sensor(capability, "{}").expect("build");
+
+        let (contacts, _) = sense(sensor.as_ref(), &world(), &flat());
+
+        assert_eq!(contacts, Vec::new());
+        assert_one_fault(env, capability, "sense", needle);
+    }
+
+    #[test]
+    #[ignore = "M7 WI-8"]
+    fn a_contact_naming_a_non_candidate_is_refused_and_faults_the_sensor() {
+        assert_no_contacts_and_one_sense_fault(&env(), "test.sensor.unknown_contact", "candidate");
+    }
+
+    #[test]
+    #[ignore = "M7 WI-8"]
+    fn a_panic_in_sense_yields_no_contacts_and_faults_the_sensor() {
+        assert_no_contacts_and_one_sense_fault(&env(), "test.sensor.panic_sense", "panic");
+    }
+
+    #[test]
+    #[ignore = "M7 WI-8"]
+    fn under_disable_capability_a_faulty_sensor_is_marked_faulted_and_another_still_contacts() {
+        let env = env_with(PluginFaultPolicy::DisableCapability);
+        let bad = env.sensor("test.sensor.panic_sense", "{}").expect("build");
+        let good = env.sensor("test.sensor.all", "{}").expect("build");
+        let world = world();
+
+        let (none, _) = sense(bad.as_ref(), &world, &flat());
+        let (all, _) = sense(good.as_ref(), &world, &flat());
+
+        assert_eq!(none, Vec::new());
+        assert_eq!(ids(&all), [2, 3, 4]);
+        assert!(env.host.take_abort().is_none());
+        assert_eq!(env.host.faults().len(), 1);
+        assert_eq!(faulted_ids(&env), ["test.sensor.panic_sense"]);
+    }
+
+    /// REQ-B-15, ADR 0050: a refused service call faults the capability and the condition answers
+    /// false.
+    macro_rules! condition_fault {
+        ($name:ident, $capability:literal, $params:literal, $keys:expr, $needle:literal) => {
+            #[test]
+            #[ignore = "M7 WI-9"]
+            fn $name() {
+                let env = env();
+                let condition = env
+                    .condition(concat!("test.cond.", $capability), $params)
+                    .expect("build");
+                let mut bb = board($keys);
+
+                let answer = check(condition.as_ref(), &mut Ctx::new(1), &mut bb, 1);
+
+                assert!(!answer);
+                assert_one_fault(&env, concat!("test.cond.", $capability), "check", $needle);
+            }
+        };
+    }
+
+    condition_fault!(
+        a_read_of_an_undeclared_key_faults_the_condition_naming_the_key,
+        "undeclared",
+        "{}",
+        &[("secret", Some(true))],
+        "secret"
+    );
+    condition_fault!(
+        a_write_of_the_wrong_type_faults_the_condition,
+        "wrong_type",
+        r#"{"key":"seen"}"#,
+        &[("seen", None)],
+        "type"
+    );
+    condition_fault!(
+        a_panic_in_check_faults_the_condition,
+        "panic_check",
+        "{}",
+        &[],
+        "panic"
+    );
+
+    #[test]
+    #[ignore = "M7 WI-9"]
+    fn a_write_of_a_non_finite_number_faults_the_condition_and_leaves_the_key_unchanged() {
+        let env = env();
+        let condition = env
+            .condition("test.cond.non_finite", r#"{"key":"level"}"#)
+            .expect("build");
+        let mut bb = Blackboard::default();
+        bb.declare("level", BbType::Number);
+        bb.set("level", BbValue::Number(3.0)).expect("declared");
+
+        let answer = check(condition.as_ref(), &mut Ctx::new(1), &mut bb, 1);
+
+        assert!(!answer);
+        assert_eq!(bb.get("level"), Some(&BbValue::Number(3.0)));
+        assert_one_fault(&env, "test.cond.non_finite", "check", "finite");
+    }
+
+    #[test]
+    #[ignore = "M7 WI-9"]
+    fn a_refused_write_leaves_the_blackboard_key_unchanged() {
+        let env = env();
+        let condition = env
+            .condition("test.cond.wrong_type", r#"{"key":"seen"}"#)
+            .expect("build");
+        let mut bb = board(&[("seen", None)]);
+
+        let _ = check(condition.as_ref(), &mut Ctx::new(1), &mut bb, 1);
+
+        assert_eq!(bb.get("seen"), None);
+    }
+
+    #[test]
+    #[ignore = "M7 WI-9"]
+    fn a_write_to_a_read_only_key_fails_the_action_and_faults_it() {
+        let env = env();
+        let mut action = instance(&env, "test.action.read_only_write", r#"{"key":"armed"}"#);
+        let mut bb = board(&[("armed", Some(false))]);
+
+        let (status, intents) = tick(action.as_mut(), &mut Ctx::new(1), &mut bb, 1);
+
+        assert_eq!((status, intents), (Status::Failure, Vec::new()));
+        assert_eq!(bb.get("armed"), Some(&BbValue::Bool(false)));
+        assert_one_fault(&env, "test.action.read_only_write", "tick", "armed");
+    }
+
+    /// ADR 0050: the intents of a faulting call are discarded.
+    #[test]
+    #[ignore = "M7 WI-9"]
+    fn a_panic_after_an_intent_fails_the_action_and_discards_the_intent() {
+        let env = env();
+        let mut action = instance(&env, "test.action.panic_tick", "{}");
+
+        let (status, intents) = tick(
+            action.as_mut(),
+            &mut Ctx::new(1),
+            &mut Blackboard::default(),
+            1,
+        );
+
+        assert_eq!((status, intents), (Status::Failure, Vec::<Intent>::new()));
+        assert_one_fault(&env, "test.action.panic_tick", "tick", "panic");
+    }
+
+    #[test]
+    #[ignore = "M7 WI-9"]
+    fn under_disable_capability_a_faulty_action_is_marked_faulted_and_another_still_runs() {
+        let env = env_with(PluginFaultPolicy::DisableCapability);
+        let mut bad = instance(&env, "test.action.panic_tick", "{}");
+        let mut good = instance(&env, "test.action.emit", "{}");
+        let mut ctx = Ctx::new(1);
+
+        let (failed, _) = tick(bad.as_mut(), &mut ctx, &mut Blackboard::default(), 1);
+        let (done, _) = tick(good.as_mut(), &mut ctx, &mut Blackboard::default(), 1);
+
+        assert_eq!((failed, done), (Status::Failure, Status::Success));
+        assert!(env.host.take_abort().is_none());
+        assert_eq!(env.host.faults().len(), 1);
+        assert_eq!(faulted_ids(&env), ["test.action.panic_tick"]);
+    }
+}

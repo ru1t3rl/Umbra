@@ -15,6 +15,7 @@
 pub mod forge;
 #[macro_use]
 pub mod bridge;
+pub mod kinds;
 pub mod plugins;
 pub mod raw;
 

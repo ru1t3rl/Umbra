@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use xtask::deps::{
     CrateRule, DepEdge, DepKind, RULES, ResolvedDep, ResolvedGraph, ResolvedPackage, RuleSet,
-    Violation, WorkspaceGraph, check, check_resolved,
+    Violation, Workspace, WorkspaceGraph, check, check_forbid_unsafe, check_resolved,
 };
 
 fn edge(from: &str, to: &str, kind: DepKind) -> DepEdge {
@@ -327,6 +327,12 @@ fn rules_table_matches_plan_table() {
         ("xtask", &[]),
         // M4 WI-1 (REQ-SDK-3, ADR 0023 item 4): plugin crates depend on the SDK only.
         ("example-wander", &["umbra-sdk"]),
+        // M7 WI-2 (ADR 0056, ASM-649): the third-party-style examples, SDK only.
+        ("example-hover", &["umbra-sdk"]),
+        ("example-radar", &["umbra-sdk"]),
+        ("example-bearing", &["umbra-sdk"]),
+        ("example-dispatch", &["umbra-sdk"]),
+        ("example-net-jsonl", &["umbra-sdk"]),
         ("umbra-test-plugin", &["umbra-sdk"]),
     ];
     let actual: BTreeMap<&str, BTreeSet<&str>> = table()
@@ -1176,4 +1182,67 @@ mod protocol_neutrality {
         let expected: BTreeSet<&str> = PROTOCOL_NEUTRAL.iter().copied().collect();
         assert_eq!(listed, expected);
     }
+}
+
+// ---------------------------------------------------------------- M7 AT-6 (examples are third-party style)
+
+/// Every `examples/plugins/<dir>` that has a `Cargo.toml` (the C example has none).
+fn example_plugin_crates() -> Vec<std::path::PathBuf> {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/plugins");
+    let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(&root)
+        .unwrap_or_else(|e| panic!("read {}: {e}", root.display()))
+        .map(|entry| {
+            entry
+                .unwrap_or_else(|e| panic!("directory entry: {e}"))
+                .path()
+        })
+        .filter(|dir| dir.join("Cargo.toml").is_file())
+        .collect();
+    dirs.sort();
+    dirs
+}
+
+/// ADR 0056: every example plugin crate (a directory with a `Cargo.toml`) is a workspace member with a
+/// rule table row, so `check-deps` covers it.
+#[test]
+fn given_the_example_plugin_crates_when_inspected_then_each_is_a_member_with_a_rule_row() {
+    let ws = Workspace::load_declared(Some(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.toml"),
+    ))
+    .expect("load the workspace");
+    let crates = example_plugin_crates();
+    assert!(
+        crates.len() >= 6,
+        "wander plus the five M7 examples: {crates:?}"
+    );
+
+    for dir in crates {
+        let text = std::fs::read_to_string(dir.join("Cargo.toml")).expect("read Cargo.toml");
+        let manifest: toml::Table = text.parse().expect("parse Cargo.toml");
+        let name = manifest["package"]["name"].as_str().expect("package name");
+
+        assert!(ws.graph.members.contains(name), "{name} is not a member");
+        assert!(table().contains_key(name), "{name} has no rule table row");
+    }
+}
+
+/// REQ-SDK-3, CLAUDE.md rule 5: the real workspace check (`check-deps` declared pass: the rule table
+/// for normal and build dependencies, dev-dependencies free, and `forbid(unsafe_code)` at the crate
+/// roots) reports nothing for the example plugin crates.
+#[test]
+fn given_the_real_workspace_when_checked_then_the_example_plugins_have_no_violation() {
+    let ws = Workspace::load_declared(Some(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../Cargo.toml"),
+    ))
+    .expect("load the workspace");
+
+    let mut violations = check(&ws.graph, &RULES);
+    violations.extend(check_forbid_unsafe(&ws.roots));
+
+    let about_examples: Vec<String> = violations
+        .iter()
+        .map(|v| format!("{v:?}"))
+        .filter(|v| v.contains("example-"))
+        .collect();
+    assert_eq!(about_examples, Vec::<String>::new());
 }

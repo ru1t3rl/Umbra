@@ -23,6 +23,8 @@ bad_schema = []
 network = []
 # Builds the second plugin `test.plugin.net_peer` (network capabilities only) instead (ASM-410).
 network_peer = []
+# Builds the plugin `test.plugin.kinds` (motion model, sensor, condition and action fixtures, ABI 0.2) instead.
+kinds = []
 
 [dependencies]
 umbra-sdk = { path = "../umbra-sdk" }

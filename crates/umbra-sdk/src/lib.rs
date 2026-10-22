@@ -122,6 +122,15 @@
 //! }
 //! ```
 //!
+//! # Motion models, sensors, conditions and actions (ABI 0.2, ADR 0050)
+//! Implement [`MotionModel`], [`Sensor`], [`Condition`] or [`Action`] (with its [`ActionInstance`]) and
+//! list the type under `motion_models:`, `sensors:`, `conditions:` or `actions:` of `export_plugin!`.
+//! Terrain ([`Terrain`]) and blackboard ([`BlackboardAccess`]) access arrive with the call and are valid
+//! only during it. A plugin that exports any of these kinds declares ABI minor 2.
+//!
+//! Status: M7 WI-2 stubs. The traits and context types are final in shape (`docs/plans/M7.md`, ASM-666)
+//! but their exports panic with `M7 WI-10` until the SDK side is implemented.
+//!
 //! # What the SDK guarantees at the boundary (ADR 0019, ADR 0020, ADR 0021)
 //! - **Panics** never unwind into the host: every exported function runs under `catch_unwind`; the
 //!   message goes to the call's error sink (or, for calls without one, to the host log at error level)
@@ -182,8 +191,12 @@ mod error;
 mod export;
 mod guard;
 mod host;
+mod leaf;
 mod minor;
+mod motion;
 mod network;
+mod sensor;
+mod services;
 
 pub use behavior::{
     Behavior, BehaviorFactory, BehaviorInstance, Contact, EntityView, Intent, Intents, Interface,
@@ -192,8 +205,12 @@ pub use behavior::{
 pub use error::Error;
 #[doc(hidden)]
 pub use export::__private;
+pub use leaf::{Action, ActionInstance, Condition, LeafCtx};
+pub use motion::{KinematicState, MotionCtx, MotionModel};
 pub use network::{
     ConfigureInput, ControlAction, Counters, DeadReckoning, EntityState, Euler, Inbox, KeySpace,
     MANAGER_TEMPLATE_KEYS, NetKey, NetMessage, NetworkAdapter, NetworkAdapterConfig,
     NetworkAdapterFactory, SimTime,
 };
+pub use sensor::{Contacts, Ownership, SenseCtx, Sensor, TargetView};
+pub use services::{BlackboardAccess, Terrain, Vec3};

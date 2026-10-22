@@ -28,16 +28,22 @@
 //! `.net_blocks_join`, so the descriptor declares ABI 0.1 (the default build stays 0.0, ADR 0033).
 //! The feature `network_peer` makes the crate a second, independent plugin, `test.plugin.net_peer`
 //! 0.1.0, with only `test.network.peer_ok` and `.peer_panics_in_poll` (ASM-410, ASM-414).
+//!
+//! ABI 0.2 kinds (M7 WI-2, ASM-668, module `kinds`): the feature `kinds` makes the crate plugin
+//! `test.plugin.kinds` 0.1.0 with a motion model, sensor, condition and action fixture each
+//! (`test.motion.*`, `test.sensor.*`, `test.cond.*`, `test.action.*`). Skeleton until M7 WI-10.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(
-    feature = "network_peer",
+    any(feature = "network_peer", feature = "kinds"),
     expect(
         dead_code,
-        reason = "the network peer exports only its network capabilities, not the behaviors"
+        reason = "the network peer and the kinds plugin export only their own capabilities, not the behaviors"
     )
 )]
 
+#[cfg(feature = "kinds")]
+mod kinds;
 #[cfg(any(feature = "network", feature = "network_peer"))]
 mod network;
 
@@ -387,7 +393,7 @@ fn shutdown() {
 
 /// Exports the plugin with the default capabilities plus the behaviors `$extra` and the network
 /// adapters `$net`.
-#[cfg(not(feature = "network_peer"))]
+#[cfg(not(any(feature = "network_peer", feature = "kinds")))]
 macro_rules! fixture {
     ([$($extra:ty),*], [$($net:ty),*]) => {
         export_plugin! {
@@ -406,16 +412,21 @@ macro_rules! fixture {
     };
 }
 
-#[cfg(not(any(feature = "bad_schema", feature = "network", feature = "network_peer")))]
+#[cfg(not(any(
+    feature = "bad_schema",
+    feature = "network",
+    feature = "network_peer",
+    feature = "kinds"
+)))]
 fixture!([], []);
 #[cfg(all(
     feature = "bad_schema",
-    not(any(feature = "network", feature = "network_peer"))
+    not(any(feature = "network", feature = "network_peer", feature = "kinds"))
 ))]
 fixture!([BadSchema], []);
 #[cfg(all(
     feature = "network",
-    not(any(feature = "bad_schema", feature = "network_peer"))
+    not(any(feature = "bad_schema", feature = "network_peer", feature = "kinds"))
 ))]
 fixture!(
     [],
@@ -429,7 +440,7 @@ fixture!(
 #[cfg(all(
     feature = "network",
     feature = "bad_schema",
-    not(feature = "network_peer")
+    not(any(feature = "network_peer", feature = "kinds"))
 ))]
 fixture!(
     [BadSchema],
@@ -446,6 +457,27 @@ export_plugin! {
     name: "Umbra test network peer",
     version: "0.1.0",
     network_adapters: [network::PeerOk, network::PeerPanicsInPoll],
+    init: init,
+    shutdown: shutdown,
+}
+#[cfg(all(feature = "kinds", not(feature = "network_peer")))]
+export_plugin! {
+    id: "test.plugin.kinds",
+    name: "Umbra test kinds",
+    version: "0.1.0",
+    motion_models: [
+        kinds::Coast, kinds::TerrainEcho, kinds::NonUnit, kinds::Nan, kinds::PanicStep
+    ],
+    sensors: [
+        kinds::All, kinds::Los, kinds::Coin, kinds::UnknownContact, kinds::PanicSense
+    ],
+    conditions: [
+        kinds::Always, kinds::Flag, kinds::Mark, kinds::Undeclared, kinds::WrongType, kinds::NonFinite,
+        kinds::PanicCheck
+    ],
+    actions: [
+        kinds::Count, kinds::Emit, kinds::MarkAction, kinds::ReadOnlyWrite, kinds::PanicTick
+    ],
     init: init,
     shutdown: shutdown,
 }

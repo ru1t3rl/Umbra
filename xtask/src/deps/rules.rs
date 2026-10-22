@@ -113,6 +113,12 @@ pub const RULES: RuleSet = RuleSet {
         // Plugin crates (M4, ADR 0023 item 4): built with the SDK only (REQ-SDK-3). They are not
         // FFI crates, so they keep `#![forbid(unsafe_code)]` (ASM-024, ASM-116).
         rule("example-wander", &["umbra-sdk"], "REQ-SDK-3"),
+        // M7 (ADR 0056): one third-party-style example per kind, SDK only.
+        rule("example-hover", &["umbra-sdk"], "REQ-SDK-3"),
+        rule("example-radar", &["umbra-sdk"], "REQ-SDK-3"),
+        rule("example-bearing", &["umbra-sdk"], "REQ-SDK-3"),
+        rule("example-dispatch", &["umbra-sdk"], "REQ-SDK-3"),
+        rule("example-net-jsonl", &["umbra-sdk"], "REQ-SDK-3"),
         rule("umbra-test-plugin", &["umbra-sdk"], "REQ-SDK-3"),
     ],
 };

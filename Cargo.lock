@@ -389,6 +389,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-bearing"
+version = "0.1.0"
+dependencies = [
+ "umbra-sdk",
+]
+
+[[package]]
+name = "example-dispatch"
+version = "0.1.0"
+dependencies = [
+ "umbra-sdk",
+]
+
+[[package]]
+name = "example-hover"
+version = "0.1.0"
+dependencies = [
+ "umbra-sdk",
+]
+
+[[package]]
+name = "example-net-jsonl"
+version = "0.1.0"
+dependencies = [
+ "umbra-sdk",
+]
+
+[[package]]
+name = "example-radar"
+version = "0.1.0"
+dependencies = [
+ "umbra-sdk",
+]
+
+[[package]]
 name = "example-wander"
 version = "0.1.0"
 dependencies = [

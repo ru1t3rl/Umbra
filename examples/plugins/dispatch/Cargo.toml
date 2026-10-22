@@ -1,0 +1,20 @@
+[package]
+name = "example-dispatch"
+description = "Example Umbra plugin: action `example.action.dispatch`, spawns a template after a delay and writes a blackboard flag (M7 WI-18, ADR 0056)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# cdylib for the host, rlib so the crate's own contract tests can link the plugin types (ADR 0056).
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Third-party style (ADR 0023, ADR 0056): the SDK is the only workspace dependency.
+[dependencies]
+umbra-sdk = { path = "../../../crates/umbra-sdk" }
+
+[lints]
+workspace = true
