@@ -6,6 +6,7 @@ Foundation feature (tier `foundation`): the only way the GUI reads or writes eng
 - `DataProvider({ children, client? })`: the TanStack Query client (a default one with a 4xx-aware retry policy; tests may pass their own). It does not know the engine URL.
 - `configureEngineUrl(url)`: sets the engine base URL (`""` = page origin); process-wide. Call it once in the app bootstrap (`src/main.tsx`) or in e2e/scripts; `check:deps` rejects it in features and shells.
 - `ApiProblem` (class: `code`, `status`, `title`, `detail`, `diagnostics?`), `isApiProblem`, `CLIENT_PROBLEM_CODES`. Every failed request rejects with an `ApiProblem`: `application/problem+json` is decoded, any other error body is `code: "internal"` with the HTTP status, a failed fetch is `network_error` with status 0.
+- `useInvalidateEngineQueries()`: returns a stable `() => Promise<void>` that invalidates every engine query except the status query (used by the app's `SessionInvalidator` on a session change, M8 WI-3).
 - Re-export of the generated file: `use<Operation>` hooks (`useGetStatus`, `useStepRun`, ...), `get<Operation>QueryKey` / `QueryOptions` / `MutationOptions` getters, the model types (`EngineStatus`, `Problem`, ...) and the plain request functions (`getStatus`, `stepRun`, ...). **Plain functions are for `gui/e2e/` and scripts only**; `bun run check:deps` rejects them in features, shells and the app.
 
 ```tsx

@@ -58,7 +58,7 @@ Shell:
 ```
 feature-shells/<name>/
   package.json        # name @umbra/shell-<name>
-  src/index.ts        # exports `route` (path, lazy page, nav metadata)
+  src/index.ts        # exports `route` (path, label, icon, nav, lazy page)
   src/components/<Name>Page/<Name>Page.tsx  # layout + wiring only (+ <Name>Page.test.tsx; default export, lazy-loaded)
   src/components/<Part>/<Part>.tsx          # page parts, one component per file (ADR 0046)
 ```

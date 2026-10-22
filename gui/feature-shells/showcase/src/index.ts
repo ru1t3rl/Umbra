@@ -3,6 +3,8 @@
 export const route = {
   path: "/showcase",
   label: "Design system",
+  icon: "palette",
+  nav: false,
   lazy: async () => ({
     Component: (await import("./components/ShowcasePage/ShowcasePage.tsx")).default,
   }),

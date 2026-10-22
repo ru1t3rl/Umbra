@@ -7,5 +7,6 @@ export type { DataProviderProps } from "./components/DataProvider/DataProvider.t
 export { DataProvider } from "./components/DataProvider/DataProvider.tsx";
 export { configureEngineUrl } from "./fetcher.ts";
 export * from "./generated/api.ts";
+export { useInvalidateEngineQueries } from "./hooks/useInvalidateEngineQueries.ts";
 export type { ApiProblemInit } from "./problem.ts";
 export { ApiProblem, CLIENT_PROBLEM_CODES, isApiProblem } from "./problem.ts";

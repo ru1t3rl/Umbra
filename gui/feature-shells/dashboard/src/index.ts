@@ -3,6 +3,8 @@
 export const route = {
   path: "/",
   label: "Live map",
+  icon: "map",
+  nav: true,
   lazy: async () => ({
     Component: (await import("./components/DashboardPage/DashboardPage.tsx")).default,
   }),
