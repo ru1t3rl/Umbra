@@ -1,6 +1,8 @@
 # ADR 0057: Control API 1.2: recording status (additive to ADR 0026 and ADR 0035)
 
-- **Status**: Proposed (architect, M7 plan `docs/plans/M7.md`, 2026-10-22). Human decision H8.
+- **Status**: Accepted by the human 2026-10-22 (H8, including the forced edit of
+  `crates/umbra-cli/tests/cli_serve.rs` `api_version` 1.2.0; proposed by the architect, M7 plan
+  `docs/plans/M7.md`, 2026-10-22).
 - **Requirement IDs**: REQ-K-7, REQ-X-4, REQ-X-5, REQ-X-6, REQ-X-7, D-44, D-45, D-54, ADR 0026, ADR 0027,
   ADR 0053
 - **Affected**: `umbra-api-types` (`RecordingDto`, `API_VERSION` 1.2.0), `umbra-server` (mapping),

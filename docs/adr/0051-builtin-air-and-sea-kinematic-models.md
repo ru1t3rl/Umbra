@@ -1,6 +1,6 @@
 # ADR 0051: Built-in air and sea kinematic models
 
-- **Status**: Proposed (architect, M7 plan `docs/plans/M7.md`, 2026-10-22)
+- **Status**: Accepted by the human 2026-10-22 as proposed (proposed by the architect, M7 plan `docs/plans/M7.md`, 2026-10-22)
 - **Requirement IDs**: REQ-M-1, REQ-M-2, REQ-M-4, REQ-C-3, REQ-C-4, REQ-C-6, REQ-K-4, REQ-T-3, ADR 0003,
   ADR 0016, D-15, D-33
 - **Affected**: `umbra-motion` (new `air`, `sea`, private `steer` modules, factories, schemas),

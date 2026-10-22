@@ -1,7 +1,7 @@
 # ADR 0053: Recording format v1 and the `umbra-record` crate
 
-- **Status**: Proposed (architect, M7 plan `docs/plans/M7.md`, 2026-10-22). Adds a workspace crate not in
-  spec section 4: human decision H4.
+- **Status**: Accepted by the human 2026-10-22 as proposed (H4: the new crate `umbra-record`; H6:
+  lossless recording with backpressure; proposed by the architect, M7 plan `docs/plans/M7.md`, 2026-10-22).
 - **Requirement IDs**: REQ-K-7, REQ-K-4, REQ-K-6, REQ-K-8, REQ-N-8, REQ-X-1, REQ-A-1, NFR-2, A-2, D-4,
   D-23, ADR 0006, ADR 0007, ADR 0024, ADR 0029, ADR 0030
 - **Affected**: new crate `umbra-record`; `umbra-engine` (recorder), `umbra-net` (inbound tap),

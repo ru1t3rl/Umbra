@@ -1,6 +1,7 @@
 # ADR 0056: Third-party-style example plugins, the recording network adapter and `umbra new-plugin`
 
-- **Status**: Proposed (architect, M7 plan `docs/plans/M7.md`, 2026-10-22). Human decision H7.
+- **Status**: Accepted by the human 2026-10-22 as proposed (H7; proposed by the architect, M7 plan
+  `docs/plans/M7.md`, 2026-10-22).
 - **Requirement IDs**: REQ-SDK-3, REQ-SDK-4, REQ-X-2, REQ-N-8, REQ-P-4, REQ-A-3, NFR-2, NFR-5, D-7, D-41,
   ADR 0022, ADR 0023, ADR 0033 (M6 decision H7 a, b)
 - **Affected**: `examples/plugins/*` (new crates), `examples/scenarios/plugin_kinds`, `xtask` (`build-plugins`),

@@ -1,7 +1,8 @@
 # ADR 0052: Applying `Spawn` and `Despawn` intents at the engine tick boundary (successor of ADR 0028 decision 5)
 
-- **Status**: Proposed (architect, M7 plan `docs/plans/M7.md`, 2026-10-22). Completes D-46 / ADR 0028
-  ("applied in M7 with recording and replay") and amends ADR 0016's note; human decision H3.
+- **Status**: Accepted by the human 2026-10-22 as proposed (H3; proposed by the architect, M7 plan
+  `docs/plans/M7.md`, 2026-10-22). Completes D-46 / ADR 0028 ("applied in M7 with recording and replay")
+  and amends ADR 0016's note.
 - **Requirement IDs**: REQ-B-2, REQ-B-1, REQ-K-2, REQ-K-4, REQ-K-5, REQ-C-2, REQ-C-5, REQ-N-2, REQ-K-7,
   D-16, D-33, D-46, ADR 0016, ADR 0024, ADR 0028, ADR 0030
 - **Affected**: `umbra-kernel` (additive `TickReport::lifecycle`), `umbra-engine` (spawner, `tick_once`,

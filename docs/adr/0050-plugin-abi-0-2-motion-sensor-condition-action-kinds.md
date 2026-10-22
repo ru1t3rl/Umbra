@@ -1,8 +1,9 @@
 # ADR 0050: Plugin ABI 0.2: motion model, sensor, condition and action kinds with per-call services
 
-- **Status**: Proposed (architect, M7 plan `docs/plans/M7.md`, 2026-10-22). Changes a frozen ABI by an
-  append-only minor bump, refines how ADR 0021 / D-39 deliver "terrain queries and event emit", and needs
-  literal edits to frozen M4/M6 tests: human decisions H1 and H2 of the M7 plan.
+- **Status**: Accepted by the human 2026-10-22 (proposed by the architect, M7 plan `docs/plans/M7.md`,
+  2026-10-22). H1 approved: the frozen ABI literal edits, rewritten relative to `UMBRA_ABI_VERSION_MINOR`,
+  and c-circle `abi = "0.2"`. H2 approved: per-call service structs and the `CUSTOM` intent, recorded as an
+  amendment of ADR 0021 / D-39.
 - **Requirement IDs**: REQ-P-2..9, REQ-P-11, REQ-SDK-1..3, REQ-M-1, REQ-M-4, REQ-B-3, REQ-B-15, REQ-K-4,
   REQ-K-5, REQ-C-6, D-6, D-8, D-37, D-38, D-39, D-52, ADR 0019, ADR 0020, ADR 0021, ADR 0033
 - **Affected**: `umbra-plugin-api` (+ generated header), `umbra-plugin-host` (descriptor, four bridges,

@@ -1,6 +1,6 @@
 # ADR 0054: Replay semantics and verification
 
-- **Status**: Proposed (architect, M7 plan `docs/plans/M7.md`, 2026-10-22)
+- **Status**: Accepted by the human 2026-10-22 as proposed (proposed by the architect, M7 plan `docs/plans/M7.md`, 2026-10-22)
 - **Requirement IDs**: REQ-K-7, REQ-K-4, REQ-K-5, REQ-N-1, REQ-N-3, REQ-X-1, REQ-X-2, REQ-S-1, A-2, D-5,
   D-49, ADR 0024, ADR 0030, ADR 0033, ADR 0053
 - **Affected**: `umbra-engine` (`replay` module, shared command applier), `umbra-net` (`ReplayAdapter`),

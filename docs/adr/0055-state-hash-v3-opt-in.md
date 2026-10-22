@@ -1,6 +1,7 @@
 # ADR 0055: State hash v3, selectable and opt-in (settles D-30's revisit; amends ADR 0007)
 
-- **Status**: Proposed (architect, M7 plan `docs/plans/M7.md`, 2026-10-22). Human decision H5.
+- **Status**: Accepted by the human 2026-10-22 (H5: v3 opt-in, v2 the default, WI-15 stays in M7;
+  proposed by the architect, M7 plan `docs/plans/M7.md`, 2026-10-22).
 - **Requirement IDs**: REQ-K-4, REQ-K-7, REQ-B-5, REQ-B-16, REQ-K-5, A-2, D-22, D-30, ADR 0007, ADR 0013,
   ADR 0032 (ASM-230)
 - **Affected**: `umbra-core` (`hash`: `StateHashVersion`), `umbra-core::behavior` (additive default

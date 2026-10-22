@@ -124,6 +124,15 @@ engine), image-level "tainted" for logging only, whole-batch discard, RNG draws 
 consumed; minors: `shutdown` only after a successful `init`, `destroy_*` on faulted capabilities, panicking
 `shutdown` swallowed, `keep_loaded` option, sink misuse rules.
 
+## Amended 2026-10-22 (M7, human decision H2, ADR 0050)
+The M7 staging of REQ-P-5 changes its mechanism, not its intent. Terrain queries are not appended to
+`UmbraHostApi`. Instead they are a per-call `UmbraTerrain` service struct, with a call-scoped token and
+function pointers. It is passed only in the motion model `step` and sensor `sense` calls, where core
+passes a `TerrainProvider`. Blackboard access for plugin conditions and actions is the same kind of
+service, `UmbraBlackboard`. Event emit is served by the existing `CUSTOM` intent, which becomes
+`SimEvent::Custom` (ADR 0028); there is no `emit_event` callback. `UmbraHostApi` stays `log` + RNG, so its
+size and layout pins are unchanged. Every other rule of this ADR is unchanged.
+
 ## Amended 2026-10-18 after the ABI re-review
 No layout change. RR-M1: image lifecycle states (`Loading`, `Live`, `Closing`) with a condvar wait,
 reload after release allowed (new lifecycle, new `UmbraHostApi*` and `host_ctx`, plugins reset global state
