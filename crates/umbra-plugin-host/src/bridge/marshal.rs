@@ -58,14 +58,14 @@ use umbra_plugin_api::{
     UMBRA_NET_ENTITY_REMOVED, UMBRA_NET_ENTITY_STATE, UMBRA_NET_FIRE, UMBRA_STATUS_FAILURE,
     UMBRA_STATUS_RUNNING, UMBRA_STATUS_SUCCESS, UMBRA_VALUE_BOOL, UMBRA_VALUE_ENTITY,
     UMBRA_VALUE_INTEGER, UMBRA_VALUE_NUMBER, UMBRA_VALUE_POSITION, UMBRA_VALUE_STRING,
-    UmbraBehavior, UmbraBehaviorItem, UmbraContact, UmbraEntityView, UmbraInstance, UmbraIntent,
-    UmbraKinematicState, UmbraNetMessage, UmbraQuat, UmbraStatus, UmbraStr, UmbraTarget,
-    UmbraValue, UmbraVec3,
+    UmbraBehavior, UmbraBehaviorItem, UmbraCode, UmbraContact, UmbraEntityView, UmbraInstance,
+    UmbraIntent, UmbraKinematicState, UmbraNetMessage, UmbraQuat, UmbraStatus, UmbraStr,
+    UmbraTarget, UmbraToken, UmbraValue, UmbraValueSink, UmbraVec3,
 };
 
 use crate::descriptor::{Headed, NETWORK_ADAPTER_MINOR, read_header, read_prefix};
 use crate::host_api::{abi_size, bytes};
-use crate::tokens::{BatchCall, SenseCall};
+use crate::tokens::{BatchCall, LeafCall, SenseCall};
 
 /// Number of minors this host knows.
 const HOST_MINORS: usize = UMBRA_ABI_VERSION_MINOR as usize + 1;
@@ -86,6 +86,13 @@ const VALUE_SIZES: [usize; HOST_MINORS] = [
     size_of::<UmbraValue>(),
     size_of::<UmbraValue>(),
     size_of::<UmbraValue>(),
+];
+/// Value sinks are plugin-written since minor 2 (the sink a plugin passes to the blackboard service's
+/// `get`, ADR 0050); the struct exists since minor 0.
+const VALUE_SINK_SIZES: [usize; HOST_MINORS] = [
+    size_of::<UmbraValueSink>(),
+    size_of::<UmbraValueSink>(),
+    size_of::<UmbraValueSink>(),
 ];
 /// `UmbraNetMessage` exists since minor 1 (ADR 0033); the minor-0 entry is never read. Minor 2 did not
 /// change it.
@@ -146,10 +153,13 @@ pub(crate) struct Scratch {
     /// The observer stream, candidate ids and pushed contacts of a `sense` call; moved into the call
     /// record during the call and back afterwards.
     pub(crate) sense: SenseCall,
+    /// The entity stream, blackboard, grants and undo log of a condition `check` or action `tick`
+    /// call (ABI 0.2); moved into the call record during the call and back afterwards.
+    pub(crate) leaf: LeafCall,
 }
 
 // SAFETY: the raw pointers in the scratch (handles, views, contacts, items, RNG streams, the strings
-// of step intents and targets) are written, used and cleared within one plugin call made under the
+// of step intents and targets, the leaf call's blackboard and grants) are written, used and cleared within one plugin call made under the
 // image's call lock, on the thread making the call; `LoadedImage::call` clears the scratch before and after every call body, on
 // every return path, so between calls every pointer-holding buffer is empty (only capacity remains)
 // and moving the scratch to another thread (with the lock) moves no live pointer. The pointers are
@@ -174,6 +184,7 @@ impl Scratch {
         self.payloads.clear();
         self.targets.clear();
         self.sense.clear();
+        self.leaf.clear();
     }
 
     /// Sum of the capacities (the warm-up growth probe of the tests).
@@ -194,6 +205,7 @@ impl Scratch {
             + self.targets.capacity()
             + self.sense.candidates.capacity()
             + self.sense.contacts.capacity()
+            + self.leaf.undo.capacity()
     }
 
     /// Copies the contacts and route of `entity` into the scratch arrays; returns their span.
@@ -505,6 +517,27 @@ pub(crate) unsafe fn value_within(
         UMBRA_VALUE_POSITION => BbValue::Position(finite_vec3(v.position, "value position")?),
         other => return Err(format!("value has unknown type {other}")),
     }))
+}
+
+/// The `set` entry of a value sink.
+pub(crate) type ValueSetFn = unsafe extern "C" fn(UmbraToken, *const UmbraValue) -> UmbraCode;
+
+/// The token and the `set` entry of a plugin-written value sink (the sink a plugin passes to the
+/// blackboard service's `get`, ABI 0.2) of a plugin declaring minor `ceiling`, read like the other
+/// plugin-written structs; `set` must be non-null.
+///
+/// # Safety
+/// `ptr` is null or valid for the call (the plugin's promise).
+pub(crate) unsafe fn value_sink_within(
+    ptr: *const UmbraValueSink,
+    ceiling: u32,
+) -> Result<(UmbraToken, ValueSetFn), String> {
+    // SAFETY: forwarded caller contract.
+    let sink = unsafe { read(ptr, "value sink", &VALUE_SINK_SIZES, 0, ceiling) }?;
+    let set = sink
+        .set
+        .ok_or_else(|| "value sink.set is null".to_owned())?;
+    Ok((sink.ctx, set))
 }
 
 /// The ABI code of a dead-reckoning model (ADR 0032 order); `None` for a model this ABI has no code

@@ -9,8 +9,8 @@
 //! from another thread) is in the module `raw_rows` (WI-8, raw fixture in `support/kinds.rs`); the
 //! engine-level fault policies are in `umbra-engine/tests/plugin_kinds_faults.rs`.
 //!
-//! Step 4 of M7 (WI-2), un-ignored with the bridge in WI-8; the fixture is the transitional
-//! `kinds_motion_sensor` build until WI-9 (ASM-718).
+//! Step 4 of M7 (WI-2), un-ignored with the bridge in WI-8 (on the transitional `kinds_motion_sensor`
+//! build, ASM-718; the full `kinds` build since WI-9).
 
 #![expect(
     unsafe_code,

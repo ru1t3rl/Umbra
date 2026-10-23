@@ -36,4 +36,4 @@ Numbering for any other milestone skips this block, and the reserved numbers cou
 | M5 | [`docs/assumptions/M5.md`](assumptions/M5.md) | ASM-149..ASM-223 | 75 |
 | M5b | [`docs/assumptions/M5b.md`](assumptions/M5b.md) | ASM-300..ASM-378 and ASM-500..ASM-517 (blocks ASM-300..ASM-379 and ASM-500..ASM-599) | 97 |
 | M6 | [`docs/assumptions/M6.md`](assumptions/M6.md) | ASM-224..ASM-299, ASM-400..ASM-458 | 135 |
-| M7 | [`docs/assumptions/M7.md`](assumptions/M7.md) | ASM-600..ASM-722 (block ASM-600..ASM-799) | 123 |
+| M7 | [`docs/assumptions/M7.md`](assumptions/M7.md) | ASM-600..ASM-725 (block ASM-600..ASM-799) | 126 |

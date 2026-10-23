@@ -1,6 +1,6 @@
 //! Helpers of the ABI 0.2 host rows (M7 WI-2, AT-16): the fixture plugin `test.plugin.kinds` (feature
-//! `kinds` of `umbra-test-plugin`, capabilities listed in its `kinds` module; until WI-9 the transitional
-//! feature in [`FEATURES`]) loaded into a host, and small terrains and states the rows share. The
+//! `kinds` of `umbra-test-plugin`, capabilities listed in its `kinds` module, [`FEATURES`]) loaded into
+//! a host, and small terrains and states the rows share. The
 //! library is built by the shared build helper (nested `cargo build`, `CARGO_TARGET_TMPDIR`), never read
 //! from `target/plugins`.
 //!
@@ -31,10 +31,9 @@ pub struct Env {
     pub log: Arc<Recorder>,
 }
 
-/// The cargo features the fixture is built with. Until M7 WI-9 bridges conditions and actions, the
-/// transitional `kinds_motion_sensor` build (motion models and sensors only, ASM-718): a host with only
-/// the WI-8 bridges refuses the full `kinds` build as `Unsupported` (ASM-708). WI-9 sets `["kinds"]`.
-pub const FEATURES: &[&str] = &["kinds_motion_sensor"];
+/// The cargo features the fixture is built with (since M7 WI-9 the full `kinds` build; WI-8 used the
+/// transitional `kinds_motion_sensor` build, removed with ASM-718's revisit).
+pub const FEATURES: &[&str] = &["kinds"];
 
 /// Loads `test.plugin.kinds` (the library carries no manifest, which is optional) under the default
 /// fault policy (`Abort`).
@@ -690,6 +689,7 @@ impl RawEnv {
     pub fn load_in(f: Forged, policy: PluginFaultPolicy, mode: HostMode) -> Self {
         QUERIES.with(|q| q.borrow_mut().clear());
         KEPT.with(|k| k.set(None));
+        reset_leaf_records();
         let log = Recorder::arc();
         let mut options = HostOptions::default();
         options.log = log.clone();
@@ -741,4 +741,517 @@ impl RawEnv {
             .map(|f| (f.capability.as_str().to_owned(), f.call, f.message))
             .collect()
     }
+}
+
+// ---------------------------------------------------------------- raw-ABI condition and action (WI-9)
+//
+// The raw plugin of the leaf rows: the motion model and sensor above plus a condition and an action,
+// for the misuse the safe SDK cannot express (a result byte or status left unset or out of range, a
+// blackboard token kept from a finished call, of another capability's call or of another service)
+// and to observe the blackboard service at the ABI (what `get` reports, write undo, access rules).
+
+use umbra_plugin_api::{
+    UMBRA_CAPABILITY_ACTION, UMBRA_CAPABILITY_CONDITION, UMBRA_INTENT_SET_SPEED,
+    UMBRA_STATUS_SUCCESS, UMBRA_VALUE_BOOL, UmbraAction, UmbraActionInstance, UmbraActionVTable,
+    UmbraBlackboard, UmbraCondition, UmbraConditionVTable, UmbraHostApi, UmbraIntent,
+    UmbraIntentSink, UmbraLeafCall, UmbraStatus, UmbraValue, UmbraValueSink,
+};
+
+/// The raw condition capability.
+pub const RAW_CONDITION: &str = "test.cond.raw";
+/// The raw action capability.
+pub const RAW_ACTION: &str = "test.action.raw";
+/// What a get records when its sink was not called.
+pub const NO_REPORT: &str = "-";
+
+/// The blackboard `get` entry as the plugin sees it.
+pub type BbGetFn = unsafe extern "C" fn(UmbraToken, UmbraStr, *const UmbraValueSink) -> UmbraCode;
+/// The blackboard `set` entry as the plugin sees it.
+pub type BbSetFn = unsafe extern "C" fn(UmbraToken, UmbraStr, *const UmbraValue) -> UmbraCode;
+
+thread_local! {
+    /// A blackboard service kept from a call (`keep` modes), used by a later call (`stale` modes).
+    pub static KEPT_BB: Cell<Option<(UmbraToken, BbGetFn, BbSetFn)>> = const { Cell::new(None) };
+    /// `(code, report)` of every blackboard access, intent push and RNG draw of the raw leaves, in order.
+    pub static ACCESSES: RefCell<Vec<(i32, String)>> = const { RefCell::new(Vec::new()) };
+    /// What the raw value sink received during the current `get` (`None`: not called).
+    static REPORT: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// The host API the raw plugin of this thread's test received (set when a leaf is built; per
+    /// thread, because parallel tests each load their own forged plugin).
+    static RAW_HOST: Cell<usize> = const { Cell::new(0) };
+    /// Run once by the raw value sink, during a `get` (a re-entrant host call from inside a plugin call).
+    pub static REENTER: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
+    /// Live raw action instances (instantiated, not yet destroyed).
+    static LIVE_INSTANCES: Cell<i64> = const { Cell::new(0) };
+    /// The live instance count `destroy_action` saw (`None`: not run yet).
+    static DESTROYED_WITH: Cell<Option<i64>> = const { Cell::new(None) };
+}
+
+/// The live instance count the raw action's `destroy_action` saw (`None`: it did not run yet).
+pub fn destroyed_with() -> Option<i64> {
+    DESTROYED_WITH.with(Cell::get)
+}
+
+/// The accesses recorded on this thread.
+pub fn accesses() -> Vec<(i32, String)> {
+    ACCESSES.with(|a| a.borrow().clone())
+}
+
+fn access(code: i32, report: String) {
+    ACCESSES.with(|a| a.borrow_mut().push((code, report)));
+}
+
+/// The raw value sink: records what the host reported (`unset`, `bool:<b>`, `number:<n>`, `other`).
+unsafe extern "C" fn raw_sink_set(_: UmbraToken, value: *const UmbraValue) -> UmbraCode {
+    let text = if value.is_null() {
+        "unset".to_owned()
+    } else {
+        // SAFETY: the host passes a valid value for the call.
+        let v = unsafe { &*value };
+        match v.ty {
+            UMBRA_VALUE_BOOL => format!("bool:{}", v.boolean == 1),
+            umbra_plugin_api::UMBRA_VALUE_NUMBER => format!("number:{}", v.number),
+            _ => "other".to_owned(),
+        }
+    };
+    REPORT.with(|r| *r.borrow_mut() = Some(text));
+    if let Some(hook) = REENTER.with(|h| h.borrow_mut().take()) {
+        hook();
+    }
+    UMBRA_OK
+}
+
+fn raw_sink() -> UmbraValueSink {
+    UmbraValueSink {
+        abi_version: abi2(),
+        struct_size: size_of::<UmbraValueSink>() as u32,
+        ctx: 77,
+        set: Some(raw_sink_set),
+    }
+}
+
+fn text(s: &str) -> UmbraStr {
+    UmbraStr {
+        ptr: s.as_ptr(),
+        len: s.len(),
+    }
+}
+
+/// `get(ctx, key)` through the raw sink (or a null sink); records and returns the code and the report.
+pub fn bb_get(get: BbGetFn, ctx: UmbraToken, key: &str, null_sink: bool) -> (i32, String) {
+    REPORT.with(|r| *r.borrow_mut() = None);
+    let sink = raw_sink();
+    let ptr = if null_sink {
+        std::ptr::null()
+    } else {
+        &raw const sink
+    };
+    // SAFETY: `get` is the host's entry (a process-lifetime function); `key` and `sink` are live for
+    // the call. Whether the token is valid is what the rows test.
+    let code = unsafe { get(ctx, text(key), ptr) };
+    let report = REPORT
+        .with(|r| r.borrow_mut().take())
+        .unwrap_or_else(|| NO_REPORT.to_owned());
+    access(code, report.clone());
+    (code, report)
+}
+
+/// `set(ctx, key, Bool(true))`; records and returns the code.
+pub fn bb_set_true(set: BbSetFn, ctx: UmbraToken, key: &str) -> i32 {
+    let value = UmbraValue {
+        abi_version: abi2(),
+        struct_size: size_of::<UmbraValue>() as u32,
+        ty: UMBRA_VALUE_BOOL,
+        boolean: 1,
+        reserved_0: [0; 3],
+        number: 0.0,
+        integer: 0,
+        string: text(""),
+        entity: 0,
+        position: UmbraVec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+    };
+    // SAFETY: as in `bb_get`; `value` lives across the call.
+    let code = unsafe { set(ctx, text(key), &raw const value) };
+    access(code, NO_REPORT.to_owned());
+    code
+}
+
+/// `set(ctx, key, null)` (unset); records and returns the code.
+pub fn bb_unset(set: BbSetFn, ctx: UmbraToken, key: &str) -> i32 {
+    // SAFETY: as in `bb_get`; a null value unsets.
+    let code = unsafe { set(ctx, text(key), std::ptr::null()) };
+    access(code, NO_REPORT.to_owned());
+    code
+}
+
+/// A configured raw leaf: its mode and its params `key` and `out`.
+struct RawLeaf {
+    mode: String,
+    key: String,
+    out: String,
+}
+
+/// The string param `name` of `text` (substring parse: no dependency).
+fn param_of(text: &str, name: &str) -> String {
+    text.split(&format!("\"{name}\":\""))
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap_or_default()
+        .to_owned()
+}
+
+fn raw_leaf(params: UmbraStr) -> *mut RawLeaf {
+    // SAFETY: the host passes the params borrowed for the duration of `configure`.
+    let bytes = unsafe { std::slice::from_raw_parts(params.ptr, params.len) };
+    let text = String::from_utf8_lossy(bytes);
+    Box::into_raw(Box::new(RawLeaf {
+        mode: param_of(&text, "mode"),
+        key: param_of(&text, "key"),
+        out: param_of(&text, "out"),
+    }))
+}
+
+/// Draws one `u64` with the call's RNG token through the host API; records `(code, "u64:<v>")`.
+fn draw(rng: UmbraToken) {
+    let host = RAW_HOST.with(Cell::get) as *const UmbraHostApi;
+    // SAFETY: the host API pointer the entry received; the host keeps it alive while the image lives.
+    let host = unsafe { &*host };
+    let mut out = 0_u64;
+    let code = match host.rng_next_u64 {
+        // SAFETY: the host's entry, with its own `host_ctx`, the call's token and a live out-value.
+        Some(next) => unsafe { next(host.host_ctx, rng, &raw mut out) },
+        None => UMBRA_ERR_INTERNAL,
+    };
+    access(code, format!("u64:{out}"));
+}
+
+/// The blackboard accesses shared by both leaves; returns `true` if `mode` was one of them.
+fn bb_mode(leaf: &RawLeaf, bb: &UmbraBlackboard, err: *const UmbraErrorSink) -> bool {
+    let (Some(get), Some(set)) = (bb.get, bb.set) else {
+        return false;
+    };
+    match leaf.mode.as_str() {
+        "flag" => {
+            bb_get(get, bb.ctx, &leaf.key, false);
+        }
+        "keep" => {
+            KEPT_BB.with(|k| k.set(Some((bb.ctx, get, set))));
+            bb_get(get, bb.ctx, &leaf.key, false);
+        }
+        "stale" => {
+            if let Some((kept, get, _)) = KEPT_BB.with(Cell::get) {
+                bb_get(get, kept, &leaf.key, false);
+            }
+        }
+        "stale_set" => {
+            if let Some((kept, _, set)) = KEPT_BB.with(Cell::get) {
+                bb_set_true(set, kept, &leaf.out);
+            }
+        }
+        "err_token" => {
+            // SAFETY: the host passes a valid error sink for the call.
+            let other = unsafe { (*err).ctx };
+            bb_get(get, other, &leaf.key, false);
+        }
+        "terrain_token" => {
+            if let Some((kept, _)) = KEPT.with(Cell::get) {
+                bb_get(get, kept, &leaf.key, false);
+            }
+        }
+        "null_sink" => {
+            bb_get(get, bb.ctx, &leaf.key, true);
+        }
+        "read_out" => {
+            bb_get(get, bb.ctx, &leaf.out, false);
+        }
+        "get_armed" => {
+            bb_get(get, bb.ctx, "armed", false);
+        }
+        "write_twice_fail" => {
+            bb_set_true(set, bb.ctx, &leaf.out);
+            bb_unset(set, bb.ctx, &leaf.out);
+        }
+        "write" | "write_unset" | "write_fail" => {
+            bb_set_true(set, bb.ctx, &leaf.out);
+        }
+        _ => return false,
+    }
+    true
+}
+
+unsafe extern "C" fn condition_configure(
+    params: UmbraStr,
+    out: *mut *mut UmbraCondition,
+    _: *const UmbraErrorSink,
+) -> UmbraCode {
+    // SAFETY: the host passes a valid out pointer.
+    unsafe { *out = raw_leaf(params).cast() };
+    UMBRA_OK
+}
+
+unsafe extern "C" fn condition_destroy(condition: *mut UmbraCondition) {
+    // SAFETY: a handle made by `condition_configure`, destroyed once.
+    drop(unsafe { Box::from_raw(condition.cast::<RawLeaf>()) });
+}
+
+/// Runs its mode, then writes 1 into `*out` (`unset` and `write_unset`: nothing; `two`: 2; `flag`: 1
+/// iff the key read true) and returns `UMBRA_OK` (`write_fail`: `UMBRA_ERR_INTERNAL`), whatever the
+/// host answered, so a refusal faults the capability through the host's own record.
+unsafe extern "C" fn condition_check(
+    condition: *mut UmbraCondition,
+    call: *const UmbraLeafCall,
+    out: *mut u8,
+    err: *const UmbraErrorSink,
+) -> UmbraCode {
+    // SAFETY: a live handle; the host passes a valid call record with a valid blackboard service.
+    let (leaf, call) = unsafe { (&*condition.cast::<RawLeaf>(), &*call) };
+    // SAFETY: as above.
+    let bb = unsafe { &*call.blackboard };
+    if leaf.mode == "rng" {
+        draw(call.rng);
+    } else {
+        bb_mode(leaf, bb, err);
+    }
+    let byte = match leaf.mode.as_str() {
+        "unset" | "write_unset" => None,
+        "two" => Some(2),
+        "flag" => Some(u8::from(
+            accesses().last().is_some_and(|(_, r)| r == "bool:true"),
+        )),
+        _ => Some(1),
+    };
+    if let Some(b) = byte {
+        // SAFETY: the host passes a valid out pointer.
+        unsafe { *out = b };
+    }
+    if leaf.mode == "write_fail" || leaf.mode == "write_twice_fail" {
+        UMBRA_ERR_INTERNAL
+    } else {
+        UMBRA_OK
+    }
+}
+
+unsafe extern "C" fn action_configure(
+    params: UmbraStr,
+    out: *mut *mut UmbraAction,
+    _: *const UmbraErrorSink,
+) -> UmbraCode {
+    // SAFETY: the host passes a valid out pointer.
+    unsafe { *out = raw_leaf(params).cast() };
+    UMBRA_OK
+}
+
+unsafe extern "C" fn action_destroy(action: *mut UmbraAction) {
+    DESTROYED_WITH.with(|d| d.set(Some(LIVE_INSTANCES.with(Cell::get))));
+    // SAFETY: a handle made by `action_configure`, destroyed once (after its instances).
+    drop(unsafe { Box::from_raw(action.cast::<RawLeaf>()) });
+}
+
+/// An instance points at its configured action (which outlives it).
+unsafe extern "C" fn action_instantiate(
+    action: *mut UmbraAction,
+    _: u32,
+    out: *mut *mut UmbraActionInstance,
+    _: *const UmbraErrorSink,
+) -> UmbraCode {
+    // SAFETY: the host passes a valid out pointer.
+    unsafe { *out = action.cast() };
+    LIVE_INSTANCES.with(|n| n.set(n.get() + 1));
+    UMBRA_OK
+}
+
+unsafe extern "C" fn action_destroy_instance(_: *mut UmbraActionInstance) {
+    LIVE_INSTANCES.with(|n| n.set(n.get() - 1));
+}
+
+/// Pushes `SetSpeed(3)` for item 0; records the sink's code.
+fn push_speed(sink: &UmbraIntentSink) {
+    let intent = UmbraIntent {
+        abi_version: abi2(),
+        struct_size: size_of::<UmbraIntent>() as u32,
+        kind: UMBRA_INTENT_SET_SPEED,
+        reserved_0: 0,
+        position: UmbraVec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        value: 3.0,
+        entity: 0,
+        id: text(""),
+        payload: text(""),
+    };
+    let code = match sink.push {
+        // SAFETY: the host's sink entry and token of this call; `intent` lives across the call.
+        Some(push) => unsafe { push(sink.ctx, 0, &raw const intent) },
+        None => UMBRA_ERR_INTERNAL,
+    };
+    access(code, "push".to_owned());
+}
+
+/// Runs its mode, pushes `SetSpeed(3)`, then writes Success into `*out` (`unset`: nothing; `nine`: 9)
+/// and returns `UMBRA_OK` (`write_fail`: `UMBRA_ERR_INTERNAL`), whatever the host answered.
+unsafe extern "C" fn action_tick(
+    instance: *mut UmbraActionInstance,
+    call: *const UmbraLeafCall,
+    intents: *const UmbraIntentSink,
+    out: *mut UmbraStatus,
+    err: *const UmbraErrorSink,
+) -> UmbraCode {
+    // SAFETY: a live instance (its action's handle); the host passes a valid call record, blackboard
+    // service and intent sink.
+    let (leaf, call, sink) = unsafe { (&*instance.cast::<RawLeaf>(), &*call, &*intents) };
+    // SAFETY: as above.
+    let bb = unsafe { &*call.blackboard };
+    if leaf.mode == "rng" {
+        draw(call.rng);
+    } else {
+        bb_mode(leaf, bb, err);
+    }
+    push_speed(sink);
+    let status = match leaf.mode.as_str() {
+        "unset" => None,
+        "nine" => Some(9),
+        _ => Some(UMBRA_STATUS_SUCCESS),
+    };
+    if let Some(s) = status {
+        // SAFETY: the host passes a valid out pointer.
+        unsafe { *out = s };
+    }
+    if leaf.mode == "write_fail" || leaf.mode == "write_twice_fail" {
+        UMBRA_ERR_INTERNAL
+    } else {
+        UMBRA_OK
+    }
+}
+
+unsafe extern "C" fn action_halt(_: *mut UmbraActionInstance) -> UmbraCode {
+    UMBRA_OK
+}
+
+/// The raw leaf plugin as forge parts: [`raw_parts`] plus the condition [`RAW_CONDITION`] and the
+/// action [`RAW_ACTION`], both with the params `mode`, `key` (a `bool` key, read) and `out` (a `bool`
+/// key, write).
+pub fn raw_leaf_parts() -> Parts {
+    let schema = r#"{"type":"object","properties":{"mode":{"type":"string"},"key":{"type":"string"},"out":{"type":"string"}}}"#;
+    let metadata = r#"{"blackboard_params":[{"param":"key","type":"bool","access":"read"},{"param":"out","type":"bool","access":"write"}]}"#;
+    let condition: &'static UmbraConditionVTable = Box::leak(Box::new(UmbraConditionVTable {
+        abi_version: abi2(),
+        struct_size: size_of::<UmbraConditionVTable>() as u32,
+        configure: Some(condition_configure),
+        destroy: Some(condition_destroy),
+        check: Some(condition_check),
+    }));
+    let action: &'static UmbraActionVTable = Box::leak(Box::new(UmbraActionVTable {
+        abi_version: abi2(),
+        struct_size: size_of::<UmbraActionVTable>() as u32,
+        configure: Some(action_configure),
+        destroy_action: Some(action_destroy),
+        instantiate: Some(action_instantiate),
+        destroy_instance: Some(action_destroy_instance),
+        tick: Some(action_tick),
+        halt: Some(action_halt),
+    }));
+    let mut p = raw_parts();
+    for (id, kind, vtable) in [
+        (
+            RAW_CONDITION,
+            UMBRA_CAPABILITY_CONDITION,
+            std::ptr::from_ref(condition).cast::<c_void>(),
+        ),
+        (
+            RAW_ACTION,
+            UMBRA_CAPABILITY_ACTION,
+            std::ptr::from_ref(action).cast::<c_void>(),
+        ),
+    ] {
+        let mut cap = forge::capability(id);
+        cap.abi_version = abi2();
+        cap.kind = kind;
+        cap.param_schema = leak_str(schema);
+        cap.metadata = leak_str(metadata);
+        cap.vtable = vtable;
+        p.caps.push(cap);
+    }
+    p.desc.capabilities = p.caps.as_ptr();
+    p.desc.capability_count = p.caps.len();
+    p
+}
+
+impl RawEnv {
+    fn leaf_params(mode: &str) -> ParamValue {
+        params(&format!(
+            r#"{{"mode":"{mode}","key":"armed","out":"done"}}"#
+        ))
+    }
+
+    /// The raw condition in `mode`, its params `key = "armed"` and `out = "done"`.
+    pub fn condition(&self, mode: &str) -> Arc<dyn Condition> {
+        RAW_HOST.with(|h| h.set(self.f.host.load(Ordering::SeqCst)));
+        let factory = self
+            .registry
+            .condition(&cid(RAW_CONDITION))
+            .expect("the raw condition is registered");
+        let _scope = self.host.build_scope();
+        factory.build(&Self::leaf_params(mode)).expect("build")
+    }
+
+    /// The raw condition built from `json` params (a build may fail).
+    pub fn condition_with(&self, json: &str) -> Result<Arc<dyn Condition>, BuildError> {
+        RAW_HOST.with(|h| h.set(self.f.host.load(Ordering::SeqCst)));
+        let factory = self
+            .registry
+            .condition(&cid(RAW_CONDITION))
+            .expect("the raw condition is registered");
+        let _scope = self.host.build_scope();
+        factory.build(&params(json))
+    }
+
+    /// The raw action in `mode` and one instance of it (both handles, so a row chooses the drop order).
+    pub fn action_parts(&self, mode: &str) -> (Arc<dyn Action>, Box<dyn ActionInstance>) {
+        RAW_HOST.with(|h| h.set(self.f.host.load(Ordering::SeqCst)));
+        let factory = self
+            .registry
+            .action(&cid(RAW_ACTION))
+            .expect("the raw action is registered");
+        let _scope = self.host.build_scope();
+        let action = factory.build(&Self::leaf_params(mode)).expect("build");
+        let instance = action
+            .instantiate(TickRate::new(30).expect("30 Hz"))
+            .expect("instantiate");
+        (action, instance)
+    }
+
+    /// An instance of the raw action in `mode`, its params `key = "armed"` and `out = "done"`.
+    pub fn action(&self, mode: &str) -> Box<dyn ActionInstance> {
+        RAW_HOST.with(|h| h.set(self.f.host.load(Ordering::SeqCst)));
+        let factory = self
+            .registry
+            .action(&cid(RAW_ACTION))
+            .expect("the raw action is registered");
+        let _scope = self.host.build_scope();
+        factory
+            .build(&Self::leaf_params(mode))
+            .expect("build")
+            .instantiate(TickRate::new(30).expect("30 Hz"))
+            .expect("instantiate")
+    }
+}
+
+/// The leaf rows' blackboard: `armed` (bool, set to `armed`) and `done` (bool, set to `done`).
+pub fn leaf_board(armed: bool, done: bool) -> Blackboard {
+    board(&[("armed", Some(armed)), ("done", Some(done))])
+}
+
+/// Clears the raw leaves' records on this thread.
+fn reset_leaf_records() {
+    ACCESSES.with(|a| a.borrow_mut().clear());
+    KEPT_BB.with(|k| k.set(None));
+    REENTER.with(|h| *h.borrow_mut() = None);
+    LIVE_INSTANCES.with(|n| n.set(0));
+    DESTROYED_WITH.with(|d| d.set(None));
 }

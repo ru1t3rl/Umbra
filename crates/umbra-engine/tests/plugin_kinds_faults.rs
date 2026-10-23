@@ -1,16 +1,21 @@
-//! AT-16 engine rows (M7 WI-8): faults of plugin motion models and sensors under the scenario's
-//! `on_plugin_fault` policy. Requirements: REQ-P-4, REQ-P-7, REQ-M-1, REQ-K-4, ADR 0021, ADR 0050,
-//! ASM-614, ASM-615.
+//! AT-16 engine rows (M7 WI-8, WI-9): faults of plugin motion models, sensors, conditions and actions
+//! under the scenario's `on_plugin_fault` policy. Requirements: REQ-P-4, REQ-P-7, REQ-M-1, REQ-K-4,
+//! REQ-B-3, REQ-B-15, ADR 0021, ADR 0050, ASM-614, ASM-615.
 //!
-//! The plugin is `umbra-test-plugin` as `test.plugin.kinds` (SDK-built; until WI-9 the transitional
-//! feature `kinds_motion_sensor`, ASM-718): `test.motion.coast` moves an entity along its velocity,
-//! `test.motion.nan` returns a NaN position (the host refuses it), `test.sensor.all` contacts every
-//! candidate and `test.sensor.panic_sense` panics in `sense`. Under `abort` the run ends after the
+//! The plugin is `umbra-test-plugin` as `test.plugin.kinds` (SDK-built, feature `kinds`; WI-8 used
+//! the transitional feature `kinds_motion_sensor`, ASM-718): `test.motion.coast` moves an entity
+//! along its velocity, `test.motion.nan` returns a NaN position (the host refuses it),
+//! `test.sensor.all` contacts every candidate and `test.sensor.panic_sense` panics in `sense`. Under `abort` the run ends after the
 //! faulting tick with `EngineError::PluginFault` (or `StopReason::PluginFault` on the engine handle),
 //! and that tick's frame is still seen: the faulted motion model's entity held (position and
 //! orientation kept, velocity zero, ASM-614), the faulted sensor's entity without contacts (ASM-615).
 //! Under `disable_capability` the run goes to the end with one fault, the held entity stays held and
 //! the healthy capabilities keep working.
+//!
+//! WI-9 (the leaf rows at the end): each entity's behavior is a one-node graph whose root is a plugin
+//! condition or action; `test.cond.panic_check` panics in `check` and `test.action.panic_tick` in
+//! `tick`. Under `abort` the run ends after the faulting tick (1) with that fault, its frame seen;
+//! under `disable_capability` the run goes to the end with that one fault.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -37,8 +42,7 @@ use umbra_engine::{
 };
 
 /// The kinds fixture as package `fixture` (no manifest).
-static PLUGINS: LazyLock<PathBuf> =
-    LazyLock::new(|| plugin_support::fixture(&["kinds_motion_sensor"]));
+static PLUGINS: LazyLock<PathBuf> = LazyLock::new(|| plugin_support::fixture(&["kinds"]));
 
 const PLUGIN: &str = "test.plugin.kinds";
 const TICKS: u64 = 30;
@@ -353,4 +357,148 @@ fn on_the_engine_handle_a_plugin_sensor_fault_publishes_the_faulting_tick_then_s
         "test.sensor.panic_sense",
         "sense",
     );
+}
+
+// ---------------------------------------------------------------- conditions and actions (WI-9)
+
+/// One entity of a leaf scene: name, root node type (`condition` or `action`), leaf id, params (TOML
+/// inline table).
+type Leaf = (&'static str, &'static str, &'static str, &'static str);
+
+/// Writes a scene under `policy` like [`scene`] (motion `test.motion.coast`, no sensor) whose entities'
+/// behaviors are one-node graphs rooted at their leaf.
+fn leaf_scene(tag: &str, policy: &str, members: &[Leaf]) -> PathBuf {
+    let mut scenario = format!(
+        "schema_version = 1\n\n[scenario]\nname = \"{tag}\"\nseed = 7\ntick_rate_hz = 30\n\
+         clock = \"afap\"\nduration_s = 10.0\ntemplate_paths = [\"templates\", \"behaviors\"]\n\
+         on_plugin_fault = \"{policy}\"\n\n\
+         [terrain]\nprovider = \"builtin.terrain.flat\"\nparams = {{ height_m = 0.0 }}\n"
+    );
+    let mut files = Vec::new();
+    for (i, (name, node, leaf, params)) in members.iter().enumerate() {
+        files.push((
+            format!("behaviors/{name}.behavior.toml"),
+            format!(
+                "schema_version = 1\nid = \"test.graph.{name}\"\nversion = \"1.0.0\"\n\
+                 description = \"generated\"\nroot = \"leaf\"\n\n\
+                 [nodes.leaf]\ntype = \"{node}\"\nref = \"{leaf}\"\nparams = {params}\n"
+            ),
+        ));
+        files.push((
+            format!("templates/{name}.toml"),
+            format!(
+                "schema_version = 1\nid = \"test.entity.{name}\"\ndescription = \"generated\"\n\n\
+                 [motion]\nmodel = \"test.motion.coast\"\nparams = {{}}\n\n\
+                 [behavior]\nref = \"test.graph.{name}\"\n"
+            ),
+        ));
+        let lon = 4.0 + 0.0007 * f64::from(u32::try_from(i).expect("small index"));
+        write!(
+            scenario,
+            "\n[[entities]]\ntemplate = \"test.entity.{name}\"\nname = \"{name}\"\n\
+             position = {{ lat_deg = 52.0, lon_deg = {lon:.7} }}\nheading_deg = 90.0\nspeed_mps = 5.0\n"
+        )
+        .expect("write to a String");
+    }
+    files.push(("scenario.toml".to_owned(), scenario));
+    let refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, t)| (p.as_str(), t.as_str()))
+        .collect();
+    write_dir(tag, &refs).join("scenario.toml")
+}
+
+const CONDITION_SCENE: [Leaf; 2] = [
+    ("sure", "condition", "test.cond.always", "{}"),
+    ("shaky", "condition", "test.cond.panic_check", "{}"),
+];
+
+const ACTION_SCENE: [Leaf; 2] = [
+    ("counter", "action", "test.action.count", "{ ticks = 1000 }"),
+    ("crasher", "action", "test.action.panic_tick", "{}"),
+];
+
+/// ADR 0021: a fault of `capability` in `call` under `abort` ends the run after tick 1, whose frame
+/// the callback saw.
+fn assert_abort_after_the_first_tick(r: &Run, capability: &str, call: &str) {
+    let fault = plugin_fault(&r.result);
+    assert_eq!(
+        (fault.plugin.as_str(), fault.capability.as_str(), fault.call),
+        (PLUGIN, capability, call)
+    );
+    assert!(fault.message.contains("panic"), "{}", fault.message);
+    assert_eq!(
+        r.engine.now().tick(),
+        1,
+        "the run stops right after the faulting tick"
+    );
+    assert_eq!(r.frames.len(), 1, "the faulting tick was seen");
+    assert_eq!(r.frames[0].0.time.tick(), 1);
+    assert_eq!(
+        r.frames[0].1,
+        r.engine.state_hash(),
+        "the frame is the final state"
+    );
+}
+
+/// ADR 0021: under `disable_capability` the run goes to the end with exactly one fault, of
+/// `capability` in `call`.
+fn assert_one_fault_and_the_run_goes_on(
+    loaded: &LoadedScenario,
+    r: &Run,
+    capability: &str,
+    call: &str,
+) {
+    assert_eq!(r.result.as_ref().expect("the run goes on").ticks_run, TICKS);
+    assert_eq!(r.frames.len(), usize::try_from(TICKS).expect("fits"));
+    let faults = loaded.plugins.faults();
+    assert_eq!(faults.len(), 1, "{faults:?}");
+    assert_eq!(
+        (faults[0].capability.as_str(), faults[0].call),
+        (capability, call)
+    );
+}
+
+#[test]
+fn under_abort_a_faulting_plugin_condition_ends_the_run_after_the_tick_with_its_frame() {
+    let loaded = load(&leaf_scene("condition-abort", "abort", &CONDITION_SCENE));
+
+    let r = run(&loaded);
+
+    assert_abort_after_the_first_tick(&r, "test.cond.panic_check", "check");
+}
+
+#[test]
+fn under_disable_capability_a_faulting_plugin_condition_faults_once_and_the_run_goes_on() {
+    let loaded = load(&leaf_scene(
+        "condition-disable",
+        "disable_capability",
+        &CONDITION_SCENE,
+    ));
+
+    let r = run(&loaded);
+
+    assert_one_fault_and_the_run_goes_on(&loaded, &r, "test.cond.panic_check", "check");
+}
+
+#[test]
+fn under_abort_a_faulting_plugin_action_ends_the_run_after_the_tick_with_its_frame() {
+    let loaded = load(&leaf_scene("action-abort", "abort", &ACTION_SCENE));
+
+    let r = run(&loaded);
+
+    assert_abort_after_the_first_tick(&r, "test.action.panic_tick", "tick");
+}
+
+#[test]
+fn under_disable_capability_a_faulting_plugin_action_faults_once_and_the_run_goes_on() {
+    let loaded = load(&leaf_scene(
+        "action-disable",
+        "disable_capability",
+        &ACTION_SCENE,
+    ));
+
+    let r = run(&loaded);
+
+    assert_one_fault_and_the_run_goes_on(&loaded, &r, "test.action.panic_tick", "tick");
 }

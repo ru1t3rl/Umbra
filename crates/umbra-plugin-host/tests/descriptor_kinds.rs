@@ -8,9 +8,10 @@
 //! `Unsupported` answer of an ABI 0.1 host), and kind 5 (`component`, no defined semantics, ASM-620) is
 //! rejected at every minor. At minor 2 the host validates the schema, the metadata (empty for motion
 //! models and sensors, `blackboard_params` for conditions and actions, ASM-643) and the kind's vtable of
-//! every capability, and only then reports the first capability of a kind it has no bridge for yet as
+//! every capability, and only then reports the first capability of a kind it has no bridge for as
 //! `Unsupported`, naming its index and kind (WI-7, ASM-708). Motion models and sensors are bridged
-//! since WI-8 and load; conditions and actions reach `Unsupported` until WI-9.
+//! since WI-8, conditions and actions since WI-9, so all four load; since WI-9 only a reserved or
+//! unknown kind reaches `Unsupported` (ASM-724).
 #![expect(unsafe_code, reason = "forges raw ABI structs")]
 #![expect(
     clippy::cast_possible_truncation,
@@ -34,7 +35,7 @@ use umbra_plugin_api::{
     UmbraLeafCall, UmbraMotionModel, UmbraMotionStep, UmbraMotionVTable, UmbraPluginDescriptor,
     UmbraSenseCall, UmbraSensor, UmbraSensorVTable, UmbraStatus, UmbraStr,
 };
-use umbra_plugin_host::{HostOptions, PluginError, PluginHost};
+use umbra_plugin_host::{HostOptions, PluginError, PluginHost, PluginInfo};
 
 const ORIGIN: &str = "forged-kinds";
 
@@ -400,26 +401,29 @@ fn part(label: &str, n: usize) -> &str {
         .unwrap_or_else(|| panic!("{label}: no part {n}"))
 }
 
-/// A row expecting `Unsupported` for the `V` capability at `index`: label `name|index`.
-fn unsupported_row<V: NewKind>(index: usize, note: &str, p: Parts) -> Row {
+/// A row expecting a load with the valid `V` capability at `index`: label `name|index`.
+fn valid_row<V: NewKind>(index: usize, note: &str, p: Parts) -> Row {
     (format!("{} {note}|{index}", V::NAME), p)
 }
 
-/// Asserts the `Unsupported` answer a row of [`unsupported_row`] expects.
-fn assert_unsupported_row(label: &str, err: &PluginError) {
+/// Asserts the load a row of [`valid_row`] expects: the capability at its index has the row kind's id
+/// and kind (WI-9: every new kind is bridged).
+fn assert_loaded_row(label: &str, loaded: Result<PluginInfo, PluginError>) {
+    let info = loaded.unwrap_or_else(|e| panic!("{label}: {e}"));
     let index: usize = part(label, 1)
         .parse()
         .unwrap_or_else(|e| panic!("{label}: {e}"));
     let (id, kind) = if label.starts_with("motion") {
-        ("test.motion.forge", UMBRA_CAPABILITY_MOTION_MODEL)
+        ("test.motion.forge", ComponentKind::MotionModel)
     } else if label.starts_with("sensor") {
-        ("test.sensor.forge", UMBRA_CAPABILITY_SENSOR)
+        ("test.sensor.forge", ComponentKind::Sensor)
     } else if label.starts_with("condition") {
-        ("test.cond.forge", UMBRA_CAPABILITY_CONDITION)
+        ("test.cond.forge", ComponentKind::Condition)
     } else {
-        ("test.action.forge", UMBRA_CAPABILITY_ACTION)
+        ("test.action.forge", ComponentKind::Action)
     };
-    assert_unsupported(err, index, id, kind);
+    let cap = &info.capabilities[index];
+    assert_eq!((cap.id.as_str(), cap.kind), (id, kind), "{label}");
 }
 
 /// `$rows::<V>()` for every new vtable type, concatenated (a macro: the generic functions run once per
@@ -518,8 +522,8 @@ fn a_minor_2_descriptor_with_a_behavior_loads() {
 
 fn valid_rows<V: NewKind>() -> Vec<Row> {
     vec![
-        unsupported_row::<V>(0, "first", new_kind::<V>(|_| {})),
-        unsupported_row::<V>(
+        valid_row::<V>(0, "first", new_kind::<V>(|_| {})),
+        valid_row::<V>(
             2,
             "after two behaviors",
             new_kind_at::<V>(2, V::METADATA, V::SCHEMA, |_| {}),
@@ -527,68 +531,47 @@ fn valid_rows<V: NewKind>() -> Vec<Row> {
     ]
 }
 
-/// A fully valid capability of each new kind passes every descriptor check. A motion model or a sensor
-/// (bridged since WI-8) then loads as a capability of its kind; a condition or an action is refused
-/// as `Unsupported` (no host bridge until WI-9), naming its index, id and kind.
+/// A fully valid capability of each new kind passes every descriptor check and loads as a capability
+/// of its kind (motion models and sensors bridged since WI-8, conditions and actions since WI-9).
 #[test]
-fn a_valid_capability_of_each_new_kind_loads_once_bridged_else_reaches_unsupported() {
+fn a_valid_capability_of_each_new_kind_loads_as_its_kind() {
     let rows = each_kind!(valid_rows);
     assert_eq!(rows.len(), 8);
     for (label, p) in rows {
-        let bridged = if label.starts_with("motion") {
-            Some(("test.motion.forge", ComponentKind::MotionModel))
-        } else if label.starts_with("sensor") {
-            Some(("test.sensor.forge", ComponentKind::Sensor))
-        } else {
-            None
-        };
         let loaded = load!(p);
 
-        match bridged {
-            Some((id, kind)) => {
-                let info = loaded.unwrap_or_else(|e| panic!("{label}: {e}"));
-                let index: usize = part(&label, 1)
-                    .parse()
-                    .unwrap_or_else(|e| panic!("{label}: {e}"));
-                let cap = &info.capabilities[index];
-                assert_eq!((cap.id.as_str(), cap.kind), (id, kind), "{label}");
-            }
-            None => assert_unsupported_row(&label, &loaded.expect_err(&label)),
-        }
+        assert_loaded_row(&label, loaded);
     }
 }
 
-/// With two capabilities of kinds without a bridge, the first one is named.
+/// With two capabilities of kinds without a bridge (since WI-9: a reserved and an unknown kind), the
+/// first one is named.
 #[test]
 fn the_first_capability_without_a_bridge_is_named() {
-    let mut p = new_kind::<UmbraConditionVTable>(|_| {});
-    let mut action = new_kind::<UmbraActionVTable>(|_| {});
-    p.caps.push(action.caps.remove(0));
-    p.desc.capabilities = p.caps.as_ptr();
-    p.desc.capability_count = p.caps.len();
+    let mut p = reserved_first(UMBRA_CAPABILITY_COMPONENT);
+    push_behavior(&mut p, "test.unknown.later", true).kind = 99;
 
     let err = load!(p).expect_err("two unbridged capabilities");
 
-    assert_unsupported(&err, 0, "test.cond.forge", UMBRA_CAPABILITY_CONDITION);
+    assert_unsupported(&err, 0, "test.behavior.forge", UMBRA_CAPABILITY_COMPONENT);
 }
 
-/// WI-8: a bridged motion model or sensor before an unbridged condition does not hide it.
+/// WI-8, WI-9: a bridged capability of each new kind before a capability without a bridge (since
+/// WI-9: a reserved kind) does not hide it.
 #[test]
 fn a_bridged_capability_first_does_not_hide_a_later_unbridged_one() {
-    for first in ["motion", "sensor"] {
-        let mut p = if first == "motion" {
-            new_kind::<UmbraMotionVTable>(|_| {})
-        } else {
-            new_kind::<UmbraSensorVTable>(|_| {})
+    for first in ["motion", "sensor", "condition", "action"] {
+        let mut p = match first {
+            "motion" => new_kind::<UmbraMotionVTable>(|_| {}),
+            "sensor" => new_kind::<UmbraSensorVTable>(|_| {}),
+            "condition" => new_kind::<UmbraConditionVTable>(|_| {}),
+            _ => new_kind::<UmbraActionVTable>(|_| {}),
         };
-        let mut condition = new_kind::<UmbraConditionVTable>(|_| {});
-        p.caps.push(condition.caps.remove(0));
-        p.desc.capabilities = p.caps.as_ptr();
-        p.desc.capability_count = p.caps.len();
+        push_behavior(&mut p, "test.component.later", true).kind = UMBRA_CAPABILITY_COMPONENT;
 
         let err = load!(p).expect_err(first);
 
-        assert_unsupported(&err, 1, "test.cond.forge", UMBRA_CAPABILITY_CONDITION);
+        assert_unsupported(&err, 1, "test.component.later", UMBRA_CAPABILITY_COMPONENT);
     }
 }
 
@@ -601,15 +584,16 @@ fn reserved_first(kind: UmbraCapabilityKind) -> Parts {
 }
 
 /// ASM-708 (review Minor 1): a reserved kind (5) is deferred like the kinds without a bridge, so an
-/// earlier capability without a bridge is the one named (a condition since WI-8 bridged motion).
+/// earlier capability without a bridge is the one named (an unknown kind since WI-9 bridged every new
+/// kind).
 #[test]
 fn a_reserved_kind_after_an_unbridged_capability_does_not_hide_it() {
-    let mut p = new_kind::<UmbraConditionVTable>(|_| {});
+    let mut p = reserved_first(99);
     push_behavior(&mut p, "test.component.later", true).kind = UMBRA_CAPABILITY_COMPONENT;
 
-    let err = load!(p).expect_err("condition, then component");
+    let err = load!(p).expect_err("unknown kind, then component");
 
-    assert_unsupported(&err, 0, "test.cond.forge", UMBRA_CAPABILITY_CONDITION);
+    assert_unsupported(&err, 0, "test.behavior.forge", 99);
 }
 
 /// ASM-708 (review Minor 1): a reserved (5) or unknown (99) kind first does not mask a broken later
@@ -957,7 +941,7 @@ fn a_blackboard_param_that_disagrees_with_the_schema_is_rejected() {
     }
 }
 
-/// Leaf metadata forms that are valid: they pass every check and reach `Unsupported`.
+/// Leaf metadata forms that are valid: they pass every check and load (WI-9).
 const GOOD_LEAF_METADATA: [(&str, &str); 5] = [
     ("", KEY_SCHEMA),
     (r#"{"result":"only a result"}"#, KEY_SCHEMA),
@@ -979,7 +963,7 @@ fn good_metadata_rows<V: NewKind>() -> Vec<Row> {
     GOOD_LEAF_METADATA
         .iter()
         .map(|(metadata, schema)| {
-            unsupported_row::<V>(0, metadata, new_kind_at::<V>(0, metadata, schema, |_| {}))
+            valid_row::<V>(0, metadata, new_kind_at::<V>(0, metadata, schema, |_| {}))
         })
         .collect()
 }
@@ -989,9 +973,9 @@ fn valid_leaf_metadata_forms_pass_every_check() {
     let rows = each_kind!(good_metadata_rows);
     assert_eq!(rows.len(), 2 * GOOD_LEAF_METADATA.len());
     for (label, p) in rows {
-        let err = load!(p).expect_err(&label);
+        let loaded = load!(p);
 
-        assert_unsupported_row(&label, &err);
+        assert_loaded_row(&label, loaded);
     }
 }
 

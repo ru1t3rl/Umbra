@@ -1215,11 +1215,11 @@ fn two_plugin_images_with_network_adapters_run_side_by_side_and_fault_independen
 // ----------------------------------------------------- ABI 0.2 kinds rows (M7 WI-2, ADR 0050, ASM-668)
 //
 // The fixture is `umbra-test-plugin` built with the feature `kinds` (plugin `test.plugin.kinds`, ABI
-// 0.2; capabilities in its `kinds` module; until WI-9 the transitional `kinds_motion_sensor` build,
+// 0.2; capabilities in its `kinds` module; WI-8 used the transitional `kinds_motion_sensor` build,
 // ASM-718), loaded through the shared build helper. Rows that a safe
 // SDK plugin cannot produce (a stale or foreign service token, an unset condition result) are in the
-// raw-ABI files written with WI-8/9. Ignored until the bridge of their kind exists (and WI-10, the SDK
-// side): motion models and sensors WI-8, conditions and actions WI-9.
+// raw-ABI files written with WI-8/9. Un-ignored with the bridge of their kind: motion models and
+// sensors WI-8, conditions and actions WI-9.
 
 mod kinds_rows {
     use super::support::kinds::{
@@ -1248,7 +1248,6 @@ mod kinds_rows {
     }
 
     #[test]
-    #[ignore = "M7 WI-9"]
     fn the_kinds_fixture_loads_at_abi_0_2_and_registers_every_new_kind() {
         let env = env();
 
@@ -1387,7 +1386,6 @@ mod kinds_rows {
     macro_rules! condition_fault {
         ($name:ident, $capability:literal, $params:literal, $keys:expr, $needle:literal) => {
             #[test]
-            #[ignore = "M7 WI-9"]
             fn $name() {
                 let env = env();
                 let condition = env
@@ -1426,7 +1424,6 @@ mod kinds_rows {
     );
 
     #[test]
-    #[ignore = "M7 WI-9"]
     fn a_write_of_a_non_finite_number_faults_the_condition_and_leaves_the_key_unchanged() {
         let env = env();
         let condition = env
@@ -1444,7 +1441,6 @@ mod kinds_rows {
     }
 
     #[test]
-    #[ignore = "M7 WI-9"]
     fn a_refused_write_leaves_the_blackboard_key_unchanged() {
         let env = env();
         let condition = env
@@ -1458,7 +1454,6 @@ mod kinds_rows {
     }
 
     #[test]
-    #[ignore = "M7 WI-9"]
     fn a_write_to_a_read_only_key_fails_the_action_and_faults_it() {
         let env = env();
         let mut action = instance(&env, "test.action.read_only_write", r#"{"key":"armed"}"#);
@@ -1473,7 +1468,6 @@ mod kinds_rows {
 
     /// ADR 0050: the intents of a faulting call are discarded.
     #[test]
-    #[ignore = "M7 WI-9"]
     fn a_panic_after_an_intent_fails_the_action_and_discards_the_intent() {
         let env = env();
         let mut action = instance(&env, "test.action.panic_tick", "{}");
@@ -1490,7 +1484,6 @@ mod kinds_rows {
     }
 
     #[test]
-    #[ignore = "M7 WI-9"]
     fn under_disable_capability_a_faulty_action_is_marked_faulted_and_another_still_runs() {
         let env = env_with(PluginFaultPolicy::DisableCapability);
         let mut bad = instance(&env, "test.action.panic_tick", "{}");

@@ -244,9 +244,8 @@ ABI 0.2 (ADR 0050) adds four kinds that plug into the same places as the built-i
 `builtin.cond.*` and `builtin.action.*`. A plugin that exports any of them declares ABI 0.2, so its
 `plugin.toml` says `abi = "0.2"`; behaviors and network adapters in the same plugin keep their own minors
 (0 and 1), and a plugin without an ABI 0.2 kind keeps declaring 0.0 or 0.1 (ADR 0033). The SDK side is
-complete. The host registers motion models and sensors like built-ins (M7 WI-8); the bridges of
-conditions and actions land in WI-9, and until then the host validates a plugin that exports one
-completely and then rejects it as unsupported, naming `capabilities[<i>].kind` ([not in v0](#not-in-v0)). The fixture
+complete. The host registers all four like built-ins (motion models and sensors since M7 WI-8,
+conditions and actions since WI-9). The fixture
 `crates/umbra-test-plugin/src/kinds.rs` (feature `kinds`) has a small example of every kind; the example
 plugins `hover`, `radar`, `bearing` and `dispatch` follow (M7 WI-17, WI-18).
 
@@ -271,10 +270,11 @@ Shared rules of the four kinds:
   not the plugin looks at the error: the host has faulted the capability, so a result built afterwards
   (a motion state, a condition answer, an action status) is never reported. Propagate with `?`.
 - **Faults** (ADR 0050; the host side of motion models and sensors since WI-8, of conditions and actions
-  from WI-9): a panic or an `Err` faults the capability; motion keeps the entity's position and
+  since WI-9): a panic or an `Err` faults the capability; motion keeps the entity's position and
   orientation with zero velocity, a sensor gives no contacts that tick, a condition answers false, an action
-  reports Failure with that call's intents discarded. `abort` ends the run after the tick
-  ([faults](#faults)).
+  reports Failure with that call's intents discarded, and a faulting condition or action leaves the
+  blackboard as it found it (its accepted writes of that call are undone, ASM-723). `abort` ends the run
+  after the tick ([faults](#faults)).
 - **Determinism**: time is `ctx.tick()` and `ctx.rate_hz()` (a motion step has no time: its `tick()` is
   0 and its `rate_hz()` is `1 / dt` rounded, ASM-720); randomness only from `ctx.rng()` (sensors:
   the observer's stream; leaves: the entity's stream); trigonometry only through
@@ -306,11 +306,14 @@ gates, in candidate order). Sensors have no metadata.
 `{"blackboard_params": [{"param": "key", "type": "bool", "access": "read"}], "result": "text"}`
 (ASM-643, ASM-709); empty text means none. Each entry names a param of `SCHEMA` (a string property)
 whose value is the key's name, its type (`bool`, `number`, `integer`, `string`, `entity`, `position`)
-and its access (`read` or `write`). The host grants exactly those keys with that type and access;
+and its access (`read` or `write`). The host grants exactly those keys with that type and access, as
+named by the params the node was configured with (ASM-618; a param left out or `null` names no key);
 read your key's name from the params in `configure` and use it with `bb.get(&key)` (`Ok(None)` when
 unset) and `bb.set(&key, Some(value))` (`None` unsets). Any other key, a wrong type, a non-finite
-number or a write to a `read` key is refused. The metadata also becomes the catalog entry
-(`Provenance::Plugin`).
+number, a write to a `read` key or a read of a `write` key is refused (declare two params naming the
+same key to read and write it, ASM-723). A write is visible to later reads in the same call. The metadata
+also becomes the catalog entry (`Provenance::Plugin`), so graph validation checks a node's keys against
+it as for built-in leaves.
 
 **Action** (`Action` and `ActionInstance`, list under `actions:`).
 `Action::instantiate(rate_hz)` makes one `ActionInstance` per activation; convert periods to ticks here
@@ -599,10 +602,9 @@ scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Load
 ## Not in v0
 - The `component` kind (5) stays reserved (ASM-620); a capability of that kind is rejected as
   unsupported. The motion model (2), sensor (4), condition (6) and action (7) kinds are defined in ABI 0.2
-  (ADR 0050): their structs are in the header and the host validates their descriptor entries (schema,
-  metadata, vtable). Motion models and sensors are registered like built-ins (M7 WI-8); until the
-  bridges of conditions and actions land (WI-9) a plugin that exports one is then rejected as
-  unsupported, naming `capabilities[<i>].kind`. The network adapter
+  (ADR 0050): their structs are in the header, the host validates their descriptor entries (schema,
+  metadata, vtable) and registers them like built-ins (motion models and sensors since M7 WI-8,
+  conditions and actions since WI-9). The network adapter
   kind (3) is defined in ABI 0.1 (ADR 0033): its structs are in the header, the host validates its
   descriptor entries and registers it as a network adapter through the host bridge (M6 WI-11: `configure`
   and `key_space` at build, `start` once, `publish`/`poll` on the tick path, `counters` read after each

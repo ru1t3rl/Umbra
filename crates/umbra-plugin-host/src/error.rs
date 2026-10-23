@@ -80,10 +80,9 @@ pub enum PluginError {
         /// Message.
         message: String,
     },
-    /// A capability kind this host cannot load: a reserved or unknown kind, or (ABI 0.2, until WI-9) a
-    /// kind this host has no bridge for yet (condition, action; motion models and sensors are bridged
-    /// since WI-8). Reported for the first such capability, only after every capability of the
-    /// descriptor passed every descriptor check (ASM-708).
+    /// A capability kind this host cannot load: a reserved or unknown kind (every kind of ABI 0.2 is
+    /// bridged since M7 WI-9). Reported for the first such capability, only after every capability of
+    /// the descriptor passed every descriptor check (ASM-708).
     #[error("{origin}: {field}: capability {capability}: unsupported kind {kind}")]
     Unsupported {
         /// Origin.

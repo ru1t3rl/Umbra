@@ -3,7 +3,9 @@
 //! ADR 0020, ADR 0021), plugin network adapters as core `Factory<dyn NetworkAdapterConfig>`,
 //! `NetworkAdapterConfig` and `NetworkAdapter` (REQ-N-1, REQ-P-6..8, REQ-P-11, ADR 0033), and plugin
 //! motion models and sensors as core `Factory<dyn MotionModel>`, `MotionModel`, `Factory<dyn Sensor>`
-//! and `Sensor` (ABI 0.2: REQ-P-4, REQ-M-1, REQ-C-6, ADR 0050).
+//! and `Sensor` (ABI 0.2: REQ-P-4, REQ-M-1, REQ-C-6, ADR 0050), and plugin conditions and actions as
+//! core `Factory<dyn Condition>`, `Condition`, `Factory<dyn Action>`, `Action` and `ActionInstance`
+//! (ABI 0.2: REQ-P-4, REQ-B-3, REQ-B-11, REQ-B-15, ADR 0050).
 //!
 //! - `factory`: the registered factory (`configure`) and the host's build scope (RR-m2).
 //! - `behavior`: the configured behavior (`instantiate`, `batch`).
@@ -14,15 +16,21 @@
 //! - `network`: the network adapter factory, configuration and running adapter.
 //! - `motion`: the motion model factory and configured model (ABI 0.2).
 //! - `sensor`: the sensor factory and configured sensor (ABI 0.2).
-//! - `services`: the per-call terrain service (host callbacks, ABI 0.2).
+//! - `condition`: the condition factory and configured condition (ABI 0.2).
+//! - `action`: the action factory, configured action and instance (ABI 0.2).
+//! - `leaf`: what conditions and actions share: grants and the leaf call (ABI 0.2).
+//! - `services`: the per-call terrain and blackboard services (host callbacks, ABI 0.2).
 //!
 //! Every call into a plugin goes through `LoadedImage::call` (re-entry check, blocking per-image
 //! call lock, call record); handles are opaque, never dereferenced by the host.
 
+pub(crate) mod action;
 pub(crate) mod batch;
 pub(crate) mod behavior;
+pub(crate) mod condition;
 pub(crate) mod factory;
 pub(crate) mod instance;
+pub(crate) mod leaf;
 pub(crate) mod marshal;
 pub(crate) mod motion;
 pub(crate) mod network;
@@ -32,7 +40,9 @@ pub(crate) mod sinks;
 
 use std::sync::Arc;
 
+use action::ActionCapability;
 use batch::PluginCapability;
+use condition::ConditionCapability;
 use motion::MotionCapability;
 use network::NetCapability;
 use sensor::SensorCapability;
@@ -51,6 +61,10 @@ pub(crate) enum HostCapability {
     Motion(Arc<MotionCapability>),
     /// A sensor capability (ABI 0.2).
     Sensor(Arc<SensorCapability>),
+    /// A condition capability (ABI 0.2).
+    Condition(Arc<ConditionCapability>),
+    /// An action capability (ABI 0.2).
+    Action(Arc<ActionCapability>),
 }
 
 impl HostCapability {
@@ -74,6 +88,12 @@ impl HostCapability {
                 image, index, key, host, vtable,
             ))),
             KindVTable::Sensor(vtable) => Self::Sensor(Arc::new(PluginCapability::new(
+                image, index, key, host, vtable,
+            ))),
+            KindVTable::Condition(vtable) => Self::Condition(Arc::new(PluginCapability::new(
+                image, index, key, host, vtable,
+            ))),
+            KindVTable::Action(vtable) => Self::Action(Arc::new(PluginCapability::new(
                 image, index, key, host, vtable,
             ))),
         }

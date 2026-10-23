@@ -54,6 +54,13 @@ kind's minor, or the SDK must keep writing the old prefix. A major bump needs an
   (another call's, or another service's) or off-thread token; contacts must name a candidate. No layout
   change. Clarified (doc comment only): `UmbraMotionStep.tick` is 0 from this host, because the core
   motion model carries no time, and `rate_hz` is `1 / dt` rounded, at least 1 (ASM-720).
+- Host (WI-9): conditions and actions are bridged and registered like built-ins (core `Condition`,
+  `Action`, `ActionInstance`, catalog entries with `Provenance::Plugin`); the blackboard service grants
+  exactly the keys the declared blackboard params name, with their type and access (`get` needs `read`,
+  `set` `write`), refuses a stale, foreign or off-thread token, and a faulting call's writes are undone
+  (ASM-723); a condition result other than 0 or 1 (`UMBRA_CONDITION_UNSET` included) and an action
+  status left unset or out of range fault the capability. Since WI-9 only a reserved or unknown kind is
+  `Unsupported`. No layout change.
 - The C example `c-circle` is compiled against the 0.2 header and declares 0.2 (`plugin.toml`
   `abi = "0.2"`); its behavior structs are unchanged. Behavior-only SDK plugins still declare 0.0 and the
   DIS plugin 0.1 (ADR 0033 rule).

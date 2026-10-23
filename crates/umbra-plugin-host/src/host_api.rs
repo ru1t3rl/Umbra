@@ -197,7 +197,7 @@ fn draw<T>(
             return refuse(
                 r,
                 UMBRA_ERR_STATE,
-                "no RNG token is valid outside tick_batch and sense calls",
+                "no RNG token is valid outside tick_batch, sense, check and tick calls",
             );
         }
         if tokens::generation_of(rng) != r.generation {
@@ -213,9 +213,10 @@ fn draw<T>(
                 "null or misaligned out pointer",
             );
         }
-        // SAFETY: the bridge set this pointer from the item's (or the sense call's) `&mut RngStream`
-        // for the duration of the current call on this thread and does not touch it while the plugin
-        // runs; the record (and so the pointer) is popped before the call returns to the kernel.
+        // SAFETY: the bridge set this pointer from the item's (or the sense or leaf call's)
+        // `&mut RngStream` for the duration of the current call on this thread and does not touch it
+        // while the plugin runs; the record (and so the pointer) is popped before the call returns to
+        // the kernel.
         Ok(next(unsafe { &mut *stream }))
     })
     .unwrap_or(Err(UMBRA_ERR_STATE))

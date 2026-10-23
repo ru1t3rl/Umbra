@@ -9,7 +9,10 @@
 //! (`ComponentKind::NetworkAdapter`, ADR 0033), and every `motion model` and `sensor` capability (ABI
 //! 0.2, ADR 0050) a registered motion model or sensor factory, the same one registry (D-8) as the
 //! built-ins, so a scenario uses them exactly like built-ins; the registry keeps no catalog metadata
-//! for these kinds (their ABI metadata is empty).
+//! for these kinds (their ABI metadata is empty). Every `condition` and `action` capability (ABI 0.2)
+//! becomes a registered condition or action with `Provenance::Plugin` (ASM-643): description and
+//! version as for behaviors, `blackboard_params` in declaration order and `result` from the metadata,
+//! the catalog data of a built-in leaf (REQ-B-17), which graph validation checks keys against.
 //! Registration is all-or-nothing: the capabilities of every loaded plugin go into a copy of the
 //! registry, which replaces the original only when all of them were accepted.
 
@@ -18,6 +21,8 @@ use std::sync::Arc;
 use umbra_core::{ComponentInfo, Provenance, Registry};
 
 use crate::bridge::HostCapability;
+use crate::bridge::action::PluginActionFactory;
+use crate::bridge::condition::PluginConditionFactory;
 use crate::bridge::factory::PluginFactory;
 use crate::bridge::motion::PluginMotionFactory;
 use crate::bridge::network::PluginNetworkFactory;
@@ -51,13 +56,23 @@ pub(crate) fn register<'a>(
                 let factory = PluginSensorFactory::new(Arc::clone(capability));
                 staged.register_sensor(Arc::new(factory))?;
             }
+            HostCapability::Condition(capability) => {
+                let info = component_info(capability.capability());
+                let factory = PluginConditionFactory::new(Arc::clone(capability));
+                staged.register_condition(Arc::new(factory), info)?;
+            }
+            HostCapability::Action(capability) => {
+                let info = component_info(capability.capability());
+                let factory = PluginActionFactory::new(Arc::clone(capability));
+                staged.register_action(Arc::new(factory), info)?;
+            }
         }
     }
     *registry = staged;
     Ok(())
 }
 
-/// The catalog metadata of a capability (ADR 0020).
+/// The catalog metadata of a behavior (ADR 0020), condition or action (ASM-643) capability.
 fn component_info(capability: &Capability) -> ComponentInfo {
     let meta = &capability.metadata;
     let mut info = ComponentInfo::new(
@@ -70,6 +85,9 @@ fn component_info(capability: &Capability) -> ComponentInfo {
     }
     for (port, ty) in &meta.outputs {
         info = info.with_output(port.clone(), *ty);
+    }
+    for param in &meta.blackboard_params {
+        info = info.with_blackboard_param(param.clone());
     }
     if let Some(result) = &meta.result {
         info = info.with_result(result.clone());

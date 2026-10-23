@@ -19,12 +19,13 @@
 //! ABI 0.2 (ADR 0050): motion models, sensors, conditions and actions need minor 2. Their schema,
 //! metadata (empty for motion models and sensors; `blackboard_params` and `result` for conditions and
 //! actions, checked against the schema, ASM-643) and vtable (structs that exist since minor 2) are
-//! validated like every other capability. Motion models and sensors are copied into
-//! [`KindVTable::Motion`] and [`KindVTable::Sensor`] for their bridges (`bridge::motion`,
-//! `bridge::sensor`, M7 WI-8). The host has no bridge for conditions and actions before WI-9, so after
-//! every capability of the descriptor passed every check, the first one of these kinds ends the load as
-//! `Unsupported`, naming its index and kind (ASM-708). A reserved or unknown kind is deferred the same
-//! way after its id, version and schema checks (its metadata and vtable are not read).
+//! validated like every other capability and copied into [`KindVTable::Motion`],
+//! [`KindVTable::Sensor`] (M7 WI-8), [`KindVTable::Condition`] and [`KindVTable::Action`] (WI-9) for
+//! their bridges (`bridge::motion`, `bridge::sensor`, `bridge::condition`, `bridge::action`); a leaf's
+//! metadata is kept in [`Capability::metadata`]. A reserved or unknown kind has no bridge: after every
+//! capability of the descriptor passed every check, the first one ends the load as `Unsupported`,
+//! naming its index and kind (ASM-708), after its id, version and schema checks (its metadata and
+//! vtable are not read).
 
 #![expect(
     unsafe_code,
@@ -147,8 +148,8 @@ pub(crate) struct Descriptor {
 /// One copied, validated capability.
 #[derive(Debug, Clone)]
 pub(crate) struct Capability {
-    /// `Behavior`, `NetworkAdapter` (ABI 0.1), `MotionModel` or `Sensor` (ABI 0.2): the kinds this host
-    /// bridges.
+    /// `Behavior`, `NetworkAdapter` (ABI 0.1), `MotionModel`, `Sensor`, `Condition` or `Action` (ABI
+    /// 0.2): the kinds this host bridges.
     pub(crate) kind: ComponentKind,
     /// Component id.
     pub(crate) id: ComponentId,
@@ -159,8 +160,8 @@ pub(crate) struct Capability {
     pub(crate) schema: ParamSchema,
     /// The schema's top-level `description` (empty without one).
     pub(crate) description: String,
-    /// The behavior metadata (ADR 0020); empty for a network adapter, a motion model and a sensor (their
-    /// ABI defines none).
+    /// The behavior metadata (ADR 0020) or the leaf metadata of a condition or action (ADR 0050,
+    /// ASM-643); empty for a network adapter, a motion model and a sensor (their ABI defines none).
     pub(crate) metadata: Metadata,
     /// The vtable of the capability's kind, copied.
     pub(crate) vtable: KindVTable,
@@ -177,6 +178,10 @@ pub(crate) enum KindVTable {
     Motion(MotionVTable),
     /// A sensor (`UMBRA_CAPABILITY_SENSOR`, ABI 0.2).
     Sensor(SensorVTable),
+    /// A condition (`UMBRA_CAPABILITY_CONDITION`, ABI 0.2).
+    Condition(ConditionVTable),
+    /// An action (`UMBRA_CAPABILITY_ACTION`, ABI 0.2).
+    Action(ActionVTable),
 }
 
 /// Capability metadata: behaviors (ADR 0020) declare the types of interface params and outputs,
@@ -310,8 +315,8 @@ pub(crate) struct SensorVTable {
 }
 
 /// The condition vtable entries this host knows, copied from the plugin (ADR 0050; all required).
+/// Used by the condition bridge (`bridge::condition`).
 #[derive(Debug, Clone, Copy)]
-#[expect(dead_code, reason = "the WI-9 bridge calls through the entries")]
 pub(crate) struct ConditionVTable {
     pub(crate) configure: unsafe extern "C" fn(
         params: UmbraStr,
@@ -327,9 +332,9 @@ pub(crate) struct ConditionVTable {
     ) -> UmbraCode,
 }
 
-/// The action vtable entries this host knows, copied from the plugin (ADR 0050; all required).
+/// The action vtable entries this host knows, copied from the plugin (ADR 0050; all required). Used by
+/// the action bridge (`bridge::action`).
 #[derive(Debug, Clone, Copy)]
-#[expect(dead_code, reason = "the WI-9 bridge calls through the entries")]
 pub(crate) struct ActionVTable {
     pub(crate) configure: unsafe extern "C" fn(
         params: UmbraStr,
@@ -354,18 +359,7 @@ pub(crate) struct ActionVTable {
     pub(crate) halt: unsafe extern "C" fn(instance: *mut UmbraActionInstance) -> UmbraCode,
 }
 
-/// The copied vtable of a validated ABI 0.2 capability: of a bridged kind (motion model, sensor; WI-8)
-/// or of a kind whose host bridge comes in WI-9 (condition, action), which moves those into
-/// [`KindVTable`] too.
-#[derive(Debug, Clone, Copy)]
-enum SimVTable {
-    /// Bridged (motion model, sensor).
-    Ready(BridgedVTable),
-    /// Not bridged before WI-9.
-    Pending(PendingVTable),
-}
-
-/// The vtable of a bridged ABI 0.2 kind. Its own enum (not [`KindVTable`]), so the registered
+/// The vtable of a validated ABI 0.2 capability. Its own enum (not [`KindVTable`]), so the registered
 /// `ComponentKind` comes from an exhaustive match and a kind added later cannot silently register as
 /// another (review round 1 nit).
 #[derive(Debug, Clone, Copy)]
@@ -374,6 +368,10 @@ enum BridgedVTable {
     Motion(MotionVTable),
     /// A sensor (WI-8).
     Sensor(SensorVTable),
+    /// A condition (WI-9).
+    Condition(ConditionVTable),
+    /// An action (WI-9).
+    Action(ActionVTable),
 }
 
 impl BridgedVTable {
@@ -382,68 +380,43 @@ impl BridgedVTable {
         match self {
             Self::Motion(vtable) => (ComponentKind::MotionModel, KindVTable::Motion(vtable)),
             Self::Sensor(vtable) => (ComponentKind::Sensor, KindVTable::Sensor(vtable)),
+            Self::Condition(vtable) => (ComponentKind::Condition, KindVTable::Condition(vtable)),
+            Self::Action(vtable) => (ComponentKind::Action, KindVTable::Action(vtable)),
         }
     }
-}
 
-impl SimVTable {
-    /// The checked capability with this vtable and the given id, version, schema and description:
-    /// ready for its bridge, or unbridged (ASM-708).
+    /// The checked capability with this vtable and the given id, version, schema, description and
+    /// metadata.
     fn checked(
         self,
         id: ComponentId,
         version: Version,
         schema: ParamSchema,
         description: String,
+        metadata: Metadata,
     ) -> Checked {
-        match self {
-            Self::Ready(bridged) => {
-                let (kind, vtable) = bridged.into_parts();
-                Checked::Ready(Capability {
-                    kind,
-                    id,
-                    version,
-                    schema,
-                    description,
-                    metadata: Metadata::default(),
-                    vtable,
-                })
-            }
-            Self::Pending(vtable) => Checked::Unbridged {
-                id,
-                kind: match vtable {
-                    PendingVTable::Condition(_) => UMBRA_CAPABILITY_CONDITION,
-                    PendingVTable::Action(_) => UMBRA_CAPABILITY_ACTION,
-                },
-                vtable: Some(vtable),
-            },
-        }
+        let (kind, vtable) = self.into_parts();
+        Checked::Ready(Box::new(Capability {
+            kind,
+            id,
+            version,
+            schema,
+            description,
+            metadata,
+            vtable,
+        }))
     }
 }
 
-/// The copied vtable of a validated condition or action, whose host bridge comes in WI-9.
-#[derive(Debug, Clone, Copy)]
-#[expect(
-    dead_code,
-    reason = "copied and validated at load; the bridges of WI-9 call through them"
-)]
-enum PendingVTable {
-    Condition(ConditionVTable),
-    Action(ActionVTable),
-}
-
-/// One validated capability: ready for its bridge, or of a kind without a host bridge yet.
+/// One validated capability: ready for its bridge, or of a kind without a host bridge.
 enum Checked {
     /// A capability of a bridged kind.
-    Ready(Capability),
-    /// A capability of an ABI 0.2 kind without a bridge (with its copied vtable), or of a reserved or
-    /// unknown kind (none); it ends the load as `Unsupported` once every capability of the descriptor
-    /// passed every check (ASM-708).
+    Ready(Box<Capability>),
+    /// A capability of a reserved or unknown kind; it ends the load as `Unsupported` once every
+    /// capability of the descriptor passed every check (ASM-708).
     Unbridged {
         id: ComponentId,
         kind: UmbraCapabilityKind,
-        #[expect(dead_code, reason = "used by the bridges of WI-9")]
-        vtable: Option<PendingVTable>,
     },
 }
 
@@ -491,6 +464,9 @@ unsafe impl Headed for UmbraContact {}
 unsafe impl Headed for UmbraValue {}
 // SAFETY: as above; integers, `UmbraVec3`s (three `f64`) and `UmbraStr`s (ABI 0.1).
 unsafe impl Headed for UmbraNetMessage {}
+// SAFETY: as above; integers, a token (`u64`) and an `Option` of a function pointer (ABI 0.2: the
+// plugin's value sink passed to the blackboard service's `get`).
+unsafe impl Headed for UmbraValueSink {}
 
 /// Context for error construction: the origin of the load.
 struct Ctx<'a> {
@@ -749,7 +725,7 @@ unsafe fn capabilities(
             ));
         }
         match checked {
-            Checked::Ready(capability) => out.push(capability),
+            Checked::Ready(capability) => out.push(*capability),
             Checked::Unbridged { id, kind, .. } => {
                 unbridged.get_or_insert((index, id, kind));
             }
@@ -825,11 +801,7 @@ unsafe fn capability(
     if needed.is_none() {
         // A reserved or unknown kind: its metadata and vtable have no defined layout, so they are not
         // read; it is deferred like a kind without a bridge (ASM-708).
-        return Ok(Checked::Unbridged {
-            id,
-            kind: cap.kind,
-            vtable: None,
-        });
+        return Ok(Checked::Unbridged { id, kind: cap.kind });
     }
     let metadata_field = format!("{prefix}.metadata");
     let metadata_text = cx.text(cap.metadata, UMBRA_MAX_METADATA_LEN, &metadata_field)?;
@@ -840,7 +812,7 @@ unsafe fn capability(
             no_metadata(cx, &metadata_field, &metadata_text, "a network adapter", 1)?;
             // SAFETY: forwarded caller contract for the vtable pointer.
             let vtable = unsafe { network_vtable(cx, &vtable_field, ptr.cast(), minor) }?;
-            Ok(Checked::Ready(Capability {
+            Ok(Checked::Ready(Box::new(Capability {
                 kind: ComponentKind::NetworkAdapter,
                 id,
                 version,
@@ -848,7 +820,7 @@ unsafe fn capability(
                 description,
                 metadata: Metadata::default(),
                 vtable: KindVTable::Network(vtable),
-            }))
+            })))
         }
         UMBRA_CAPABILITY_MOTION_MODEL
         | UMBRA_CAPABILITY_SENSOR
@@ -856,8 +828,9 @@ unsafe fn capability(
         | UMBRA_CAPABILITY_ACTION => {
             let fields = (metadata_field.as_str(), vtable_field.as_str());
             // SAFETY: forwarded caller contract for the vtable pointer.
-            let vtable = unsafe { sim_kind(cx, fields, cap, &metadata_text, &schema, minor) }?;
-            Ok(vtable.checked(id, version, schema, description))
+            let (vtable, metadata) =
+                unsafe { sim_kind(cx, fields, cap, &metadata_text, &schema, minor) }?;
+            Ok(vtable.checked(id, version, schema, description, metadata))
         }
         _ => {
             let metadata = metadata(cx, &metadata_field, &metadata_text)?;
@@ -865,7 +838,7 @@ unsafe fn capability(
             let vtable = unsafe { vtable(cx, &vtable_field, ptr.cast(), minor) }?;
             check_entries(cx, &vtable_field, &metadata, &vtable)?;
             check_schema(cx, &metadata_field, &metadata, &schema)?;
-            Ok(Checked::Ready(Capability {
+            Ok(Checked::Ready(Box::new(Capability {
                 kind: ComponentKind::Behavior,
                 id,
                 version,
@@ -873,13 +846,14 @@ unsafe fn capability(
                 description,
                 metadata,
                 vtable: KindVTable::Behavior(vtable),
-            }))
+            })))
         }
     }
 }
 
 /// The metadata and vtable checks of a motion model, sensor, condition or action capability `cap`
-/// (ABI 0.2, ADR 0050), with `fields` = (metadata field, vtable field); returns the copied vtable.
+/// (ABI 0.2, ADR 0050), with `fields` = (metadata field, vtable field); returns the copied vtable and
+/// the metadata (empty for a motion model and a sensor).
 ///
 /// # Safety
 /// As [`copy`], for the vtable `cap` points to.
@@ -890,36 +864,36 @@ unsafe fn sim_kind(
     metadata_text: &str,
     schema: &ParamSchema,
     minor: u32,
-) -> Result<SimVTable, PluginError> {
+) -> Result<(BridgedVTable, Metadata), PluginError> {
     let ptr = cap.vtable;
     match cap.kind {
         UMBRA_CAPABILITY_MOTION_MODEL => {
             no_metadata(cx, metadata_field, metadata_text, "a motion model", 2)?;
             // SAFETY: forwarded caller contract for the vtable pointer.
             let vtable = unsafe { motion_vtable(cx, vtable_field, ptr.cast(), minor) }?;
-            Ok(SimVTable::Ready(BridgedVTable::Motion(vtable)))
+            Ok((BridgedVTable::Motion(vtable), Metadata::default()))
         }
         UMBRA_CAPABILITY_SENSOR => {
             no_metadata(cx, metadata_field, metadata_text, "a sensor", 2)?;
             // SAFETY: forwarded caller contract for the vtable pointer.
             let vtable = unsafe { sensor_vtable(cx, vtable_field, ptr.cast(), minor) }?;
-            Ok(SimVTable::Ready(BridgedVTable::Sensor(vtable)))
+            Ok((BridgedVTable::Sensor(vtable), Metadata::default()))
         }
         _ => {
             let metadata = leaf_metadata(cx, metadata_field, metadata_text)?;
             let vtable = if cap.kind == UMBRA_CAPABILITY_CONDITION {
                 // SAFETY: forwarded caller contract for the vtable pointer.
-                PendingVTable::Condition(unsafe {
+                BridgedVTable::Condition(unsafe {
                     condition_vtable(cx, vtable_field, ptr.cast(), minor)
                 }?)
             } else {
                 // SAFETY: forwarded caller contract for the vtable pointer.
-                PendingVTable::Action(unsafe {
+                BridgedVTable::Action(unsafe {
                     action_vtable(cx, vtable_field, ptr.cast(), minor)
                 }?)
             };
             check_blackboard_params(cx, metadata_field, &metadata, schema)?;
-            Ok(SimVTable::Pending(vtable))
+            Ok((vtable, metadata))
         }
     }
 }

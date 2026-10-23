@@ -6,11 +6,11 @@
 //! - `host_ctx`: the image lifecycle generation (from the image table) and index
 //!   [`HOST_CTX_INDEX`].
 //! - Sink tokens (error, intent, value, network message and contact sinks) and service tokens (the
-//!   terrain service of ABI 0.2): the image's **call** generation, and an index that packs the low 16
-//!   bits of the image lifecycle generation (the image "tag") with the sink or service kind, so such a
-//!   token names its image, its call and its kind.
-//! - RNG tokens: the call generation and `item + 1` (a sense call has the one item 0); the image is
-//!   named by the `host_ctx` argument of the RNG callback.
+//!   terrain and blackboard services of ABI 0.2): the image's **call** generation, and an index that
+//!   packs the low 16 bits of the image lifecycle generation (the image "tag") with the sink or service
+//!   kind, so such a token names its image, its call and its kind.
+//! - RNG tokens: the call generation and `item + 1` (a sense call, a condition `check` and an action
+//!   `tick` have the one item 0); the image is named by the `host_ctx` argument of the RNG callback.
 //!
 //! Generations wrap; a wrapped generation can at worst misattribute a call to another call of the
 //! same thread, never cause undefined behavior.
@@ -55,6 +55,8 @@ pub(crate) enum Sink {
     Terrain = 5,
     /// The contact sink of a sensor `sense` call (ABI 0.2, ADR 0050).
     Contact = 6,
+    /// The blackboard service of a condition `check` or action `tick` call (ABI 0.2, ADR 0050).
+    Blackboard = 7,
 }
 
 /// Packs a token; `generation` must be non-zero for the token to be valid (callers skip 0).
@@ -165,6 +167,47 @@ impl SenseCall {
     }
 }
 
+/// One key a leaf may use during a call (ASM-618): resolved from the leaf's params at configure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Grant {
+    /// The blackboard key (the value of the declared param).
+    pub(crate) key: Arc<str>,
+    /// The declared type.
+    pub(crate) ty: umbra_core::BbType,
+    /// The declared access.
+    pub(crate) access: umbra_core::Access,
+}
+
+/// The blackboard service state of a condition `check` or action `tick` call (ABI 0.2, ADR 0050,
+/// ASM-618), moved into the record for the duration of the call and back into the image's scratch
+/// afterwards (no allocation after warm-up, except the undo log of a writing call).
+#[derive(Default)]
+pub(crate) struct LeafCall {
+    /// The entity stream of the call (its item 0), pointing into the kernel's `BehaviorContext`,
+    /// valid only during the call (the bridge does not touch the context while the plugin runs).
+    pub(crate) rng: Option<*mut RngStream>,
+    /// The node's blackboard, derived inside the bridge's call closure from its capture of the
+    /// `&mut Blackboard` the core call received, valid only during the call (the bridge does not touch
+    /// the blackboard while the plugin runs and takes this pointer off before it does). Read and
+    /// written only by the blackboard service (`bridge::services`).
+    pub(crate) board: Option<*mut umbra_core::Blackboard>,
+    /// The leaf's grants, pointing into the configured leaf, which outlives the call.
+    pub(crate) grants: Option<*const [Grant]>,
+    /// The old value of every key the call wrote, first write first: undone, last first, when the
+    /// call faults, so a faulting call leaves no write behind (ASM-723).
+    pub(crate) undo: Vec<(Arc<str>, Option<BbValue>)>,
+}
+
+impl LeafCall {
+    /// Empties it, keeping capacity (no pointer survives a call).
+    pub(crate) fn clear(&mut self) {
+        self.rng = None;
+        self.board = None;
+        self.grants = None;
+        self.undo.clear();
+    }
+}
+
 /// One in-progress call into a plugin on this thread.
 pub(crate) struct CallRecord {
     /// The image lifecycle the call goes into (its `host_ctx`).
@@ -191,6 +234,8 @@ pub(crate) struct CallRecord {
     pub(crate) terrain: Option<TerrainCall>,
     /// Set during a sensor's `sense` call (ABI 0.2).
     pub(crate) sense: Option<SenseCall>,
+    /// Set during a condition `check` or action `tick` call (ABI 0.2).
+    pub(crate) leaf: Option<LeafCall>,
     /// The payload of the first panic of the call's `TerrainProvider` (a host-side bug), kept so the
     /// bridge resumes it on the caller after the plugin call returns (ASM-722 b); later ones are
     /// dropped. Taken by the bridge before the record is popped.
@@ -218,6 +263,7 @@ impl CallRecord {
             poll: None,
             terrain: None,
             sense: None,
+            leaf: None,
             provider_panic: None,
         }
     }
@@ -234,19 +280,22 @@ impl CallRecord {
         sink_token(self.image, self.generation, sink)
     }
 
-    /// Whether this call carries RNG tokens (a `tick_batch` or a `sense` call).
+    /// Whether this call carries RNG tokens (a `tick_batch`, `sense`, condition `check` or action
+    /// `tick` call).
     pub(crate) fn has_rng(&self) -> bool {
-        self.batch.is_some() || self.sense.is_some()
+        self.batch.is_some() || self.sense.is_some() || self.leaf.is_some()
     }
 
     /// The entity stream named by RNG token index `index` (`item + 1`) of this call: an item of a
-    /// `tick_batch` call, or the observer of a `sense` call (index 1); `None` if it names none.
+    /// `tick_batch` call (an action `tick` carries a batch of one for its intents), the observer of a
+    /// `sense` call or the entity of a condition `check` (index 1); `None` if it names none.
     pub(crate) fn rng(&self, index: u32) -> Option<*mut RngStream> {
         let item = (index as usize).checked_sub(1)?;
-        match (&self.batch, &self.sense) {
-            (Some(batch), _) => batch.rngs.get(item).copied(),
-            (None, Some(sense)) => sense.rng.filter(|_| item == 0),
-            (None, None) => None,
+        match (&self.batch, &self.sense, &self.leaf) {
+            (Some(batch), _, _) => batch.rngs.get(item).copied(),
+            (None, Some(sense), _) => sense.rng.filter(|_| item == 0),
+            (None, None, Some(leaf)) => leaf.rng.filter(|_| item == 0),
+            (None, None, None) => None,
         }
     }
 

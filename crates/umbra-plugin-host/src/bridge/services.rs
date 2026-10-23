@@ -1,7 +1,8 @@
 //! The per-call host services of ABI 0.2 (ADR 0050, human decision H2): the terrain service of a
-//! motion `step` and a sensor `sense` call (REQ-C-6, ASM-617). The blackboard service of conditions
-//! and actions follows with their bridges (from WI-9).
+//! motion `step` and a sensor `sense` call (REQ-C-6, ASM-617), and the blackboard service of a
+//! condition `check` and an action `tick` call (REQ-B-3, REQ-B-11, REQ-B-15, ASM-618, ASM-723).
 //!
+//! **Terrain.**
 //! A service is a struct of a call-scoped token plus `extern "C"` entries (the sink pattern of ADR
 //! 0019). The token is the image's sink token of kind [`Sink::Terrain`] in the call's generation, so
 //! it names its image, its call and its kind (`tokens`). Every entry is a leaf: it catches panics,
@@ -17,24 +18,42 @@
 //! `UMBRA_ERR_INTERNAL` and is kept on the record; the bridge resumes it on the caller after the
 //! plugin call ([`resume_provider_panic`]), so it surfaces as the same panic from a built-in would,
 //! and the plugin is not faulted (ASM-722 b).
+//!
+//! **Blackboard** (ASM-618, ASM-723). The token is the image's sink token of kind
+//! [`Sink::Blackboard`] in the call's generation; token rules as for terrain (no record:
+//! `UMBRA_ERR_STATE` without a lookup; a token that is not this call's blackboard token: a breach and
+//! `UMBRA_ERR_STATE`). The service grants exactly the keys the leaf's declared blackboard params name,
+//! as resolved from its params at configure ([`Grant`]): `get` needs a `read` grant of the key, `set`
+//! a `write` grant. A key that is not UTF-8, not granted or granted with the other access, a value the
+//! host refuses (not finite, invalid, of another type than the grant), a null or malformed value sink,
+//! or a write the node's blackboard refuses is a breach and `UMBRA_ERR_INVALID_ARGUMENT`; nothing is
+//! read or written then. `get` reports through the plugin's value sink exactly once: the key's value,
+//! or unset (a null value) when the key holds none or holds a value of another type than the grant
+//! (which graph validation rules out); it returns the sink's own code. `set` writes the node's
+//! blackboard at once, so later reads in the call see it, and logs the old value; when the call
+//! faults the bridge undoes the call's writes, last first, so a faulting call leaves the blackboard
+//! as it found it.
 
 #![expect(
     unsafe_code,
-    reason = "extern \"C\" terrain service entries reading and writing plugin-passed values"
+    reason = "extern \"C\" terrain and blackboard service entries reading and writing plugin-passed values"
 )]
 
 use std::any::Any;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use umbra_core::{ComponentId, Ecef, PluginId, TerrainProvider, Vec3};
+use umbra_core::{
+    Access, BbType, BbValue, Blackboard, ComponentId, Ecef, PluginId, TerrainProvider, Vec3,
+};
 use umbra_plugin_api::{
-    UMBRA_ERR_INTERNAL, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_STATE, UMBRA_OK, UmbraCode,
-    UmbraTerrain, UmbraToken, UmbraVec3,
+    UMBRA_ERR_INTERNAL, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_STATE, UMBRA_OK, UmbraBlackboard,
+    UmbraCode, UmbraStr, UmbraTerrain, UmbraToken, UmbraValue, UmbraValueSink, UmbraVec3,
 };
 
-use super::marshal::{written_size, written_version};
-use crate::host_api::{drop_payload, guarded};
+use super::marshal::{self, written_size, written_version};
+use crate::host_api::{bytes, drop_payload, guarded};
 use crate::log::{LogLevel, PluginLog};
+pub(crate) use crate::tokens::Grant;
 use crate::tokens::{self, CallRecord, Sink};
 
 /// The terrain service of a call whose terrain token is `ctx`, written in the plugin's declared minor
@@ -261,6 +280,239 @@ unsafe extern "C" fn terrain_line_of_sight(
             Err(code) => code,
         }
     })
+}
+
+/// The blackboard service of a call whose blackboard token is `ctx`, written in the plugin's declared
+/// minor `minor` (ABI 0.2).
+pub(crate) fn blackboard(ctx: UmbraToken, minor: u32) -> UmbraBlackboard {
+    UmbraBlackboard {
+        abi_version: written_version(minor),
+        struct_size: written_size::<UmbraBlackboard>(minor),
+        ctx,
+        get: Some(blackboard_get),
+        set: Some(blackboard_set),
+    }
+}
+
+/// The text of an access, as metadata writes it.
+fn access_name(access: Access) -> &'static str {
+    match access {
+        Access::Read => "read",
+        Access::Write => "write",
+        // `Access` is non-exhaustive; metadata only declares the two above (ASM-709).
+        _ => "other",
+    }
+}
+
+/// The grant of `key` with `access` among `grants`, or why there is none (ASM-618).
+fn granted<'g>(grants: &'g [Grant], key: &str, access: Access) -> Result<&'g Grant, String> {
+    let mut named = grants.iter().filter(|g| &*g.key == key).peekable();
+    if named.peek().is_none() {
+        return Err(format!(
+            "key {key:?} is not one of the leaf's declared blackboard keys"
+        ));
+    }
+    let mut other = None;
+    for grant in named {
+        if grant.access == access {
+            return Ok(grant);
+        }
+        other = Some(grant.access);
+    }
+    Err(format!(
+        "key {key:?} is declared with access {}, not {}",
+        other.map_or("other", access_name),
+        access_name(access)
+    ))
+}
+
+/// The state of the current blackboard call: the node's blackboard, the leaf's grants and the
+/// plugin's declared minor.
+#[derive(Clone, Copy)]
+struct Granted {
+    board: *mut Blackboard,
+    grants: *const [Grant],
+    minor: u32,
+}
+
+/// Phase 1 of both entries: the token against the top record. `Err` is the code to return (the
+/// breach, if any, is recorded).
+fn board_of(ctx: UmbraToken, entry: &str) -> Result<Granted, UmbraCode> {
+    tokens::with_top(|r| {
+        let ours = r.sink(Sink::Blackboard) == ctx;
+        match r.leaf.as_ref().filter(|_| ours) {
+            Some(leaf) => match (leaf.board, leaf.grants) {
+                (Some(board), Some(grants)) => Ok(Granted {
+                    board,
+                    grants,
+                    minor: r.minor,
+                }),
+                _ => Err(UMBRA_ERR_STATE),
+            },
+            None => Err(refuse(
+                r,
+                UMBRA_ERR_STATE,
+                format!(
+                    "blackboard {entry}: stale or foreign token (not this call's blackboard service)"
+                ),
+            )),
+        }
+    })
+    .unwrap_or(Err(UMBRA_ERR_STATE))
+}
+
+/// Records `why` (prefixed with the entry) as a breach and returns `UMBRA_ERR_INVALID_ARGUMENT`.
+fn invalid(entry: &str, why: &str) -> UmbraCode {
+    tokens::with_top(|r| {
+        refuse(
+            r,
+            UMBRA_ERR_INVALID_ARGUMENT,
+            format!("blackboard {entry}: {why}"),
+        )
+    })
+    .unwrap_or(UMBRA_ERR_STATE)
+}
+
+/// Borrows a key text for the call (no allocation; only an error message allocates, review m5). The
+/// result borrows `key`, the entry's own argument, so the compiler keeps it inside the entry.
+///
+/// # Safety
+/// As [`bytes`]: the bytes `key` points to are valid and unchanged while `key` is borrowed (the
+/// plugin's promise for the duration of the service call that passed it).
+unsafe fn key_text(key: &UmbraStr) -> Result<&str, String> {
+    // SAFETY: forwarded caller contract; the returned slice's lifetime is that of the borrow of `key`.
+    let b =
+        unsafe { bytes(*key) }.ok_or_else(|| "key is a null pointer with a length".to_owned())?;
+    std::str::from_utf8(b).map_err(|e| format!("key is not valid UTF-8 ({e})"))
+}
+
+/// What `get` reports for `key`: its value when it has the grant's type `ty`, else unset.
+fn reported(board: &Blackboard, key: &str, ty: BbType) -> Option<BbValue> {
+    board.get(key).filter(|v| v.ty() == ty).cloned()
+}
+
+/// `get` (ADR 0050): reports the value of the granted key `key` through the plugin's `sink`, exactly
+/// once (see the module docs); returns the sink's code.
+unsafe extern "C" fn blackboard_get(
+    ctx: UmbraToken,
+    key: UmbraStr,
+    sink: *const UmbraValueSink,
+) -> UmbraCode {
+    guarded(UMBRA_ERR_INTERNAL, || {
+        let board = match board_of(ctx, "get") {
+            Ok(board) => board,
+            Err(code) => return code,
+        };
+        let minor = board.minor;
+        // SAFETY: the plugin passes the key borrowed for this call (ADR 0050); the borrowed `&str`
+        // does not outlive this entry.
+        let key = match unsafe { key_text(&key) } {
+            Ok(key) => key,
+            Err(why) => return invalid("get", &why),
+        };
+        // SAFETY: `grants` points into the configured leaf, which outlives the call (the bridge set
+        // it from a live `&[Grant]` and takes it off the record before the call returns); read only.
+        let grants = unsafe { &*board.grants };
+        let ty = match granted(grants, key, Access::Read) {
+            Ok(grant) => grant.ty,
+            Err(why) => return invalid("get", &why),
+        };
+        // SAFETY: the plugin passes the sink (null is refused) valid for this call.
+        let (sink_ctx, set) = match unsafe { marshal::value_sink_within(sink, minor) } {
+            Ok(sink) => sink,
+            Err(why) => return invalid("get", &format!("key {key:?}: {why}")),
+        };
+        // SAFETY: `board` points at the node's blackboard: the leaf bridge derives it inside its call
+        // closure from that closure's own capture of the `&mut Blackboard` (so no later reborrow of
+        // the source invalidates it before the plugin call returns), does not touch the blackboard
+        // while the plugin runs, and takes the pointer off the record (on this thread) before it uses
+        // the blackboard again. The shared borrow ends here (the
+        // value is cloned), before the plugin's sink runs and might call back into this service.
+        let value = reported(unsafe { &*board.board }, key, ty);
+        let raw = value.as_ref().map(|v| marshal::value_out(v, minor));
+        let ptr = raw
+            .as_ref()
+            .map_or(std::ptr::null(), std::ptr::from_ref::<UmbraValue>);
+        // SAFETY: `set` is the plugin's own sink entry, called on the thread of the plugin's call with
+        // the plugin's token; `raw` (and the string it borrows from `value`) lives on this frame
+        // across the call. No record borrow is held. A plugin cannot unwind.
+        unsafe { set(sink_ctx, ptr) }
+    })
+}
+
+/// `set` (ADR 0050): writes `*value` to the granted key `key`, or unsets it when `value` is null (see
+/// the module docs).
+unsafe extern "C" fn blackboard_set(
+    ctx: UmbraToken,
+    key: UmbraStr,
+    value: *const UmbraValue,
+) -> UmbraCode {
+    guarded(UMBRA_ERR_INTERNAL, || {
+        let board = match board_of(ctx, "set") {
+            Ok(board) => board,
+            Err(code) => return code,
+        };
+        let minor = board.minor;
+        // SAFETY: the plugin passes the key borrowed for this call (ADR 0050); the borrowed `&str`
+        // does not outlive this entry.
+        let key = match unsafe { key_text(&key) } {
+            Ok(key) => key,
+            Err(why) => return invalid("set", &why),
+        };
+        // SAFETY: as in `blackboard_get`.
+        let grants = unsafe { &*board.grants };
+        let grant = match granted(grants, key, Access::Write) {
+            Ok(grant) => grant,
+            Err(why) => return invalid("set", &why),
+        };
+        // SAFETY: the plugin passes the value (or null) and its string borrowed for this call.
+        let value = match unsafe { marshal::value_within(value, minor) } {
+            Ok(value) => value,
+            Err(why) => return invalid("set", &format!("key {key:?}: {why}")),
+        };
+        if let Some(v) = &value
+            && v.ty() != grant.ty
+        {
+            return invalid(
+                "set",
+                &format!(
+                    "key {key:?} has the declared type {}, not {}",
+                    grant.ty,
+                    v.ty()
+                ),
+            );
+        }
+        // SAFETY: as in `blackboard_get`; the exclusive borrow lives only for this write, during
+        // which nothing else reaches the blackboard (no plugin code runs).
+        let bb = unsafe { &mut *board.board };
+        let old = bb.get(key).cloned();
+        let written = match value {
+            Some(v) => bb.set(key, v),
+            None => bb.unset(key),
+        };
+        match written {
+            Ok(()) => tokens::with_top(|r| {
+                if let Some(leaf) = r.leaf.as_mut() {
+                    leaf.undo.push((std::sync::Arc::clone(&grant.key), old));
+                }
+                UMBRA_OK
+            })
+            .unwrap_or(UMBRA_ERR_STATE),
+            Err(e) => invalid("set", &e.to_string()),
+        }
+    })
+}
+
+/// Undoes the writes of a faulted call on `bb`, last first (ASM-723): each key gets back the value it
+/// had before the call. Each restore is a write the blackboard accepted during the call (declared,
+/// writable, of the key's type), so it cannot fail.
+pub(crate) fn undo(bb: &mut Blackboard, log: &mut Vec<(std::sync::Arc<str>, Option<BbValue>)>) {
+    for (key, old) in log.drain(..).rev() {
+        let _restored = match old {
+            Some(v) => bb.set(&key, v),
+            None => bb.unset(&key),
+        };
+    }
 }
 
 #[cfg(test)]
