@@ -146,6 +146,8 @@ pub enum SchemaKind {
     Config,
     /// The behavior graph file format (`*.behavior.toml`).
     Behavior,
+    /// One line of a recording file (`*.umbrarec.jsonl`).
+    Recording,
     /// The parameter schema of a registered component, of any kind.
     Component {
         /// The component ID, for example `builtin.ground.kinematic`.

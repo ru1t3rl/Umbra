@@ -353,6 +353,7 @@ fn schema(args: &SchemaArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
         SchemaKind::Scenario => SCENARIO_FILE_SCHEMA.to_string(),
         SchemaKind::Config => CONFIG_FILE_SCHEMA.to_string(),
         SchemaKind::Behavior => BEHAVIOR_FILE_SCHEMA.to_string(),
+        SchemaKind::Recording => umbra_engine::RECORDING_FILE_SCHEMA.to_string(),
         SchemaKind::Component { id } => component_schema(id)?,
     };
     writeln!(io::stdout().lock(), "{}", text.trim_end()).context("writing output")?;

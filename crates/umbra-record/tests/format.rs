@@ -49,7 +49,6 @@ fn given_the_crate_then_format_identity_is_umbra_recording_version_1() {
 /// ASM-621: a written recording reads back bit-exactly (header with a `u64::MAX` seed, a hash and
 /// an end record).
 #[test]
-#[ignore = "M7 WI-11"]
 fn given_a_written_recording_when_read_then_header_and_records_are_equal() {
     let path = scratch("roundtrip.umbrarec.jsonl");
     let records = vec![
@@ -78,7 +77,6 @@ fn given_a_written_recording_when_read_then_header_and_records_are_equal() {
 
 /// ASM-621: two recordings of the same inputs are byte-identical.
 #[test]
-#[ignore = "M7 WI-11"]
 fn given_the_same_inputs_when_written_twice_then_files_are_byte_identical() {
     let write = |name: &str| {
         let path = scratch(name);

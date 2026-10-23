@@ -10,6 +10,8 @@
 # Gate 10 runs once `cargo xtask gen-api` exists (M5); gates 3 and 11 get target/tools/bin on PATH
 # (pinned cbindgen, until it is installed system-wide).
 set -u
+# A set update variable would make the golden recording test rewrite its file and fail (umbra-record).
+unset UMBRA_UPDATE_GOLDEN
 cd "$(dirname "$0")/.." || exit 2
 PATH="$PWD/target/tools/bin:$PATH"
 export PATH

@@ -61,6 +61,8 @@ pub use umbra_kernel::{
     TimeScale, WallClock,
 };
 pub use umbra_net::{AdapterStatus, LoopbackHub};
+/// The JSON Schema of recording format v1 (`umbra schema recording`, ADR 0053).
+pub use umbra_record::RECORDING_FILE_SCHEMA;
 pub use umbra_templates::config::{
     Config, ConfigError, LogLevel, ServerConfig, StreamConfig, load_config,
 };

@@ -1503,7 +1503,7 @@ dependencies = [
 name = "umbra-record"
 version = "0.1.0"
 dependencies = [
- "serde",
+ "proptest",
  "serde_json",
  "thiserror",
  "umbra-core",

@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:umbra:schema:recording:v1",
+  "title": "Umbra recording, format v1: one line of a `*.umbrarec.jsonl` file",
+  "description": "A recording is UTF-8 JSON Lines: the header on line 1, then command, inbound, fault and hash records, and an end record when the run completed. Validate each line separately. Keys appear in a fixed order and no line holds wall-clock data. Unknown extra keys are ignored by readers (additive keys keep version 1); an unknown record type is an error. `u64` values that can exceed 2^53 (seed, network keys, key spaces) are decimal strings; digests and state hashes are 16 lowercase hex digits. A float is a JSON number (the shortest decimal that reads back to the same bits) or one of the strings \"nan\", \"inf\", \"-inf\". The `decimal` pattern accepts up to 20 digits, so it over-accepts values above 18446744073709551615 (the reader rejects them). Hand-written next to the reader; the reader is authoritative (ADR 0053).",
+  "oneOf": [
+    { "$ref": "#/$defs/header" },
+    { "$ref": "#/$defs/command" },
+    { "$ref": "#/$defs/inbound" },
+    { "$ref": "#/$defs/fault" },
+    { "$ref": "#/$defs/hash" },
+    { "$ref": "#/$defs/end" }
+  ],
+  "$defs": {
+    "float": { "oneOf": [{ "type": "number" }, { "enum": ["nan", "inf", "-inf"] }] },
+    "vec3": { "type": "array", "items": { "$ref": "#/$defs/float" }, "minItems": 3, "maxItems": 3 },
+    "decimal": { "type": "string", "pattern": "^(0|[1-9][0-9]{0,19})$", "description": "A u64 as a decimal string" },
+    "hex64": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "A u64 as 16 lowercase hex digits" },
+    "tick": { "type": "integer", "minimum": 0 },
+    "string_or_null": { "type": ["string", "null"] },
+    "header": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "header" },
+        "format": { "const": "umbra.recording" },
+        "version": { "type": "integer", "minimum": 1, "maximum": 1, "description": "A reader rejects a newer version" },
+        "encoding": { "const": "json" },
+        "umbra": { "type": "string", "description": "The engine version that wrote the file" },
+        "scenario": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string" },
+            "relative_path": { "$ref": "#/$defs/string_or_null" },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": { "path": { "type": "string" }, "fnv1a64": { "$ref": "#/$defs/hex64" } },
+                "required": ["path", "fnv1a64"]
+              }
+            }
+          },
+          "required": ["path", "relative_path", "files"]
+        },
+        "seed": { "$ref": "#/$defs/decimal" },
+        "tick_rate_hz": { "type": "integer", "minimum": 1 },
+        "tick_rate_source": { "type": "string" },
+        "state_hash_version": { "type": "integer", "minimum": 0 },
+        "hash_every": { "type": "integer", "minimum": 0 },
+        "on_plugin_fault": { "type": "string" },
+        "plugins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "version": { "type": "string" },
+              "abi": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "minItems": 2, "maxItems": 2 },
+              "library_fnv1a64": { "$ref": "#/$defs/hex64" }
+            },
+            "required": ["id", "version", "abi", "library_fnv1a64"]
+          }
+        },
+        "network_adapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "adapter": { "type": "string" },
+              "key_space": {
+                "type": "object",
+                "properties": { "base": { "$ref": "#/$defs/decimal" }, "count": { "$ref": "#/$defs/decimal" } },
+                "required": ["base", "count"]
+              }
+            },
+            "required": ["name", "adapter", "key_space"]
+          }
+        }
+      },
+      "required": ["type", "format", "version", "encoding", "umbra", "scenario", "seed", "tick_rate_hz", "tick_rate_source", "state_hash_version", "hash_every", "on_plugin_fault", "plugins", "network_adapters"]
+    },
+    "command": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "command" },
+        "before_tick": { "$ref": "#/$defs/tick", "description": "Ticks completed when the command was applied" },
+        "seq": { "$ref": "#/$defs/tick", "description": "Application order within one boundary" },
+        "command": {
+          "oneOf": [
+            { "$ref": "#/$defs/command_spawn" },
+            { "$ref": "#/$defs/command_remove" },
+            { "$ref": "#/$defs/command_set_adapter_enabled" },
+            { "$ref": "#/$defs/command_start" },
+            { "$ref": "#/$defs/command_pause" },
+            { "$ref": "#/$defs/command_resume" },
+            { "$ref": "#/$defs/command_step" },
+            { "$ref": "#/$defs/command_set_clock" },
+            { "$ref": "#/$defs/command_stop" }
+          ]
+        }
+      },
+      "required": ["type", "before_tick", "seq", "command"]
+    },
+    "command_spawn": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "spawn" },
+        "template": { "type": "string" },
+        "position": {
+          "oneOf": [
+            { "type": "object", "properties": { "ecef": { "$ref": "#/$defs/vec3" } }, "required": ["ecef"] },
+            { "type": "object", "properties": { "geodetic": { "$ref": "#/$defs/vec3", "description": "[latitude rad, longitude rad, height m]" } }, "required": ["geodetic"] }
+          ]
+        },
+        "heading": { "$ref": "#/$defs/float", "description": "Radians" },
+        "speed": { "$ref": "#/$defs/float", "description": "Metres per second" },
+        "name": { "$ref": "#/$defs/string_or_null" },
+        "group": { "$ref": "#/$defs/string_or_null" },
+        "force": { "$ref": "#/$defs/string_or_null" },
+        "result": { "type": "integer", "minimum": 1, "description": "The entity id the live run assigned" }
+      },
+      "required": ["kind", "template", "position", "heading", "speed", "name", "group", "force", "result"]
+    },
+    "command_remove": {
+      "type": "object",
+      "properties": { "kind": { "const": "remove" }, "entity": { "type": "integer", "minimum": 1 } },
+      "required": ["kind", "entity"]
+    },
+    "command_set_adapter_enabled": {
+      "type": "object",
+      "properties": { "kind": { "const": "set_adapter_enabled" }, "name": { "type": "string" }, "enabled": { "type": "boolean" } },
+      "required": ["kind", "name", "enabled"]
+    },
+    "command_start": { "type": "object", "properties": { "kind": { "const": "start" } }, "required": ["kind"] },
+    "command_pause": { "type": "object", "properties": { "kind": { "const": "pause" } }, "required": ["kind"] },
+    "command_resume": { "type": "object", "properties": { "kind": { "const": "resume" } }, "required": ["kind"] },
+    "command_step": {
+      "type": "object",
+      "properties": { "kind": { "const": "step" }, "ticks": { "type": "integer", "minimum": 0 } },
+      "required": ["kind", "ticks"]
+    },
+    "command_set_clock": {
+      "type": "object",
+      "properties": { "kind": { "const": "set_clock" }, "mode": { "type": "string" } },
+      "required": ["kind", "mode"]
+    },
+    "command_stop": { "type": "object", "properties": { "kind": { "const": "stop" } }, "required": ["kind"] },
+    "inbound": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "inbound" },
+        "tick": { "$ref": "#/$defs/tick", "description": "The tick about to run" },
+        "adapter": { "type": "string" },
+        "messages": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/message_entity_state" },
+              { "$ref": "#/$defs/message_entity_removed" },
+              { "$ref": "#/$defs/message_fire" },
+              { "$ref": "#/$defs/message_detonation" },
+              { "$ref": "#/$defs/message_simulation_control" }
+            ]
+          }
+        }
+      },
+      "required": ["type", "tick", "adapter", "messages"]
+    },
+    "message_entity_state": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "entity_state" },
+        "key": { "$ref": "#/$defs/decimal" },
+        "entity_type": { "$ref": "#/$defs/string_or_null" },
+        "force": { "$ref": "#/$defs/string_or_null" },
+        "name": { "$ref": "#/$defs/string_or_null" },
+        "position": { "$ref": "#/$defs/vec3", "description": "ECEF metres" },
+        "velocity": { "$ref": "#/$defs/vec3" },
+        "acceleration": { "$ref": "#/$defs/vec3" },
+        "angular_velocity": { "$ref": "#/$defs/vec3" },
+        "orientation": { "$ref": "#/$defs/vec3", "description": "[yaw, pitch, roll] radians" },
+        "dead_reckoning": {
+          "enum": ["static", "velocity", "velocity_rotation", "acceleration_rotation", "acceleration", "body_velocity", "body_velocity_rotation", "body_acceleration_rotation", "body_acceleration"]
+        }
+      },
+      "required": ["kind", "key", "entity_type", "force", "name", "position", "velocity", "acceleration", "angular_velocity", "orientation", "dead_reckoning"]
+    },
+    "message_entity_removed": {
+      "type": "object",
+      "properties": { "kind": { "const": "entity_removed" }, "key": { "$ref": "#/$defs/decimal" } },
+      "required": ["kind", "key"]
+    },
+    "message_fire": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "fire" },
+        "shooter": { "$ref": "#/$defs/decimal" },
+        "target": { "oneOf": [{ "$ref": "#/$defs/decimal" }, { "type": "null" }] },
+        "weapon": { "type": "string" },
+        "position": { "$ref": "#/$defs/vec3" }
+      },
+      "required": ["kind", "shooter", "target", "weapon", "position"]
+    },
+    "message_detonation": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "detonation" },
+        "shooter": { "oneOf": [{ "$ref": "#/$defs/decimal" }, { "type": "null" }] },
+        "target": { "oneOf": [{ "$ref": "#/$defs/decimal" }, { "type": "null" }] },
+        "position": { "$ref": "#/$defs/vec3" }
+      },
+      "required": ["kind", "shooter", "target", "position"]
+    },
+    "message_simulation_control": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "simulation_control" },
+        "action": { "enum": ["start", "pause", "resume", "stop", "step"] },
+        "ticks": { "type": "integer", "minimum": 0, "description": "Only with action step" }
+      },
+      "required": ["kind", "action"]
+    },
+    "fault": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "fault" },
+        "tick": { "$ref": "#/$defs/tick" },
+        "adapter": { "type": "string" },
+        "call": { "type": "string", "description": "The adapter call that failed: poll or publish" }
+      },
+      "required": ["type", "tick", "adapter", "call"]
+    },
+    "hash": {
+      "type": "object",
+      "properties": { "type": { "const": "hash" }, "tick": { "$ref": "#/$defs/tick" }, "hash": { "$ref": "#/$defs/hex64" } },
+      "required": ["type", "tick", "hash"]
+    },
+    "end": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "end" },
+        "tick": { "$ref": "#/$defs/tick" },
+        "reason": { "type": "string" },
+        "hash": { "$ref": "#/$defs/hex64" }
+      },
+      "required": ["type", "tick", "reason", "hash"]
+    }
+  }
+}
