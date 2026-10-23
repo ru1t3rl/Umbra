@@ -47,3 +47,6 @@ Option 1.
   checks them against the design rules by hand.
 - Revisit when a page needs sorting, paging or column resizing in a table, or Vantage publishes its own
   versions of these components (then port and replace).
+
+## Amendments
+- 2026-10-23: `TableColumn` gains an optional `render(row)` cell (M8 WI-13, ASM-961); the default cell is unchanged.

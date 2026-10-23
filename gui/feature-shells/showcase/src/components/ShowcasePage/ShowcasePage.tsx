@@ -6,6 +6,7 @@ import { FloatingSample } from "../FloatingSample/FloatingSample.tsx";
 import { NavDemo } from "../NavDemo/NavDemo.tsx";
 import { Section } from "../Section/Section.tsx";
 import "./ShowcasePage.css";
+import { TableCellsDemo } from "../TableCellsDemo/TableCellsDemo.tsx";
 import { TokenSections } from "../TokenSections/TokenSections.tsx";
 import { VirtualListDemo } from "../VirtualListDemo/VirtualListDemo.tsx";
 
@@ -25,6 +26,9 @@ export default function ShowcasePage(): ReactElement {
         <div id="showcase-m8" className="showcase-group">
           <Section id="navigation" heading={t("nav.heading")}>
             <NavDemo />
+          </Section>
+          <Section id="table-cells" heading={t("cells.heading")}>
+            <TableCellsDemo />
           </Section>
           <Section id="virtual-list" heading={t("vlist.heading")}>
             <VirtualListDemo />

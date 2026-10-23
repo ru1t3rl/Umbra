@@ -131,6 +131,18 @@
         "react": "^19.3.1",
       },
     },
+    "features/plugin-status": {
+      "name": "@umbra/plugin-status",
+      "version": "0.0.0",
+      "dependencies": {
+        "@umbra/data": "workspace:*",
+        "@umbra/engine-stream": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
+      },
+    },
     "features/runtime-config": {
       "name": "@umbra/runtime-config",
       "version": "0.0.0",
@@ -564,6 +576,8 @@
     "@umbra/log-view": ["@umbra/log-view@workspace:features/log-view"],
 
     "@umbra/map-view": ["@umbra/map-view@workspace:features/map-view"],
+
+    "@umbra/plugin-status": ["@umbra/plugin-status@workspace:features/plugin-status"],
 
     "@umbra/runtime-config": ["@umbra/runtime-config@workspace:features/runtime-config"],
 

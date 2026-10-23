@@ -36,3 +36,6 @@ Option 1.
 - Harder: variable-height rows are not supported (wrapping log messages are truncated with a full-text
   tooltip and the detail shown on activation).
 - Revisit when a list needs variable heights; then option 2 behind the same props.
+
+## Amendments
+- 2026-10-23: `VirtualList` gains an optional `virtualize` prop, default `true` (M8 WI-12, ASM-953).

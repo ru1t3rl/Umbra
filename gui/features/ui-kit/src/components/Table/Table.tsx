@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import "../shared/Label.css";
 import "../shared/VisuallyHidden.css";
 import "./Table.css";
@@ -9,6 +9,8 @@ export interface TableColumn<Row> {
   align?: "start" | "end";
   /** Mono cells for IDs, coordinates and times. */
   mono?: boolean;
+  /** Custom cell content (a Badge, a link). Default: `String(row[key])`, empty for null and undefined. */
+  render?: (row: Row) => ReactNode;
 }
 
 export interface TableProps<Row> {
@@ -76,7 +78,7 @@ export function Table<Row>({
             <tr key={rowKey(row)}>
               {columns.map((c) => (
                 <td key={c.key} className={cellClass(c)}>
-                  {row[c.key] == null ? "" : String(row[c.key])}
+                  {c.render ? c.render(row) : row[c.key] == null ? "" : String(row[c.key])}
                 </td>
               ))}
             </tr>
