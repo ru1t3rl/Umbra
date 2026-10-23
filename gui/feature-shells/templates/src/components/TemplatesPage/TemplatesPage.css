@@ -1,0 +1,33 @@
+/* A docked bar on top, then the list (320 px) and the detail side by side; each column scrolls on its own. */
+.templates {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--surface-0);
+  color: var(--ink);
+}
+
+.templates-main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.templates-list,
+.templates-detail {
+  min-height: 0;
+  overflow: auto;
+}
+
+.templates-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.templates-empty {
+  margin: 0;
+  color: var(--ink-muted);
+}

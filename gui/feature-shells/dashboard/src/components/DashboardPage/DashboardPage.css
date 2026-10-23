@@ -41,6 +41,27 @@
   min-width: auto;
 }
 
+/*
+ * The bar's contents never shrink or wrap: a shortfall must become real overflow, which the fit ladder measures
+ * (`useBarFit`, ASM-992). Flex items that gave way silently (readouts, the theme switch label) hid it. Only the
+ * title is flexible, and it keeps its natural width (above). Some selectors overlap (a `.vt-readout` is already an
+ * actions child, a link already has `nowrap`): the redundancy is deliberate defence against a ui-kit layout change.
+ */
+.dashboard-bar .vt-cmdbar > :not(.vt-cmdbar-title),
+.dashboard-bar .vt-cmdbar-actions > *,
+.dashboard-bar .vt-cmdbar-actions .vt-readout,
+.dashboard-bar .vt-cmdbar-actions .vt-nav-list > li {
+  flex-shrink: 0;
+}
+.dashboard-bar .vt-cmdbar .vt-label,
+.dashboard-bar .vt-cmdbar .vt-readout-value,
+.dashboard-bar .vt-cmdbar .vt-toggle,
+.dashboard-bar .vt-cmdbar .vt-theme-toggle,
+.dashboard-bar .vt-cmdbar .vt-nav-link,
+.dashboard-bar .vt-cmdbar .vt-btn {
+  white-space: nowrap;
+}
+
 /* An Alert is 480 px plus padding by itself; in the column it takes the column's width, so it never overflows it. */
 .dashboard-alert .vt-alert {
   width: 100%;

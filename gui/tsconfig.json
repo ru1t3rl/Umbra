@@ -5,6 +5,7 @@
     { "path": "./tsconfig.tools.json" },
     { "path": "./feature-shells/dashboard" },
     { "path": "./feature-shells/showcase" },
+    { "path": "./feature-shells/templates" },
     { "path": "./features/data" },
     { "path": "./features/desktop" },
     { "path": "./features/entity-inspector" },

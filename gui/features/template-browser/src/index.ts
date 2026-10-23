@@ -4,3 +4,5 @@ export type { TemplateDetailProps } from "./components/TemplateDetail/TemplateDe
 export { TemplateDetail } from "./components/TemplateDetail/TemplateDetail.tsx";
 export type { TemplateListProps } from "./components/TemplateList/TemplateList.tsx";
 export { TemplateList } from "./components/TemplateList/TemplateList.tsx";
+export type { TemplateSelection } from "./hooks/useTemplateSelection.ts";
+export { useTemplateSelection } from "./hooks/useTemplateSelection.ts";

@@ -2,8 +2,10 @@ import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import {
   contentShrank,
   type FitLevel,
+  type FitLevels,
   type FitMeasure,
-  INITIAL_FIT,
+  type FitState,
+  initialFit,
   nextFit,
 } from "../model/fitLevel.ts";
 
@@ -23,49 +25,61 @@ const measure = (bar: HTMLElement): FitMeasure => ({
 });
 
 /**
- * How compact the command bar must be to hold its content in one row: 0 full, 1 compact, 2 icon-only lifecycle
- * buttons (ASM-988). It measures the rendered bar, so it follows the real widths of the readouts and the viewport.
+ * How compact the command bar must be to hold its content in one row, in `levels` steps (default 3: 0 full, 1
+ * compact, 2 icon-only lifecycle buttons; the dashboard passes 4, ASM-992) (ASM-988). It measures the rendered bar, so it follows the real widths of the readouts and the viewport.
  * It re-measures at mount, after every level change (a step may not be enough) and when a ResizeObserver reports a
  * size change of the bar or of its content, at most once per animation frame (the stream's frame rate cannot cause
  * a storm: a readout changes size only when its digit count changes). Stepping back down needs a margin
  * (`FIT_HYSTERESIS_PX`). The fit restarts from level 0 when the fonts finish loading (the first fit may have been
  * measured with the icon ligatures still showing as words) and when the content shrinks by more than the margin
  * (counters reset by an unload): the widths remembered per level are stale then (ASM-990).
+ * The default `levels = 3` exists for the pinned tests of the M5b/WI-14 ladder, which call `useBarFit(ref)`
+ * (ASM-992); the dashboard passes `BAR_FIT_LEVELS`. A changed `levels` starts the fit again.
  */
-export function useBarFit(wrapperRef: RefObject<HTMLElement | null>): FitLevel {
+export function useBarFit(
+  wrapperRef: RefObject<HTMLElement | null>,
+  levels: FitLevels = 3,
+): FitLevel {
   const [level, setLevel] = useState<FitLevel>(0);
-  const state = useRef(INITIAL_FIT);
+  // One holder for the whole life of the component, created once (lazily) and mutated, never re-created.
+  const holder = useRef<{ fit: FitState } | null>(null);
+  if (holder.current === null) holder.current = { fit: initialFit(levels) };
+  const state = holder.current;
   const shown = useRef<FitLevel>(0);
   const lastContent = useRef<number | null>(null);
+
+  /** Forget everything measured: the ladder starts again at level 0. */
+  const reset = useCallback((): void => {
+    state.fit = initialFit(levels);
+    lastContent.current = null;
+  }, [state, levels]);
 
   const evaluate = useCallback((): void => {
     const bar = barOf(wrapperRef.current);
     if (!bar) return;
     const content = contentWidth(bar);
-    if (contentShrank(lastContent.current, content) && state.current.level !== 0) {
+    if (contentShrank(lastContent.current, content) && state.fit.level !== 0) {
       // Restart: render level 0, whose layout effect measures again.
-      state.current = INITIAL_FIT;
-      lastContent.current = null;
+      reset();
       shown.current = 0;
       setLevel(0);
       return;
     }
-    const next = nextFit(state.current, measure(bar));
-    lastContent.current = next.level === state.current.level ? content : null;
-    state.current = next;
+    const next = nextFit(state.fit, measure(bar));
+    lastContent.current = next.level === state.fit.level ? content : null;
+    state.fit = next;
     shown.current = next.level;
     setLevel(next.level);
-  }, [wrapperRef]);
+  }, [wrapperRef, state, reset]);
 
   const restart = useCallback((): void => {
-    state.current = INITIAL_FIT;
-    lastContent.current = null;
+    reset();
     if (shown.current === 0) evaluate();
     else {
       shown.current = 0;
       setLevel(0);
     }
-  }, [evaluate]);
+  }, [evaluate, reset]);
 
   useEffect(() => {
     const fonts = typeof document === "undefined" ? undefined : document.fonts;
@@ -80,6 +94,14 @@ export function useBarFit(wrapperRef: RefObject<HTMLElement | null>): FitLevel {
       fonts.removeEventListener("loadingdone", restart);
     };
   }, [restart]);
+
+  // A different ladder length: start again (runs before the measuring effect below).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `levels` is the trigger, `reset` reads it.
+  useLayoutEffect(() => {
+    reset();
+    shown.current = 0;
+    setLevel(0);
+  }, [levels]);
 
   // After every render that changed the level: the new level may still overflow.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `level` is the trigger, `evaluate` reads the DOM.

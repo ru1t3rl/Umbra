@@ -7,6 +7,7 @@ import { type CSSProperties, type ReactElement, useCallback, useId, useRef, useS
 import { useBarFit } from "../../hooks/useBarFit.ts";
 import { useBarInset } from "../../hooks/useBarInset.ts";
 import { t } from "../../messages.ts";
+import { BAR_FIT_LEVELS } from "../../model/fitLevel.ts";
 import { DashboardBar } from "../DashboardBar/DashboardBar.tsx";
 import { EntitiesPanel } from "../EntitiesPanel/EntitiesPanel.tsx";
 import { InspectorPanel } from "../InspectorPanel/InspectorPanel.tsx";
@@ -36,7 +37,7 @@ export default function DashboardPage(): ReactElement {
   // At most one of the bar's popovers is open, so there are never more than three floating panels.
   const [popover, setPopover] = useState<"clock" | "scenario" | null>(null);
   const [problemSlot, setProblemSlot] = useState<HTMLElement | null>(null);
-  const fit = useBarFit(barRef);
+  const fit = useBarFit(barRef, BAR_FIT_LEVELS);
   const ids = useId();
   const scenarioTriggerId = `${ids}-scenario-button`;
   const scenarioPanelId = `${ids}-scenario-panel`;

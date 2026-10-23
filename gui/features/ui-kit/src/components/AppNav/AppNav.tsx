@@ -8,9 +8,18 @@ export interface AppNavProps {
   /** Accessible name of the landmark. */
   label?: string;
   className?: string;
+  /**
+   * Show only the icon of each link (a link without an icon keeps its text). The link keeps its accessible name
+   * (`aria-label`) and gets a `title`.
+   */
+  iconOnly?: boolean;
 }
 
-export function AppNav({ label = "Pages", className }: AppNavProps): ReactElement {
+export function AppNav({
+  label = "Pages",
+  className,
+  iconOnly = false,
+}: AppNavProps): ReactElement {
   const { items, currentPath } = useNavigation();
   const classes = ["vt-nav", className].filter(Boolean).join(" ");
   return (
@@ -22,9 +31,10 @@ export function AppNav({ label = "Pages", className }: AppNavProps): ReactElemen
               to={item.path}
               className="vt-nav-link"
               aria-current={item.path === currentPath ? "page" : undefined}
+              {...(iconOnly && item.icon ? { "aria-label": item.label, title: item.label } : {})}
             >
               {item.icon ? <Icon name={item.icon} /> : null}
-              {item.label}
+              {iconOnly && item.icon ? null : item.label}
             </AppLink>
           </li>
         ))}

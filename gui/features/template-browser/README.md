@@ -9,6 +9,8 @@ Domain feature (tier `domain`): the templates of the loaded scenario, one templa
   - A component that `GET /components` does not list, or a components request that finally failed, shows its parameters as JSON (ASM-816).
 - The spawn form is private: template preset, Latitude and Longitude (required, range-checked on submit), Altitude, Heading, Speed, Name, Force, Group; problems from the engine inline; success is announced in a polite status region that stays mounted (ASM-949, ASM-954).
 
+- `useTemplateSelection()` (`TemplateSelection`: `{ selectedId, select }`): the selection of a page that shows both components. It belongs to the scenario: it is cleared when the session changes or the scenario unloads (idle), and a selected id that the template list no longer holds is dropped; while the list is not loaded yet the choice is kept. It shares the list's query (no request of its own) and needs the same providers (ASM-993).
+
 ## Run-state rules (ASM-948)
 - `idle` shows "Load a scenario to browse its templates" with an "Open the dashboard" link to `/`, and requests nothing.
 - Every other state, including `stopped` and an unknown state (no frame yet), requests normally.

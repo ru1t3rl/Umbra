@@ -40,11 +40,16 @@ export interface Rig {
   connection: EngineStreamConnection;
   /** Deliver messages, then run the animation frame the connection scheduled. */
   push(...messages: unknown[]): void;
+  /** The socket closes (a dropped connection). */
+  drop(): void;
+  /** The reconnect timers fire: the connection opens a new socket (then `push` hello and frames to it). */
+  reconnect(): void;
 }
 
 export function rig(): Rig {
   const sockets: FakeSocket[] = [];
   let pending: (() => void)[] = [];
+  let timers: (() => void)[] = [];
   const connection = connectEngineStream({
     url: "ws://engine/api/v1/stream?encoding=json",
     createSocket: () => {
@@ -59,11 +64,22 @@ export function rig(): Rig {
     cancelFrame: () => {
       pending = [];
     },
-    setTimer: () => 1,
+    setTimer: (cb) => {
+      timers.push(cb);
+      return timers.length;
+    },
     clearTimer: () => {},
   });
   return {
     connection,
+    drop() {
+      sockets.at(-1)?.onclose?.({ code: 1006, reason: "" });
+    },
+    reconnect() {
+      const due = timers;
+      timers = [];
+      for (const f of due) f();
+    },
     push(...messages) {
       const s = sockets.at(-1);
       if (!s) throw new Error("no socket");

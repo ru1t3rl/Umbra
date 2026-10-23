@@ -13,6 +13,8 @@ interface Built {
   /** The entry chunk (loaded on every route) and the lazy dashboard chunk (the map). */
   entry: string;
   dashboard: string;
+  /** The lazy templates chunk (WI-15; the page and the template browser). */
+  templates: string;
 }
 
 /**
@@ -21,6 +23,7 @@ interface Built {
  */
 const ENTRY_BUDGET = 400_000;
 const DASHBOARD_BUDGET = 1_050_000;
+const TEMPLATES_BUDGET = 26_000;
 /** A MapLibre API name that survives minification: present in the map chunk only. */
 const MAPLIBRE_MARKER = "queryRenderedFeatures";
 
@@ -43,12 +46,15 @@ async function bundle(mode: "production" | "e2e"): Promise<Built> {
   const chunks = outputs.flatMap((o) => (o.type === "chunk" ? [o] : []));
   const entry = chunks.find((c) => c.isEntry);
   const dashboard = chunks.find((c) => /DashboardPage/.test(c.fileName));
-  if (!entry || !dashboard) throw new Error("the app build has no entry or no dashboard chunk");
+  const templates = chunks.find((c) => /TemplatesPage/.test(c.fileName));
+  if (!entry || !dashboard || !templates)
+    throw new Error("the app build has no entry, dashboard or templates chunk");
   return {
     code: chunks.map((c) => c.code).join("\n"),
     files: outputs.map((o) => o.fileName),
     entry: entry.code,
     dashboard: dashboard.code,
+    templates: templates.code,
   };
 }
 
@@ -64,6 +70,10 @@ describe("the e2e hook in the real app build", () => {
   test("the production build contains no trace of it", () => {
     expect(built.production.code.length).toBeGreaterThan(100_000); // the app and the map, not an empty bundle
     expect(built.production.code).not.toContain("__UMBRA_E2E__");
+  });
+  test("the e2e build reads injected navigation entries, the production build does not (ASM-992)", () => {
+    expect(built.e2e.code).toContain("__UMBRA_E2E_NAV__");
+    expect(built.production.code).not.toContain("__UMBRA_E2E_NAV__");
   });
   test.each(["production", "e2e"] as const)("the %s build emits both basemap assets", (mode) => {
     const files = built[mode].files;
@@ -84,5 +94,13 @@ describe("the e2e hook in the real app build", () => {
   });
   test("the dashboard is a separate chunk behind the router", () => {
     expect(built.production.files.filter((f) => /DashboardPage/.test(f)).length).toBeGreaterThan(0);
+  });
+});
+
+describe("the templates chunk (WI-15)", () => {
+  test("is a separate chunk behind the router, without MapLibre, and stays in budget", () => {
+    expect(built.production.files.filter((f) => /TemplatesPage/.test(f)).length).toBeGreaterThan(0);
+    expect(built.production.templates).not.toContain(MAPLIBRE_MARKER);
+    expect(built.production.templates.length).toBeLessThan(TEMPLATES_BUDGET);
   });
 });

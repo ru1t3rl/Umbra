@@ -13,7 +13,7 @@ interface FakeObserver {
 let observers: FakeObserver[] = [];
 let before: unknown;
 let client = 1000;
-let wanted: [number, number, number] = [1400, 1250, 1000];
+let wanted: number[] = [1400, 1250, 1000];
 let reads = 0;
 let content = 1000;
 let fontListeners: Array<() => void> = [];
@@ -66,9 +66,9 @@ afterEach(() => {
   else Reflect.set(globalThis, "ResizeObserver", before);
 });
 
-function Probe(): ReactElement {
+function Probe({ levels }: { levels?: 3 | 4 }): ReactElement {
   const ref = useRef<HTMLDivElement>(null);
-  const level = useBarFit(ref);
+  const level = useBarFit(ref, levels);
   return (
     <div ref={ref}>
       <header
@@ -80,10 +80,7 @@ function Probe(): ReactElement {
             configurable: true,
             get: () => {
               reads += 1;
-              return Math.max(
-                client,
-                wanted[Number(el.getAttribute("data-level")) as 0 | 1 | 2] ?? 0,
-              );
+              return Math.max(client, wanted[Number(el.getAttribute("data-level"))] ?? 0);
             },
           });
         }}
@@ -281,5 +278,63 @@ describe("useBarFit when the content shrinks (ASM-990)", () => {
     content = 1240;
     await resized();
     expect(level()).toBe("1");
+  });
+});
+
+// WI-15 (ASM-992, review m2): a restart keeps the length of the ladder; it must not fall back to three levels.
+describe("useBarFit with four levels", () => {
+  test("it climbs to level 3", async () => {
+    client = 1200;
+    wanted = [1500, 1400, 1300, 1000];
+    render(<Probe levels={4} />);
+    await frame();
+    expect(level()).toBe("3");
+  });
+
+  // Catches: the fonts restart resetting to a three-level ladder (the bar could then never reach level 3 again).
+  test("after a fonts restart it still reaches level 3", async () => {
+    client = 1200;
+    wanted = [1500, 1400, 1300, 1000];
+    render(<Probe levels={4} />);
+    await frame();
+    wanted = [1100, 900, 800, 700];
+    act(() => {
+      for (const l of fontListeners) l();
+    });
+    await frame();
+    expect(level()).toBe("0");
+    wanted = [1500, 1400, 1300, 1000]; // the readouts grow again
+    await resized();
+    expect(level()).toBe("3");
+  });
+
+  // Catches: the shrink restart resetting to a three-level ladder.
+  test("after a shrink restart it still reaches level 3", async () => {
+    client = 1200;
+    content = 1250;
+    wanted = [1500, 1400, 1300, 1000];
+    render(<Probe levels={4} />);
+    await frame();
+    expect(level()).toBe("3");
+    wanted = [1100, 900, 800, 700];
+    content = 1000;
+    await resized();
+    expect(level()).toBe("0");
+    wanted = [1500, 1400, 1300, 1000];
+    content = 1250;
+    await resized();
+    expect(level()).toBe("3");
+  });
+
+  // Catches: a changed ladder length keeping the old state (a four-entry ladder run with three entries).
+  test("a changed ladder length starts the fit again", async () => {
+    client = 1200;
+    wanted = [1500, 1400, 1300, 1000];
+    const { rerender } = render(<Probe levels={3} />);
+    await frame();
+    expect(level()).toBe("2");
+    rerender(<Probe levels={4} />);
+    await frame();
+    expect(level()).toBe("3");
   });
 });

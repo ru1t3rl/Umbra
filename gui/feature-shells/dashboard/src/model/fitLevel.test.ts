@@ -1,10 +1,12 @@
 // WI-14 review round 2 (ASM-988): the bar's measurement-based compact steps and their hysteresis.
 import { describe, expect, test } from "bun:test";
 import {
+  BAR_FIT_LEVELS,
   contentShrank,
   FIT_HYSTERESIS_PX,
   type FitState,
   INITIAL_FIT,
+  initialFit,
   nextFit,
 } from "./fitLevel.ts";
 
@@ -75,5 +77,28 @@ describe("contentShrank", () => {
   });
   test("no previous measurement is not a shrink", () => {
     expect(contentShrank(null, 500)).toBe(false);
+  });
+});
+
+// WI-15 (ASM-992): a longer ladder, the dashboard's four levels (the first step is the icon-only navigation).
+describe("a four-level ladder", () => {
+  test("it starts at level 0 with four unmeasured levels", () => {
+    expect(initialFit(BAR_FIT_LEVELS)).toEqual({ level: 0, need: [0, 0, 0, 0] });
+  });
+
+  test("an overflow climbs through all four levels and stops at the last", () => {
+    let state = initialFit(4);
+    for (const level of [1, 2, 3, 3] as const) {
+      state = at(state, 1000, 100);
+      expect(state.level).toBe(level);
+    }
+    expect(state.need).toEqual([1100, 1100, 1100, 1100]);
+  });
+
+  test("it steps back down one level at a time with the hysteresis", () => {
+    let state = initialFit(4);
+    state = at(at(at(state, 1000, 300), 1000, 200), 1000, 100); // need [1300, 1200, 1100, 0], level 3
+    expect(at(state, 1100 + FIT_HYSTERESIS_PX, 0).level).toBe(2);
+    expect(at(state, 1100 + FIT_HYSTERESIS_PX - 1, 0).level).toBe(3);
   });
 });

@@ -2,13 +2,14 @@ import { afterEach, expect, test } from "bun:test";
 import { cleanup, render, screen } from "@testing-library/react";
 import { route as dashboard } from "@umbra/shell-dashboard";
 import { route as showcase } from "@umbra/shell-showcase";
+import { route as templates } from "@umbra/shell-templates";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { appRoutes, navItems, routes } from "./router.tsx";
 
 afterEach(cleanup);
 
 test("nav items come from the routes with nav true, in route order", () => {
-  const withNav = [dashboard, showcase].filter((r) => r.nav);
+  const withNav = [dashboard, templates, showcase].filter((r) => r.nav);
   expect(navItems).toEqual(withNav.map((r) => ({ path: r.path, label: r.label, icon: r.icon })));
   expect(navItems.length).toBeGreaterThan(0);
 });

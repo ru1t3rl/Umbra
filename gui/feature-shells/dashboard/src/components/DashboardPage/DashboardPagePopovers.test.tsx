@@ -26,13 +26,13 @@ let engine: ReturnType<typeof fakeFetch>;
 let page: Dashboard | undefined;
 /** The faked bar (no layout in happy-dom): its width and the width its content needs at each level (ASM-988). */
 let barClient = 0;
-let barWanted: [number, number, number] = [1400, 1250, 1000];
-const levelOf = (bar: HTMLElement): 0 | 1 | 2 =>
-  bar.querySelector("b")?.textContent?.trim()
-    ? 0
-    : bar.querySelector('[aria-label="Load"]')
-      ? 2
-      : 1;
+let barWanted: [number, number, number, number] = [1400, 1330, 1250, 1000];
+/** The four levels of ASM-992, read from the rendered bar: icon-only navigation, no title, icon-only lifecycle. */
+const levelOf = (bar: HTMLElement): 0 | 1 | 2 | 3 => {
+  if (bar.querySelector("b")?.textContent?.trim())
+    return bar.querySelector(".vt-nav-link[title]") ? 1 : 0;
+  return bar.querySelector('[aria-label="Load"]') ? 3 : 2;
+};
 const proto = HTMLElement.prototype;
 const realScroll = Object.getOwnPropertyDescriptor(proto, "scrollWidth");
 const realClient = Object.getOwnPropertyDescriptor(proto, "clientWidth");
@@ -201,6 +201,16 @@ describe("popover accessibility", () => {
   });
 });
 
+/** The navigation links show only their icon and keep a name and a tooltip (ASM-992). */
+function expectIconOnlyNav(): void {
+  const link = within(within(banner()).getByRole("navigation", { name: "Pages" })).getByRole(
+    "link",
+    { name: "Live map" },
+  );
+  expect(link).toHaveAttribute("title", "Live map");
+  expect(link.textContent?.trim()).toMatch(/^[a-z_]+$/);
+}
+
 describe("the compact steps follow the measured bar (ASM-988)", () => {
   // Catches: compact mode for a bar that fits, or for an unlaid-out page.
   test.each([0, 1500])("a bar %d px wide that fits has the title and labelled buttons", (w) => {
@@ -215,14 +225,27 @@ describe("the compact steps follow the measured bar (ASM-988)", () => {
     expect(within(banner()).getByRole("button", { name: "Start" })).toHaveTextContent("Start");
   });
 
+  // Catches: the title dropped before the navigation shrinks (ASM-992), or labelled links in the first step.
+  test("step 1: the navigation becomes icons first; the title and every label stay", () => {
+    barClient = 1350; // the full bar needs 1400, the one with an icon navigation 1330
+    mount("running");
+    expect(within(banner()).getByText("Live map", { selector: "b" })).toBeInTheDocument();
+    const link = within(within(banner()).getByRole("navigation", { name: "Pages" })).getByRole(
+      "link",
+      { name: "Live map" },
+    );
+    expect(link).toHaveAttribute("title", "Live map");
+    expect(link.textContent?.trim()).toMatch(/^[a-z_]+$/);
+    expect(clockButton()).toHaveTextContent("Clock");
+    expect(within(banner()).getByRole("button", { name: "Start" })).toHaveTextContent("Start");
+  });
+
   // Catches: the duplicated page title (AppNav already shows "Live map"), text on the icon buttons.
-  test("step 1: the title is dropped and Clock, Scenario and the theme switch are icon-only", () => {
-    barClient = 1300; // the full bar needs 1400, the compact one 1250
+  test("step 2: the title is dropped and Clock, Scenario and the theme switch are icon-only", () => {
+    barClient = 1300; // 1400 and 1330 overflow, the compact one needs 1250
     mount("running");
     expect(within(banner()).queryByText("Live map", { selector: "b" })).toBeNull();
-    expect(
-      within(within(banner()).getByRole("navigation", { name: "Pages" })).getByRole("link"),
-    ).toHaveTextContent("Live map");
+    expectIconOnlyNav();
     for (const b of [clockButton(), scenarioButton()]) {
       expect(b).toHaveAttribute("aria-label");
       expect(b.textContent?.replace(/\s/g, "")).toMatch(/^[a-z_]*$/); // only the icon ligature
@@ -235,23 +258,24 @@ describe("the compact steps follow the measured bar (ASM-988)", () => {
   });
 
   // Catches: no second step when the compact bar still overflows.
-  test("step 2: the lifecycle buttons become icons with a name and a tooltip", () => {
+  test("step 3: the lifecycle buttons become icons with a name and a tooltip", () => {
     barClient = 1100;
     mount("running");
     const start = within(banner()).getByRole("button", { name: "Start" });
     expect(start).toHaveAttribute("title", "Start");
     expect(start.textContent?.trim()).toMatch(/^[a-z_]+$/);
     expect(clockButton()).toHaveAttribute("aria-label", "Clock");
+    expectIconOnlyNav();
   });
 
   // Catches: the step being decided by the viewport width instead of the content (the 1366 and 1440 px defect).
   test("the same viewport needs a step or not depending on the content width", () => {
     barClient = 1450;
-    barWanted = [1400, 1250, 1000];
+    barWanted = [1400, 1330, 1250, 1000];
     mount("running");
     expect(within(banner()).getByText("Live map", { selector: "b" })).toBeInTheDocument();
     cleanup();
-    barWanted = [1600, 1250, 1000]; // wide readouts
+    barWanted = [1700, 1500, 1250, 1000]; // wide readouts
     mount("running");
     expect(within(banner()).queryByText("Live map", { selector: "b" })).toBeNull();
   });

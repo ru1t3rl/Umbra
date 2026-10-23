@@ -19,6 +19,7 @@ export const t = defineMessages({
   "data.heading": "Readout, Badge, AffiliationTag and EntityRow",
   "alerts.heading": "Alert",
   "nav.heading": "Table, Select and AppNav",
+  "nav.icons-label": "Icon-only pages",
   "table.caption": "Plugin capabilities",
   "table.empty": "No capabilities loaded.",
   "table.col-capability": "Capability",

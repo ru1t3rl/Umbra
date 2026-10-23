@@ -9,7 +9,7 @@ const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8").repl
   "",
 );
 
-test("the package exports exactly TemplateList and TemplateDetail at runtime", () => {
+test("the package exports exactly TemplateList, TemplateDetail and useTemplateSelection at runtime", () => {
   const withoutTypes = source.replace(/export\s+type\s*\{[^}]*\}\s*from\s*["'][^"']*["'];?/g, "");
   const runtime = [...withoutTypes.matchAll(/export\s*(?:\*|\{([^}]*)\})[^;]*;/g)].flatMap((m) =>
     m[1] === undefined
@@ -23,7 +23,11 @@ test("the package exports exactly TemplateList and TemplateDetail at runtime", (
         ),
   );
   expect(withoutTypes).not.toMatch(/export\s+(const|function|class|let|var|default)\b/);
-  expect(runtime.filter(Boolean).sort()).toEqual(["TemplateDetail", "TemplateList"]);
+  expect(runtime.filter(Boolean).sort()).toEqual([
+    "TemplateDetail",
+    "TemplateList",
+    "useTemplateSelection",
+  ]);
 });
 
 test("the prop types are public", () => {
@@ -34,5 +38,6 @@ test("the prop types are public", () => {
 test("exports come from the component files, not from deep or foreign paths", () => {
   expect(source).toContain("./components/TemplateList/TemplateList.tsx");
   expect(source).toContain("./components/TemplateDetail/TemplateDetail.tsx");
+  expect(source).toContain("./hooks/useTemplateSelection.ts");
   expect(source).not.toMatch(/from\s*["']@umbra\//);
 });

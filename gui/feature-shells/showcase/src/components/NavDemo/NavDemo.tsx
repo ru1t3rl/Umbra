@@ -1,7 +1,6 @@
 import {
   AppNav,
   CommandBar,
-  type NavItem,
   NavigationProvider,
   Select,
   type SelectOption,
@@ -10,6 +9,8 @@ import {
 } from "@umbra/ui-kit";
 import { type ReactElement, useState } from "react";
 import { t } from "../../messages.ts";
+import { PAGES } from "../../samplePages.ts";
+import { NavIconDemo } from "../NavIconDemo/NavIconDemo.tsx";
 
 interface CapabilityRow {
   id: string;
@@ -36,12 +37,6 @@ const FORMATS: SelectOption[] = [
   { value: "utm", label: t("select.utm") },
   { value: "mgrs", label: t("select.mgrs") },
   { value: "bng", label: t("select.bng"), disabled: true },
-];
-
-const PAGES: NavItem[] = [
-  { path: "/", label: t("nav.live-map"), icon: "map" },
-  { path: "/templates", label: t("nav.templates"), icon: "dataset" },
-  { path: "/plugins", label: t("nav.plugins"), icon: "extension" },
 ];
 
 /** ADR 0073 additions: Table, Select and AppNav with a local, router-free navigation state. */
@@ -75,6 +70,7 @@ export function NavDemo(): ReactElement {
           </CommandBar>
         </NavigationProvider>
       </div>
+      <NavIconDemo />
     </div>
   );
 }

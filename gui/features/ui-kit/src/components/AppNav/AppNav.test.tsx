@@ -74,3 +74,19 @@ test("icons are decorative and do not join the link name", () => {
   renderNav();
   expect(screen.getByRole("link", { name: "Live map" })).toBeInTheDocument();
 });
+
+test("iconOnly shows the icon alone; each link keeps its name and gets a title (a link without an icon keeps its text)", () => {
+  render(
+    <NavigationProvider items={items} currentPath="/" navigate={() => {}}>
+      <AppNav iconOnly />
+    </NavigationProvider>,
+  );
+  const live = screen.getByRole("link", { name: "Live map" });
+  expect(live).toHaveAttribute("title", "Live map");
+  expect(live).toHaveAttribute("aria-label", "Live map");
+  expect(live.textContent).not.toContain("Live map");
+  expect(screen.getByRole("link", { name: "Templates" })).toHaveAttribute("title", "Templates");
+  const plain = screen.getByRole("link", { name: "Plugins" });
+  expect(plain.textContent).toBe("Plugins");
+  expect(plain).not.toHaveAttribute("title");
+});
