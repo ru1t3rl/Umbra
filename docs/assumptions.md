@@ -19,10 +19,12 @@ numbers from its own reserved block instead of the next free number:
 **Parallel tracks (M7 and M8, from 2026-10-22, ADR 0047).** ADR 0047 and decision row D-63 are the ordering decision itself.
 - M7: ASM-600..ASM-799, ADR 0050..0069, decision rows D-64..D-79;
 - M8: ASM-800..ASM-999, ADR 0070..0089, decision rows D-80..D-95.
+- Overflow block (coordinator decision 2026-10-23, when the M8 block was nearly used up): M8 continues at
+  ASM-1100..ASM-1199 (ASM-1000..1099 is reserved for M10). ADR and decision-row blocks are unchanged.
 Gaps left in a block stay unused. After both close, numbering continues after the highest number used.
 **M10 Documentation (reserved 2026-10-23, A-004).** Decision row D-96 is the A-004 decision itself.
 - M10: ASM-1000..ASM-1099, ADR 0090..0099, decision rows D-97..D-111.
-Numbering for any other milestone skips this block, and the reserved numbers count as used. After M7 and M8 close, M8b, M9 and any later work therefore continue at ASM-1100, ADR 0100 and D-112 at the earliest.
+Numbering for any other milestone skips this block, and the reserved numbers count as used. After M7 and M8 close, M8b, M9 and any later work therefore continue at ASM-1200, ADR 0100 and D-112 at the earliest (ASM-1100..1199 is the M8 overflow block).
 
 | Milestone | File | IDs | Entries |
 |---|---|---|---|
