@@ -9,7 +9,7 @@ const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8").repl
   "",
 );
 
-test("the package exports exactly PluginList, AdapterList, FaultSummary and ComponentList at runtime", () => {
+test("the package exports exactly PluginList, AdapterList, FaultSummary, ComponentList and PluginStatusGate at runtime", () => {
   const withoutTypes = source.replace(/export\s+type\s*\{[^}]*\}\s*from\s*["'][^"']*["'];?/g, "");
   const runtime = [...withoutTypes.matchAll(/export\s*(?:\*|\{([^}]*)\})[^;]*;/g)].flatMap((m) =>
     m[1] === undefined
@@ -28,16 +28,23 @@ test("the package exports exactly PluginList, AdapterList, FaultSummary and Comp
     "ComponentList",
     "FaultSummary",
     "PluginList",
+    "PluginStatusGate",
   ]);
 });
 
-test("the components take no props, so no prop type is exported and no model type leaks", () => {
+test("the components take no props (the gate takes children), so no prop type is exported and no model type leaks", () => {
   expect(source).not.toMatch(/export\s+type\s*\{[^}]*\bFaultRow\b/);
   expect(source).not.toMatch(/export\s+type\s*\{[^}]*Props\b/);
 });
 
 test("exports come from the component files, not from deep or foreign paths", () => {
-  for (const name of ["PluginList", "AdapterList", "FaultSummary", "ComponentList"])
+  for (const name of [
+    "PluginList",
+    "AdapterList",
+    "FaultSummary",
+    "ComponentList",
+    "PluginStatusGate",
+  ])
     expect(source).toContain(`./components/${name}/${name}.tsx`);
   expect(source).not.toMatch(/from\s*["']@umbra\//);
   expect(source).not.toMatch(/statusTesting|\/model\/|\/hooks\//);

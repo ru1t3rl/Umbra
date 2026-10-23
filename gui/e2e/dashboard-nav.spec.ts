@@ -1,13 +1,10 @@
 // WI-15 (ASM-992): the page navigation is part of the command bar's fit ladder (icon-only before the title goes), so
 // the bar keeps its title and one row as shells add navigation entries. The e2e build reads two extra entries from
 // `window.__UMBRA_E2E_NAV__` (src/e2eNav.ts; the production build has neither, e2eHook.build.test.ts), standing in
-// for the Plugins (WI-16) and Settings (WI-17) shells: four links, as the finished app will have.
+// for the Settings shell (WI-17): four links, as the finished app will have (Plugins is a real link since WI-16).
 import { expect, type Page, test } from "@playwright/test";
 
-const EXTRA_ENTRIES = [
-  { path: "/plugins", label: "Plugins", icon: "extension" },
-  { path: "/settings", label: "Settings", icon: "settings" },
-];
+const EXTRA_ENTRIES = [{ path: "/settings", label: "Settings", icon: "settings" }];
 
 async function open(page: Page, width: number, extra = true): Promise<void> {
   if (extra) {

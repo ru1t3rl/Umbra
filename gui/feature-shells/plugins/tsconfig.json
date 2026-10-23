@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/shell-plugins.tsbuildinfo",
+    "types": ["bun", "vite/client"]
+  },
+  "include": ["src", "../../test/jest-dom.d.ts"],
+  "references": [
+    { "path": "../../features/data" },
+    { "path": "../../features/engine-stream" },
+    { "path": "../../features/plugin-status" },
+    { "path": "../../features/ui-kit" }
+  ]
+}

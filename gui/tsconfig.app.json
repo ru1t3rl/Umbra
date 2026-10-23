@@ -4,6 +4,7 @@
   "include": ["src"],
   "references": [
     { "path": "./feature-shells/dashboard" },
+    { "path": "./feature-shells/plugins" },
     { "path": "./feature-shells/showcase" },
     { "path": "./feature-shells/templates" },
     { "path": "./features/data" },

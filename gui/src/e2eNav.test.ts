@@ -28,7 +28,7 @@ test("without the e2e flag the router adds nothing (production and unit tests)",
   Reflect.set(window, "__UMBRA_E2E_NAV__", [{ path: "/injected", label: "Injected" }]);
   try {
     const { navItems } = await import("./router.tsx");
-    expect(navItems.map((i) => i.path)).toEqual(["/", "/templates"]);
+    expect(navItems.map((i) => i.path)).toEqual(["/", "/templates", "/plugins"]);
   } finally {
     Reflect.deleteProperty(window, "__UMBRA_E2E_NAV__");
   }

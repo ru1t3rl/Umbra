@@ -120,6 +120,16 @@ describe("plugin-status design", () => {
   test("all user-visible text lives in messages.ts", () => {
     expect(files(".", /^messages\.ts$/)).toEqual(["messages.ts"]);
     expect(read("messages.ts")).toMatch(/\bdefineMessages\b/);
-    for (const f of components) expect(read(f), f).toMatch(/from\s*["'][./]+\/messages\.ts["']/);
+    // PluginStatusGate (ASM-994) renders no text of its own (IdleState owns the idle text): exempt from the
+    // messages.ts import, but it must stay text-free, so a future string in it fails here.
+    const gate = "components/PluginStatusGate/PluginStatusGate.tsx";
+    const body = read(gate)
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "");
+    expect(body).not.toMatch(/>[^<>{}\n]*[A-Za-z][^<>{}\n]*</); // JSX text
+    expect(body).not.toMatch(/=\s*["'][^"']*["']/); // a string-literal JSX attribute value
+    expect(body).not.toMatch(/\{\s*["'`]/); // a string literal in a JSX expression
+    for (const f of components.filter((c) => c !== gate))
+      expect(read(f), f).toMatch(/from\s*["'][./]+\/messages\.ts["']/);
   });
 });

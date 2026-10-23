@@ -4,3 +4,4 @@ export { AdapterList } from "./components/AdapterList/AdapterList.tsx";
 export { ComponentList } from "./components/ComponentList/ComponentList.tsx";
 export { FaultSummary } from "./components/FaultSummary/FaultSummary.tsx";
 export { PluginList } from "./components/PluginList/PluginList.tsx";
+export { PluginStatusGate } from "./components/PluginStatusGate/PluginStatusGate.tsx";

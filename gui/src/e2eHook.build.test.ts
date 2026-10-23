@@ -15,6 +15,8 @@ interface Built {
   dashboard: string;
   /** The lazy templates chunk (WI-15; the page and the template browser). */
   templates: string;
+  /** The lazy plugins chunk (WI-16; the page and plugin-status). */
+  plugins: string;
 }
 
 /**
@@ -24,6 +26,8 @@ interface Built {
 const ENTRY_BUDGET = 400_000;
 const DASHBOARD_BUDGET = 1_050_000;
 const TEMPLATES_BUDGET = 26_000;
+/** WI-16: measured 11,830 characters, 5% headroom (ASM-853, ASM-994). */
+const PLUGINS_BUDGET = 12_500;
 /** A MapLibre API name that survives minification: present in the map chunk only. */
 const MAPLIBRE_MARKER = "queryRenderedFeatures";
 
@@ -47,14 +51,16 @@ async function bundle(mode: "production" | "e2e"): Promise<Built> {
   const entry = chunks.find((c) => c.isEntry);
   const dashboard = chunks.find((c) => /DashboardPage/.test(c.fileName));
   const templates = chunks.find((c) => /TemplatesPage/.test(c.fileName));
-  if (!entry || !dashboard || !templates)
-    throw new Error("the app build has no entry, dashboard or templates chunk");
+  const plugins = chunks.find((c) => /PluginsPage/.test(c.fileName));
+  if (!entry || !dashboard || !templates || !plugins)
+    throw new Error("the app build has no entry, dashboard, templates or plugins chunk");
   return {
     code: chunks.map((c) => c.code).join("\n"),
     files: outputs.map((o) => o.fileName),
     entry: entry.code,
     dashboard: dashboard.code,
     templates: templates.code,
+    plugins: plugins.code,
   };
 }
 
@@ -102,5 +108,14 @@ describe("the templates chunk (WI-15)", () => {
     expect(built.production.files.filter((f) => /TemplatesPage/.test(f)).length).toBeGreaterThan(0);
     expect(built.production.templates).not.toContain(MAPLIBRE_MARKER);
     expect(built.production.templates.length).toBeLessThan(TEMPLATES_BUDGET);
+  });
+});
+
+describe("the plugins chunk (WI-16)", () => {
+  test("is a separate chunk behind the router, without MapLibre, and stays in budget", () => {
+    expect(built.production.files.filter((f) => /PluginsPage/.test(f)).length).toBeGreaterThan(0);
+    expect(built.production.plugins).toBeDefined();
+    expect(built.production.plugins).not.toContain(MAPLIBRE_MARKER);
+    expect(built.production.plugins.length).toBeLessThan(PLUGINS_BUDGET);
   });
 });

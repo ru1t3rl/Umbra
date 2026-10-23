@@ -1,6 +1,6 @@
 // WI-15 review round 2 (ASM-992): the bar's contents must not shrink or wrap where the fit ladder cannot see it.
 // A sweep of the viewport width, 1600 down to 1280 px in steps of 20, with the idle and the running run state and
-// with two links (as shipped) and four (two more injected through `__UMBRA_E2E_NAV__`, src/e2eNav.ts). At every
+// with three links (as shipped since WI-16) and four (Settings injected through `__UMBRA_E2E_NAV__`, src/e2eNav.ts). At every
 // width: no element of the bar is clipped (`scrollWidth` over `clientWidth`; only the title's own text box may be,
 // and only when the title is dropped), the theme switch, the nav links, the buttons and every readout label are on
 // one line, the bar does not overflow, and the level (0 full, 1 icon navigation, 2 no title, 3 icon lifecycle
@@ -22,10 +22,7 @@ const HELLO = {
     send_timeout_s: 10,
   },
 };
-const EXTRA = [
-  { path: "/plugins", label: "Plugins", icon: "extension" },
-  { path: "/settings", label: "Settings", icon: "settings" },
-];
+const EXTRA = [{ path: "/settings", label: "Settings", icon: "settings" }];
 const WIDTHS = Array.from({ length: 17 }, (_, i) => 1600 - i * 20);
 
 /** `worst`: the widest readouts the bar can show (T+99:59:59, tick 9,999,999, 10,000 entities). */
@@ -67,7 +64,7 @@ const frame = (state: string, worst: boolean) => {
   };
 };
 
-async function open(page: Page, state: string, links: 2 | 4, worst = false): Promise<void> {
+async function open(page: Page, state: string, links: 3 | 4, worst = false): Promise<void> {
   if (links === 4) {
     await page.addInitScript((entries) => {
       Reflect.set(window, "__UMBRA_E2E_NAV__", entries);
@@ -156,7 +153,7 @@ async function sweep(page: Page): Promise<string[]> {
   return problems;
 }
 
-for (const links of [2, 4] as const) {
+for (const links of [3, 4] as const) {
   for (const state of ["idle", "running"] as const) {
     test(`sweep 1600 to 1280 px, ${links} links, ${state}: nothing clipped or wrapped, the level only grows`, async ({
       page,

@@ -12,6 +12,7 @@
         "@umbra/schema-form": "workspace:*",
         "@umbra/settings": "workspace:*",
         "@umbra/shell-dashboard": "workspace:*",
+        "@umbra/shell-plugins": "workspace:*",
         "@umbra/shell-showcase": "workspace:*",
         "@umbra/shell-templates": "workspace:*",
         "@umbra/ui-kit": "workspace:*",
@@ -53,6 +54,21 @@
       },
       "devDependencies": {
         "@umbra/data": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
+      },
+    },
+    "feature-shells/plugins": {
+      "name": "@umbra/shell-plugins",
+      "version": "0.0.0",
+      "dependencies": {
+        "@umbra/plugin-status": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "devDependencies": {
+        "@umbra/data": "workspace:*",
+        "@umbra/engine-stream": "workspace:*",
       },
       "peerDependencies": {
         "react": "^19.3.1",
@@ -611,6 +627,8 @@
     "@umbra/settings": ["@umbra/settings@workspace:features/settings"],
 
     "@umbra/shell-dashboard": ["@umbra/shell-dashboard@workspace:feature-shells/dashboard"],
+
+    "@umbra/shell-plugins": ["@umbra/shell-plugins@workspace:feature-shells/plugins"],
 
     "@umbra/shell-showcase": ["@umbra/shell-showcase@workspace:feature-shells/showcase"],
 
