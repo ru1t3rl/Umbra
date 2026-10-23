@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 // ADR 0044, ASM-514. `ui` runs against a preview with no engine behind it (URL from global-setup); `engine`
@@ -12,7 +13,15 @@ export default defineConfig({
   reporter: "list",
   use: {
     reducedMotion: "reduce",
-    launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
+    // Linux only: pins fontconfig rendering so the native <select> text rasterizes the same on every
+    // machine (ASM-932). Chromium ignores the variable on other platforms.
+    launchOptions: {
+      args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-lcd-text"],
+      env: {
+        ...process.env,
+        FONTCONFIG_FILE: resolve(import.meta.dirname, "e2e/support/fonts.conf"),
+      },
+    },
   },
   // global-setup exports the URLs (free ports); workers re-read this config and inherit them
   projects: [
