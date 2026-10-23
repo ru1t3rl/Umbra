@@ -66,6 +66,11 @@ pub struct ServeArgs {
     /// configuration, else warn).
     #[arg(long, value_parser = parse_level)]
     pub log_level: Option<LevelFilter>,
+    /// Records every scenario load to its own file `session-<n>.umbrarec.jsonl` in a new
+    /// subdirectory `serve-<k>` of this directory (created if missing); earlier recordings are
+    /// never overwritten. See ADR 0053.
+    #[arg(long, value_name = "DIR")]
+    pub record_dir: Option<PathBuf>,
 }
 
 /// Options of `run`.
@@ -98,6 +103,18 @@ pub struct RunArgs {
     /// A directory of plugin packages to load (repeatable); the scenario's `plugin_paths` follow.
     #[arg(long = "plugin-path", value_name = "DIR")]
     pub plugin_path: Vec<PathBuf>,
+    /// Write a recording of the run (inputs and state hashes, JSON Lines) to this file, for
+    /// `umbra replay`; see ADR 0053. The output of the run is unchanged.
+    #[arg(long, value_name = "FILE")]
+    pub record: Option<PathBuf>,
+    /// Hash every N ticks in the recording (default: the tick rate, once per simulated second).
+    #[arg(
+        long,
+        value_name = "N",
+        requires = "record",
+        value_parser = clap::value_parser!(u64).range(1..)
+    )]
+    pub record_hash_every: Option<u64>,
 }
 
 /// Options of `validate`.

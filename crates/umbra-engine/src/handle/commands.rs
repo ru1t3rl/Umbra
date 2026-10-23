@@ -10,6 +10,7 @@ use umbra_kernel::ClockMode;
 use super::thread::{EndingStep, Run, StepEnd, Worker};
 use super::{Command, HandleError, Reply, SessionInfo};
 use crate::bus::{RunState, StopReason};
+use crate::record::RecordOptions;
 use crate::session::{Session, SessionOptions};
 
 /// A state of the matrix in which `command` is refused with `invalid_state`.
@@ -183,11 +184,29 @@ impl Worker {
         options.load = self.settings.load.clone();
         options.plugin_log.clone_from(&self.settings.plugin_log);
         let result = match Session::load(&self.settings.base, path, options) {
-            Ok(session) => Ok(self.install(session, seed)),
+            Ok(mut session) => {
+                self.start_recording(&mut session, seed);
+                Ok(self.install(session, seed))
+            }
             Err(error) => Err(HandleError::Session(self.shown_session_error(error))),
         };
         self.publish_control(Vec::new());
         reply.complete(result);
+    }
+
+    /// With a record directory configured, records this load to `session-<n>.umbrarec.jsonl`
+    /// (ASM-632). A recording that cannot be started is logged and the session runs unrecorded.
+    fn start_recording(&self, session: &mut Session, seed: Option<u64>) {
+        let Some(dir) = &self.settings.record_dir else {
+            return;
+        };
+        let file = dir.join(format!("session-{}.umbrarec.jsonl", self.sessions));
+        let mut options = RecordOptions::new(&file);
+        // Never truncate a recording under a record directory (ASM-736).
+        options.create_new = true;
+        if let Err(error) = session.start_recording(options, seed) {
+            tracing::error!(file = %file.display(), "cannot record this session: {error}");
+        }
     }
 
     /// Makes `session` the current run, `ready`, and describes it.

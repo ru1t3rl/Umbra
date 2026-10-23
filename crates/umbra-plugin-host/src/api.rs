@@ -232,6 +232,14 @@ impl PluginHost {
         self.adopt(image, origin.to_owned(), None)
     }
 
+    /// The canonical library path of the plugin at `index` in [`PluginHost::plugins`] order; `None`
+    /// for a plugin added with [`PluginHost::load_static`] or an index out of range. The recorder
+    /// digests this file (ADR 0053).
+    #[must_use]
+    pub fn library_path(&self, index: usize) -> Option<&std::path::Path> {
+        self.images.get(index)?.path.as_deref()
+    }
+
     /// Registers every capability of every loaded plugin (load order, then descriptor order) with
     /// `Provenance::Plugin`; all-or-nothing (ASM-091 d).
     ///

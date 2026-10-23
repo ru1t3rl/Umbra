@@ -15,6 +15,8 @@ mod config;
 mod output;
 #[cfg(test)]
 mod output_warnings_tests;
+#[cfg(test)]
+mod record_tests;
 #[cfg(feature = "server")]
 mod serve;
 
@@ -34,9 +36,10 @@ use umbra_engine::builtins::standard_registry;
 use umbra_engine::scenario::{Diagnostic, Diagnostics, RunOptions, ScenarioError, TickRateSource};
 use umbra_engine::{
     BEHAVIOR_FILE_SCHEMA, CONFIG_FILE_SCHEMA, ComponentId, ComponentKind, ControlAction,
-    HostOptions, PluginInfo, SCENARIO_FILE_SCHEMA, StdWallClock, TEMPLATE_FILE_SCHEMA, TickRate,
-    instantiate_with_plugins, load_plugins, load_scenario_with_plugins_and_settings,
-    resolve_plugin_paths, validate_path_with_plugins_and_settings,
+    EngineError, HostOptions, PluginInfo, RecordOptions, Recorder, SCENARIO_FILE_SCHEMA,
+    StdWallClock, TEMPLATE_FILE_SCHEMA, TickRate, instantiate_with_plugins, load_plugins,
+    load_scenario_with_plugins_and_settings, resolve_plugin_paths,
+    validate_path_with_plugins_and_settings,
 };
 
 /// Stack of the thread that runs the command. Behavior graphs are ticked by recursion and need up
@@ -159,6 +162,7 @@ fn run(args: &RunArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
     }
     log_plugins(log_level, loaded.plugins.plugins());
     let mut run = instantiate_with_plugins(&loaded, options).context("instantiating")?;
+    attach_recording(args, &loaded, &mut run.engine)?;
     let ticks = args.ticks.unwrap_or(run.duration_ticks);
     let format = if args.json {
         Format::Json
@@ -174,9 +178,7 @@ fn run(args: &RunArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
     let names = output::name_map(&run.entities);
     // A write error (for example a closed pipe) stops the run (ControlFlow::Break).
     // Run control reaches the network around the run (ASM-295); a fault under `abort` ends it.
-    if let Some(fault) = run.engine.publish_control(ControlAction::Start) {
-        return Err(anyhow!(fault.to_string())).context("starting the run");
-    }
+    start_run(&mut run.engine)?;
     let stepped = run.engine.step(ticks, |view| {
         let tick = view.report.time.tick();
         let mut write = || -> io::Result<()> {
@@ -196,7 +198,8 @@ fn run(args: &RunArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
             }
         }
     });
-    let stop_fault = run.engine.publish_control(ControlAction::Stop);
+    // A failed recording does not stop the run; it is reported once the output is complete (ASM-625).
+    let (stop_fault, recorded) = finish_run(&mut run.engine, &stepped);
     log_net(log_level, &run.engine);
     stepped.context("running the scenario")?;
     if let Some(fault) = stop_fault {
@@ -213,7 +216,72 @@ fn run(args: &RunArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
     )
     .context("writing output")?;
     out.flush().context("flushing output")?;
+    recorded.context("writing the recording")?;
     Ok(ExitCode::SUCCESS)
+}
+
+/// With `--record`, creates the recording (an unwritable file is an error before the run) and
+/// attaches it to the engine.
+fn attach_recording(
+    args: &RunArgs,
+    loaded: &umbra_engine::LoadedScenario,
+    engine: &mut umbra_engine::Engine,
+) -> Result<()> {
+    let Some(file) = &args.record else {
+        return Ok(());
+    };
+    let mut record = RecordOptions::new(file);
+    record.hash_every = args.record_hash_every;
+    let recorder = Recorder::create(record, &args.scenario, loaded, args.seed)
+        .with_context(|| format!("creating the recording {}", file.display()))?;
+    engine
+        .attach_recorder(recorder)
+        .context("attaching the recording")
+}
+
+/// The reason a run's recording ends with (ASM-732). A fault while sending `Stop` is the final
+/// status of a run that otherwise ended normally, like the handle's.
+fn end_reason(
+    stepped: &Result<umbra_engine::RunSummary, EngineError>,
+    stop_fault: Option<&umbra_engine::NetFault>,
+) -> &'static str {
+    match (stepped, stop_fault) {
+        (Err(EngineError::PluginFault(_)), _) => "plugin_fault",
+        (Err(EngineError::NetworkFault(_)), _) | (Ok(_), Some(_)) => "network_fault",
+        (Err(_), _) => "error",
+        (Ok(summary), None) if summary.stopped_early => "stopped",
+        (Ok(_), None) => "completed",
+    }
+}
+
+/// Publishes `Start`; a fault under `abort` ends the run before its first tick ([`abort_start`]).
+fn start_run(engine: &mut umbra_engine::Engine) -> Result<()> {
+    match engine.publish_control(ControlAction::Start) {
+        Some(fault) => Err(abort_start(engine, &fault)),
+        None => Ok(()),
+    }
+}
+
+/// Publishes `Stop` and closes the recording with the reason the run ended ([`end_reason`]).
+/// Returns the fault of the `Stop` and the outcome of the recording.
+fn finish_run(
+    engine: &mut umbra_engine::Engine,
+    stepped: &Result<umbra_engine::RunSummary, EngineError>,
+) -> (Option<umbra_engine::NetFault>, Result<()>) {
+    let stop_fault = engine.publish_control(ControlAction::Stop);
+    let recorded = engine
+        .finish_recording(end_reason(stepped, stop_fault.as_ref()))
+        .map(drop)
+        .map_err(anyhow::Error::from);
+    (stop_fault, recorded)
+}
+
+/// A network fault on `Start` ends the run before its first tick: the recording is closed with
+/// `network_fault` so that every ended run has an `end`, and the error to report is returned.
+fn abort_start(engine: &mut umbra_engine::Engine, fault: &umbra_engine::NetFault) -> anyhow::Error {
+    // A failed recording is reported by the run's own error path; the start fault comes first.
+    let _ = engine.finish_recording("network_fault");
+    anyhow!(fault.to_string()).context("starting the run")
 }
 
 /// One stderr line per loaded plugin when the log level admits info (ASM-113). Nothing is printed

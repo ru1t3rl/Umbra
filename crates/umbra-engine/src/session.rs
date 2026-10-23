@@ -21,11 +21,13 @@ use crate::error::EngineError;
 use crate::plugins::{
     LoadedScenario, dedup_plugin_paths, load_with_host_options, resolve_plugin_paths,
 };
+use crate::record::{RecordOptions, Recorder};
 use crate::scenario::{
     EntityInfo, LoadSettings, RunOptions, ScenarioError, instantiate_in, placement_from_template,
     scenario_registry, spawn_placement,
 };
 use crate::validate::{GraphValidation, validate_with_others};
+use umbra_record::RecordError;
 
 /// How to load a session.
 #[non_exhaustive]
@@ -300,6 +302,29 @@ impl Session {
                 group: None,
             })
         })
+    }
+
+    /// Starts recording this session to `options.path` (ADR 0053): the header is taken from the
+    /// loaded scenario, its plugins and `seed`, the effective seed of the load (`None` = the
+    /// scenario's). Call it before the first tick.
+    ///
+    /// # Errors
+    /// [`RecordError`] from creating or attaching the recorder; the session then carries a recorder
+    /// that is `Failed` from the start (unless it already had one).
+    pub fn start_recording(
+        &mut self,
+        options: RecordOptions,
+        seed: Option<u64>,
+    ) -> Result<(), RecordError> {
+        let file = options.path.clone();
+        let started =
+            Recorder::from_parts(options, &self.path, &self.scenario, &self.plugins, seed)
+                .and_then(|recorder| self.engine.attach_recorder(recorder));
+        if let Err(error) = &started {
+            // The status shows a recording that failed to start, not none (ADR 0057).
+            self.engine.attach_failed_recorder(file, error);
+        }
+        started
     }
 
     /// The scenario's run length in ticks.

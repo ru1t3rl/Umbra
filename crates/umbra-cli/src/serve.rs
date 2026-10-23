@@ -85,6 +85,11 @@ pub fn serve(args: &ServeArgs, config_flag: Option<&Path>) -> Result<ExitCode> {
     let settings = settings(args, &configuration.config);
     let mut handle_config = settings.handle_config().context("setting up the engine")?;
     handle_config.stack_size = ENGINE_STACK_BYTES;
+    if let Some(dir) = &args.record_dir {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("creating the record directory {}", dir.display()))?;
+        handle_config.record_dir = Some(dir.clone());
+    }
     let (handle, thread) =
         EngineHandle::spawn(handle_config).context("starting the engine thread")?;
     preload(&handle, args)?;

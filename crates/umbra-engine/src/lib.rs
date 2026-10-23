@@ -14,6 +14,7 @@
 
 pub mod builtins;
 pub mod bus;
+mod commands;
 pub mod confine;
 pub mod display;
 pub mod engine;

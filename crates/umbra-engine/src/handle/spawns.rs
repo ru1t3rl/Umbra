@@ -7,6 +7,7 @@ use super::commands::need;
 use super::thread::{Run, Worker};
 use super::{Applied, EntityState, HandleError, Reply};
 use crate::bus::RunState;
+use crate::commands::CommandApplier;
 use crate::session::TemplateSpawn;
 
 /// The states in which entities may be spawned and removed.
@@ -38,7 +39,7 @@ impl Worker {
     fn spawn_now(&mut self, spec: TemplateSpawn) -> Result<(EntityId, SimEvent), HandleError> {
         let run = self.run_mut()?;
         need(run, &EDITABLE, "spawn")?;
-        let spawned = run.session.spawn(spec)?;
+        let spawned = CommandApplier::spawn(&mut run.session, spec)?;
         refresh_directory(run);
         Ok(spawned)
     }
@@ -46,7 +47,7 @@ impl Worker {
     fn remove_now(&mut self, id: EntityId) -> Result<(Applied, SimEvent), HandleError> {
         let run = self.run_mut()?;
         need(run, &EDITABLE, "remove")?;
-        let event = run.session.remove(id)?;
+        let event = CommandApplier::remove(&mut run.session, id)?;
         refresh_directory(run);
         let applied = Applied {
             applied_at: run.session.engine().now(),

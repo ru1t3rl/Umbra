@@ -131,8 +131,9 @@ pub struct HandleConfig {
     /// Receives the log messages of the plugins of every session; `None` logs to `tracing`.
     pub plugin_log: Option<Arc<dyn PluginLog>>,
     /// Records every session load to its own file in this directory (`serve --record-dir`,
-    /// ADR 0053, ASM-632); `None` records nothing. M7 WI-13 implements it; until then it is
-    /// ignored.
+    /// ADR 0053, ASM-632); `None` records nothing. Each handle writes into its own new
+    /// subdirectory `serve-<k>` (the first free `k`), so a restart never overwrites recordings
+    /// (ASM-736). A load whose recording cannot be started is logged and runs with a failed recorder.
     pub record_dir: Option<std::path::PathBuf>,
 }
 
@@ -570,7 +571,7 @@ impl EngineHandle {
     ///
     /// # Errors
     /// [`SpawnError::ZeroCapacity`], [`SpawnError::StackTooSmall`], or [`SpawnError::Io`].
-    pub fn spawn(config: HandleConfig) -> Result<(EngineHandle, EngineThread), SpawnError> {
+    pub fn spawn(mut config: HandleConfig) -> Result<(EngineHandle, EngineThread), SpawnError> {
         if config.command_capacity == 0 {
             return Err(SpawnError::ZeroCapacity);
         }
@@ -580,6 +581,10 @@ impl EngineHandle {
                 minimum: MIN_STACK_SIZE,
             });
         }
+        config.record_dir = config
+            .record_dir
+            .take()
+            .map(|base| thread::new_record_dir(&base));
         let (tx, rx) = mpsc::sync_channel(config.command_capacity);
         let bus = Arc::new(Bus::new());
         let shared = Arc::new(Shared::new());

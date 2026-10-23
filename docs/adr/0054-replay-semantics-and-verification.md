@@ -48,3 +48,12 @@ Option 1.
 - Harder: a recording is only replayable with the same files and plugin builds on the same OS (A-2,
   ADR 0003); documented.
 - Revisit for seek (snapshots), API replay sessions (M8 on request), or cross-OS replay.
+
+## Amendment note (M7 WI-13, review round 1): which tick a record carries
+The recorder writes the tick of the clock at the moment of the call. `inbound` records and `fault` records
+with the call `poll` are written during ingest, before the tick runs, so they carry the boundary tick N
+(ticks completed). `fault` records with the calls `publish` and `control`, and the `hash` records, are
+written after the tick ran, so they carry N+1. The replay therefore feeds the `inbound` and `poll`-fault
+records of tick N to the replay adapters during the tick that completes as N+1, and compares the `hash`
+record of N+1 after it. `command` records carry `before_tick` = N (applied before that tick). The same
+rule belongs in `docs/replay.md` (WI-14).

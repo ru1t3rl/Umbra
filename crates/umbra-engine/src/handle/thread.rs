@@ -4,6 +4,7 @@
 //! priming marks, and then either asks the engine for one pacing decision or parks on the queue.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
@@ -30,6 +31,31 @@ pub(super) struct Settings {
     pub(super) wall: Arc<dyn Fn() -> Box<dyn WallClock> + Send + Sync>,
     pub(super) plugin_log: Option<Arc<dyn PluginLog>>,
     pub(super) max_wait: Duration,
+    /// One recording per load goes here (`serve --record-dir`, ASM-632).
+    pub(super) record_dir: Option<PathBuf>,
+}
+
+/// Creates `base` if needed and returns the first free `serve-<k>` directory under it (ASM-736):
+/// every handle (every `serve` start) claims one for its recordings. If none can be created, the
+/// last path tried is returned: every recording of the handle then fails to start, visibly, instead
+/// of one overwriting another.
+pub(super) fn new_record_dir(base: &std::path::Path) -> PathBuf {
+    if let Err(error) = std::fs::create_dir_all(base) {
+        tracing::error!(dir = %base.display(), "cannot create the record directory: {error}");
+    }
+    let mut dir = base.join("serve-1");
+    for k in 1_u32..=100_000 {
+        dir = base.join(format!("serve-{k}"));
+        match std::fs::create_dir(&dir) {
+            Ok(()) => return dir,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => {
+                tracing::error!(dir = %dir.display(), "cannot create the record directory: {error}");
+                return dir;
+            }
+        }
+    }
+    dir
 }
 
 /// A `step` waiting for its ticks.
@@ -116,6 +142,22 @@ impl Run {
         }
     }
 
+    /// Closes the recording, if there is one, with the reason this run ended (ASM-732): `unloaded`
+    /// when it did not end. Idempotent; a failure was logged when it happened (ASM-625).
+    pub(super) fn finish_recording(&mut self) {
+        let reason = match &self.stop_reason {
+            None => "unloaded",
+            Some(StopReason::Duration) => "completed",
+            Some(StopReason::PluginFault(_)) => "plugin_fault",
+            Some(StopReason::NetworkFault(_)) => "network_fault",
+            Some(StopReason::Error(_)) => "error",
+            Some(StopReason::Command) => "stopped",
+        };
+        if let Err(error) = self.session.engine_mut().finish_recording(reason) {
+            tracing::debug!("the recording is incomplete: {error}");
+        }
+    }
+
     /// Takes the pending step, unanswered, with the time reached now. The ticks it still had
     /// queued in the clock are dropped, so a later `resume` does not run them.
     pub(super) fn take_step(&mut self, end: StepEnd) -> Option<EndingStep> {
@@ -171,6 +213,7 @@ pub(super) fn run(config: HandleConfig, rx: Receiver<Command>, bus: Arc<Bus>, sh
         max_wait,
         wall,
         plugin_log,
+        record_dir,
         ..
     } = config;
     let worker = Worker {
@@ -180,6 +223,7 @@ pub(super) fn run(config: HandleConfig, rx: Receiver<Command>, bus: Arc<Bus>, sh
             wall,
             plugin_log,
             max_wait,
+            record_dir,
         },
         rx,
         bus,
@@ -390,6 +434,7 @@ impl Worker {
             }
             (reason, _) => reason,
         });
+        run.finish_recording();
         run.take_step(end)
     }
 
@@ -441,7 +486,8 @@ impl Worker {
     /// follows (review D-a). A pending step must have been taken first.
     pub(super) fn drop_session(&mut self) {
         self.bus.set_tick_rate(None);
-        if let Some(run) = self.run.take() {
+        if let Some(mut run) = self.run.take() {
+            run.finish_recording();
             self.idle_clock = run.session.engine().clock_mode();
         }
     }
@@ -483,6 +529,7 @@ mod tests {
                 }),
                 plugin_log: None,
                 max_wait: Duration::from_millis(1),
+                record_dir: None,
             },
             rx,
             bus: Arc::new(Bus::new()),

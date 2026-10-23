@@ -7,6 +7,7 @@ use umbra_net::{AdapterStatus, ManagerError};
 
 use super::thread::{Run, Worker};
 use super::{AdapterReport, HandleError};
+use crate::commands::CommandApplier;
 
 impl Run {
     /// The report of one adapter: the component the scenario named and, for a plugin adapter, the
@@ -67,12 +68,8 @@ impl Worker {
             .find(|s| s.name == name)
             .map(|s| s.adapter.clone())
             .ok_or_else(not_found)?;
-        let link = run
-            .session
-            .engine_mut()
-            .network_mut()
-            .ok_or_else(not_found)?;
-        let status = link.set_enabled(name, enabled).map_err(|e| match e {
+        let status = CommandApplier::set_adapter_enabled(run.session.engine_mut(), name, enabled)
+            .map_err(|e| match e {
             ManagerError::Faulted(name) => HandleError::AdapterFaulted(name),
             // `ManagerError` is non-exhaustive; the name was found in the scenario above.
             _ => not_found(),

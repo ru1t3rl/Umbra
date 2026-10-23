@@ -17,7 +17,7 @@ use core::time::Duration;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use umbra_core::{
     BbValue, Behavior, BehaviorContext, BehaviorId, BehaviorInstance, BlackboardError, BuildError,
@@ -197,14 +197,25 @@ pub fn example(name: &str) -> PathBuf {
         .join("scenario.toml")
 }
 
-/// A fresh path under the target tmp dir.
+/// A fresh path under the target tmp dir. The directory is named after the test binary and emptied
+/// the first time a process uses it, so scratch files of earlier runs never pile up (the disk is
+/// small); names carry a per-process counter and no process id. Two concurrent runs of one test
+/// binary on one tree are not supported (the second would empty the first's directory).
 pub fn scratch(tag: &str) -> PathBuf {
     static N: AtomicUsize = AtomicUsize::new(0);
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("m7");
-    std::fs::create_dir_all(&dir).expect("scratch directory");
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    let dir = DIR.get_or_init(|| {
+        // `record-5a19ac7401f8dca8` -> `record`: stable across rebuilds.
+        let exe = std::env::current_exe().expect("current exe");
+        let stem = exe.file_stem().and_then(|s| s.to_str()).unwrap_or("test");
+        let name = stem.rsplit_once('-').map_or(stem, |(name, _)| name);
+        let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("m7").join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch directory");
+        dir
+    });
     dir.join(format!(
-        "{}-{}-{tag}.umbrarec.jsonl",
-        std::process::id(),
+        "{}-{tag}.umbrarec.jsonl",
         N.fetch_add(1, Ordering::SeqCst)
     ))
 }
@@ -314,7 +325,9 @@ pub fn record_with(
     options.state_hash = state_hash;
     let recorder = Recorder::create(options, scenario, &loaded, seed)
         .unwrap_or_else(|e| panic!("recorder: {e}"));
-    engine.attach_recorder(recorder);
+    engine
+        .attach_recorder(recorder)
+        .unwrap_or_else(|e| panic!("attach: {e}"));
     let (mut hashes, mut entity_counts) = (Vec::new(), Vec::new());
     engine
         .run(

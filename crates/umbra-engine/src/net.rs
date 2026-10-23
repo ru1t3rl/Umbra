@@ -303,6 +303,11 @@ impl NetLink {
         }))
     }
 
+    /// Attaches the inbound tap of the recorder (ADR 0053, ASM-627); it only observes.
+    pub(crate) fn set_tap(&mut self, tap: Box<dyn umbra_net::InboundTap>) {
+        self.manager.set_tap(Some(tap));
+    }
+
     /// One status per adapter, in scenario order.
     #[must_use]
     pub fn status(&self) -> Vec<AdapterStatus> {
@@ -526,6 +531,9 @@ impl Engine {
     /// Returns the fault when an adapter faulted in it under the `abort` policy (ASM-252); the
     /// caller stops the run.
     pub fn publish_control(&mut self, action: ControlAction) -> Option<NetFault> {
+        if let Some(command) = crate::record::informational(action) {
+            self.record_command(command);
+        }
         let now = self.now();
         let link = self.network.as_mut()?;
         link.publish_control(now, action);

@@ -21,6 +21,7 @@ use umbra_kernel::{
 };
 
 use umbra_plugin_host::{PluginFault, PluginHost};
+use umbra_record::RecordedCommand;
 
 use crate::error::{EngineError, SpawnParam};
 use crate::scenario::EntityInfo;
@@ -132,6 +133,8 @@ pub struct Engine {
     directory: BTreeMap<EntityId, EntityInfo>,
     /// Bumped on every change of `directory`, so a driver can tell when a cached copy is stale.
     directory_version: u64,
+    /// The recorder, if one was attached (M7, ADR 0053); it only reads the engine's state.
+    pub(crate) recorder: Option<crate::record::Live>,
 }
 
 impl Engine {
@@ -162,6 +165,7 @@ impl Engine {
             spawner: None,
             directory: BTreeMap::new(),
             directory_version: 0,
+            recorder: None,
         }
     }
 
@@ -349,6 +353,7 @@ impl Engine {
 
     /// Switches the clock mode.
     pub fn set_clock(&mut self, m: ClockMode) {
+        self.record_command(RecordedCommand::SetClock(crate::record::clock_name(m)));
         self.kernel.clock_mut().set_mode(m);
     }
 
@@ -529,6 +534,7 @@ impl Engine {
             net_fault = link.take_abort();
         }
         let plugin_fault = self.plugins.as_ref().and_then(|h| h.take_abort());
+        self.record_tick();
         Ok(Ticked {
             report,
             plugin_fault,

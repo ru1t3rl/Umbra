@@ -5,6 +5,32 @@ running logs and assumptions stay the detailed source: `docs/plans/M7.md`, `docs
 `docs/assumptions/M7.md`, `docs/assumptions/M8.md`. This file only says where things stand. The same
 file is committed on `m7` and `m8`.
 
+## Status at the 2026-10-24 pause (read first; supersedes the state described below)
+
+The human paused both tracks mid-work-item on 2026-10-24. Both trees were committed as **WIP** and pushed; nothing is merged or tagged. Resume only when the human asks (M7 was to pause after WI-13, M8 after WI-17).
+
+| Branch | State |
+|---|---|
+| `develop` | `c085e6c`: DIS port-race fix (test code, ASM-1200) on top of `ce006a6` (leaked plugin-package copies pruned). Neither is merged into `m7`/`m8` yet (`ce006a6` is cherry-picked into `m7` as `491890b`). |
+| `m7` | WI-1..WI-12 done and committed (last: WI-8 `dab5d6b`, WI-9 `9f03ea1`, WI-11 `fa23bac`, WI-12 `004b785`). **WI-13 (recorder, `run --record`, `serve --record-dir`) = WIP commit**, see below. |
+| `m8` | WI-1..WI-16 done and committed (last: WI-15 `cf5fa62`, WI-16 `245de92`). **WI-17 (`@umbra/shell-settings`) = WIP commit**, see below. |
+
+**M7 WI-13 (WIP).** Implemented; review round 1 (REQUEST CHANGES: 3 major, 7 minor) fixed; re-review = APPROVE with two minors that were being fixed when paused:
+- Minor 1: the CLI wiring of `end_reason`/`abort_start` in `umbra-cli/src/main.rs` `run()` is untested (mutant "bypass `abort_start`, stop fault `None`" survives); move into a helper reachable by unit rows (e.g. `close_recording(engine, stepped, stop_fault)`).
+- Minor 2: ADR 0053 line 57 and ASM-622 still describe `session-<n>` directly in `--record-dir`; the layout is now `serve-<k>/session-<n>` (ASM-736). Add for WI-16: confine `RecordingStatus.file` against the base `--record-dir` (spawn rewrites `HandleConfig.record_dir`).
+- Nits: `new_record_dir` should `create_dir_all(base)`; ASM-733 vs `Core::command` advancing `boundary`/`next_seq` before the push; delete old pid-named files under `target/tmp/m7/`; comment that two concurrent runs of one test binary are unsupported.
+- The WIP state may be partly edited for those items; the last full gate run (before them) passed: 3-test 3511, 4-determinism 38, 13-plugin-fail 61, goldens unchanged with and without `--record`. Re-run `scripts/gates.sh` first.
+- Pending housekeeping: merge `develop` into `m7`; add a DECISIONS-LOG row for the DIS port fix (`c085e6c`, ASM-1200, decided by agent).
+
+**M8 WI-17 (WIP).** Implemented (settings editors in `@umbra/settings`, `EngineConnectionSettings` stub in `@umbra/desktop`, shell, app version from `gui/package.json`, `SETTINGS_BUDGET` 7,700, `sideEffects` on settings/desktop); the sticky-step-down fix in `useBarFit` restored the pinned 1600 px case. Review round 1 = REQUEST CHANGES; the engineer was fixing it when paused (the WIP may be partly edited):
+- **B1 (blocker):** the nested-narrowing restart in `useBarFit.ts` skips the 24 px hysteresis, so at ~1375-1384 px a tick alternating 999,999/1,000,000 flips the level every frame. Coordinator decision: feed the flexible child's natural width into `contentWidth` so the single ASM-990 rule covers it; drop the separate restart; add "alternating readout changes the level at most once" (unit + e2e); pinned 1600 px case unchanged.
+- **M1:** `AffiliationOverridesEditor.test.tsx:191` `toBeDisabled()` on a 256-row DOM OOMs bun (~25 GB) when it fails; assert `.disabled` directly; add the rule to `docs/implementer-checklist.md`.
+- m1 re-judge duplicate-flagged rows after any apply; m3 stream rate commits on gesture end; m4 one app-level `useApplySubscription` in `gui/src/` (remove from the dashboard and settings shells); m5 `"too long"` row error (MAX_STRING); n1 distinct accessible names per row; n2 `AppLink` colour in ui-kit only if no other baseline changes.
+- Baselines: the human approved regenerating the 16 existing ones (14 nav-only, `dashboard-worst-*` at level 3) after this round; do it only if the fixes do not change the bar again.
+- Pending housekeeping: merge `develop` into `m8`.
+
+**Machine rules learned today:** `/tmp` is a RAM tmpfs (a scratch build there OOM-crashed the PC); scratch only under `~/.cache/umbra-scratch`; run mutant or failing test runs under `systemd-run --user --scope -p MemoryMax=6G -- <cmd>` and never retry an OOM; agents must run everything in the foreground (a frontend engineer stalled twice ending its turn with background jobs).
+
 ## Branches and setup
 | Branch | Track | State at pause |
 |---|---|---|

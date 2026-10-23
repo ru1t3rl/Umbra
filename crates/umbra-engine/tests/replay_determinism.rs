@@ -45,7 +45,6 @@ fn unrecorded(name: &str) -> Trace {
 
 /// REQ-K-7, ADR 0053: attaching a recorder does not change a single per-tick hash.
 #[test]
-#[ignore = "M7 WI-13"]
 fn given_a_recorder_when_a_scenario_runs_then_per_tick_hashes_equal_the_unrecorded_run() {
     for name in ["walking_skeleton", "patrol_and_engage", "spawn_order"] {
         let recorded = record(
@@ -65,7 +64,6 @@ fn given_a_recorder_when_a_scenario_runs_then_per_tick_hashes_equal_the_unrecord
 
 /// ASM-621: two recordings of the same run are byte-identical (no wall-clock value in the file).
 #[test]
-#[ignore = "M7 WI-13"]
 fn given_one_run_recorded_twice_then_the_files_are_byte_identical() {
     for name in ["walking_skeleton", "patrol_and_engage", "spawn_order"] {
         let first = record(

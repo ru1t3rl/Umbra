@@ -63,3 +63,9 @@ Option 1. `umbra-record` may depend on `umbra-core` only among workspace crates 
 - Easier: UDP runs become reproducible from their recording; recordings are inspectable with `jq`.
 - Harder: disk speed can bound the tick rate while recording (documented); large captures are verbose.
 - Revisit for a binary encoding, compression, or seek/snapshot support (REQ-B-5 instance state).
+
+## Amendment note (M7 WI-13, review round 1): files of `serve --record-dir`
+`umbra serve --record-dir <dir>` does not write `session-<n>.umbrarec.jsonl` into `<dir>` itself: each
+server start claims the first free subdirectory `<dir>/serve-<k>` and writes
+`serve-<k>/session-<n>.umbrarec.jsonl`, opened with `create_new`, so a restart never overwrites earlier
+recordings (ASM-736).
