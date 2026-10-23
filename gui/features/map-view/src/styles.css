@@ -22,3 +22,18 @@
   z-index: 1;
   transform: translateX(-50%);
 }
+
+/* The selection label (ADR 0078): one element moved by `transform` from the view, to the right of the ring. */
+.umbra-live-map-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: calc(-1 * var(--space-2)) 0 0 var(--space-6);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--glass-stroke);
+  border-radius: var(--radius-full);
+  background: var(--glass);
+  color: var(--ink);
+  white-space: nowrap;
+  pointer-events: none;
+}

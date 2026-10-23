@@ -81,6 +81,28 @@ export function directionSvg(colors: MapColors): string {
   );
 }
 
+/** Registered at the first selection, not at load: it is not in `symbolImages` (ASM-935). */
+export const SELECTION_IMAGE_ID = `${IMAGE_PREFIX}selection`;
+/** Ring stroke in px (tactical-display.md: a 2px azure ring). */
+export const SELECTION_STROKE_PX = 2;
+/** Ring corner radius in px. Keep equal to the `radius-xs` token (4px); the image is SVG and cannot read CSS variables. */
+export const SELECTION_RADIUS_PX = 4;
+/** Ring side in px (stroke centre): clears the 24x16 frame and the diamond. */
+const SELECTION_SIDE_PX = 32;
+
+/** The selection ring: an unfilled rounded square in the selection colour, centred on the symbol. */
+export function selectionSvg(colors: MapColors): string {
+  const o = C - SELECTION_SIDE_PX / 2;
+  return svg(
+    SYMBOL_CANVAS_PX,
+    `<rect x="${o}" y="${o}" width="${SELECTION_SIDE_PX}" height="${SELECTION_SIDE_PX}" rx="${SELECTION_RADIUS_PX}" fill="none" stroke="${colors.selection}" stroke-width="${SELECTION_STROKE_PX}"/>`,
+  );
+}
+
+export function selectionImage(colors: MapColors): SymbolImage {
+  return { id: SELECTION_IMAGE_ID, svg: selectionSvg(colors), size: SYMBOL_CANVAS_PX };
+}
+
 export const AFFILIATIONS: readonly Affiliation[] = ["friend", "hostile", "neutral", "unknown"];
 
 export interface SymbolImage {

@@ -225,8 +225,8 @@ describe("createMapLibreView", () => {
     expect(map.options.style).toBe("https://tiles.test/s.json");
     expect("attributionControl" in map.options).toBe(false);
     await loadMap(map);
-    expect([...map.sources.keys()]).toEqual(["entities"]);
-    expect(map.layers).toEqual(["direction", "entities"]);
+    expect([...map.sources.keys()]).toEqual(["entities", "selection"]); // human decision 2026-10-23, M8 WI-9 review (consequence of the approved FakeMap inline-source change)
+    expect(map.layers).toEqual(["direction", "entities", "selection"]); // human decision 2026-10-23, M8 WI-9 review
   });
 
   test("map and image errors are reported, not swallowed", async () => {
@@ -291,12 +291,12 @@ describe("createMapLibreView", () => {
     expect(map.layers).toEqual([]);
     expect(map.imageOps).toHaveLength(0);
     await loadMap(map);
-    expect(map.layers).toEqual(["direction", "entities"]);
+    expect(map.layers).toEqual(["direction", "entities", "selection"]); // human decision 2026-10-23, M8 WI-9 review
     // later styledata events (our own addLayer calls, tile loads) change nothing
     map.emit("styledata");
     map.emit("styledata");
     await flushPromises();
-    expect(map.layers).toEqual(["direction", "entities"]);
+    expect(map.layers).toEqual(["direction", "entities", "selection"]); // human decision 2026-10-23, M8 WI-9 review
     expect(map.imageOps).toHaveLength(9);
     expect(scheduler.pending).toBe(1);
   });

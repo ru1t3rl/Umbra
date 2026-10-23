@@ -9,6 +9,8 @@ export interface MapColors {
   readonly inkMuted: string;
   readonly symbolFrame: string;
   readonly affiliation: Readonly<Record<Affiliation, string>>;
+  /** `--azure`, the command accent: the selection ring (selection is command, design README). */
+  readonly selection: string;
   /** `--opacity-track` as a number in 0..1. */
   readonly opacityTrack: number;
 }
@@ -46,6 +48,7 @@ export function resolveMapColors(style: CustomPropertySource): MapColors {
       neutral: read(style, "affil-neutral"),
       unknown: read(style, "affil-unknown"),
     },
+    selection: read(style, "azure"),
     opacityTrack,
   };
 }

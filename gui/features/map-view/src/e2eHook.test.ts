@@ -14,6 +14,8 @@ const inspection: MapInspection = {
   lastFlushMs: () => 0,
   missingImages: () => 0,
   tick: () => 0,
+  selectedId: () => null, // human decision 2026-10-23, M8 WI-9 review
+  labelText: () => null, // human decision 2026-10-23, M8 WI-9 review
 };
 const view: MapView = {
   setEntities: () => undefined,

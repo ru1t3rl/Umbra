@@ -53,6 +53,11 @@ export class FakeMap {
       throw error;
     }
     FakeMap.instances.push(this);
+    // Like real MapLibre: a focusable canvas inside the container (keyboard focus lives on it).
+    const canvas = options.container.ownerDocument.createElement("canvas");
+    canvas.tabIndex = 0;
+    canvas.className = "maplibregl-canvas";
+    options.container.append(canvas);
     const style = options.style;
     if (typeof style === "object" && style !== null && "sources" in style) {
       for (const id of Object.keys(style.sources as object)) this.sources.set(id, new FakeSource());
@@ -71,8 +76,13 @@ export class FakeMap {
   addSource(id: string): void {
     this.sources.set(id, new FakeSource());
   }
-  addLayer(layer: { id: string }): void {
+  addLayer(layer: { id: string; source?: unknown }): void {
     this.layers.push(layer.id);
+    // human decision 2026-10-23 (additive): like MapLibre, a layer with an inline source object creates a
+    // source named after the layer id (so a view that adds such a layer replaces the source it wrote to).
+    if (typeof layer.source === "object" && layer.source !== null) {
+      this.sources.set(layer.id, new FakeSource());
+    }
   }
   hasImage(id: string): boolean {
     return this.images.has(id);

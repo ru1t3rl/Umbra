@@ -36,6 +36,10 @@ export interface MapInspection {
   missingImages(): number;
   /** Increments once per completed render, for tests that wait on a frame. */
   tick(): number;
+  /** The selected entity id the view holds; null when none (WI-9, e2e). */
+  selectedId(): number | null;
+  /** Text of the selection label; null when it is absent (nothing selected or not in the frame, WI-9, e2e). */
+  labelText(): string | null;
 }
 
 /**
@@ -57,4 +61,12 @@ export interface MapView {
   fitTo(bounds: GeoBounds, options: FitOptions): boolean;
   inspect(): MapInspection;
   destroy(): void;
+}
+
+/** The view `LiveMap` drives: a `MapView` that also holds the selection (WI-9, ADR 0078). */
+export interface SelectableMapView extends MapView {
+  /** Selects an entity (null clears): the ring and the label follow at the next flush, without a new frame. */
+  setSelection(id: number | null): void;
+  /** Moves the camera to the entity in the newest frame; false (camera untouched) when it is not there. */
+  centerOn(id: number): boolean;
 }

@@ -1,24 +1,41 @@
 import type { EntityFrame } from "@umbra/engine-stream";
-import { defaultAffiliationOf as affiliationOf } from "@umbra/settings";
+import { defaultAffiliationOf } from "@umbra/settings";
 import type { ResolvedTheme } from "@umbra/ui-kit";
-import { type GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
-import type { EntityPosition, MapInspection, MapView } from "../MapView.ts";
+import {
+  type GeoJSONSource,
+  type MapGeoJSONFeature,
+  Map as MapLibreMap,
+  type MapMouseEvent,
+} from "maplibre-gl";
+import type { EntityPosition, MapInspection, SelectableMapView } from "../MapView.ts";
 import type { FitOptions } from "../model/camera.ts";
 import type { MapColors } from "../model/colors.ts";
 import {
+  type AffiliationOf,
   type EntityFeatureCollection,
   emptyFeatureCollection,
   type GeoBounds,
   toFeatureCollection,
 } from "../model/features.ts";
 import {
+  findEntity,
+  type HitCandidate,
+  hitBox,
+  pickNearest,
+  selectionLabel,
+  toSelectionCollection,
+} from "../model/selection.ts";
+import {
   type BasemapOptions,
   buildMapStyle,
   ENTITY_LAYER,
   ENTITY_SOURCE,
   paintUpdates,
+  SELECTION_SOURCE,
+  selectionOverlay,
 } from "../model/style.ts";
-import { symbolImages } from "../model/symbols.ts";
+import { selectionImage, symbolImages } from "../model/symbols.ts";
+import { createSelectionLabel } from "./createSelectionLabel.ts";
 import { type Rasterizer, rasterizeSvg } from "./rasterize.ts";
 
 /** Schedules the per-frame flush; the default is `requestAnimationFrame` (ADR 0045). */
@@ -38,6 +55,12 @@ export interface MapLibreViewOptions {
   readonly onError?: ((error: unknown) => void) | undefined;
   /** The WebGL context was lost (`true`) or restored (`false`); the map recovers by itself on restore. */
   readonly onContextChange?: ((lost: boolean) => void) | undefined;
+  /** A click on the map: the id of the nearest entity, or null on empty map (ASM-803). */
+  readonly onSelect?: ((id: number | null) => void) | undefined;
+  /** Force to affiliation for the entity and selection features; read at every flush. Default: the settings default. */
+  readonly affiliationOf?: AffiliationOf | undefined;
+  /** The selected entity at creation (a re-created view keeps the selection). */
+  readonly selectedId?: number | null | undefined;
   /** Clock for `inspect().lastFlushMs()`; default `performance.now`. */
   readonly now?: (() => number) | undefined;
 }
@@ -47,12 +70,26 @@ const browserScheduler: FrameScheduler = {
   cancel: (handle) => cancelAnimationFrame(handle),
 };
 
+/** Elements whose Escape is their own (MapLibre controls and popups put such elements in the container). */
+const CONTROL_SELECTOR =
+  "button, input, select, textarea, a[href], [role='button'], .maplibregl-ctrl";
+
+/** The entity id and position of a rendered point feature, or undefined for anything else. */
+function pointOf(f: MapGeoJSONFeature): EntityPosition | undefined {
+  if (typeof f.id !== "number" || f.geometry.type !== "Point") return undefined;
+  const [lon, lat] = f.geometry.coordinates;
+  return lon === undefined || lat === undefined ? undefined : { id: f.id, lon, lat };
+}
+
 /**
  * MapLibre implementation of `MapView` (ADR 0040). One GeoJSON source, rewritten from a reused buffer at
  * most once per animation frame (Performance plan 3). Never calls `getData()` or `updateData` on the
  * entity source (ASM-366).
  */
-export function createMapLibreView(container: HTMLElement, options: MapLibreViewOptions): MapView {
+export function createMapLibreView(
+  container: HTMLElement,
+  options: MapLibreViewOptions,
+): SelectableMapView {
   const scheduler = options.scheduler ?? browserScheduler;
   const rasterize = options.rasterize ?? rasterizeSvg;
   const pixelRatio = options.pixelRatio ?? 1;
@@ -68,6 +105,16 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
   });
 
   const buffer: EntityFeatureCollection = emptyFeatureCollection();
+  const selectionBuffer: EntityFeatureCollection = emptyFeatureCollection();
+  const label = createSelectionLabel(container);
+  let selectedId: number | null = options.selectedId ?? null;
+  let selectionLayerAdded = false;
+  // The selection source holds a feature (so clearing it needs one write) / the ring image was requested.
+  let selectionSent = false;
+  let ringRequested = false;
+  // The ring image is installed: only then does the selection source get its feature (no missing image).
+  let ringReady = false;
+  let ringGeneration = 0;
   let latest: EntityFrame | undefined;
   let pending: number | undefined;
   // The style is ready (sources and layers exist), then the symbol images are installed; the first flush waits for both.
@@ -84,14 +131,64 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
   let imageGeneration = 0;
   let current = { colors: options.colors, theme: options.theme };
 
+  /** Puts the label at the selected entity's pixel, or removes it. Pixel work only, no data. */
+  function placeLabel(): void {
+    const entity =
+      latest === undefined || selectedId === null ? undefined : findEntity(latest, selectedId);
+    if (entity === undefined) {
+      label.show(null, 0, 0);
+      return;
+    }
+    const { x, y } = map.project([entity.lon_deg, entity.lat_deg]);
+    label.show(selectionLabel(entity), x, y);
+  }
+
+  /**
+   * Adds the selection ring above the entity layers, once, at style load. The offline style already holds the
+   * `selection` source; a configured style gets it with the layer (MapLibre creates a source named after the
+   * layer from an inline spec), so its source list stays the entity source (ASM-935).
+   */
+  function addSelectionLayer(): void {
+    if (selectionLayerAdded) return;
+    selectionLayerAdded = true;
+    const { sources, layers } = selectionOverlay();
+    const spec = sources[SELECTION_SOURCE];
+    for (const layer of layers) {
+      if (built.kind === "url" && spec !== undefined) map.addLayer({ ...layer, source: spec });
+      else map.addLayer(layer);
+    }
+  }
+
   function flush(): void {
     pending = undefined;
     if (destroyed || latest === undefined) return;
     const source = map.getSource<GeoJSONSource>(ENTITY_SOURCE);
     if (source === undefined) return;
     const start = now();
+    const affiliationOf = options.affiliationOf ?? defaultAffiliationOf;
     toFeatureCollection(latest, affiliationOf, buffer);
     source.setData(buffer);
+    // The selection source and the label follow in the same flush (ADR 0078).
+    if (selectedId !== null && !ringRequested) {
+      ringRequested = true;
+      installRing(current.colors)
+        .catch(report)
+        .then(() => {
+          if (destroyed) return;
+          ringReady = true;
+          schedule();
+        });
+    }
+    toSelectionCollection(latest, selectedId, affiliationOf, selectionBuffer);
+    if (!ringReady) selectionBuffer.features.length = 0;
+    const has = selectionBuffer.features.length > 0;
+    // Nothing is written while the source was empty and stays empty (m6).
+    // While selected the source is written each flush (empty until the ring image is installed).
+    if (has || selectionSent || selectedId !== null) {
+      map.getSource<GeoJSONSource>(SELECTION_SOURCE)?.setData(selectionBuffer);
+      selectionSent = selectedId !== null;
+    }
+    placeLabel();
     flushMs = now() - start;
     sourceCount = buffer.features.length;
     flushedSession = latest.session;
@@ -120,6 +217,16 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
     }
   }
 
+  /** The selection ring image: registered at the first selection, updated on a theme change (ASM-935). */
+  async function installRing(colors: MapColors): Promise<void> {
+    const generation = ++ringGeneration;
+    const image = selectionImage(colors);
+    const raster = await rasterize(image.svg, image.size, pixelRatio);
+    if (destroyed || generation !== ringGeneration) return;
+    if (map.hasImage(image.id)) map.updateImage(image.id, raster);
+    else map.addImage(image.id, raster, { pixelRatio });
+  }
+
   function applyPaint(colors: MapColors, theme: ResolvedTheme): void {
     for (const { layer, property, value } of paintUpdates(colors, theme)) {
       map.setPaintProperty(layer, property, value);
@@ -136,7 +243,10 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
     if (built.kind === "url" && !map.getSource(ENTITY_SOURCE)) {
       for (const [id, source] of Object.entries(built.overlay.sources)) map.addSource(id, source);
       for (const layer of built.overlay.layers) map.addLayer(layer);
+      addSelectionLayer();
     }
+    // An overlay that already exists (the configured style carries it) is left alone, ring included.
+    if (built.kind === "inline") addSelectionLayer();
     // A theme switch before the style finished loading is applied now (setPaintProperty needs a loaded style).
     if (built.kind === "inline") applyPaint(current.colors, current.theme);
     // Images first, then the first flush: no frame is drawn with missing symbols. A failed install is
@@ -164,6 +274,31 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
     // MapLibre re-uploads its images and tiles; make sure the newest entity data is sent too.
     if (latest !== undefined) schedule();
   });
+  map.on("click", (event: MapMouseEvent) => {
+    // Before the style is ready there is no entity layer to query.
+    if (destroyed || !styleReady) return;
+    const hits: HitCandidate[] = [];
+    for (const f of map.queryRenderedFeatures(hitBox(event.point), { layers: [ENTITY_LAYER] })) {
+      const p = pointOf(f);
+      if (p === undefined) continue;
+      const { x, y } = map.project([p.lon, p.lat]);
+      hits.push({ id: p.id, x, y });
+    }
+    options.onSelect?.(pickNearest(event.point, hits));
+  });
+  // A pan or zoom moves the label at once: pixel work only, no data write, no scheduled frame.
+  map.on("move", () => {
+    if (!destroyed && selectedId !== null) placeLabel();
+  });
+  // Escape clears the selection. The listener is on the container, which the focusable MapLibre canvas bubbles to.
+  const onKeyDown = (event: KeyboardEvent): void => {
+    // Escape in another MapLibre control (a popup button, an input) belongs to that control, not to the map.
+    const target = event.target;
+    if (event.defaultPrevented) return;
+    if (target instanceof Element && target.closest(CONTROL_SELECTOR) !== null) return;
+    if (event.key === "Escape" && selectedId !== null) options.onSelect?.(null);
+  };
+  container.addEventListener("keydown", onKeyDown);
   map.on("render", () => {
     renders += 1;
   });
@@ -185,9 +320,8 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
     renderedPositions: () => {
       const unique = new Map<number, EntityPosition>();
       for (const f of map.queryRenderedFeatures({ layers: [ENTITY_LAYER] })) {
-        if (typeof f.id !== "number" || f.geometry.type !== "Point") continue;
-        const [lon, lat] = f.geometry.coordinates;
-        if (lon !== undefined && lat !== undefined) unique.set(f.id, { id: f.id, lon, lat });
+        const p = pointOf(f);
+        if (p !== undefined) unique.set(p.id, p);
       }
       return [...unique.values()];
     },
@@ -204,6 +338,8 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
     lastFlushMs: () => flushMs,
     missingImages: () => missing,
     tick: () => renders,
+    selectedId: () => selectedId,
+    labelText: () => label.text(),
   };
 
   return {
@@ -216,7 +352,19 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
       current = { colors, theme };
       if (!styleReady) return;
       if (built.kind === "inline") applyPaint(colors, theme);
+      if (ringRequested) installRing(colors).catch(report);
       installImages(colors).catch(report);
+    },
+    setSelection(id: number | null): void {
+      if (destroyed || id === selectedId) return;
+      selectedId = id;
+      schedule();
+    },
+    centerOn(id: number): boolean {
+      const entity = latest === undefined ? undefined : findEntity(latest, id);
+      if (entity === undefined) return false;
+      map.easeTo({ center: [entity.lon_deg, entity.lat_deg] });
+      return true;
     },
     fitTo(bounds: GeoBounds, fit: FitOptions): boolean {
       const box: [[number, number], [number, number]] = [
@@ -235,6 +383,8 @@ export function createMapLibreView(container: HTMLElement, options: MapLibreView
       destroyed = true;
       if (pending !== undefined) scheduler.cancel(pending);
       pending = undefined;
+      container.removeEventListener("keydown", onKeyDown);
+      label.destroy();
       map.remove();
     },
   };

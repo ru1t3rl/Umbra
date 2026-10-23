@@ -1,9 +1,18 @@
 import type { EntityFrame, EntitySource } from "@umbra/engine-stream";
+import { defaultAffiliationOf } from "@umbra/settings";
 import { Alert, useTheme } from "@umbra/ui-kit";
-import { type ReactElement, useContext, useEffect, useRef, useState } from "react";
+import {
+  type ReactElement,
+  type Ref,
+  useContext,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import { AnnounceTimersContext } from "../../context/AnnounceTimersContext.ts";
 import { registerE2eHook } from "../../e2eHook.ts";
-import type { MapView } from "../../MapView.ts";
+import type { SelectableMapView } from "../../MapView.ts";
 import { BASEMAP_ASSETS } from "../../maplibre/basemapAssets.ts";
 import { createMapLibreView } from "../../maplibre/createMapLibreView.ts";
 import { t } from "../../messages.ts";
@@ -16,7 +25,7 @@ import {
   withInsets,
 } from "../../model/camera.ts";
 import { resolveMapColors } from "../../model/colors.ts";
-import { frameBounds } from "../../model/features.ts";
+import { type AffiliationOf, frameBounds } from "../../model/features.ts";
 
 export interface LiveMapProps {
   /** Where frames come from: `useEntitySource()` of `@umbra/engine-stream`, passed by the shell. */
@@ -31,6 +40,20 @@ export interface LiveMapProps {
    * camera fits, so changing it never remounts the map.
    */
   insets?: MapInsets;
+  /** The selected entity id, owned by the shell (ADR 0078). Drives the ring and the label; never remounts the map. */
+  selectedId?: number | null;
+  /** A click on the map gives the nearest entity id, a click on empty map or Escape gives null. */
+  onSelect?: ((id: number | null) => void) | undefined;
+  /** Force to affiliation for the symbols and the ring. Default: the settings default. A new function applies from the next flush. */
+  affiliationOf?: AffiliationOf | undefined;
+  /** React 19 `ref` prop: the imperative handle. */
+  ref?: Ref<LiveMapHandle>;
+}
+
+/** What a shell can ask of the map besides props. */
+export interface LiveMapHandle {
+  /** Moves the camera to the entity in the newest frame. False (camera untouched) when it is not there. */
+  centerOn(id: number): boolean;
 }
 
 /** What is wrong, which decides the message and whether a theme change retries (ASM-369). */
@@ -39,17 +62,39 @@ type MapError = "colors" | "webgl" | "lost";
 /**
  * The live map. One MapLibre view per mount; frames go from `source` straight to the view (imperative), so
  * React re-renders only when the error state or the announced count changes, never per frame or per entity.
+ * The selection (`selectedId`, `onSelect`) is controlled by the shell; the ring and the label are updated in
+ * the view's animation-frame flush, not by React (ADR 0078).
  */
-export function LiveMap({ source, label, basemapStyleUrl, insets }: LiveMapProps): ReactElement {
+export function LiveMap({
+  source,
+  label,
+  basemapStyleUrl,
+  insets,
+  selectedId,
+  onSelect,
+  affiliationOf,
+  ref,
+}: LiveMapProps): ReactElement {
   const { resolved } = useTheme();
   const timers = useContext(AnnounceTimersContext);
   const containerRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef<MapView | null>(null);
+  const viewRef = useRef<SelectableMapView | null>(null);
   const appliedThemeRef = useRef(resolved);
   const themeRef = useRef(resolved);
   themeRef.current = resolved;
   const insetsRef = useRef(insets);
   insetsRef.current = insets;
+  const selectedIdRef = useRef(selectedId ?? null);
+  selectedIdRef.current = selectedId ?? null;
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const affiliationOfRef = useRef(affiliationOf);
+  affiliationOfRef.current = affiliationOf;
+  useImperativeHandle(
+    ref,
+    () => ({ centerOn: (id) => viewRef.current?.centerOn(id) ?? false }),
+    [],
+  );
   const [announced, setAnnounced] = useState(0);
   const [error, setError] = useState<MapError | null>(null);
   const errorRef = useRef<MapError | null>(null);
@@ -78,13 +123,16 @@ export function LiveMap({ source, label, basemapStyleUrl, insets }: LiveMapProps
       fail("colors");
       return;
     }
-    let view: MapView;
+    let view: SelectableMapView;
     try {
       view = createMapLibreView(container, {
         colors,
         theme: themeRef.current,
         basemap: { styleUrl: basemapStyleUrl, data: BASEMAP_ASSETS },
         pixelRatio: window.devicePixelRatio,
+        selectedId: selectedIdRef.current,
+        onSelect: (id) => onSelectRef.current?.(id),
+        affiliationOf: (force) => (affiliationOfRef.current ?? defaultAffiliationOf)(force),
         onError: (e) => console.error("map:", e),
         // A lost context shows the error state until MapLibre has it back; it does not clobber a worse error.
         onContextChange: (lost) => {
@@ -152,6 +200,10 @@ export function LiveMap({ source, label, basemapStyleUrl, insets }: LiveMapProps
       fail("colors");
     }
   }, [resolved]);
+
+  useEffect(() => {
+    viewRef.current?.setSelection(selectedId ?? null);
+  }, [selectedId]);
 
   const name = label ?? t("map.label");
   return (

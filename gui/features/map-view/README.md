@@ -3,7 +3,7 @@
 Domain feature (tier `domain`): the live map. MapLibre GL JS 5.9.0 behind an internal `MapView` seam (ADR 0040, F-8); only this package imports `maplibre-gl`.
 
 ## Public API
-- `LiveMap({ source, label?, basemapStyleUrl? })` and `LiveMapProps`.
+- `LiveMap({ source, label?, basemapStyleUrl?, insets?, selectedId?, onSelect?, affiliationOf?, ref? })`, `LiveMapProps` and the type `LiveMapHandle`.
   - `source` is an `EntitySource` (`useEntitySource()` of `@umbra/engine-stream`, passed by the shell). Frames go from the source straight to the map; React re-renders only when the entity count or the error state changes.
   - The region is named `label` (default "Live map"); a polite live region announces the entity count when it changes.
   - The camera fits the first non-empty frame of each session (padding `space-16`, max zoom 15) and never moves by itself afterwards (ASM-307).
@@ -12,6 +12,9 @@ Domain feature (tier `domain`): the live map. MapLibre GL JS 5.9.0 behind an int
   - The entity count is announced at most every 2 s.
   - `basemapStyleUrl` replaces the offline basemap (`/config.json` `basemap.styleUrl`, ADR 0041).
   - `insets` (`MapInsets`: `{ top?, right?, bottom?, left? }`, px) is the screen space a shell covers with floating UI. The camera fit padding is `space-16` plus the inset on each side, so fitted entities never sit under the overlay, and the error banner is placed below the top inset and centred in the free width. Missing, negative or non-finite sides count as 0. The latest value is read when the camera fits; changing it never remounts the map (ASM-508).
+  - Selection (ADR 0078, ASM-803, ASM-934): `selectedId` and `onSelect` are controlled by the shell. A click runs one hit test (a 12 px box, entity layer only) and calls `onSelect` with the nearest entity id, or `null` on empty map; Escape in the focused map calls `onSelect(null)`. The selected entity gets an azure ring (the `umbra-selection` image, colour from `MapColors.selection` = the `azure` token, which is required: a missing token gives the colours error state; on a separate single-feature source) and one DOM label with its name or `#id`, both rewritten in the same animation-frame flush as the entities, so a selection costs no React render per frame. A `selectedId` that is not in the frame shows nothing.
+  - `affiliationOf(force)` maps a force to an affiliation for the symbols (the ring is always azure); default `defaultAffiliationOf` of `@umbra/settings`. A new function applies from the next flush and never remounts the map.
+  - `ref` (React 19 prop) is a `LiveMapHandle`: `centerOn(id)` moves the camera to the entity in the newest frame and returns true, or returns false and leaves the camera alone when the id is not there.
 - `@umbra/map-view/styles.css`: MapLibre CSS and the container rules; imported once by the app (ADR 0043).
 
 ```tsx
@@ -28,7 +31,7 @@ const source = useEntitySource();
 - Regenerate with `bun scripts/simplify-basemap.ts` (in `gui/`, deterministic; command in `assets/README.md`).
 
 ## Internals
-- `src/model/` is pure and tested without WebGL: `affiliationOf`, `resolveMapColors`, `symbolSvg` (APP-6D frames, remote ring), `buildMapStyle`, `toFeatureCollection`, `fitOptionsFrom`.
+- `src/model/` is pure and tested without WebGL: `affiliationOf`, `resolveMapColors`, `symbolSvg` (APP-6D frames, remote ring), `buildMapStyle`, `selectionOverlay`, `toFeatureCollection`, `fitOptionsFrom`, and the selection helpers `hitBox`, `pickNearest`, `findEntity`, `selectionLabel`, `toSelectionCollection`.
 - `src/maplibre/createMapLibreView.ts` implements `MapView`: one `setData` per animation frame from a reused buffer. Never call `getData()` or `updateData` on the entity source (ASM-366).
-- `src/e2eHook.ts` registers `window.__UMBRA_E2E__.map` only when `import.meta.env.VITE_UMBRA_E2E` is set (the e2e build); `gui/src/e2eHook.build.test.ts` builds the real app and proves the production bundle has no trace of it.
+- `src/e2eHook.ts` registers `window.__UMBRA_E2E__.map` (including `selectedId()` and `labelText()`) only when `import.meta.env.VITE_UMBRA_E2E` is set (the e2e build); `gui/src/e2eHook.build.test.ts` builds the real app and proves the production bundle has no trace of it.
 - `bun scripts/measure-map.ts [frames]` (in `gui/`, not a gate) times `setData`-to-idle for 10,000 entities in headless Chromium.

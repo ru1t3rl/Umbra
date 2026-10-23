@@ -6,7 +6,12 @@ import type {
 } from "maplibre-gl";
 import type { MapColors } from "./colors.ts";
 import { emptyFeatureCollection } from "./features.ts";
-import { DIRECTION_IMAGE_ID, IMAGE_PREFIX, SYMBOL_FRAME_PX } from "./symbols.ts";
+import {
+  DIRECTION_IMAGE_ID,
+  IMAGE_PREFIX,
+  SELECTION_IMAGE_ID,
+  SYMBOL_FRAME_PX,
+} from "./symbols.ts";
 
 /**
  * The map style as plain data (ADR 0041): built from resolved token colours, no `glyphs` key (ASM-314).
@@ -47,6 +52,8 @@ export type BuiltMapStyle =
 export const ENTITY_SOURCE = "entities";
 export const ENTITY_LAYER = "entities";
 export const DIRECTION_LAYER = "direction";
+export const SELECTION_SOURCE = "selection";
+export const SELECTION_LAYER = "selection";
 
 /** The icon-image expression: the plain image only for `owned`; `remote` and `unknown` get the ring (ASM-362). */
 export function symbolImageExpression(): IconImage {
@@ -101,6 +108,29 @@ export function entityOverlay(): StyleOverlay {
   return {
     sources: { [ENTITY_SOURCE]: { type: "geojson", data: emptyFeatureCollection() } },
     layers: [direction, entities],
+  };
+}
+
+/**
+ * The selection source (at most one feature, ADR 0078) and its ring layer: a symbol layer drawing the
+ * `umbra-selection` image (colour in the image, so a theme switch updates one image, ASM-935). Added by the
+ * view at style load in both the offline and the configured style, above the entity layers.
+ */
+export function selectionOverlay(): StyleOverlay {
+  const ring: SymbolLayer = {
+    id: SELECTION_LAYER,
+    type: "symbol",
+    source: SELECTION_SOURCE,
+    layout: {
+      "icon-image": SELECTION_IMAGE_ID,
+      "icon-size": iconSize(),
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+    },
+  };
+  return {
+    sources: { [SELECTION_SOURCE]: { type: "geojson", data: emptyFeatureCollection() } },
+    layers: [ring],
   };
 }
 
@@ -169,6 +199,7 @@ export function buildMapStyle(
         borders: { type: "geojson", data: data.borders ?? emptyCollection() },
         graticule: { type: "geojson", data: graticule() },
         ...overlay.sources,
+        ...selectionOverlay().sources,
       },
       layers: [
         { id: "background", type: "background", paint: { "background-color": colors.surface0 } },

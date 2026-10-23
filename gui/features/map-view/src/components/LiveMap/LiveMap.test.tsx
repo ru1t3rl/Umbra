@@ -26,6 +26,7 @@ const TOKENS: Record<string, string> = {
   "affil-unknown": "#00000a",
   "opacity-track": "0.55",
   "space-16": "64px",
+  azure: "#00000b", // human decision 2026-10-23, M8 WI-9 review
 };
 const setTokens = (omit?: string) => {
   const root = document.documentElement;

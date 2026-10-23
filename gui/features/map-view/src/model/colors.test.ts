@@ -13,6 +13,7 @@ const TOKENS: Record<string, string> = {
   "affil-neutral": "#000009",
   "affil-unknown": "#00000a",
   "opacity-track": "0.55",
+  azure: "#00000b", // human decision 2026-10-23, M8 WI-9 review
 };
 // DOM-free: the model only needs getPropertyValue.
 const source = (tokens: Record<string, string>) => ({
@@ -34,6 +35,7 @@ describe("resolveMapColors", () => {
         neutral: "#000009",
         unknown: "#00000a",
       },
+      selection: "#00000b", // human decision 2026-10-23, M8 WI-9 review
       opacityTrack: 0.55,
     });
   });

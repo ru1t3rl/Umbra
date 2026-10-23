@@ -15,6 +15,7 @@ export const COLORS: MapColors = {
     neutral: "A-NEUTRAL",
     unknown: "A-UNKNOWN",
   },
+  selection: "S-AZURE",
   opacityTrack: 0.55,
 };
 
