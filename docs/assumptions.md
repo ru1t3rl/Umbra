@@ -20,6 +20,9 @@ numbers from its own reserved block instead of the next free number:
 - M7: ASM-600..ASM-799, ADR 0050..0069, decision rows D-64..D-79;
 - M8: ASM-800..ASM-999, ADR 0070..0089, decision rows D-80..D-95.
 Gaps left in a block stay unused. After both close, numbering continues after the highest number used.
+**M10 Documentation (reserved 2026-10-23, A-004).** Decision row D-96 is the A-004 decision itself.
+- M10: ASM-1000..ASM-1099, ADR 0090..0099, decision rows D-97..D-111.
+Numbering for any other milestone skips this block, and the reserved numbers count as used. After M7 and M8 close, M8b, M9 and any later work therefore continue at ASM-1100, ADR 0100 and D-112 at the earliest.
 
 | Milestone | File | IDs | Entries |
 |---|---|---|---|
