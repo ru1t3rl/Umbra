@@ -10,6 +10,12 @@ Foundation feature (tier `foundation`): versioned app settings (ADR 0074). Depen
 - `SettingsProvider({ backend?, children })` reads once (a changed `backend` prop after mount is ignored; cross-tab is last writer wins); a file from a newer version is used but never written back; `useSettings()` (defaults outside a provider); `useUpdateSettings()` (stable; merges one level per section (an `affiliationOverrides` patch replaces the whole map), re-parses, skips unchanged results, one write per effective update; no-op outside a provider).
 - `useRecordRecentScenario()`: a stable `(path) => void` that records a loaded scenario path as the newest recent one (once, capped at 10) and persists it; `withRecentPath(recent, path)` is the pure rule (ASM-975, WI-14 review).
 - `useAffiliationOf()`: override (trimmed, case-insensitive) first, then `defaultAffiliationOf` (the ASM-305 table); stable while overrides are unchanged.
+- Setting editors (M8 WI-17, ASM-995), all without props and laid out by `@umbra/shell-settings`; each writes through `useUpdateSettings`:
+  - `StreamRateSetting`: Slider "Stream rate" (1..60 Hz). It only edits; the page that mounts the stream consumer sends the subscribe (`useApplySubscription`).
+  - `JournalCapacitySetting`: number field "Journal capacity" (1,000..50,000), committed on blur or Enter; an invalid value is flagged and not saved. The change applies after a reload (the connection reads the capacity once).
+  - `AffiliationOverridesEditor`: Table of force/affiliation rows with Add and Remove. The stored map is exactly the valid rows; empty, duplicate and reserved names (`__proto__`, `constructor`, `prototype`) are flagged and add nothing.
+  - `ThemePreferenceSetting`: Select Dark/Light/System through `useTheme`; it writes nothing to the settings backend (the ThemeProvider is the one writer).
+  - `RecentScenariosSetting`: the count of recent scenarios and a button that clears them.
 
 ```tsx
 <SettingsProvider><ThemeProvider>...</ThemeProvider></SettingsProvider>

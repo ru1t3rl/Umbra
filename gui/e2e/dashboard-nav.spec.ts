@@ -1,12 +1,13 @@
 // WI-15 (ASM-992): the page navigation is part of the command bar's fit ladder (icon-only before the title goes), so
-// the bar keeps its title and one row as shells add navigation entries. The e2e build reads two extra entries from
-// `window.__UMBRA_E2E_NAV__` (src/e2eNav.ts; the production build has neither, e2eHook.build.test.ts), standing in
-// for the Settings shell (WI-17): four links, as the finished app will have (Plugins is a real link since WI-16).
+// the bar keeps its title and one row as shells add navigation entries. With the Settings shell (WI-17) the app has
+// four real links (Live map, Templates, Plugins, Settings) and nothing is injected for the main cases. The e2e build
+// reads extra entries from `window.__UMBRA_E2E_NAV__` (src/e2eNav.ts; the production build has neither,
+// e2eHook.build.test.ts); one injected entry stands in for the Behaviors shell (M8b) so that a fifth link is tested.
 import { expect, type Page, test } from "@playwright/test";
 
-const EXTRA_ENTRIES = [{ path: "/settings", label: "Settings", icon: "settings" }];
+const EXTRA_ENTRIES = [{ path: "/behaviors", label: "Behaviors", icon: "account_tree" }];
 
-async function open(page: Page, width: number, extra = true): Promise<void> {
+async function open(page: Page, width: number, extra = false): Promise<void> {
   if (extra) {
     await page.addInitScript((entries) => {
       Reflect.set(window, "__UMBRA_E2E_NAV__", entries);
@@ -83,10 +84,30 @@ test("at 1280 px with four links the title is dropped, the links are icon-only a
 });
 
 test("the icon-only links keep a name and a tooltip", async ({ page }) => {
-  await open(page, 1280, false);
+  await open(page, 1280);
   const link = page
     .getByRole("navigation", { name: "Pages" })
     .getByRole("link", { name: "Templates" });
   await expect(link).toHaveAttribute("title", "Templates");
   await expect(link).toHaveAttribute("aria-label", "Templates");
 });
+
+// A fifth link (injected, ASM-992): whatever level the ladder takes, the bar is one row, nothing overflows and the
+// links are named.
+for (const width of [1600, 1280]) {
+  test(`at ${width} px with five links the bar is one row, does not overflow and names every link`, async ({
+    page,
+  }) => {
+    await open(page, width, true);
+    const m = await measure(page);
+    expect(m.links.map((l) => l.name)).toEqual([
+      "Live map",
+      "Templates",
+      "Plugins",
+      "Settings",
+      "Behaviors",
+    ]);
+    expect(m.height).toBeLessThanOrEqual(64);
+    expect(m.scroll).toBeLessThanOrEqual(m.client);
+  });
+}

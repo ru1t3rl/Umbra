@@ -4,12 +4,17 @@
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
+  "sideEffects": [
+    "**/*.css"
+  ],
   "umbra": {
     "type": "feature",
     "tier": "foundation"
   },
   "dependencies": {
-    "@umbra/engine-stream": "workspace:*"
+    "@umbra/engine-stream": "workspace:*",
+    "@umbra/runtime-config": "workspace:*",
+    "@umbra/ui-kit": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.3.1"

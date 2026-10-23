@@ -13,6 +13,7 @@
         "@umbra/settings": "workspace:*",
         "@umbra/shell-dashboard": "workspace:*",
         "@umbra/shell-plugins": "workspace:*",
+        "@umbra/shell-settings": "workspace:*",
         "@umbra/shell-showcase": "workspace:*",
         "@umbra/shell-templates": "workspace:*",
         "@umbra/ui-kit": "workspace:*",
@@ -74,6 +75,23 @@
         "react": "^19.3.1",
       },
     },
+    "feature-shells/settings": {
+      "name": "@umbra/shell-settings",
+      "version": "0.0.0",
+      "dependencies": {
+        "@umbra/data": "workspace:*",
+        "@umbra/desktop": "workspace:*",
+        "@umbra/settings": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "devDependencies": {
+        "@umbra/engine-stream": "workspace:*",
+        "@umbra/runtime-config": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
+      },
+    },
     "feature-shells/showcase": {
       "name": "@umbra/shell-showcase",
       "version": "0.0.0",
@@ -117,6 +135,8 @@
       "version": "0.0.0",
       "dependencies": {
         "@umbra/engine-stream": "workspace:*",
+        "@umbra/runtime-config": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
       },
       "peerDependencies": {
         "react": "^19.3.1",
@@ -629,6 +649,8 @@
     "@umbra/shell-dashboard": ["@umbra/shell-dashboard@workspace:feature-shells/dashboard"],
 
     "@umbra/shell-plugins": ["@umbra/shell-plugins@workspace:feature-shells/plugins"],
+
+    "@umbra/shell-settings": ["@umbra/shell-settings@workspace:feature-shells/settings"],
 
     "@umbra/shell-showcase": ["@umbra/shell-showcase@workspace:feature-shells/showcase"],
 

@@ -338,3 +338,120 @@ describe("useBarFit with four levels", () => {
     expect(level()).toBe("3");
   });
 });
+
+// WI-17 (ASM-997): a readout deep inside the bar gets narrower (the counters reset) while the bar's own children keep
+// their width (one of them takes the spare width, so the summed-width rule of ASM-990 sees nothing). The widths
+// remembered per level are stale then, and the bar must measure again from level 0.
+describe("useBarFit when a readout inside the bar gets narrower (ASM-997)", () => {
+  const BASE = [1000, 950, 900, 850];
+  let readout = 700;
+  let rendered: string[] = [];
+
+  function ReadoutProbe(): ReactElement {
+    const ref = useRef<HTMLDivElement>(null);
+    const fit = useBarFit(ref, 4);
+    rendered.push(String(fit));
+    return (
+      <div ref={ref}>
+        <header
+          data-level={fit}
+          ref={(el) => {
+            if (!el) return;
+            Object.defineProperty(el, "clientWidth", { configurable: true, get: () => client });
+            Object.defineProperty(el, "scrollWidth", {
+              configurable: true,
+              get: () =>
+                Math.max(client, (BASE[Number(el.getAttribute("data-level"))] ?? 0) + readout),
+            });
+          }}
+        >
+          <span data-testid="brand" />
+          <div data-testid="actions">
+            <span
+              data-testid="readout"
+              ref={(el) => {
+                if (el)
+                  Object.defineProperty(el, "offsetWidth", {
+                    configurable: true,
+                    get: () => readout,
+                  });
+              }}
+            />
+          </div>
+        </header>
+        <output>{fit}</output>
+      </div>
+    );
+  }
+
+  beforeEach(() => {
+    readout = 700;
+    rendered = [];
+  });
+
+  const settleOnWorst = async () => {
+    client = 1580; // the levels need 1700, 1650, 1600, 1550: level 3 is the first that fits
+    render(<ReadoutProbe />);
+    await frame();
+    expect(level()).toBe("3");
+  };
+
+  // Catches: the bar staying at the compact level after the widest readouts reset (stale remembered needs).
+  test("the level that fits again is taken", async () => {
+    await settleOnWorst();
+    readout = 600; // the levels need 1600, 1550, 1500, 1450: level 1 is the first that fits
+    await resized();
+    expect(level()).toBe("1");
+  });
+
+  // Catches (ASM-997, review B1): a nested element's size entry not being observed, so a readout that shrinks inside a
+  // child that takes the spare width is never noticed (the child keeps its size and fires nothing).
+  test("the elements inside the bar's children are observed too", async () => {
+    render(<ReadoutProbe />);
+    await frame();
+    const targets = observers.flatMap((o) => o.targets);
+    expect(targets.some((t) => t.getAttribute("data-testid") === "readout")).toBe(true);
+  });
+
+  // Catches (review B1): a restart for every 1 px a nested element narrows (a tick alternating 999,999 and
+  // 1,000,000 at 30 fps changed the level 18 times in 20 frames). The width of the bar's content, counted from the
+  // elements inside its children, goes through the one margin rule of ASM-990: 12 px is under it.
+  test("a readout alternating between two widths across a level boundary changes the level at most once", async () => {
+    client = 1605; // 1000 + 600 fits level 0, 1000 + 612 does not (level 1: 950 + 612 fits)
+    readout = 600;
+    render(<ReadoutProbe />);
+    await frame();
+    expect(level()).toBe("0");
+    rendered = [];
+    for (let i = 0; i < 10; i++) {
+      readout = i % 2 === 0 ? 612 : 600;
+      await resized();
+    }
+    const changes = rendered.filter((l, k) => k > 0 && l !== rendered[k - 1]).length;
+    expect(changes).toBeLessThanOrEqual(1);
+  });
+
+  // Catches: a growing readout (5 digits to 7) changing the level more than once, or downwards.
+  test("growth changes the level at most once and never downwards", async () => {
+    client = 1600;
+    readout = 600;
+    render(<ReadoutProbe />);
+    await frame();
+    expect(level()).toBe("0"); // 1600 fits
+    rendered = [];
+    readout = 700;
+    await resized();
+    const seen = rendered.filter((l, i) => i === 0 || l !== rendered[i - 1]);
+    expect(Number(level())).toBeGreaterThan(0);
+    expect(seen.every((l, i) => i === 0 || Number(l) >= Number(seen[i - 1]))).toBe(true);
+  });
+
+  test("a shrink while the bar shows level 0 changes nothing", async () => {
+    client = 1800;
+    render(<ReadoutProbe />);
+    await frame();
+    readout = 600;
+    await resized();
+    expect(level()).toBe("0");
+  });
+});

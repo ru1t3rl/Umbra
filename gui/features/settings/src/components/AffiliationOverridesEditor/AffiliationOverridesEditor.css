@@ -1,0 +1,17 @@
+.overrides {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+/* The column headers name the fields; the per-row labels stay for assistive technology. */
+.overrides .vt-table td .vt-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

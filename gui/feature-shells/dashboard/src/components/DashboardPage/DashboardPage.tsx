@@ -1,4 +1,4 @@
-import { useApplySubscription, useEntitySource } from "@umbra/engine-stream";
+import { useEntitySource } from "@umbra/engine-stream";
 import { LiveMap, type LiveMapHandle } from "@umbra/map-view";
 import { useRuntimeConfig } from "@umbra/runtime-config";
 import { ConnectionAlert, RunFaultAlert } from "@umbra/scenario-control";
@@ -28,7 +28,6 @@ export default function DashboardPage(): ReactElement {
   const settings = useSettings();
   const recordRecent = useRecordRecentScenario();
   const affiliationOf = useAffiliationOf();
-  useApplySubscription({ max_rate_hz: settings.stream.maxRateHz });
   const barRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LiveMapHandle>(null);
   const centreRef = useRef<HTMLDivElement>(null);

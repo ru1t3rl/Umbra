@@ -1,0 +1,27 @@
+/* A docked bar on top, then the cards in a column; the page scrolls under the bar. */
+.settings {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--surface-0);
+  color: var(--ink);
+}
+
+.settings-main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+}
+
+.settings-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.settings-cards .vt-card > * + * {
+  margin-top: var(--space-3);
+}

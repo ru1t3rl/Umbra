@@ -1,7 +1,12 @@
+export { AffiliationOverridesEditor } from "./components/AffiliationOverridesEditor/AffiliationOverridesEditor.tsx";
+export { JournalCapacitySetting } from "./components/JournalCapacitySetting/JournalCapacitySetting.tsx";
+export { RecentScenariosSetting } from "./components/RecentScenariosSetting/RecentScenariosSetting.tsx";
 export {
   SettingsProvider,
   type SettingsProviderProps,
 } from "./components/SettingsProvider/SettingsProvider.tsx";
+export { StreamRateSetting } from "./components/StreamRateSetting/StreamRateSetting.tsx";
+export { ThemePreferenceSetting } from "./components/ThemePreferenceSetting/ThemePreferenceSetting.tsx";
 export { useAffiliationOf } from "./hooks/useAffiliationOf.ts";
 export { useRecordRecentScenario } from "./hooks/useRecordRecentScenario.ts";
 export { useSettings } from "./hooks/useSettings.ts";

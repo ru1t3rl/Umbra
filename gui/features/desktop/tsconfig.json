@@ -5,10 +5,10 @@
     "tsBuildInfoFile": ".tsbuild/desktop.tsbuildinfo",
     "types": ["bun"]
   },
-  "include": ["src"],
+  "include": ["src", "../../test/jest-dom.d.ts"],
   "references": [
-    {
-      "path": "../engine-stream"
-    }
+    { "path": "../engine-stream" },
+    { "path": "../runtime-config" },
+    { "path": "../ui-kit" }
   ]
 }

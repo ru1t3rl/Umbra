@@ -1,0 +1,4 @@
+/* The design system's link colour. Zero specificity: a component that styles its own links (the page navigation) wins. */
+:where(.vt-applink) {
+  color: var(--azure);
+}

@@ -17,6 +17,8 @@ interface Built {
   templates: string;
   /** The lazy plugins chunk (WI-16; the page and plugin-status). */
   plugins: string;
+  /** The lazy settings chunk (WI-17; the page, the setting editors and the desktop connection stub). */
+  settings: string;
 }
 
 /**
@@ -28,6 +30,8 @@ const DASHBOARD_BUDGET = 1_050_000;
 const TEMPLATES_BUDGET = 26_000;
 /** WI-16: measured 11,830 characters, 5% headroom (ASM-853, ASM-994). */
 const PLUGINS_BUDGET = 12_500;
+/** WI-17: measured 7,273 characters, 5% headroom (ASM-853, ASM-996); the editors land here because `@umbra/settings` and `@umbra/desktop` declare that only their CSS files have side effects. */
+const SETTINGS_BUDGET = 7_700;
 /** A MapLibre API name that survives minification: present in the map chunk only. */
 const MAPLIBRE_MARKER = "queryRenderedFeatures";
 
@@ -52,8 +56,9 @@ async function bundle(mode: "production" | "e2e"): Promise<Built> {
   const dashboard = chunks.find((c) => /DashboardPage/.test(c.fileName));
   const templates = chunks.find((c) => /TemplatesPage/.test(c.fileName));
   const plugins = chunks.find((c) => /PluginsPage/.test(c.fileName));
-  if (!entry || !dashboard || !templates || !plugins)
-    throw new Error("the app build has no entry, dashboard, templates or plugins chunk");
+  const settings = chunks.find((c) => /SettingsPage/.test(c.fileName));
+  if (!entry || !dashboard || !templates || !plugins || !settings)
+    throw new Error("the app build has no entry, dashboard, templates, plugins or settings chunk");
   return {
     code: chunks.map((c) => c.code).join("\n"),
     files: outputs.map((o) => o.fileName),
@@ -61,6 +66,7 @@ async function bundle(mode: "production" | "e2e"): Promise<Built> {
     dashboard: dashboard.code,
     templates: templates.code,
     plugins: plugins.code,
+    settings: settings.code,
   };
 }
 
@@ -117,5 +123,13 @@ describe("the plugins chunk (WI-16)", () => {
     expect(built.production.plugins).toBeDefined();
     expect(built.production.plugins).not.toContain(MAPLIBRE_MARKER);
     expect(built.production.plugins.length).toBeLessThan(PLUGINS_BUDGET);
+  });
+});
+
+describe("the settings chunk (WI-17)", () => {
+  test("is a separate chunk behind the router, without MapLibre, and stays in budget", () => {
+    expect(built.production.files.filter((f) => /SettingsPage/.test(f)).length).toBeGreaterThan(0);
+    expect(built.production.settings).not.toContain(MAPLIBRE_MARKER);
+    expect(built.production.settings.length).toBeLessThan(SETTINGS_BUDGET);
   });
 });

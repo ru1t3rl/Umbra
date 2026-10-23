@@ -144,6 +144,8 @@ type Live = {
   clock: Record<string, unknown>;
   /** The readouts: `typical` or the widest values the bar can show (T+99:59:59, tick 9,999,999, 10,000 entities). */
   values?: "typical" | "worst";
+  /** Overrides the tick of the readouts (a counter crossing a digit count). */
+  tick?: number;
 };
 const HELLO = {
   type: "hello",
@@ -171,10 +173,10 @@ const entity = (id: number, name: string, force: string) => ({
   ownership: "owned",
   force,
 });
-const frameOf = ({ state, clock, values = "typical" }: Live, seq = 0) => {
+const frameOf = ({ state, clock, values = "typical", tick: tickOverride }: Live, seq = 0) => {
   const worst = values === "worst";
   const count = state === "idle" ? 0 : worst ? 10_000 : 2;
-  const tick = worst ? 9_999_999 : 42;
+  const tick = tickOverride ?? (worst ? 9_999_999 : 42);
   const time = worst ? 359_999 : 1.4; // T+99:59:59
   return {
     type: "frame",
@@ -403,4 +405,63 @@ test("at 1600 px a fresh load with the widest readouts settles at level 1 or les
   await expect(group.getByRole("button", { name: "Start", exact: true })).toHaveText("Start");
   send({ state: "idle", clock: { mode: "realtime" }, values: "typical" });
   await expect(page.getByRole("banner").locator("b", { hasText: "Live map" })).toBeVisible();
+});
+
+// WI-17 (ASM-997): with four navigation links the widest readouts drop the title at 1600 px, and the reset of the
+// counters narrows the bar's content by less than the step-down margin. The title and one row must still come back,
+// and a second round of widest readouts must drop the title again (no stale needs, no flicker lock).
+test("at 1600 px with four links the title leaves for the widest readouts and returns twice", async ({
+  page,
+}) => {
+  const send = await openLive(page, "ops", WIDE, {
+    state: "running",
+    clock: { mode: "realtime" },
+    values: "worst",
+  });
+  const title = page.getByRole("banner").locator("b", { hasText: "Live map" });
+  await expect(title).toHaveCount(0);
+  for (let round = 0; round < 2; round++) {
+    send({ state: "idle", clock: { mode: "realtime" }, values: "typical" });
+    await expect(title).toBeVisible();
+    send({ state: "running", clock: { mode: "realtime" }, values: "worst" });
+    await expect(title).toHaveCount(0);
+  }
+  const bar = page.getByRole("banner");
+  expect(await bar.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+});
+
+// WI-17 review B1 (ASM-997): a counter that alternates between two digit counts across a level boundary (tick 999,999
+// and 1,000,000 at 30 fps, four links at 1380 px) must not make the bar change level on every frame: the bar's content
+// shrinks by about one digit, under the 24 px step-down margin. On the tree with the nested-narrowing restart the
+// level changed in all 20 frames.
+test("a tick alternating between 999,999 and 1,000,000 at 1380 px changes the bar's level at most once", async ({
+  page,
+}) => {
+  const running = { state: "running", clock: { mode: "realtime" } } as const;
+  const send = await openLive(
+    page,
+    "ops",
+    { width: 1380, height: 800 },
+    { ...running, tick: 999_999 },
+  );
+  const signature = () =>
+    page.evaluate(
+      () =>
+        `${document.querySelector(".vt-cmdbar-title b")?.textContent}|${document.querySelector(".vt-nav-link")?.textContent?.length}|${document.querySelector("[role=group] button")?.textContent}`,
+    );
+  let last = await signature();
+  let changes = 0;
+  for (let i = 0; i < 20; i++) {
+    send({ ...running, tick: i % 2 === 0 ? 1_000_000 : 999_999 });
+    await page.evaluate(
+      () =>
+        new Promise<void>((done) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => done())),
+        ),
+    );
+    const now = await signature();
+    if (now !== last) changes += 1;
+    last = now;
+  }
+  expect(changes).toBeLessThanOrEqual(1);
 });

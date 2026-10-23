@@ -54,3 +54,7 @@ saves a review-and-fix round. The code-reviewer uses the same list as its baseli
 17. **Brief first.** When the prompt carries a work-item brief (plan section, AT rows, ADR extracts),
     work from it. Do not read the whole plan, `docs/SPEC.md` or `docs/assumptions/`; grep them for a
     specific ID when the brief does not cover it.
+18. **No jest-dom matchers on large DOMs** (e.g. `toBeDisabled`, `toHaveTextContent`). A failing one prints the
+    whole DOM into its message and can exhaust memory (bun reached 25 GB). Assert the property directly:
+    `expect((el as HTMLButtonElement).disabled).toBe(true)`. Run `bun test` and Playwright under
+    `systemd-run --user --scope -p MemoryMax=6G -- <cmd>`; exit 137 means the cap was hit: stop and report.

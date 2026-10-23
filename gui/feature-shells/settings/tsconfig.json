@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/shell-settings.tsbuildinfo",
+    "types": ["bun", "vite/client"]
+  },
+  "include": ["src", "../../test/jest-dom.d.ts"],
+  "references": [
+    { "path": "../../features/data" },
+    { "path": "../../features/desktop" },
+    { "path": "../../features/engine-stream" },
+    { "path": "../../features/runtime-config" },
+    { "path": "../../features/settings" },
+    { "path": "../../features/ui-kit" }
+  ]
+}

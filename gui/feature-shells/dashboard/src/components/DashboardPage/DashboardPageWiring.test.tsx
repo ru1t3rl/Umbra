@@ -6,7 +6,7 @@
 //     EntityInspector; the inspector is mounted only while it is not null;
 //   - EntityInspector `onCenter` calls `mapRef.current?.centerOn(id)`; `onClose` clears the selection;
 //   - `useAffiliationOf()` (settings) feeds `affiliationOf` of the map, the list and the inspector;
-//   - `useApplySubscription({ max_rate_hz: settings.stream.maxRateHz })` (engine-stream) (ASM-974);
+//   - (the stored stream rate is applied by the app, `StreamRateApplier`, not by this page: ASM-997, was ASM-974);
 //   - ScenarioLoader gets `recentPaths` from settings; its `onLoaded(path)` calls `useUpdateSettings` with
 //     the path first, no duplicate (the settings parser caps the list at 10) (ASM-975).
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -184,24 +184,6 @@ describe("affiliation (settings)", () => {
     const first = lastMapProps().affiliationOf;
     d.send(wireFrame(9, ENTITIES));
     expect(lastMapProps().affiliationOf).toBe(first);
-  });
-});
-
-describe("subscription (settings)", () => {
-  const subscribes = (d: Dashboard) => d.socket.sent.filter((m) => m.type === "subscribe");
-
-  // Catches: the stream rate setting never applied.
-  test("the settings' stream rate is the subscribed max_rate_hz", () => {
-    page = mountDashboard(DashboardPage, {
-      storedSettings: { version: 1, stream: { maxRateHz: 10 } },
-    });
-    expect(subscribes(page).at(-1)).toMatchObject({ max_rate_hz: 10 });
-  });
-
-  // Catches: the default not coming from the settings (30 Hz is the settings default, not hard-coded).
-  test("with no stored settings the subscription is the default 30 Hz", () => {
-    page = mountDashboard(DashboardPage);
-    expect(subscribes(page).at(-1)).toMatchObject({ max_rate_hz: 30 });
   });
 });
 

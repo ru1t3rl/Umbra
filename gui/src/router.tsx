@@ -1,5 +1,6 @@
 import { route as dashboard } from "@umbra/shell-dashboard";
 import { route as plugins } from "@umbra/shell-plugins";
+import { route as settings } from "@umbra/shell-settings";
 import { route as showcase } from "@umbra/shell-showcase";
 import { route as templates } from "@umbra/shell-templates";
 import type { NavItem } from "@umbra/ui-kit";
@@ -8,7 +9,7 @@ import { NavigationBridge } from "./components/NavigationBridge/NavigationBridge
 import { NotFound } from "./components/NotFound/NotFound.tsx";
 import { E2E_NAV_KEY, e2eNavItems } from "./e2eNav.ts";
 
-const shellRoutes = [dashboard, templates, plugins, showcase];
+const shellRoutes = [dashboard, templates, plugins, settings, showcase];
 
 /**
  * Routes come from shell `route` objects: each shell exports `{ path, label, icon, nav, lazy }` and

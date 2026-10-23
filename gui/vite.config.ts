@@ -3,6 +3,13 @@ import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { type Connect, defineConfig, type Plugin } from "vite";
 
+// The app version shown in Settings > About: `version` of gui/package.json (ASM-996).
+const APP_VERSION = (
+  JSON.parse(readFileSync(resolve(import.meta.dirname, "package.json"), "utf8")) as {
+    version: string;
+  }
+).version;
+
 const ICON_PATH = "/umbra_icon.svg";
 const ICON_FILE = resolve(import.meta.dirname, "../umbra_icon.svg");
 
@@ -33,7 +40,10 @@ const proxy = () => ({
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), umbraIcon()],
-  define: mode === "e2e" ? { "import.meta.env.VITE_UMBRA_E2E": JSON.stringify("1") } : {},
+  define: {
+    "import.meta.env.VITE_UMBRA_APP_VERSION": JSON.stringify(APP_VERSION),
+    ...(mode === "e2e" ? { "import.meta.env.VITE_UMBRA_E2E": JSON.stringify("1") } : {}),
+  },
   server: { proxy: proxy() },
   preview: { proxy: proxy() },
   // 1050 kB is the dashboard chunk budget (MapLibre, lazy); src/e2eHook.build.test.ts enforces it and the entry budget.

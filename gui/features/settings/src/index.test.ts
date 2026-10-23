@@ -12,6 +12,12 @@ test("the public API of @umbra/settings (plan section 3 table)", () => {
     "DEFAULT_SETTINGS",
     "createLocalStorageBackend",
     "useThemeStorage",
+    // WI-17: the setting editors the settings shell lays out
+    "AffiliationOverridesEditor",
+    "StreamRateSetting",
+    "JournalCapacitySetting",
+    "ThemePreferenceSetting",
+    "RecentScenariosSetting",
   ]) {
     expect(typeof (api as Record<string, unknown>)[name]).not.toBe("undefined");
   }

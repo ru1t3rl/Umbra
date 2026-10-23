@@ -26,7 +26,10 @@ test("unknown route shows page not found", async ({ page }) => {
 
 test("the dashboard route renders under the dark theme", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("banner")).toContainText("Live map");
+  // With four navigation links the bar drops its title at 1280 px (ASM-992, ASM-997); the current link names the page.
+  await expect(
+    page.getByRole("navigation", { name: "Pages" }).getByRole("link", { name: "Live map" }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
 

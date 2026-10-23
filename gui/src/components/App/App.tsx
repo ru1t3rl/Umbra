@@ -5,6 +5,7 @@ import { ThemeProvider } from "@umbra/ui-kit";
 import type { ReactElement } from "react";
 import { type DataRouter, RouterProvider } from "react-router";
 import { SessionInvalidator } from "../SessionInvalidator/SessionInvalidator.tsx";
+import { StreamRateApplier } from "../StreamRateApplier/StreamRateApplier.tsx";
 
 export interface AppProps {
   /** Created once by the bootstrap after the config loaded (tests inject a memory router). */
@@ -21,6 +22,7 @@ export function App({ router, connection, settingsBackend }: AppProps): ReactEle
       <ThemeProvider>
         <DataProvider>
           <EngineStreamProvider connection={connection}>
+            <StreamRateApplier />
             <SessionInvalidator>
               <RouterProvider router={router} />
             </SessionInvalidator>

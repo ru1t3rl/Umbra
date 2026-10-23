@@ -122,3 +122,17 @@ test("target _blank and download are left to the browser; _self still navigates"
   fireEvent.click(screen.getByRole("link", { name: "C" }));
   expect(calls).toEqual(["/c"]);
 });
+
+// WI-17 review n2 (ASM-997): the link colour is the design system's, not a page's override.
+test("a link carries the ui-kit link class and keeps the class it is given", () => {
+  render(
+    <NavigationProvider items={[]} currentPath="/" navigate={() => {}}>
+      <AppLink to="/settings" className="type-body">
+        Settings
+      </AppLink>
+    </NavigationProvider>,
+  );
+  const cls = screen.getByRole("link", { name: "Settings" }).getAttribute("class") ?? "";
+  expect(cls.split(" ")).toContain("vt-applink");
+  expect(cls.split(" ")).toContain("type-body");
+});

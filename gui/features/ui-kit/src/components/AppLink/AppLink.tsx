@@ -1,5 +1,6 @@
 import type { AnchorHTMLAttributes, MouseEvent, ReactElement } from "react";
 import { useAppNavigate } from "../../hooks/useAppNavigate.ts";
+import "./AppLink.css";
 
 export interface AppLinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> {
   to: string;
@@ -19,6 +20,7 @@ export function AppLink({
   onClick,
   target,
   download,
+  className,
   children,
   ...rest
 }: AppLinkProps): ReactElement {
@@ -26,6 +28,7 @@ export function AppLink({
   return (
     <a
       {...rest}
+      className={["vt-applink", className].filter(Boolean).join(" ")}
       target={target}
       download={download}
       href={to}

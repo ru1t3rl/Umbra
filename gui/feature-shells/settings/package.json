@@ -1,0 +1,23 @@
+{
+  "name": "@umbra/shell-settings",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "shell"
+  },
+  "dependencies": {
+    "@umbra/data": "workspace:*",
+    "@umbra/desktop": "workspace:*",
+    "@umbra/settings": "workspace:*",
+    "@umbra/ui-kit": "workspace:*"
+  },
+  "devDependencies": {
+    "@umbra/engine-stream": "workspace:*",
+    "@umbra/runtime-config": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
+  }
+}

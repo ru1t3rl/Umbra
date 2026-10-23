@@ -35,6 +35,7 @@
     "@umbra/settings": "workspace:*",
     "@umbra/shell-dashboard": "workspace:*",
     "@umbra/shell-plugins": "workspace:*",
+    "@umbra/shell-settings": "workspace:*",
     "@umbra/shell-showcase": "workspace:*",
     "@umbra/shell-templates": "workspace:*",
     "@umbra/ui-kit": "workspace:*",
