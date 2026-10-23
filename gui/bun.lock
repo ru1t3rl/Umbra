@@ -84,6 +84,18 @@
         "react": "^19.3.1",
       },
     },
+    "features/entity-inspector": {
+      "name": "@umbra/entity-inspector",
+      "version": "0.0.0",
+      "dependencies": {
+        "@umbra/data": "workspace:*",
+        "@umbra/engine-stream": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
+      },
+    },
     "features/map-view": {
       "name": "@umbra/map-view",
       "version": "0.0.0",
@@ -509,6 +521,8 @@
     "@umbra/data": ["@umbra/data@workspace:features/data"],
 
     "@umbra/engine-stream": ["@umbra/engine-stream@workspace:features/engine-stream"],
+
+    "@umbra/entity-inspector": ["@umbra/entity-inspector@workspace:features/entity-inspector"],
 
     "@umbra/map-view": ["@umbra/map-view@workspace:features/map-view"],
 

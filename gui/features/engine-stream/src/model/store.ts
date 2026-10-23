@@ -10,6 +10,7 @@ export function createStreamStore(): StreamStore {
     ignored: 0,
     skipped: 0,
     dropped: 0,
+    controlSeq: 0,
   }));
 }
 
@@ -55,6 +56,8 @@ export interface PendingFrame {
   dropped: number;
   /** Entities skipped as invalid in every frame received since the last flush. */
   skipped: number;
+  /** Control frames received since the last flush, including coalesced ones (ASM-938). */
+  controls: number;
 }
 
 /**
@@ -69,6 +72,7 @@ export function flushPending(store: StreamStore, pending: PendingFrame): void {
     frame: pending.frame,
     dropped: s.dropped + pending.dropped,
     skipped: s.skipped + pending.skipped,
+    controlSeq: s.controlSeq + pending.controls,
     ...(run === undefined ? {} : { run }),
   });
 }

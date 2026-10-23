@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/entity-inspector.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["src", "../../test/jest-dom.d.ts"],
+  "references": [
+    {
+      "path": "../data"
+    },
+    {
+      "path": "../engine-stream"
+    },
+    {
+      "path": "../ui-kit"
+    }
+  ]
+}

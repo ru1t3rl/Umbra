@@ -142,13 +142,19 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
     if (frameHandle === undefined) frameHandle = scheduleFrame(flush);
   };
 
-  const queue = (frame: EntityFrame, run: PendingFrame["run"], skipped: number): void => {
+  const queue = (
+    frame: EntityFrame,
+    run: PendingFrame["run"],
+    skipped: number,
+    control: boolean,
+  ): void => {
     // Latest wins; the run of an older frame stays unless the newer one carries none; drops add up.
     pending = {
       frame,
       run: run ?? pending?.run,
       dropped: (pending?.dropped ?? 0) + frame.dropped,
       skipped: (pending?.skipped ?? 0) + skipped,
+      controls: (pending?.controls ?? 0) + (control ? 1 : 0),
     };
     if (frameHandle === undefined) frameHandle = scheduleFrame(flush);
   };
@@ -187,7 +193,7 @@ export function connectEngineStream(options: EngineStreamOptions): EngineStreamC
         const recorded = recordFrame(recorder, message);
         recorder = recorded.next;
         for (const draft of recorded.drafts) journal.append(draft);
-        queue(message.frame, message.run, message.skipped);
+        queue(message.frame, message.run, message.skipped, message.control);
         return;
       }
       case "error":

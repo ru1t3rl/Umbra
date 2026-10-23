@@ -1,0 +1,22 @@
+.umbra-entity-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  height: 100%;
+}
+
+.umbra-entity-list-count {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.umbra-entity-list-empty {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.umbra-entity-list-rows {
+  flex: 1;
+  min-height: 0;
+}

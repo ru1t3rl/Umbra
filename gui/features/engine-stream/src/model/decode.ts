@@ -16,6 +16,8 @@ export type Decoded =
       /** The frame's events in order, for the journal (ADR 0071); never stored in the entity store. */
       events: readonly EventSummary[];
       events_truncated: boolean;
+      /** True only for `cause: "control"`: a frame sent after a command (ASM-938). Anything else is false. */
+      control: boolean;
     }
   | { kind: "error"; code: string; message: string }
   /** Not understood (bad JSON, unknown `type`, invalid shape); counted, never applied. */
@@ -191,7 +193,7 @@ function frameOf(v: Rec): Decoded {
   ) {
     return { kind: "ignored", reason: "invalid frame" };
   }
-  // `cause` ("tick" | "control", or a later value) is not needed by the GUI and is not read.
+  // `cause` is read only as "control or not" (ASM-938); an unknown, missing or mistyped value is not control.
   const entities: EntitySummary[] = [];
   let skipped = 0;
   for (const raw of v.entities as readonly unknown[]) {
@@ -214,6 +216,7 @@ function frameOf(v: Rec): Decoded {
     skipped,
     events: eventsOf(v.events),
     events_truncated: v.events_truncated === true,
+    control: v.cause === "control",
   };
 }
 

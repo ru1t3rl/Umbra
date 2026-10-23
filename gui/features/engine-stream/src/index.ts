@@ -5,6 +5,7 @@ export { EngineStreamProvider } from "./components/EngineStreamProvider/EngineSt
 export type { EngineStreamConnection, EngineStreamOptions } from "./connection.ts";
 export { connectEngineStream, DEFAULT_JOURNAL_CAPACITY } from "./connection.ts";
 export { useApplySubscription } from "./hooks/useApplySubscription.ts";
+export { useControlSeq } from "./hooks/useControlSeq.ts";
 export { useEntity } from "./hooks/useEntity.ts";
 export { useEntitySource } from "./hooks/useEntitySource.ts";
 export { useJournalSource } from "./hooks/useJournalSource.ts";

@@ -9,7 +9,7 @@ running logs and assumptions stay the detailed source: `docs/plans/M7.md`, `docs
 |---|---|---|---|
 | `develop` | base | `a043c6e` | ADR 0047 (M8 alongside M7) |
 | `m7` | M7 engine | see `git log origin/m7` | WI-4 is a WIP commit, NOT reviewed (see below) |
-| `m8` | M8 GUI | see `git log origin/m8` | WI-1..WI-7 done |
+| `m8` | M8 GUI | see `git log origin/m8` | WI-1..WI-10 done |
 
 Working layout used on the first PC: `m7` in the main clone, `m8` in a second worktree
 (`git worktree add ../Umbra-m8 m8`). Any layout works; keep the two tracks in separate trees so agents
@@ -45,11 +45,11 @@ Then, in the execution order the plan states (ASM-679): WI-5, WI-6, WI-7, WI-10 
 WI-10b, WI-8, WI-9, WI-11, WI-12, WI-13, WI-14, WI-15, WI-16, WI-16a, WI-16b, WI-17..WI-24.
 
 ## M8 (branch `m8`)
-Done, reviewed, full gate 15 green (`bun run verify`, 12 steps incl. Playwright 38 passed): WI-1..WI-7. WI-8 (ScenarioLoader, ScenarioSummary) done after that.
+Done, reviewed, full gate 15 green (`bun run verify`, 12 steps incl. Playwright 38 passed): WI-1..WI-7. WI-8 (ScenarioLoader, ScenarioSummary), WI-9 (map selection) and WI-10 (entity list and inspector, engine-stream controlSeq) done after that (2026-10-23); test preload has a global RTL cleanup (ASM-941).
 Showcase screenshot baselines approved by the human 2026-10-22 (`70efdfe`). ADR 0043 amended
 (components import their own CSS, human decision 2026-10-22).
 
-Next: WI-9..WI-23 in plan order.
+Next: WI-11..WI-23 in plan order.
 M7-dependent items wait for M7 (ADR 0047): WI-24 (contract sync after `m7` merges into `develop`;
 M7 already regenerated its own GUI client for 1.2.0 on `m7`), WI-25, WI-26, WI-27, WI-28 (close-out
 after `m7-done`). Gap G-1/G-2 fallbacks stay until M7 WI-16a/16b land.

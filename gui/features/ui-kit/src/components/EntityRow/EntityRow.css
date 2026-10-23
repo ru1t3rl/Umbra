@@ -42,3 +42,15 @@
 .vt-entity-stale {
   opacity: var(--opacity-track);
 }
+.vt-entity-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.vt-entity-static {
+  padding: 0; /* the VirtualList row already pads horizontally */
+  cursor: inherit;
+}
+.vt-entity-static:hover {
+  background: transparent;
+}

@@ -65,6 +65,8 @@ export interface StreamState {
   skipped: number;
   /** Frames the server dropped for this client, summed over every received frame (also coalesced ones). */
   dropped: number;
+  /** Control frames (sent after a command) decoded so far; never reset. Lets a reader notice a command that coalescing hid (ASM-938). */
+  controlSeq: number;
 }
 
 /** Imperative read access for consumers that must not re-render per frame (the map layer). */
