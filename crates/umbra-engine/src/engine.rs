@@ -3,6 +3,7 @@
 //! `Engine` wraps a [`Kernel`], converts user-facing placement (ECEF or lat/lon/alt) to the
 //! canonical ECEF state exactly once, and drives the kernel according to its clock.
 
+use std::collections::BTreeMap;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,6 +23,7 @@ use umbra_kernel::{
 use umbra_plugin_host::{PluginFault, PluginHost};
 
 use crate::error::{EngineError, SpawnParam};
+use crate::scenario::EntityInfo;
 
 /// Engine construction parameters.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -110,6 +112,10 @@ pub struct RunSummary {
 }
 
 /// The embeddable, synchronous engine.
+///
+/// An engine whose tick panicked must be dropped, not driven further: the spawner is taken out of it
+/// for the duration of the lifecycle application (ASM-681), so after an unwinding panic there it
+/// is gone and the engine would silently stop applying `Spawn` and `Despawn`.
 pub struct Engine {
     pub(crate) kernel: Kernel,
     /// The network link, if the scenario has adapters (M6, ADR 0030). Declared before `plugins`, so
@@ -120,6 +126,12 @@ pub struct Engine {
     /// Applies `Spawn` and `Despawn` intents after every tick (M7, ADR 0052). `None` for an engine
     /// built without a scenario, which applies neither, like a bare kernel. Taken out while it runs.
     pub(crate) spawner: Option<crate::spawner::Spawner>,
+    /// The metadata of the Owned entities built from templates (placements, API spawns and
+    /// lifecycle spawns): inserted by `spawn_placement`, removed by [`Engine::remove`] (ASM-688).
+    /// Entities placed with `Engine::spawn` directly are not in it.
+    directory: BTreeMap<EntityId, EntityInfo>,
+    /// Bumped on every change of `directory`, so a driver can tell when a cached copy is stale.
+    directory_version: u64,
 }
 
 impl Engine {
@@ -148,7 +160,25 @@ impl Engine {
             network: None,
             plugins: None,
             spawner: None,
+            directory: BTreeMap::new(),
+            directory_version: 0,
         }
+    }
+
+    /// The Owned entities built from templates, by id (ASM-688). Ghosts are not in it.
+    pub(crate) fn directory(&self) -> &BTreeMap<EntityId, EntityInfo> {
+        &self.directory
+    }
+
+    /// Increases whenever [`Engine::directory`] changes.
+    pub(crate) fn directory_version(&self) -> u64 {
+        self.directory_version
+    }
+
+    /// Records the metadata of an entity built from a template.
+    pub(crate) fn note_info(&mut self, info: EntityInfo) {
+        self.directory.insert(info.id, info);
+        self.directory_version += 1;
     }
 
     /// The master random source, for scenario-level randomness (ADR 0006).
@@ -461,6 +491,9 @@ impl Engine {
     /// [`EngineError::Kernel`] wrapping `KernelError::UnknownEntity`; nothing changes then.
     pub fn remove(&mut self, id: EntityId) -> Result<(), EngineError> {
         self.kernel.remove(id)?;
+        if self.directory.remove(&id).is_some() {
+            self.directory_version += 1;
+        }
         if let Some(link) = self.network.as_mut() {
             link.entity_removed(id);
         }
@@ -469,10 +502,8 @@ impl Engine {
 
     /// Applies the tick's `Spawn` and `Despawn` intents (ADR 0052). The spawner is taken out of the
     /// engine for the call, so it can borrow the engine mutably; it is put back afterwards.
+    /// `Spawner::apply` is a no-op on an empty list, so the common tick costs one take and put.
     fn apply_lifecycle(&mut self, report: &mut TickReport) {
-        if report.lifecycle.is_empty() {
-            return;
-        }
         if let Some(mut spawner) = self.spawner.take() {
             spawner.apply(self, &report.lifecycle, &mut report.events);
             self.spawner = Some(spawner);

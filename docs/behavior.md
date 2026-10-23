@@ -827,9 +827,13 @@ applies neither; the `Engine` of a scenario applies them right after the tick an
 publish: every `Spawn` first, in (spawner id, emission) order, then every `Despawn`. A spawned entity takes
 the template named by the intent, its position and heading, speed 0, no route, no name, the **spawner's
 force**, and the next entity id; it first acts in the next tick. `EntityCreated` and `EntityRemoved` events
-follow the kernel's events of that tick. At most 256 spawns are applied per tick and 100,000 entities exist
-in total; the excess is dropped and counted (`Engine::lifecycle_counters`), as is a spawn of an unknown
-template or one that fails to build (one warning per template).
+follow the kernel's events of that tick. At most 256 `Spawn` intents are handled per tick (every intent
+seen counts, applied or not) and an engine holds at most 100,000 **Owned** entities (ghosts of network peers
+do not count; they are bounded by `max_ghosts`); the excess is dropped in order and counted
+(`Engine::lifecycle_counters`, one warning per tick), as is a spawn of an unknown template or one that fails
+to build (one warning per template, naming the spawner and the template). A second `Despawn` of an entity
+already removed in the same tick is ignored. The entity directory the API reads follows these spawns and
+removals by itself.
 `umbra run` does not print intents; embedders read them from the snapshot. An entity whose behavior
 emits no intent in a tick gets none (it slows to a stop); an Owned entity without a behavior follows its
 route exactly as in M2.

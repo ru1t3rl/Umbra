@@ -5,8 +5,8 @@ model and loopback template tables). Used by `spawn_despawn.rs`, `spawn_determin
 `replay.rs`, `replay_determinism.rs` and `replay_dis.rs` through `m7_support`.
 
 The behavior `test.behavior.launcher` is defined in `m7_support/mod.rs` (registered by the tests, not
-by the engine). Its params: `spawn_at` (its own tick numbers, 1 = first tick), `template`, `per_tick`
-`despawn_at` and `ping` (also emit a `Custom` intent every tick). A spawned entity first acts in the tick after it was spawned (ADR 0052).
+by the engine). Its params: `spawn_at` (its own tick numbers, 1 = first tick), `template`, `per_tick`,
+`despawn_at`, `despawn_count` (copies of `Despawn` emitted, default 1) and `ping` (also emit a `Custom` intent every tick). A spawned entity first acts in the tick after it was spawned (ADR 0052).
 
 - `templates/`: `ground_vehicle.base` plus the carriers (`m7.carrier_*`, one per scenario, differing in
   the launcher params), the passive children (`m7.child`, `m7.child_a`, `m7.child_b`) and the
@@ -18,6 +18,8 @@ by the engine). Its params: `spawn_at` (its own tick numbers, 1 = first tick), `
 - `spawn_selfish/`: one carrier that spawns an `m7.selfish` on its second tick.
 - `spawn_flood/`: one carrier that emits 300 spawns on its first tick (cap test, `MAX_SPAWNS_PER_TICK`).
 - `spawn_missing/`: one carrier that spawns the unknown template `m7.missing` on its first tick.
+- `spawn_double_despawn/`: one carrier that spawns a child and emits `Despawn` twice on its first tick.
+- `spawn_missing_twice/`: one carrier that spawns the unknown template `m7.missing` twice on its first tick.
 - `spawn_net/`: as `spawn_basic` with `m7.selfish_late` children and the loopback adapter `lb`; its
   peer is `../net_pair/b`.
 - `handle_run/`: two ground vehicles on a route and the loopback adapter `lb`, long enough that a

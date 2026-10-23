@@ -332,6 +332,12 @@ impl NetLink {
         self.table.info.contains_key(&id)
     }
 
+    /// The number of live ghosts.
+    #[must_use]
+    pub fn ghost_count(&self) -> usize {
+        self.table.info.len()
+    }
+
     /// Changes whenever a ghost appears or goes, so a reader can tell its copy of the entity
     /// directory is stale.
     #[must_use]

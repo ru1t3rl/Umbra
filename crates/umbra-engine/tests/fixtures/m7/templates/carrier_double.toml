@@ -1,0 +1,7 @@
+schema_version = 1
+id = "m7.carrier_double"
+extends = "ground_vehicle.base"
+description = "Spawns a child and despawns itself twice in one tick (its first)"
+[behavior]
+ref = "test.behavior.launcher"
+params = { spawn_at = [1], template = "m7.child", despawn_at = 1, despawn_count = 2 }

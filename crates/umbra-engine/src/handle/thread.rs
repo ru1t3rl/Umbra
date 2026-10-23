@@ -70,6 +70,8 @@ pub(super) struct Run {
     pub(super) directory: Arc<BTreeMap<EntityId, EntityInfo>>,
     /// The ghost generation `directory` was built at (0 without a network link).
     pub(super) directory_ghosts: u64,
+    /// The engine's directory version `directory` was built at (spawns and removals, ADR 0052).
+    pub(super) directory_version: u64,
     pub(super) state: RunState,
     pub(super) stop_reason: Option<StopReason>,
     pub(super) step: Option<PendingStep>,
@@ -88,6 +90,7 @@ impl Run {
     pub(super) fn refresh_directory(&mut self) {
         self.directory = Arc::new(self.session.directory());
         self.directory_ghosts = self.ghost_generation();
+        self.directory_version = self.session.engine().directory_version();
     }
 
     /// The one place a run-control action reaches the network (ASM-295). Adapters that publish
@@ -103,9 +106,12 @@ impl Run {
             .map_or(0, crate::NetLink::ghost_generation)
     }
 
-    /// Rebuilds the directory if ghosts appeared or went since it was built.
+    /// Rebuilds the directory if ghosts appeared or went, or entities were spawned or removed (by
+    /// the lifecycle application, between commands), since it was built.
     pub(super) fn sync_directory(&mut self) {
-        if self.ghost_generation() != self.directory_ghosts {
+        if self.ghost_generation() != self.directory_ghosts
+            || self.session.engine().directory_version() != self.directory_version
+        {
             self.refresh_directory();
         }
     }
@@ -259,9 +265,7 @@ impl Worker {
         let Some(run) = self.run.as_mut() else {
             return true;
         };
-        let pumped = run.session.engine_mut().pump(max_wait);
-        run.session.sync_lifecycle();
-        match pumped {
+        match run.session.engine_mut().pump(max_wait) {
             Ok(Pumped::Ticked(report)) => self.after_tick(report),
             Ok(Pumped::Aborted { report, fault }) => self.after_abort(report, &fault),
             Ok(Pumped::NetAborted { report, fault }) => self.after_net_abort(report, &fault),

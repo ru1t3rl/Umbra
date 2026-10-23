@@ -187,3 +187,26 @@ fn given_no_lifecycle_intents_when_ticked_then_the_list_is_empty() {
 
     assert_eq!(report.lifecycle, Vec::<(EntityId, Intent)>::new());
 }
+
+/// ADR 0052, ASM-601: `Kernel::force_of` reads one entity's force without listing all owned
+/// entities; `None` for a neutral entity and for an unknown id.
+#[test]
+fn given_a_force_when_read_by_id_then_it_is_returned_and_neutral_or_unknown_give_none() {
+    let mut k = kernel(3);
+    let model = Stub::new("test.model.still", Motion::Stationary);
+    let blue = umbra_core::Force::new("blue").expect("valid force");
+    k.spawn_with(
+        owned(at(0.0), &model),
+        AgentInit {
+            force: Some(blue.clone()),
+            ..AgentInit::default()
+        },
+    )
+    .expect("spawn with a force");
+    k.spawn_with(owned(at(1.0), &model), AgentInit::default())
+        .expect("spawn neutral");
+
+    assert_eq!(k.force_of(id(1)), Some(blue));
+    assert_eq!(k.force_of(id(2)), None);
+    assert_eq!(k.force_of(id(99)), None);
+}

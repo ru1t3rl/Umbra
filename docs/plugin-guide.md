@@ -484,8 +484,8 @@ best-effort: a slow client can lose some, and `dropped` and `events_truncated` s
 state and are not part of the state hash, so a plugin cannot influence a run through them.
 `Spawn` and `Despawn` intents are applied by the engine right after the tick (M7, ADR 0052): the entity is
 created from the template with the emitter's force and acts from the next tick; `Despawn` removes the
-emitting entity (its instance is destroyed on the engine thread). Limits: 256 spawns per tick, 100,000
-entities; the excess and spawns of unknown templates are dropped, not faults. The plugin list of the loaded
+emitting entity (its instance is destroyed on the engine thread). Limits: 256 spawn intents per tick, 100,000
+Owned entities; the excess and spawns of unknown templates are dropped, not faults. The plugin list of the loaded
 scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Loading a scenario again (or
 `POST /api/v1/scenario` over a running session) starts a new plugin lifecycle: `init` runs again.
 

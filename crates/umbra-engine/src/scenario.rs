@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use umbra_core::{ComponentKind, EntityId, Ownership, Registry, TemplateId, TickRate};
 use umbra_kernel::{ClockMode, TimeScale, WallClock};
-use umbra_templates::{ClockSetting, Loader, LoaderError, LoaderOptions, Placement};
+use umbra_templates::{
+    ClockSetting, Loader, LoaderError, LoaderOptions, Placement, ResolvedTemplate,
+};
 pub use umbra_templates::{
     Diagnostic, DiagnosticCode, Diagnostics, Location, Note, Scenario, TickRateSource,
     ValidationReport,
@@ -20,6 +22,7 @@ use crate::confine::Confinement;
 use crate::engine::{AgentInit, Engine, EngineConfig, RouteSpec, SpawnSpec};
 use crate::error::EngineError;
 use crate::net::NetLink;
+use crate::session::TemplateSpawn;
 use crate::spawner::Spawner;
 
 /// Overrides and the wall clock for one run.
@@ -49,7 +52,8 @@ pub struct EntityInfo {
 pub struct ScenarioRun {
     /// The engine.
     pub engine: Engine,
-    /// Spawned entities in id order.
+    /// The entities placed at load, in id order: a snapshot, not kept current by later spawns and
+    /// removals (a `Session` reads the live directory through `Session::entities`).
     pub entities: Vec<EntityInfo>,
     /// The scenario's run length in ticks.
     pub duration_ticks: u64,
@@ -210,6 +214,28 @@ fn build_agent(
     })
 }
 
+/// The placement of one entity built from `template` as described by `spec`: the template's motion,
+/// behavior and sensors, no route. Shared by `Session::spawn` and the lifecycle `Spawner`, so an API
+/// spawn and a `Spawn` intent build alike (ASM-153, ADR 0052).
+pub(crate) fn placement_from_template(
+    template: &ResolvedTemplate,
+    spec: TemplateSpawn,
+) -> Placement {
+    Placement {
+        template: spec.template,
+        name: spec.name,
+        group: spec.group,
+        position: spec.position,
+        heading: spec.heading,
+        speed: spec.speed,
+        motion: template.motion.clone(),
+        route: None,
+        behavior: template.behavior.clone(),
+        sensors: template.sensors.clone(),
+        force: spec.force,
+    }
+}
+
 /// Builds one placement through `registry` (which must hold the scenario's graphs, see
 /// [`scenario_registry`]) and spawns it; `index` names the placement in build errors. Shared by
 /// [`instantiate`] and `Session::spawn`, so an API spawn is built exactly like a placement
@@ -245,6 +271,12 @@ pub(crate) fn spawn_placement(
         }),
     };
     let id = engine.spawn_with(spec, agent)?;
+    engine.note_info(EntityInfo {
+        id,
+        template: placement.template.clone(),
+        name: placement.name.clone(),
+        group: placement.group.clone(),
+    });
     if let Some(link) = engine.network.as_mut() {
         link.note_owned(
             id,
@@ -311,21 +343,11 @@ pub(crate) fn instantiate_in(
     if let Some(link) = NetLink::connect(registry, scenario, engine.now())? {
         engine.attach_network(link);
     }
-    engine.attach_spawner(Spawner::new(
-        registry.clone(),
-        scenario.templates.clone(),
-        scenario.entities.len(),
-    ));
-    let mut entities = Vec::with_capacity(scenario.entities.len());
+    engine.attach_spawner(Spawner::new(registry.clone(), scenario.templates.clone()));
     for (index, placement) in scenario.entities.iter().enumerate() {
-        let id = spawn_placement(&mut engine, registry, index, placement)?;
-        entities.push(EntityInfo {
-            id,
-            template: placement.template.clone(),
-            name: placement.name.clone(),
-            group: placement.group.clone(),
-        });
+        spawn_placement(&mut engine, registry, index, placement)?;
     }
+    let entities = engine.directory().values().cloned().collect();
     Ok(ScenarioRun {
         engine,
         entities,

@@ -1,0 +1,19 @@
+# m7 fixture spawn_double_despawn. See ../README.md.
+schema_version = 1
+
+[scenario]
+name = "m7_spawn_double_despawn"
+seed = 12
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 10.0
+template_paths = ["../templates"]
+
+
+[[entities]]
+template = "m7.carrier_double"
+name = "carrier"
+force = "blue"
+position = { lat_deg = 52.0, lon_deg = 4.0 }
+heading_deg = 90.0
+speed_mps = 0.0

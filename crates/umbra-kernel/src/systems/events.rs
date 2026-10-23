@@ -9,8 +9,16 @@ use umbra_core::{EntityId, Intent, SimEvent};
 
 use crate::world::World;
 
-/// Appends this tick's events to `out`.
-pub(crate) fn run(world: &World, out: &mut Vec<SimEvent>) {
+/// Appends this tick's events to `out` and the `Spawn` and `Despawn` intents to `lifecycle` (ADR
+/// 0052, REQ-B-2), in one walk: entities in id order, each entity's intents in emission order.
+///
+/// The Owned filter is defensive (REQ-K-5): the Behavior phase gives no intents to Remote entities,
+/// so they hold none, but this system must not act for one that did.
+pub(crate) fn run_with_lifecycle(
+    world: &World,
+    out: &mut Vec<SimEvent>,
+    lifecycle: &mut Vec<(EntityId, Intent)>,
+) {
     world.for_each(|e| {
         if !e.ownership.is_owned() {
             return;
@@ -27,27 +35,17 @@ pub(crate) fn run(world: &World, out: &mut Vec<SimEvent>) {
                     kind: kind.clone(),
                     payload: payload.clone(),
                 }),
+                Intent::Spawn { .. } | Intent::Despawn => lifecycle.push((e.id, intent.clone())),
                 _ => {}
             }
         }
     });
 }
 
-/// Appends the `Spawn` and `Despawn` intents of Owned entities to `out`, entities in id order and
-/// each entity's intents in emission order (ADR 0052, REQ-B-2, REQ-K-5).
-pub(crate) fn collect_lifecycle(world: &World, out: &mut Vec<(EntityId, Intent)>) {
-    world.for_each(|e| {
-        if !e.ownership.is_owned() {
-            return;
-        }
-        out.extend(
-            e.intents
-                .0
-                .iter()
-                .filter(|i| matches!(i, Intent::Spawn { .. } | Intent::Despawn))
-                .map(|i| (e.id, i.clone())),
-        );
-    });
+/// [`run_with_lifecycle`] without the lifecycle list (the events alone, for the unit tests).
+#[cfg(test)]
+pub(crate) fn run(world: &World, out: &mut Vec<SimEvent>) {
+    run_with_lifecycle(world, out, &mut Vec::new());
 }
 
 #[cfg(test)]
@@ -132,5 +130,25 @@ mod tests {
             })
             .collect();
         assert_eq!(shooters, vec![2], "only the Owned entity fires");
+    }
+
+    /// REQ-K-5, ADR 0052: the ownership guard of the lifecycle walk. A Remote entity holding a
+    /// `Despawn` intent (which the Behavior phase never gives it) is not reported, an Owned one is.
+    #[test]
+    fn remote_entity_with_a_despawn_intent_is_not_in_the_lifecycle_list() {
+        let mut world = World::new();
+        let remote = Ownership::Remote {
+            source: RemoteSource::new("net.test"),
+        };
+        assert!(spawn(&mut world, remote).is_ok());
+        assert!(spawn(&mut world, Ownership::Owned).is_ok());
+        world.for_each_mut(|e| e.intents.0.push(Intent::Despawn));
+
+        let (mut events, mut lifecycle) = (Vec::new(), Vec::new());
+        run_with_lifecycle(&world, &mut events, &mut lifecycle);
+
+        let who: Vec<_> = lifecycle.iter().map(|(id, _)| id.get()).collect();
+        assert_eq!(who, vec![2], "only the Owned entity");
+        assert!(events.is_empty(), "a Despawn is no event");
     }
 }

@@ -384,6 +384,16 @@ impl World {
         self.remote_timeouts = timeouts;
     }
 
+    /// A copy of the force of entity `id`, if it exists and has one (the ECS hands out borrow
+    /// guards, which cannot leave this function).
+    pub(crate) fn force_of(&self, id: EntityId) -> Option<Force> {
+        let entity = *self.index.get(&id)?;
+        self.ecs
+            .get::<&ForceTag>(entity)
+            .ok()
+            .map(|tag| tag.0.clone())
+    }
+
     /// Visits every Owned entity in ascending id order as `(id, state, force)`.
     pub(crate) fn for_each_owned(
         &self,

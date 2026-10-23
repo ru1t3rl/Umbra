@@ -13,9 +13,7 @@ use umbra_core::{
 };
 use umbra_kernel::{ClockMode, WallClock};
 use umbra_plugin_host::{HostOptions, PluginHost, PluginLog};
-use umbra_templates::{
-    Placement, Scenario, SourceFile, graph_document_id, io_diagnostic, scenario_inputs,
-};
+use umbra_templates::{Scenario, SourceFile, graph_document_id, io_diagnostic, scenario_inputs};
 
 use crate::confine::ConfineError;
 use crate::engine::Engine;
@@ -24,10 +22,9 @@ use crate::plugins::{
     LoadedScenario, dedup_plugin_paths, load_with_host_options, resolve_plugin_paths,
 };
 use crate::scenario::{
-    EntityInfo, LoadSettings, RunOptions, ScenarioError, instantiate_in, scenario_registry,
-    spawn_placement,
+    EntityInfo, LoadSettings, RunOptions, ScenarioError, instantiate_in, placement_from_template,
+    scenario_registry, spawn_placement,
 };
-use crate::spawner::DirectoryChange;
 use crate::validate::{GraphValidation, validate_with_others};
 
 /// How to load a session.
@@ -135,7 +132,6 @@ pub struct Session {
     build_registry: Registry,
     registry: Registry,
     scenario: Scenario,
-    directory: BTreeMap<EntityId, EntityInfo>,
     duration_ticks: u64,
     /// API spawns so far; with the scenario's placements it numbers build errors.
     spawns: usize,
@@ -208,33 +204,16 @@ impl Session {
         let mut run = instantiate_in(&registry, &scenario, options, Some(&plugins))?;
         run.engine.pause();
         let build_registry = scenario_registry(&registry, &scenario)?;
-        let directory = run.entities.into_iter().map(|e| (e.id, e)).collect();
         Ok(Self {
             engine: run.engine,
             build_registry,
             registry,
             scenario,
-            directory,
             duration_ticks: run.duration_ticks,
             spawns: 0,
             plugins,
             path: path.to_path_buf(),
         })
-    }
-
-    /// Brings the directory up to date with the entities the engine's spawner created and removed
-    /// from `Spawn` and `Despawn` intents (ADR 0052, ASM-606). The driver calls it after every tick.
-    pub fn sync_lifecycle(&mut self) {
-        for change in self.engine.take_directory_changes() {
-            match change {
-                DirectoryChange::Created(info) => {
-                    self.directory.insert(info.id, info);
-                }
-                DirectoryChange::Removed(id) => {
-                    self.directory.remove(&id);
-                }
-            }
-        }
     }
 
     /// The scenario file as loaded: with a confinement, the request resolved against the scenario
@@ -284,7 +263,7 @@ impl Session {
     /// Ghosts of network peers are not in it; see [`Session::directory`].
     #[must_use]
     pub fn entities(&self) -> &BTreeMap<EntityId, EntityInfo> {
-        &self.directory
+        self.engine.directory()
     }
 
     /// Every entity by id: [`Session::entities`] plus the ghosts of the network link, with their
@@ -292,7 +271,7 @@ impl Session {
     /// of the moment (ASM-400).
     #[must_use]
     pub fn directory(&self) -> BTreeMap<EntityId, EntityInfo> {
-        let mut all = self.directory.clone();
+        let mut all = self.engine.directory().clone();
         if let Some(link) = self.engine.network() {
             all.extend(link.ghosts().map(|(id, ghost)| {
                 (
@@ -312,7 +291,7 @@ impl Session {
     /// The directory entry of `id`, owned entities and ghosts alike.
     #[must_use]
     pub fn entity_info(&self, id: EntityId) -> Option<EntityInfo> {
-        self.directory.get(&id).cloned().or_else(|| {
+        self.engine.directory().get(&id).cloned().or_else(|| {
             let ghost = self.engine.network()?.ghosts().find(|(g, _)| *g == id)?.1;
             Some(EntityInfo {
                 id,
@@ -344,42 +323,22 @@ impl Session {
             .ok_or_else(|| SessionError::TemplateNotFound(spec.template.clone()))?;
         if let Some(name) = &spec.name
             && self
-                .directory
+                .engine
+                .directory()
                 .values()
                 .any(|e| e.name.as_ref() == Some(name))
         {
             return Err(SessionError::DuplicateName(name.clone()));
         }
-        let placement = Placement {
-            template: spec.template,
-            name: spec.name,
-            group: spec.group,
-            position: spec.position,
-            heading: spec.heading,
-            speed: spec.speed,
-            motion: template.motion.clone(),
-            route: None,
-            behavior: template.behavior.clone(),
-            sensors: template.sensors.clone(),
-            force: spec.force,
-        };
+        let placement = placement_from_template(template, spec);
         let _scope = self.plugins.build_scope();
         let index = self.scenario.entities.len() + self.spawns;
         self.spawns += 1;
         let id = spawn_placement(&mut self.engine, &self.build_registry, index, &placement)?;
         let event = SimEvent::EntityCreated {
             entity: id,
-            template: Some(placement.template.clone()),
+            template: Some(placement.template),
         };
-        self.directory.insert(
-            id,
-            EntityInfo {
-                id,
-                template: placement.template,
-                name: placement.name,
-                group: placement.group,
-            },
-        );
         Ok((id, event))
     }
 
@@ -393,11 +352,10 @@ impl Session {
         if self.engine.network().is_some_and(|n| n.is_ghost(id)) {
             return Err(SessionError::EntityRemote(id));
         }
-        if !self.directory.contains_key(&id) {
+        if !self.engine.directory().contains_key(&id) {
             return Err(SessionError::EntityNotFound(id));
         }
         self.engine.remove(id)?;
-        self.directory.remove(&id);
         Ok(SimEvent::EntityRemoved { entity: id })
     }
 

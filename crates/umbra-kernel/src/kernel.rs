@@ -375,6 +375,13 @@ impl Kernel {
         self.world.update_remote(id, remote, self.clock.now())
     }
 
+    /// A copy of the force of the entity `id`, if it exists and has one (ADR 0052, ASM-601). A copy
+    /// and not a reference: the ECS storage only lends borrow guards.
+    #[must_use]
+    pub fn force_of(&self, id: EntityId) -> Option<Force> {
+        self.world.force_of(id)
+    }
+
     /// Clears `out` and fills it with the Owned entities in id order (ASM-253).
     pub fn owned_views(&self, out: &mut Vec<OwnedView>) {
         out.clear();
@@ -407,8 +414,7 @@ fn run_phase(
             }
         }),
         Phase::Events => {
-            events::run(world, events);
-            events::collect_lifecycle(world, lifecycle);
+            events::run_with_lifecycle(world, events, lifecycle);
         }
         Phase::Ingest => ingest::run(world, ctx),
         Phase::Publish => {}

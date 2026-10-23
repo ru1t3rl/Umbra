@@ -58,3 +58,18 @@ Option 1.
 - Migration: none; frozen M3 tests and all four goldens unchanged; ADR 0016 and 0028 notes updated.
 - Revisit for spawned entities with names, routes or inherited velocity (a richer `Spawn` in intent set
   v2), or for in-tick application if a use case needs it.
+
+## Implementation notes (WI-4 review, 2026-10-23; the decision above is unchanged)
+- **Per-tick count.** The cap of 256 counts every `Spawn` intent *seen* in a tick (applied, rejected or
+  capped), not only the applied ones, so the work per tick is bounded even for a flood of bad templates
+  (ASM-683). "At most 256 spawns per tick" above reads as "at most 256 spawn intents handled".
+- **Total count.** "100,000 entities in total" counts the engine's **Owned** entities; the ghosts of a
+  network link are bounded by their own `max_ghosts` and do not use up the cap (ASM-689).
+- **Directory.** The `Session` directory text above is superseded in mechanism: the directory of Owned
+  entities built from templates lives in `Engine`, kept by `spawn_placement` and `Engine::remove`, so the API
+  sees spawned and removed entities with no sync step for any driver (ASM-688, supersedes ASM-606 and
+  ASM-682). Still no contract change.
+- **Panic safety.** The spawner is taken out of the engine while it applies the lifecycle (ASM-681); an
+  engine whose tick panicked must be dropped, not driven further (stated in the `Engine` rustdoc, ASM-693).
+- **Warnings.** A rejected spawn warns once per template id for the life of the engine, naming the spawner's
+  entity id, the template and the error (ASM-690).

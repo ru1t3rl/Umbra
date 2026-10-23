@@ -213,6 +213,7 @@ impl Worker {
         self.run = Some(Run {
             directory: Arc::new(session.directory()),
             directory_ghosts: 0,
+            directory_version: session.engine().directory_version(),
             session,
             info: info.clone(),
             state: RunState::Ready,

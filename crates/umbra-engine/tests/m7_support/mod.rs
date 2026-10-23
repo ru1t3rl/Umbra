@@ -4,7 +4,7 @@
 //! The launcher `test.behavior.launcher` takes `{ spawn_at: [tick, ..], template, per_tick,
 //! despawn_at, ping }`: on its own tick number `n` (1 for its first tick) it emits `per_tick` copies of
 //! `Spawn { template, position: its own position, heading: 0.25 rad }` when `n` is in `spawn_at`,
-//! and `Despawn` when `n == despawn_at`; with `ping` it also emits a `Custom` intent every tick (a
+//! and `Despawn` (`despawn_count` times, default 1) when `n == despawn_at`; with `ping` it also emits a `Custom` intent every tick (a
 //! kernel event to order the spawner's events against). Each test binary uses a subset.
 #![expect(
     dead_code,
@@ -39,6 +39,7 @@ struct Launcher {
     template: TemplateId,
     per_tick: u64,
     despawn_at: Option<u64>,
+    despawn_count: u64,
     ping: bool,
     n: u64,
 }
@@ -67,7 +68,9 @@ impl BehaviorInstance for Launcher {
             }
         }
         if self.despawn_at == Some(self.n) {
-            out.push(Intent::Despawn);
+            for _ in 0..self.despawn_count {
+                out.push(Intent::Despawn);
+            }
         }
         Status::Running
     }
@@ -86,6 +89,7 @@ struct LauncherBehavior {
     template: TemplateId,
     per_tick: u64,
     despawn_at: Option<u64>,
+    despawn_count: u64,
     ping: bool,
 }
 
@@ -99,6 +103,7 @@ impl Behavior for LauncherBehavior {
             template: self.template.clone(),
             per_tick: self.per_tick,
             despawn_at: self.despawn_at,
+            despawn_count: self.despawn_count,
             ping: self.ping,
             n: 0,
         }))
@@ -136,6 +141,10 @@ impl Factory<dyn Behavior> for LauncherFactory {
                 .and_then(ParamValue::as_u64)
                 .unwrap_or(1),
             despawn_at: params.get("despawn_at").and_then(ParamValue::as_u64),
+            despawn_count: params
+                .get("despawn_count")
+                .and_then(ParamValue::as_u64)
+                .unwrap_or(1),
             ping: params
                 .get("ping")
                 .and_then(ParamValue::as_bool)
@@ -156,6 +165,7 @@ pub fn with_launcher(mut registry: Registry) -> Registry {
                         "template":{"type":"string"},
                         "per_tick":{"type":"integer","minimum":1},
                         "despawn_at":{"type":"integer","minimum":1},
+                        "despawn_count":{"type":"integer","minimum":1},
                         "ping":{"type":"boolean"}}}"#,
                 )
                 .expect("schema"),
@@ -397,4 +407,55 @@ impl Stepper {
 /// A stepper over `tests/fixtures/m7/<dir>` on the launcher registry.
 pub fn stepper(dir: &str) -> Stepper {
     Stepper::new(start(&launcher_registry(), &fixture(dir)).engine)
+}
+
+/// Collects every WARN event (its message and fields, as one line) of the closure `f`
+/// (the capture pattern of `net_warnings.rs`).
+pub fn capture_warnings(f: impl FnOnce()) -> Vec<String> {
+    use tracing::field::{Field, Visit};
+    use tracing::span::{Attributes, Id, Record};
+    use tracing::{Event, Level, Metadata, Subscriber};
+
+    #[derive(Clone, Default)]
+    struct Warnings(Arc<Mutex<Vec<String>>>);
+
+    struct Line(Vec<String>);
+
+    impl Visit for Line {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.insert(0, format!("{value:?}"));
+            } else {
+                self.0.push(format!("{}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl Subscriber for Warnings {
+        fn enabled(&self, m: &Metadata<'_>) -> bool {
+            *m.level() == Level::WARN
+        }
+        fn new_span(&self, _: &Attributes<'_>) -> Id {
+            Id::from_u64(1)
+        }
+        fn record(&self, _: &Id, _: &Record<'_>) {}
+        fn record_follows_from(&self, _: &Id, _: &Id) {}
+        fn event(&self, e: &Event<'_>) {
+            let mut line = Line(Vec::new());
+            e.record(&mut line);
+            self.0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(line.0.join(" "));
+        }
+        fn enter(&self, _: &Id) {}
+        fn exit(&self, _: &Id) {}
+    }
+
+    let warnings = Warnings::default();
+    tracing::subscriber::with_default(warnings.clone(), f);
+    let guard = warnings.0.lock().unwrap_or_else(PoisonError::into_inner);
+    let got = guard.clone();
+    drop(guard);
+    got
 }

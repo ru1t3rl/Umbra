@@ -28,18 +28,11 @@ The Playwright `engine` project needs `cargo build -p umbra-cli --release --lock
 Done, reviewed, pushed: WI-1 (engine acceptance tests), WI-2 (plugin acceptance tests), WI-3 (API 1.2.0,
 `RunStatus.recording`). Accepted ADRs 0050..0059 (0059: `umbra_sdk::math`, amends ADR 0003).
 
-**In progress: WI-4 (apply Spawn/Despawn, ADR 0052).** Implemented and committed as WIP, but the code
-review was stopped before it finished. The implementer reported: full `scripts/gates.sh` green
-(gate 3: 3054 passed, 0 failed, 191 ignored; gate 4: 35; gate 13: 45 passed, 16 ignored), goldens
-`849026656b7b42d2`, `3a7bfda0a76111b9`, `88954c5dc6b52b48`, `3cc077a4c83c4a63` unchanged, `m2-compat`
-ok. No mutation checks were run yet. Next:
-1. Re-run the review (skill `review-change`, `code-reviewer`), including mutation checks in a scratch
-   copy: spawns-before-despawns order, force inheritance, per-tick cap 256, total cap (lowered constant),
-   id allocation, event ordering, bare kernel applies nothing, `Session::sync_lifecycle` omitted.
-2. Open design questions for the reviewer: panic safety of the `Option<Spawner>` take-out in
-   `apply_lifecycle`; whether the `Session::sync_lifecycle()` obligation for embedders (ASM-682) should
-   become automatic; untested cases listed in ASM-686.
-3. Fix findings, re-run `scripts/gates.sh`, then amend or follow up the WIP commit with a reviewed one.
+**WI-4 (apply Spawn/Despawn, ADR 0052): done.** The WIP commit `e58ae8f` was reviewed; the findings were fixed
+(directory in the engine, caps as `Limits`, owned-only total cap, publish-order and build-scope tests,
+ASM-688..693), the re-review approved, and the fixes are committed on top of it. Gates green (gate 3: 3068
+passed), goldens `849026656b7b42d2`, `3a7bfda0a76111b9`, `88954c5dc6b52b48`, `3cc077a4c83c4a63` unchanged.
+Next is WI-5.
 
 Then, in the execution order the plan states (ASM-679): WI-5, WI-6, WI-7, WI-10 (with ADR 0059 math),
 WI-10b, WI-8, WI-9, WI-11, WI-12, WI-13, WI-14, WI-15, WI-16, WI-16a, WI-16b, WI-17..WI-24.
@@ -62,7 +55,9 @@ bun pin 1.4.4, showcase baselines.
 
 ## Working rules learned in this session
 - Each work item: failing tests (test engineer) -> implementation -> `code-reviewer` -> fixes ->
-  gates -> commit with requirement IDs -> push. Commit and push after every work item.
+  gates -> commit with requirement IDs. Agents commit only and never push; the human pushes at milestone end.
+- On this machine `target/` is a symlink to `/root/umbra-target/<track>`: run cargo and the gates with
+  `CARGO_TARGET_DIR=/root/umbra-target/m7` (else `tests/confine.rs` fails). `cargo-audit` is installed.
 - Mutation testing only in a uniquely named scratch copy, never in the real tree, and never reuse another
   agent's scratch scripts (a shared script once mutated the real tree concurrently with a test run).
 - Ask the human before editing any existing (frozen) test file; append-only additions are listed in the

@@ -1,0 +1,7 @@
+schema_version = 1
+id = "m7.carrier_missing_twice"
+extends = "ground_vehicle.base"
+description = "Spawns the unknown template twice on its first tick"
+[behavior]
+ref = "test.behavior.launcher"
+params = { spawn_at = [1], per_tick = 2, template = "m7.missing" }
