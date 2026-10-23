@@ -1,9 +1,10 @@
 //! `builtin.air.kinematic`: a kinematic aircraft (REQ-M-2, REQ-M-1, REQ-M-4, ADR 0051,
 //! ASM-607..609, ASM-611, ASM-699..).
 //!
-//! Stateless like every motion model. The speed (the length of the velocity vector) changes at
-//! most `max_accel * dt` per step and stays in `[min_speed, max_speed]` while the aircraft is
-//! flying; the turn rate is `g * tan(max_bank) / max(v, 1 m/s)`, capped by `max_turn_rate`, so
+//! Stateless like every motion model. The speed (the length of the velocity vector; the horizontal
+//! speed for an aircraft that can hover, `min_speed = 0`) changes at most `max_accel * dt` per step
+//! and stays in `[min_speed, max_speed]` while the aircraft is flying; the turn rate is
+//! `g * tan(max_bank) / max(v, 1 m/s)`, capped by `max_turn_rate`, so
 //! the turn radius `v / rate` grows with the square of the speed; the target height comes from the
 //! `MoveTo` destination, with climb and descent limited by their rates and never below terrain
 //! plus `min_altitude_agl`. Pitch is the flight-path angle and roll the bank used in the step.
@@ -15,7 +16,24 @@
 //! model's (ASM-694): the heading is held until straight travel has carried the destination out
 //! of that circle, then the aircraft turns in at the maximum rate and flies over the destination.
 //! With `min_speed = 0` the aircraft slows to a stop on the destination (the ground model's
-//! arrival snap). All trigonometry goes through `umbra_core::math` (ADR 0003).
+//! arrival snap, which may change the speed by up to `2 * max_accel * dt` in its landing step, as
+//! the ground model's does).
+//!
+//! An aircraft with `min_speed = 0` can hover (ASM-707): its controlled speed is the horizontal
+//! speed, limited by `max_accel`, and its vertical rate is independent of it: limited by
+//! `max_climb_rate` and `max_descent_rate`, and changing by at most `max_accel * dt` per step
+//! (read from the up component of the velocity, so the model stays stateless), braking on the
+//! height error like the horizontal approach so that the height arrives without overshoot (the
+//! last step may change the rate by up to `2 * max_accel * dt`, as the horizontal landing
+//! does), except that the terrain floor wins over the ramp: an aircraft on or above the floor is
+//! never ramped under the floor one step ahead, and its rate may change by more than
+//! `max_accel * dt` to stay on it. It can change height at rest and the velocity norm may exceed
+//! `max_speed` by the vertical rate. It steers to the destination projected to its own height
+//! (the distance is the true horizontal offset) and lands (snaps) horizontally on it, keeping its
+//! heading, while the
+//! height error is flown out. With `min_speed > 0` the speed is the norm of the velocity, the
+//! path is at most 45 degrees and the flight-path angle can change at once.
+//! All trigonometry goes through `umbra_core::math` (ADR 0003).
 
 use umbra_core::math;
 use umbra_core::{
@@ -41,11 +59,12 @@ const G: f64 = 9.80665;
 /// Limits of an aircraft.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AirKinematicParams {
-    /// Maximum speed, m/s (> 0).
+    /// Maximum speed, m/s (> 0); the horizontal speed when `min_speed` is 0.
     pub max_speed: MetersPerSecond,
-    /// Minimum speed, m/s (0 <= min < max).
+    /// Minimum speed, m/s (0 <= min < max); 0 means the aircraft can hover and climb at rest.
     pub min_speed: MetersPerSecond,
-    /// Maximum speed change rate, m/s^2 (> 0).
+    /// Maximum speed change rate, m/s^2 (> 0); also the vertical rate change when `min_speed` is
+    /// 0 (the horizontal acceleration for an aircraft that can hover).
     pub max_accel: MetersPerSecondSquared,
     /// Maximum climb rate, m/s (> 0).
     pub max_climb_rate: MetersPerSecond,
@@ -174,7 +193,7 @@ impl AirKinematic {
     fn desired_toward(&self, cruise: f64, a: &steer::Approach, dt: f64) -> f64 {
         // Only an aircraft that can stop brakes for the destination; one with a minimum speed
         // flies over it at cruise speed (the turning-circle limit below still slows it).
-        let mut v = if self.params.min_speed.0 == 0.0 {
+        let mut v = if self.hovers() {
             cruise.min(steer::stopping_speed(
                 self.params.max_accel.0,
                 dt,
@@ -192,11 +211,45 @@ impl AirKinematic {
         } else {
             math::sin(a.error).abs()
         };
+        // Correctness relies on `f64::min` returning the other operand for NaN: a NaN `sin_e`
+        // fails this test, and a NaN limit would be ignored by `min`.
         if sin_e > 0.0 {
             v = v.min(self.speed_for_radius(a.distance / (2.0 * sin_e)));
         }
         v.max(self.params.min_speed.0)
     }
+}
+
+/// `destination` at `height` meters above the ellipsoid, at the same latitude and longitude.
+fn level_with(destination: umbra_core::Ecef, height: Meters) -> umbra_core::Ecef {
+    let at = destination.to_geodetic();
+    at.with_height(height).unwrap_or(at).to_ecef()
+}
+
+/// The point `east` and `north` meters from the frame origin, in its tangent plane.
+fn point_at(frame: &LocalFrame, east: f64, north: f64) -> Geodetic {
+    frame
+        .from_enu(Enu {
+            east,
+            north,
+            up: 0.0,
+        })
+        .to_geodetic()
+}
+
+/// The heading error to the destination after a turn of `turned` radians (0 without one).
+fn facing_after_turn(toward: Option<&steer::Approach>, turned: f64) -> f64 {
+    toward.map_or(0.0, |a| math::wrap_pi(Radians(a.error - turned)).0)
+}
+
+/// How far under the floor an aircraft may be and still count as on it (rounding of the position).
+const FLOOR_TOLERANCE_M: f64 = 1e-6;
+
+/// The terrain floor under the aircraft and one step ahead, meters above the ellipsoid.
+#[derive(Clone, Copy)]
+struct Floors {
+    here: f64,
+    ahead: f64,
 }
 
 /// Where the height goes this step.
@@ -208,34 +261,131 @@ struct Vertical {
 }
 
 impl AirKinematic {
-    /// The climb rate toward `target` (the destination's height, else the current one), raised to
-    /// the terrain floor at `ahead`, limited by the climb and descent rates and by the steepest
-    /// flight-path angle (45 degrees of the speed).
-    fn vertical(
-        &self,
-        height: f64,
-        target: f64,
-        ahead: Geodetic,
-        speed: f64,
-        dt: f64,
-        terrain: &dyn TerrainProvider,
-    ) -> Vertical {
-        let p = &self.params;
+    /// Whether the aircraft can hover (`min_speed = 0`): its controlled speed is the horizontal
+    /// speed, its vertical rate is independent of it and ramps at `max_accel` (ASM-707).
+    fn hovers(&self) -> bool {
+        self.params.min_speed.0 == 0.0
+    }
+
+    /// The terrain floor at `ahead`: terrain plus `min_altitude_agl`, or minus infinity when the
+    /// terrain height is not finite (a plugin could return one: the floor is dropped).
+    fn floor_height(&self, ahead: Geodetic, terrain: &dyn TerrainProvider) -> f64 {
         let ground = terrain.height_at(ahead).0;
-        let floor = if ground.is_finite() {
-            ground + p.min_altitude_agl.0
+        if ground.is_finite() {
+            ground + self.params.min_altitude_agl.0
         } else {
             f64::NEG_INFINITY
-        };
-        let wanted = (target.max(floor) - height) / dt;
+        }
+    }
+
+    /// The horizontal landing snap (hover only, the ground model's): the destination's offset
+    /// when it lies within the step's travel (or 1 mm), both speeds are at most
+    /// `2 * max_accel * dt` and the destination is within 90 degrees of the heading after the
+    /// turn `turned` (or within 1 mm). `speeds` are the speed before and after the step.
+    fn landing(
+        &self,
+        toward: Option<&steer::Approach>,
+        speeds: (f64, f64),
+        dt: f64,
+        turned: f64,
+    ) -> Option<(f64, f64)> {
+        let a = toward.filter(|_| self.hovers())?;
+        let (speed, new_speed) = speeds;
+        let facing = facing_after_turn(toward, turned);
+        let lands = a.distance <= (new_speed * dt).max(ARRIVAL_EPSILON_M)
+            && speed.max(new_speed) <= 2.0 * self.params.max_accel.0 * dt
+            && (facing.abs() < core::f64::consts::FRAC_PI_2 || a.distance <= ARRIVAL_EPSILON_M);
+        lands.then_some((a.east, a.north))
+    }
+
+    /// The floors under the aircraft at `here` and at `ahead`.
+    fn floors(&self, here: Geodetic, ahead: Geodetic, terrain: &dyn TerrainProvider) -> Floors {
+        Floors {
+            // only the hover rule uses the floor under the aircraft (no unused terrain query)
+            here: if self.hovers() {
+                self.floor_height(here, terrain)
+            } else {
+                f64::NEG_INFINITY
+            },
+            ahead: self.floor_height(ahead, terrain),
+        }
+    }
+
+    /// The horizontal speed: the speed itself for an aircraft that can hover, what is left of the
+    /// speed (the norm of the velocity) after the climb `rate` otherwise.
+    fn horizontal_part(&self, speed: f64, rate: f64) -> f64 {
+        if self.hovers() {
+            speed
+        } else {
+            (speed * speed - rate * rate).max(0.0).sqrt()
+        }
+    }
+
+    /// The fixed-wing climb rate toward `target`: limited by the climb and descent rates and by
+    /// the steepest flight-path angle (45 degrees of the speed); it can change at once.
+    fn vertical_fixed(&self, height: f64, target: f64, speed: f64, dt: f64) -> Vertical {
+        let p = &self.params;
         let steepest = speed * MAX_PATH_SINE;
-        let rate = wanted.clamp(
+        let rate = ((target - height) / dt).clamp(
             -p.max_descent_rate.0.min(steepest),
             p.max_climb_rate.0.min(steepest),
         );
         Vertical {
             rate,
             height: height + rate * dt,
+        }
+    }
+
+    /// The hover-capable climb rate toward `target` (ASM-707): the rate ramps by at most
+    /// `max_accel * dt` per step from the current one `rate0`, toward the discrete stopping speed
+    /// for the height error (the horizontal rule, so the height arrives by construction), and the
+    /// rate limits win over the ramp. The terrain floor ahead wins over the ramp too: an aircraft
+    /// that is on or above the floor under it and whose ramped rate would end the step under the
+    /// floor ahead gets the rate that ends on it (at most the climb limit), which can change the
+    /// rate by more than `max_accel * dt`. The last step lands on the target exactly like the
+    /// horizontal snap: when the error is within the step (or 1 mm), the sign agrees and both
+    /// rates are at most `2 * max_accel * dt`, the rate becomes 0 (a change of up to twice the
+    /// limit).
+    fn vertical_hover(
+        &self,
+        height: f64,
+        target: f64,
+        floors: Floors,
+        rate0: f64,
+        dt: f64,
+    ) -> Vertical {
+        let p = &self.params;
+        let error = target - height;
+        let brake = steer::stopping_speed(p.max_accel.0, dt, error.abs());
+        let desired = error.signum() * brake;
+        let ramp = p.max_accel.0 * dt;
+        let rate = (rate0 + (desired - rate0).clamp(-ramp, ramp))
+            .clamp(-p.max_descent_rate.0, p.max_climb_rate.0);
+        // The floor wins over the ramp: the rate may change by more than `max_accel * dt`, but
+        // only to end the step on the floor (or at the climb limit when the floor is out of reach).
+        // An aircraft that starts under the floor (after a cliff, or a spawn there) is brought up
+        // by the ramp and its braking: it spends about `climb / (2 * max_accel)` longer under the
+        // floor and stays within `climb^2 / (2 * max_accel)` of it (0.9 s for 60/0/5/10/8, 0.3 s
+        // for 200/0/50/30/5), but does not overshoot above it (ASM-707).
+        let rate = if height >= floors.here - FLOOR_TOLERANCE_M && height + rate * dt < floors.ahead
+        {
+            ((floors.ahead - height) / dt).min(p.max_climb_rate.0)
+        } else {
+            rate
+        };
+        let lands = error.abs() <= (rate * dt).abs().max(ARRIVAL_EPSILON_M)
+            && rate * error >= 0.0
+            && rate0.abs().max(rate.abs()) <= 2.0 * ramp;
+        if lands {
+            Vertical {
+                rate: 0.0,
+                height: target,
+            }
+        } else {
+            Vertical {
+                rate,
+                height: height + rate * dt,
+            }
         }
     }
 }
@@ -254,10 +404,18 @@ impl MotionModel for AirKinematic {
     ///    `turn_rate(new_speed) * dt`; while the destination is inside the smallest turning circle
     ///    (radius at `min_speed`, plus the margin of the sea model) the heading is held.
     /// 4. The height moves toward the destination's height (else stays) at the climb or descent
-    ///    rate, but never below terrain (sampled one step ahead) plus `min_altitude_agl`; the
-    ///    horizontal speed is what is left of the speed after the climb rate.
+    ///    rate, but never below terrain (sampled one step ahead) plus `min_altitude_agl`. With
+    ///    `min_speed > 0` the horizontal speed is what is left of the speed after the climb rate
+    ///    (which is at most `speed / sqrt(2)`); with `min_speed = 0` the rate ramps by at most
+    ///    `max_accel * dt` toward the rate limit or the stopping speed for the height error and
+    ///    the horizontal speed is the speed, and the terrain floor wins over the ramp (ASM-707).
     /// 5. Arrival snap (only with `min_speed = 0`): the ground model's, horizontal; the aircraft
-    ///    lands on the destination's position and stops (speed 0, so no climb in that step).
+    ///    lands on the destination's position (steering to the destination projected to its own
+    ///    height) keeping its heading, and its horizontal speed becomes 0; the direction guard
+    ///    uses the heading error after this step's turn. The height is not part of this snap: it
+    ///    ramps toward the target and has its own last-step snap. The landing steps may change
+    ///    the speed or the vertical rate by up to `2 * max_accel * dt` (the ground model's
+    ///    exception).
     /// 6. Pitch is the flight-path angle, roll the bank that gives the turn made in this step.
     ///
     /// Precondition: `dt` is finite and > 0; otherwise the state is returned unchanged.
@@ -276,12 +434,26 @@ impl MotionModel for AirKinematic {
         let here = state.position.to_geodetic();
         let frame = LocalFrame::at(here);
         let heading = frame.euler_from_orientation(state.orientation).heading.0;
-        let speed = state.velocity.norm();
+        let velocity = frame.vector_to_enu(state.velocity);
+        let speed = if self.hovers() {
+            math::hypot(velocity.east, velocity.north)
+        } else {
+            state.velocity.norm()
+        };
         let reduced = steer::reduce(intents);
         let cruise = self.cruise(&reduced, speed, dt);
-        let toward = reduced
-            .destination
-            .map(|d| steer::approach(&frame, d, heading));
+        // A hover-capable aircraft steers to the destination projected to its own height, so the
+        // distance is the true horizontal offset: in the tangent plane the height difference
+        // would leave a residual of `dh * d / R` (centimeters for kilometers of height) that
+        // blocks the landing snap (ASM-707).
+        let toward = reduced.destination.map(|d| {
+            let d = if self.hovers() {
+                level_with(d, here.height())
+            } else {
+                d
+            };
+            steer::approach(&frame, d, heading)
+        });
         let desired = toward
             .as_ref()
             .map_or(cruise, |a| self.desired_toward(cruise, a, dt));
@@ -300,7 +472,7 @@ impl MotionModel for AirKinematic {
         } else {
             steer::turn_error(toward.as_ref(), reduced.heading, heading)
         };
-        let new_heading = match error {
+        let mut new_heading = match error {
             Some(error) if new_speed > 0.0 => {
                 math::wrap_pi(Radians(heading + error.clamp(-turn_step, turn_step))).0
             }
@@ -308,49 +480,50 @@ impl MotionModel for AirKinematic {
         };
 
         let (sin_h, cos_h) = math::sin_cos(new_heading);
-        let target_height = reduced
+        let destination_height = reduced
             .destination
             .map_or(here.height().0, |d| d.to_geodetic().height().0);
-        let ahead = frame
-            .from_enu(Enu {
-                east: new_speed * dt * sin_h,
-                north: new_speed * dt * cos_h,
-                up: 0.0,
-            })
-            .to_geodetic();
-        let mut vertical = self.vertical(
-            here.height().0,
-            target_height,
-            ahead,
-            new_speed,
+        // The heading error after this step's turn: a destination behind a slow aircraft that
+        // turns to face it in the step is landed on (a reversal at the landing speed, and
+        // without it a coarse step turns 180 degrees every step, ASM-707).
+        let landing = self.landing(
+            toward.as_ref(),
+            (speed, new_speed),
             dt,
-            terrain,
+            new_heading - heading,
         );
-        let mut horizontal = (new_speed * new_speed - vertical.rate * vertical.rate)
-            .max(0.0)
-            .sqrt();
+        // the floor is sampled where the step ends: on the destination in a landing step
+        let (ahead_east, ahead_north) =
+            landing.unwrap_or((new_speed * dt * sin_h, new_speed * dt * cos_h));
+        let ahead = point_at(&frame, ahead_east, ahead_north);
+        let floors = self.floors(here, ahead, terrain);
+        let wanted_height = destination_height.max(floors.ahead);
+        let height = here.height().0;
+        let vertical = if self.hovers() {
+            self.vertical_hover(height, wanted_height, floors, velocity.up, dt)
+        } else {
+            self.vertical_fixed(height, wanted_height, new_speed, dt)
+        };
+        let mut horizontal = self.horizontal_part(new_speed, vertical.rate);
 
         let travel = horizontal * dt;
-        let (east, north) = match &toward {
-            Some(a)
-                if p.min_speed.0 == 0.0
-                    && a.distance <= travel.max(ARRIVAL_EPSILON_M)
-                    && speed.max(new_speed) <= 2.0 * accel_step
-                    && (a.error.abs() < core::f64::consts::FRAC_PI_2
-                        || a.distance <= ARRIVAL_EPSILON_M) =>
-            {
-                new_speed = 0.0;
-                horizontal = 0.0;
-                vertical = Vertical {
-                    rate: 0.0,
-                    height: here.height().0,
-                };
-                (a.east, a.north)
-            }
-            _ => (travel * sin_h, travel * cos_h),
-        };
+        let (east, north) = landing.unwrap_or((travel * sin_h, travel * cos_h));
+        if landing.is_some() {
+            // Landing keeps the heading: over the destination the bearing is noise.
+            new_speed = 0.0;
+            horizontal = 0.0;
+            new_heading = heading;
+        }
 
         let turned = math::wrap_pi(Radians(new_heading - heading)).0;
+        // The run of the flight-path angle: a hovering aircraft's angle is capped at 45 degrees
+        // (a climb straight up would be 90, where the heading cannot be read back from the
+        // orientation), so the run is at least the rate (ASM-707).
+        let pitch_run = if self.hovers() {
+            horizontal.max(vertical.rate.abs())
+        } else {
+            horizontal
+        };
         let motion = Motion {
             east,
             north,
@@ -358,6 +531,7 @@ impl MotionModel for AirKinematic {
             turned,
             speed: new_speed,
             horizontal,
+            pitch_run,
             vertical,
         };
         motion.state_from(&frame, dt)
@@ -375,6 +549,8 @@ struct Motion {
     /// Speed (norm of the velocity) and its horizontal part, m/s.
     speed: f64,
     horizontal: f64,
+    /// The horizontal run the pitch is measured against, m/s.
+    pitch_run: f64,
     vertical: Vertical,
 }
 
@@ -404,7 +580,8 @@ impl Motion {
             }),
             orientation: new_frame.orientation_from_euler(Euler {
                 heading: Radians(self.heading),
-                pitch: Radians(math::atan2(self.vertical.rate, self.horizontal)),
+                // The flight-path angle (capped at 45 degrees for a hovering aircraft).
+                pitch: Radians(math::atan2(self.vertical.rate, self.pitch_run)),
                 roll: Radians(bank),
             }),
         }

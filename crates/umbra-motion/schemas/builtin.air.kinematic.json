@@ -7,20 +7,20 @@
       "type": "number",
       "exclusiveMinimum": 0,
       "maximum": 1000,
-      "description": "Maximum speed in meters per second."
+      "description": "Maximum speed in meters per second (the horizontal speed when min_speed_mps is 0)."
     },
     "min_speed_mps": {
       "type": "number",
       "minimum": 0,
       "maximum": 1000,
       "default": 0,
-      "description": "Minimum speed in meters per second while flying; must be below max_speed_mps. With 0 the aircraft can stop on a destination."
+      "description": "Minimum speed in meters per second while flying; must be below max_speed_mps. With 0 the aircraft can hover: it stops on a destination and can climb and descend at rest."
     },
     "max_accel_mps2": {
       "type": "number",
       "exclusiveMinimum": 0,
       "maximum": 1000,
-      "description": "Maximum acceleration and deceleration in meters per second squared."
+      "description": "Maximum acceleration and deceleration in meters per second squared (the horizontal acceleration, and the change of the vertical rate, when min_speed_mps is 0)."
     },
     "max_climb_rate_mps": {
       "type": "number",

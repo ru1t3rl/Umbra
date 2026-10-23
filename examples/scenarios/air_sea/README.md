@@ -8,8 +8,10 @@ The M7 air and sea example (ADR 0051, WI-6): one entity per motion model, near 5
 | `ship-1` | `ship.patrol_boat` (`builtin.sea.kinematic`, 10 m/s, 80 m smallest radius, height 0) | a 400 m square at 8 m/s |
 | `truck-1` | `truck.generic` (`builtin.ground.kinematic`) | a 600 m square at 15 m/s |
 
-The climb finishes after 120 s of the 300 s run, before the last waypoint, because `Hold` keeps the
-height. The aircraft cannot stop (minimum speed 40 m/s): at the last waypoint it loiters over it. The
+The climb finishes between 120 s and 140 s of the 300 s run (the aircraft levels at 1300 m until it
+has passed waypoint 1), before the last waypoint, because `Hold` keeps the height. The aircraft cannot
+stop (minimum speed 40 m/s): at the last waypoint it keeps flying around it at 1500 m, alternating
+between slowing down and speeding up (45 to 100 m/s, up to about 1.5 km from the waypoint). The
 ship and the truck stop. Waypoints were computed with 1 degree of latitude = 111 200 m and longitude
 scaled by cos(latitude).
 

@@ -20,6 +20,20 @@ use umbra_motion::{AirKinematic, AirKinematicParams};
 
 const G: f64 = 9.80665;
 
+/// The climb and descent rate limits of every rig, m/s.
+const CLIMB: f64 = 15.0;
+const DESCENT: f64 = 10.0;
+
+/// The height of the start states and of the level destinations of the arrival rows (non-level
+/// destinations are in `air_vertical.rs` and the sweep of `air_prop.rs`).
+const LEVEL_M: f64 = 2000.0;
+
+/// The height error of the destinations of the arrival grid (they are this far above the start).
+const HEIGHT_ERROR_M: f64 = 120.0;
+
+/// Steps an aircraft that can hover keeps checking after it has landed: it must stay landed.
+const HOLD_STEPS: usize = 30;
+
 /// A parameter set for the arrival tests.
 #[derive(Clone, Copy)]
 struct Rig {
@@ -77,13 +91,23 @@ impl Rig {
             max_speed: MetersPerSecond(self.max_speed),
             min_speed: MetersPerSecond(self.min_speed),
             max_accel: MetersPerSecondSquared(self.max_accel),
-            max_climb_rate: MetersPerSecond(15.0),
-            max_descent_rate: MetersPerSecond(10.0),
+            max_climb_rate: MetersPerSecond(CLIMB),
+            max_descent_rate: MetersPerSecond(DESCENT),
             max_bank: Radians(self.bank_deg.to_radians()),
             max_turn_rate: None,
             min_altitude_agl: Meters(0.0),
         })
         .expect("valid params")
+    }
+
+    /// The controlled speed: the horizontal speed of an aircraft that can hover (ASM-707), the
+    /// norm of the velocity otherwise.
+    fn speed(self, s: &umbra_core::KinematicState) -> f64 {
+        if self.min_speed > 0.0 {
+            return speed_of(s);
+        }
+        let v = LocalFrame::at(s.position.to_geodetic()).vector_to_enu(s.velocity);
+        umbra_core::math::hypot(v.east, v.north)
     }
 
     /// The turn radius at `speed`: `v * max(v, 1) / (g tan bank)`.
@@ -115,19 +139,25 @@ impl Rig {
     }
 
     /// Arrival bound in steps: twice (stated headroom) the path at the slowest sustained speed
-    /// (`min_speed`, or half of `max_speed` for an aircraft that can stop) plus the speed ramps.
+    /// (`min_speed`, or half of `max_speed` for an aircraft that can stop), the speed ramps and the
+    /// height change `dh` (signed meters) at the rate limit with its ramp.
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "a positive finite step count"
     )]
-    fn step_bound(self, v0: f64, d: f64) -> usize {
+    fn step_bound(self, v0: f64, d: f64, dh: f64) -> usize {
         let slow = if self.min_speed > 0.0 {
             self.min_speed
         } else {
             0.5 * self.max_speed
         };
-        let seconds = 2.0 * (self.path_bound(v0, d) / slow + 2.0 * self.max_speed / self.max_accel);
+        // plus the height change at the slower of the two rate limits and the vertical ramp and
+        // stop (`2 * rate / a`)
+        let rate = CLIMB.min(DESCENT);
+        let vertical = dh.abs() / rate + 2.0 * rate / self.max_accel;
+        let seconds = 2.0
+            * (self.path_bound(v0, d) / slow + 2.0 * self.max_speed / self.max_accel + vertical);
         (seconds / self.dt).ceil() as usize
     }
 
@@ -151,17 +181,16 @@ fn steps_to_arrive(
     let dt = Seconds(rig.dt);
     let intents = [move_to(target.0, target.1, target.2)];
     let goal = dest(target.0, target.1, target.2);
-    let mut s = start(0.0, v0, 2000.0);
+    let mut s = start(0.0, v0, LEVEL_M);
     let mut path = 0.0;
     for i in 0..limit {
         let next = model.step(&s, &intents, dt, &flat());
         path += (next.position - s.position).norm();
-        let (a, b) = (speed_of(&s), speed_of(&next));
-        let landed = b == 0.0;
-        assert!(
-            landed || (b - a).abs() <= rig.max_accel * rig.dt + 1e-6,
-            "step {i}: speed {a} -> {b}"
-        );
+        let (a, b) = (rig.speed(&s), rig.speed(&next));
+        let landed = b < 1e-9;
+        // the landing step may change the speed by twice the limit (ASM-701)
+        let limit = rig.max_accel * rig.dt * if landed { 2.0 } else { 1.0 };
+        assert!((b - a).abs() <= limit + 1e-6, "step {i}: speed {a} -> {b}");
         let turned = angle_delta(heading_of(&next), heading_of(&s)).abs();
         // the turn made in a step is at most the rate at the new speed
         let allowed = G * umbra_core::math::tan(rig.bank_deg.to_radians()) / b.max(1.0) * rig.dt;
@@ -173,22 +202,40 @@ fn steps_to_arrive(
         s = next;
         let off = LocalFrame::at(s.position.to_geodetic()).to_enu(goal);
         let miss = umbra_core::math::hypot(off.east, off.north);
-        let done = if rig.min_speed > 0.0 {
-            miss <= rig.capture()
-        } else {
-            speed_of(&s) < 1e-9 && miss < 1e-2
-        };
-        if done {
+        if rig.min_speed > 0.0 {
+            if miss <= rig.capture() {
+                return Some((i, path));
+            }
+        } else if on_destination(&s, miss, goal) {
+            // it must stay landed (no creep, no limit cycle)
+            for _ in 0..HOLD_STEPS {
+                s = model.step(&s, &intents, dt, &flat());
+                let off = LocalFrame::at(s.position.to_geodetic()).to_enu(goal);
+                let miss = umbra_core::math::hypot(off.east, off.north);
+                assert!(
+                    on_destination(&s, miss, goal),
+                    "step {i}: left the destination after landing ({miss} m)"
+                );
+            }
             return Some((i, path));
         }
     }
     None
 }
 
+/// On the destination at rest: within 1 cm horizontally, 1 mm in height, no motion (hover rows).
+fn on_destination(s: &umbra_core::KinematicState, miss: f64, goal: umbra_core::Ecef) -> bool {
+    let v = LocalFrame::at(s.position.to_geodetic()).vector_to_enu(s.velocity);
+    miss < 1e-2
+        && umbra_core::math::hypot(v.east, v.north) < 1e-9
+        && v.up.abs() < 1e-9
+        && (s.position.to_geodetic().height().0 - goal.to_geodetic().height().0).abs() < 1e-3
+}
+
 /// Arrives within the derived bounds; returns the steps taken.
 fn assert_arrives(rig: Rig, v0: f64, target: (f64, f64), d_max: f64) -> usize {
-    let bound = rig.step_bound(v0, d_max);
-    let (steps, path) = steps_to_arrive(rig, v0, (target.0, target.1, 0.0), bound)
+    let bound = rig.step_bound(v0, d_max, 0.0);
+    let (steps, path) = steps_to_arrive(rig, v0, (target.0, target.1, LEVEL_M), bound)
         .unwrap_or_else(|| panic!("{target:?} from {v0} m/s: no arrival in {bound} steps"));
     if rig.has_path_bound() {
         let limit = rig.path_bound(v0, d_max);
@@ -255,8 +302,13 @@ fn given_destinations_around_the_aircraft_when_stepped_then_every_one_arrives() 
                 for k in 0..12 {
                     let bearing = f64::from(k) * TAU / 12.0;
                     let (sin, cos) = umbra_core::math::sin_cos(bearing);
-                    let steps = rig.step_bound(v0, d_max);
-                    let arrived = steps_to_arrive(rig, v0, (d * sin, d * cos, 0.0), steps);
+                    let steps = rig.step_bound(v0, d_max, HEIGHT_ERROR_M);
+                    let arrived = steps_to_arrive(
+                        rig,
+                        v0,
+                        (d * sin, d * cos, LEVEL_M + HEIGHT_ERROR_M),
+                        steps,
+                    );
                     assert!(
                         arrived.is_some(),
                         "R_min {r_min:.1} dt {:.3} v0 {v0} d {d:.1} bearing {bearing:.3}",
@@ -353,27 +405,6 @@ fn given_a_descent_when_stepped_then_pitch_is_the_negative_flight_path_angle() {
     assert!((speed_of(&s) - (60.0 + 5.0 / 30.0)).abs() < 1e-9);
 }
 
-/// ASM-607: the climb rate is a component of the velocity, limited to a 45 degree path: an
-/// aircraft at 3 m/s climbs at 3 / sqrt(2) m/s, not at the 15 m/s limit.
-#[test]
-fn given_a_slow_aircraft_when_climbing_then_the_climb_rate_is_at_most_the_speed() {
-    let model = STOPPER.model();
-    let from = start(0.0, 3.0, 2000.0);
-
-    let s = model.step(
-        &from,
-        &[
-            Intent::SetSpeed(MetersPerSecond(3.0)),
-            move_to(0.0, 5000.0, 4000.0),
-        ],
-        DT,
-        &flat(),
-    );
-
-    assert!((climb_rate_of(&s) - 3.0 * core::f64::consts::FRAC_1_SQRT_2).abs() < 1e-9);
-    assert!(height_of(&s) > 2000.0);
-}
-
 // Arrival-snap guards (min_speed = 0): each single-condition mutant must die.
 
 /// Speed guard: at 100 m/s a destination 0.2 m ahead is within a step's travel but the aircraft
@@ -433,11 +464,11 @@ fn given_a_tiny_minimum_speed_when_over_the_destination_then_it_does_not_land() 
 fn given_a_destination_within_a_millimeter_behind_an_aircraft_at_rest_when_stepped_then_it_lands() {
     let rig = WEAK_STOPPER;
     let from = start(0.0, 0.0, 2000.0);
-    let goal = dest(0.0, -0.0009, 0.0);
+    let goal = dest(0.0, -0.0009, LEVEL_M);
 
     let next = rig.model().step(
         &from,
-        &[move_to(0.0, -0.0009, 0.0)],
+        &[move_to(0.0, -0.0009, LEVEL_M)],
         Seconds(rig.dt),
         &flat(),
     );
@@ -447,7 +478,7 @@ fn given_a_destination_within_a_millimeter_behind_an_aircraft_at_rest_when_stepp
         umbra_core::math::hypot(off.east, off.north) < 1e-6,
         "{off:?}"
     );
-    assert!(speed_of(&next) < 1e-12);
+    assert!(rig.speed(&next) < 1e-12);
 }
 
 /// Per-step contract: a slow pass beside the destination neither moves the aircraft sideways nor
@@ -459,7 +490,7 @@ fn given_a_slow_pass_beside_the_destination_when_stepped_then_the_step_obeys_the
 
     let next = rig.model().step(
         &from,
-        &[move_to(0.006, 0.003, 0.0)],
+        &[move_to(0.006, 0.003, LEVEL_M)],
         Seconds(rig.dt),
         &flat(),
     );

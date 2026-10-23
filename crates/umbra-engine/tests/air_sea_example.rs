@@ -18,7 +18,7 @@ use core::time::Duration;
 
 use common::options;
 use m7_support::example;
-use umbra_core::Geodetic;
+use umbra_core::{Geodetic, LocalFrame};
 use umbra_engine::builtins::standard_registry;
 use umbra_engine::scenario::{ScenarioRun, instantiate, load_scenario};
 use umbra_engine::{EntityInfo, RunUntil, validate_path_with_plugins};
@@ -34,6 +34,20 @@ fn run() -> ScenarioRun {
         options(Duration::from_micros(500), None, None),
     )
     .expect("instantiate")
+}
+
+/// The last waypoint and the arrival radius of `aircraft-1`'s route, read from the loaded scenario.
+fn aircraft_route_end() -> (Geodetic, f64) {
+    let registry = standard_registry().expect("the standard registry builds");
+    let scenario = load_scenario(&registry, &example("air_sea")).expect("load air_sea");
+    let route = scenario
+        .entities
+        .iter()
+        .find(|p| p.name.as_deref() == Some("aircraft-1"))
+        .and_then(|p| p.route.as_ref())
+        .expect("aircraft-1 has a route");
+    let last = route.waypoints.last().expect("a waypoint");
+    (last.to_ecef().to_geodetic(), route.arrival_radius.0)
 }
 
 fn id_of(entities: &[EntityInfo], name: &str) -> umbra_core::EntityId {
@@ -93,9 +107,9 @@ fn air_sea_runs_with_one_model_per_domain() {
     assert_eq!(model(ids.2), "builtin.ground.kinematic");
 }
 
-/// REQ-M-2: the aircraft completes its climbing route and ends within 1 m of the last waypoint's
-/// altitude; the ship completes its route on the surface (height 0 within a millimetre); the truck
-/// completes its route.
+/// REQ-M-2: the aircraft reaches its last waypoint (within the route's arrival radius, at
+/// 1500 m within 1 m, at the first tick it is there), every entity ends on its last route index,
+/// the ship stays on the surface (height 0 within a millimetre) and ends stopped like the truck.
 #[test]
 fn air_sea_waypoints_are_reached_with_altitude_within_one_meter() {
     let mut run = run();
@@ -105,11 +119,30 @@ fn air_sea_waypoints_are_reached_with_altitude_within_one_meter() {
         id_of(&run.entities, "truck-1"),
     );
     let ticks = run.duration_ticks;
-
+    let (last, arrival_radius) = aircraft_route_end();
+    let frame = LocalFrame::at(last);
+    let mut reached: Option<(f64, f64)> = None;
     run.engine
-        .run(RunUntil::Ticks(ticks), |_| ControlFlow::Continue(()))
+        .run(RunUntil::Ticks(ticks), |v| {
+            let snapshot = v.snapshot();
+            let aircraft = snapshot.entities.iter().find(|e| e.id == ids.0);
+            if let (None, Some(e)) = (reached, aircraft) {
+                let off = frame.to_enu(e.state.position);
+                let miss = umbra_core::math::hypot(off.east, off.north);
+                if miss <= arrival_radius {
+                    let height = Geodetic::height(e.state.position.to_geodetic()).0;
+                    reached = Some((miss, height));
+                }
+            }
+            ControlFlow::Continue(())
+        })
         .expect("run");
 
+    let (_, height) = reached.expect("the aircraft came within the arrival radius of waypoint 3");
+    assert!(
+        (height - LAST_WAYPOINT_ALT_M).abs() < 1.0,
+        "height {height} when it reached the last waypoint"
+    );
     let snapshot = run.engine.snapshot();
     let entity = |id| {
         snapshot
@@ -118,18 +151,19 @@ fn air_sea_waypoints_are_reached_with_altitude_within_one_meter() {
             .find(|e| e.id == id)
             .expect("entity")
     };
-    let height = |p: umbra_core::Ecef| -> f64 { Geodetic::height(p.to_geodetic()).0 };
     for id in [ids.0, ids.1, ids.2] {
-        // The route follower stays on the last waypoint's index and issues `Hold` once it is
-        // within the arrival radius, so "complete" is the last index plus a `Hold` effect below.
+        // The follower never advances past the last index (`route::steer`): `next + 1 == len` only
+        // says the last waypoint is the target, which the aircraft check above proves it reached.
         let (next, len) = entity(id).route_next.expect("a route");
         assert_eq!(next + 1, len, "entity {id} is on its last waypoint");
     }
-    // `Hold` is only issued on arrival: the ship and the truck have stopped. The aircraft cannot
-    // stop (minimum speed 40 m/s): after `Hold` it leaves the arrival radius, the follower steers
-    // back to the last waypoint and it loiters over it, so only its height is checked.
+    // `Hold` is issued on arrival: the ship and the truck have stopped. The aircraft cannot stop
+    // (minimum speed 40 m/s): after `Hold` it slows toward its minimum speed, leaves the arrival
+    // radius and the follower steers it back, so it keeps flying around the last waypoint (ASM-704).
     let speed = |id| entity(id).state.velocity.norm();
     assert!(speed(ids.1) < 1e-6 && speed(ids.2) < 1e-6);
+    // the WI-1 assertion, kept: the aircraft ends at the last waypoint's height (it loiters at it)
+    let height = |p: umbra_core::Ecef| -> f64 { Geodetic::height(p.to_geodetic()).0 };
     assert!((height(entity(ids.0).state.position) - LAST_WAYPOINT_ALT_M).abs() < 1.0);
     assert!(height(entity(ids.1).state.position).abs() < 1e-3);
 }

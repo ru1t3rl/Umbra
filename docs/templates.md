@@ -326,17 +326,32 @@ params = { max_speed_mps = 12.0, max_accel_mps2 = 0.5, min_turn_radius_m = 80.0,
 ```
 
 ### `builtin.air.kinematic` (motion model, M7)
-Kinematic aircraft (REQ-M-2, ADR 0051, ASM-607..609, ASM-699..704). The speed (length of the velocity
-vector) stays within `[min_speed_mps, max_speed_mps]` while flying and changes by at most
-`max_accel_mps2 * dt` per step. The turn rate is `g * tan(max_bank) / max(speed, 1 m/s)`, capped by
+Kinematic aircraft (REQ-M-2, ADR 0051, ASM-607..609, ASM-699..707). The speed (length of the velocity
+vector; the horizontal speed when `min_speed_mps = 0`, see below) stays within
+`[min_speed_mps, max_speed_mps]` while flying and changes by at most `max_accel_mps2 * dt` per step. The turn rate is
+`g * tan(max_bank) / max(speed, 1 m/s)`, capped by
 `max_turn_rate_dps`, so the turn radius grows with the square of the speed. The target height is the
 `MoveTo` destination's height above the WGS-84 ellipsoid (else the current height; routes expand to
-`MoveTo`), reached at the climb or descent rate (at most a 45 degree flight path), never below the
-terrain plus `min_altitude_agl_m`. Pitch is the flight-path angle and roll the bank of the step.
+`MoveTo`), reached at the climb or descent rate (for `min_speed_mps > 0` at most a 45 degree flight
+path), never below the terrain plus `min_altitude_agl_m`. Pitch is the flight-path angle and roll the bank of the step.
 `Hold` and no intent slow to `min_speed_mps`, keeping heading and height. An aircraft with
-`min_speed_mps > 0` cannot stop: a `MoveTo` is flown over, and a finished route loiters over its last
-waypoint (keep the climb done before it). With `min_speed_mps = 0` it brakes and stops on the
-destination like the ground model.
+`min_speed_mps > 0` cannot stop: a `MoveTo` is flown over. A route follower holds at the last waypoint
+with `Hold`, which such an aircraft cannot do in place, so a finished route keeps it flying around the
+last waypoint at its height, alternating between slowing toward the minimum speed and speeding up to
+the cruise speed to turn back (speeds between the minimum and the cruise speed, excursions of the order
+of the turn radius at cruise speed, not the arrival radius; keep the climb done before the last
+waypoint). `route::is_complete` is position-based, so a `FollowRoute` behavior on such an aircraft
+flaps between Success and Running. With `min_speed_mps = 0` (the default) the aircraft can hover: its
+speed is the horizontal speed (`max_speed_mps` and `max_accel_mps2` apply to it), its climb and descent
+rates are limited by the rate parameters alone (also at rest, so it climbs to the terrain floor and to a
+destination straight above it) and the vertical rate changes by at most `max_accel_mps2 * dt` per step,
+braking on the height error so the height arrives without overshoot; the terrain floor wins over this
+ramp (an aircraft on or above the floor never ramps under the floor one step ahead, so its rate may then
+change by more than the ramp). It brakes and lands on the
+destination's position like the ground model, keeping its heading (the landing steps may change the
+speed or the vertical rate by up to twice the limit) while it flies out the height error. Its pitch is
+the flight-path angle with the run taken as at least the vertical rate, so it never exceeds 45 degrees.
+With `min_speed_mps > 0` the flight-path angle (and so the vertical rate) can change at once.
 
 | Parameter | Unit | Bound |
 |---|---|---|

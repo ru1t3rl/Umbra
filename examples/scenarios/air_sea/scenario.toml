@@ -17,7 +17,7 @@ provider = "builtin.terrain.flat"
 params = { height_m = 0.0 }
 
 # The aircraft climbs from 300 m to 1500 m over four 5 km legs at 100 m/s (10 m/s climb, so the climb
-# is done after 120 s, well before the last waypoint) and holds its height at the end.
+# is done between 120 s and 140 s, before the last waypoint) and holds its height at the end.
 [[entities]]
 template = "aircraft.light"
 name = "aircraft-1"
