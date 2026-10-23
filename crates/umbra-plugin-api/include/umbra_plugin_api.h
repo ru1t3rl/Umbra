@@ -12,6 +12,11 @@
 typedef struct UmbraBehavior UmbraBehavior;
 typedef struct UmbraInstance UmbraInstance;
 typedef struct UmbraNetAdapter UmbraNetAdapter;
+typedef struct UmbraMotionModel UmbraMotionModel;
+typedef struct UmbraSensor UmbraSensor;
+typedef struct UmbraCondition UmbraCondition;
+typedef struct UmbraAction UmbraAction;
+typedef struct UmbraActionInstance UmbraActionInstance;
 
 /* Umbra plugin ABI v0 supports 64-bit targets only (ADR 0019). */
 #if defined(__cplusplus)
@@ -41,11 +46,13 @@ extern "C" {
 
 /**
  * ABI minor version: bumped for every appended field, vtable entry or kind (append-only, REQ-P-2).
- * History (`docs/plugin-abi-changelog.md`): 0 (M4), 1 (M6: the network adapter kind, ADR 0033).
+ * History (`docs/plugin-abi-changelog.md`): 0 (M4), 1 (M6: the network adapter kind, ADR 0033), 2 (M7:
+ * the motion model, sensor, condition and action kinds, ADR 0050).
  * A plugin declares in its descriptor the lowest minor that defines every capability kind it exports
- * (behavior 0, network adapter 1; ADR 0033), not necessarily this one.
+ * (behavior 0, network adapter 1, motion model, sensor, condition and action 2; ADR 0033), not
+ * necessarily this one.
  */
-#define UMBRA_ABI_VERSION_MINOR 1
+#define UMBRA_ABI_VERSION_MINOR 2
 
 /**
  * Packed ABI version written into every `abi_version` field: `major << 16 | minor`.
@@ -100,6 +107,29 @@ extern "C" {
 #define UMBRA_MAX_NET_COUNTERS 8
 
 /**
+ * At most this many contacts one sensor `sense` call may push (ABI 0.2, ADR 0050); one more push is
+ * refused and faults the capability.
+ */
+#define UMBRA_MAX_CONTACTS_PER_SENSE 4096
+
+/**
+ * `UmbraTarget::ownership` of an entity simulated by this engine (`umbra_core::Ownership::Owned`).
+ * Plain `u32` values (no typedef): `0` and unknown values are invalid.
+ */
+#define UMBRA_OWNERSHIP_OWNED 1
+
+/**
+ * `UmbraTarget::ownership` of an entity mirrored from a network adapter (`Ownership::Remote`).
+ */
+#define UMBRA_OWNERSHIP_REMOTE 2
+
+/**
+ * The host pre-fills a condition's `check` result byte with this value ("not written"); the plugin
+ * writes 0 (false) or 1 (true). Any other value, this one included, faults the capability.
+ */
+#define UMBRA_CONDITION_UNSET 255
+
+/**
  * Result of a fallible call (ADR 0019). Written by the callee; [`UMBRA_OK`] or one of `UMBRA_ERR_*`.
  * Any other value is treated by the host as [`UMBRA_ERR_INTERNAL`].
  */
@@ -107,9 +137,11 @@ typedef int32_t UmbraCode;
 
 /**
  * Kind of a capability in the descriptor. Written by the plugin. Supported: [`UMBRA_CAPABILITY_BEHAVIOR`]
- * (minor 0) and, for descriptors declaring minor 1 or newer, [`UMBRA_CAPABILITY_NETWORK_ADAPTER`]
- * (ADR 0033); the other numbers are reserved and rejected as unsupported; `0` and unknown values are
- * invalid.
+ * (minor 0), for descriptors declaring minor 1 or newer [`UMBRA_CAPABILITY_NETWORK_ADAPTER`]
+ * (ADR 0033), and for descriptors declaring minor 2 or newer [`UMBRA_CAPABILITY_MOTION_MODEL`],
+ * [`UMBRA_CAPABILITY_SENSOR`], [`UMBRA_CAPABILITY_CONDITION`] and [`UMBRA_CAPABILITY_ACTION`]
+ * (ADR 0050); [`UMBRA_CAPABILITY_COMPONENT`] is reserved and rejected as unsupported; `0` and unknown
+ * values are invalid.
  */
 typedef uint32_t UmbraCapabilityKind;
 
@@ -988,6 +1020,474 @@ typedef struct {
 } UmbraNetworkVTable;
 
 /**
+ * Terrain queries of one motion `step` or sensor `sense` call (ADR 0050). Answers come from the
+ * `TerrainProvider` the core call received, so a plugin sees exactly what a built-in sees (LSP).
+ * Every out-pointer is written only on `UMBRA_OK`.
+ */
+typedef struct {
+  /**
+   * ABI version the host was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor.
+   */
+  uint32_t struct_size;
+  /**
+   * Opaque host token of this service in this call, passed back to every entry.
+   */
+  UmbraToken ctx;
+  /**
+   * Writes the terrain height (m above the ellipsoid) under the ECEF point `*ecef` into `*out_m`.
+   * Required. A non-finite input is refused (`UMBRA_ERR_INVALID_ARGUMENT`).
+   */
+  UmbraCode (*height_at)(UmbraToken ctx, const UmbraVec3 *ecef, double *out_m);
+  /**
+   * Writes the unit terrain normal (local east-north-up) under the ECEF point `*ecef` into
+   * `*out_enu`. Required.
+   */
+  UmbraCode (*normal_at)(UmbraToken ctx, const UmbraVec3 *ecef, UmbraVec3 *out_enu);
+  /**
+   * Writes 1 into `*out` if the terrain does not block the line from `*from` to `*to` (ECEF), else
+   * 0. Required.
+   */
+  UmbraCode (*line_of_sight)(UmbraToken ctx,
+                             const UmbraVec3 *from,
+                             const UmbraVec3 *to,
+                             uint8_t *out);
+} UmbraTerrain;
+
+/**
+ * Blackboard access of one condition `check` or action `tick` call (ADR 0050, ASM-618). The host
+ * grants exactly the keys named by the leaf's declared `blackboard_params` (resolved from its params
+ * at configure), with their declared type and access; any other key, a wrong type, a non-finite value
+ * or a write to a read-only key is refused with an error code and faults the capability.
+ */
+typedef struct {
+  /**
+   * ABI version the host was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor.
+   */
+  uint32_t struct_size;
+  /**
+   * Opaque host token of this service in this call, passed back to every entry.
+   */
+  UmbraToken ctx;
+  /**
+   * Reports the value of `key` (UTF-8, borrowed during the call) through `sink`: the value, or
+   * "unset" (a null value) when the key holds none. Required.
+   */
+  UmbraCode (*get)(UmbraToken ctx, UmbraStr key, const UmbraValueSink *sink);
+  /**
+   * Sets `key` to `*value`, or unsets it when `value` is null; both borrowed during the call (the
+   * host copies the value). Required.
+   */
+  UmbraCode (*set)(UmbraToken ctx, UmbraStr key, const UmbraValue *value);
+} UmbraBlackboard;
+
+/**
+ * The kinematic state of one entity (`umbra_core::KinematicState`). Written by the host (the input
+ * state, and the pre-filled `out` of `step`) in the plugin's declared minor; the plugin overwrites the
+ * fields of `out`.
+ */
+typedef struct {
+  /**
+   * ABI version of the writer (host-written: the plugin's declared minor).
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor.
+   */
+  uint32_t struct_size;
+  /**
+   * ECEF position (m).
+   */
+  UmbraVec3 position;
+  /**
+   * ECEF velocity (m/s).
+   */
+  UmbraVec3 velocity;
+  /**
+   * Orientation (unit quaternion, body to ECEF).
+   */
+  UmbraQuat orientation;
+} UmbraKinematicState;
+
+/**
+ * One `step` call (ADR 0050). Written by the host; valid only during the call, like everything it
+ * points to.
+ */
+typedef struct {
+  /**
+   * ABI version the host was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor.
+   */
+  uint32_t struct_size;
+  /**
+   * Current tick number (simulation time = `tick / rate_hz`, REQ-K-4).
+   */
+  uint64_t tick;
+  /**
+   * Tick rate in Hz.
+   */
+  uint32_t rate_hz;
+  /**
+   * Reserved: written as 0, ignored by readers.
+   */
+  uint32_t reserved_0;
+  /**
+   * Step length in seconds (`1 / rate_hz`).
+   */
+  double dt;
+  /**
+   * The entity's state before the step, read-only.
+   */
+  const UmbraKinematicState *state;
+  /**
+   * Array of `intent_count` intents of this tick, in emission order (stride: the plugin's own
+   * `sizeof(UmbraIntent)`, host-written in the plugin's declared minor), read-only; null only when
+   * the count is 0.
+   */
+  const UmbraIntent *intents;
+  /**
+   * Number of intents.
+   */
+  size_t intent_count;
+  /**
+   * Terrain queries for this call.
+   */
+  const UmbraTerrain *terrain;
+} UmbraMotionStep;
+
+/**
+ * Function table of a motion model capability (ABI 0.2, ADR 0050). Written by the plugin as a static
+ * with the descriptor's lifetime; the host copies the prefix it knows (`min(struct_size, own size)`)
+ * at load. Its header carries the motion kind's minor (2), never above the descriptor's. Calls into
+ * one plugin are never concurrent. Every entry is a nullable pointer; the required ones are checked
+ * by the host at load.
+ */
+typedef struct {
+  /**
+   * ABI version the plugin was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct as the plugin knows it.
+   */
+  uint32_t struct_size;
+  /**
+   * Builds a configured model from `params` (JSON text, borrowed during the call) into `*out`.
+   * Required. A non-`UMBRA_OK` result (a panic included) or `UMBRA_OK` with a null `*out` is a
+   * build error naming the capability, not a fault.
+   */
+  UmbraCode (*configure)(UmbraStr params, UmbraMotionModel **out, const UmbraErrorSink *err);
+  /**
+   * Destroys a configured model. Required; cannot report errors.
+   */
+  void (*destroy)(UmbraMotionModel *model);
+  /**
+   * Advances one entity by `step.dt`: writes the new state into `*out` (host-owned, pre-filled with
+   * `*step.state`). Required. A non-`UMBRA_OK` result or an invalid `*out` faults the capability.
+   */
+  UmbraCode (*step)(UmbraMotionModel *model,
+                    const UmbraMotionStep *step,
+                    UmbraKinematicState *out,
+                    const UmbraErrorSink *err);
+} UmbraMotionVTable;
+
+/**
+ * Read-only view of one entity's pre-tick state for a sensor (`umbra_core::TargetView`). Written by
+ * the host; valid only during the call, like the strings it points to.
+ */
+typedef struct {
+  /**
+   * ABI version the host was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor; also the array stride.
+   */
+  uint32_t struct_size;
+  /**
+   * Entity ID (never 0).
+   */
+  uint64_t id;
+  /**
+   * ECEF position (m).
+   */
+  UmbraVec3 position;
+  /**
+   * ECEF velocity (m/s).
+   */
+  UmbraVec3 velocity;
+  /**
+   * Orientation.
+   */
+  UmbraQuat orientation;
+  /**
+   * Force ID (UTF-8); empty = none.
+   */
+  UmbraStr force;
+  /**
+   * `UMBRA_OWNERSHIP_OWNED` or `UMBRA_OWNERSHIP_REMOTE`.
+   */
+  uint32_t ownership;
+  /**
+   * Reserved: written as 0, ignored by readers.
+   */
+  uint32_t reserved_0;
+} UmbraTarget;
+
+/**
+ * One `sense` call (ADR 0050). Written by the host; valid only during the call, like everything it
+ * points to.
+ */
+typedef struct {
+  /**
+   * ABI version the host was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor.
+   */
+  uint32_t struct_size;
+  /**
+   * Current tick number (simulation time = `tick / rate_hz`, REQ-K-4).
+   */
+  uint64_t tick;
+  /**
+   * Tick rate in Hz.
+   */
+  uint32_t rate_hz;
+  /**
+   * Reserved: written as 0, ignored by readers.
+   */
+  uint32_t reserved_0;
+  /**
+   * The observing entity, read-only.
+   */
+  const UmbraTarget *observer;
+  /**
+   * Array of `candidate_count` candidates: every other entity, in ID order, pre-tick (stride: the
+   * plugin's own `sizeof(UmbraTarget)`), read-only; null only when the count is 0.
+   */
+  const UmbraTarget *candidates;
+  /**
+   * Number of candidates.
+   */
+  size_t candidate_count;
+  /**
+   * Opaque RNG token of the observer's entity stream, valid only during this call (REQ-K-4); used
+   * with `UmbraHostApi::rng_next_u64` and `rng_next_f64`.
+   */
+  UmbraToken rng;
+  /**
+   * Terrain queries for this call.
+   */
+  const UmbraTerrain *terrain;
+} UmbraSenseCall;
+
+/**
+ * Host-provided sink for the contacts of one `sense` call. Written by the host; valid only during the
+ * call. The host copies every pushed contact.
+ */
+typedef struct {
+  /**
+   * ABI version the host was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor.
+   */
+  uint32_t struct_size;
+  /**
+   * Opaque host token of this sink, passed back to `push`.
+   */
+  UmbraToken ctx;
+  /**
+   * Appends `*contact` (borrowed during the call). Required. At most
+   * `UMBRA_MAX_CONTACTS_PER_SENSE` pushes per call; a refused contact returns an error code and
+   * faults the capability.
+   */
+  UmbraCode (*push)(UmbraToken ctx, const UmbraContact *contact);
+} UmbraContactSink;
+
+/**
+ * Function table of a sensor capability (ABI 0.2, ADR 0050). Written by the plugin as a static with
+ * the descriptor's lifetime; the host copies the prefix it knows (`min(struct_size, own size)`) at
+ * load. Its header carries the sensor kind's minor (2), never above the descriptor's. Calls into one
+ * plugin are never concurrent. Every entry is a nullable pointer; the required ones are checked by the
+ * host at load.
+ */
+typedef struct {
+  /**
+   * ABI version the plugin was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct as the plugin knows it.
+   */
+  uint32_t struct_size;
+  /**
+   * Builds a configured sensor from `params` (JSON text, borrowed during the call) into `*out`.
+   * Required. A non-`UMBRA_OK` result (a panic included) or `UMBRA_OK` with a null `*out` is a
+   * build error naming the capability, not a fault.
+   */
+  UmbraCode (*configure)(UmbraStr params, UmbraSensor **out, const UmbraErrorSink *err);
+  /**
+   * Destroys a configured sensor. Required; cannot report errors.
+   */
+  void (*destroy)(UmbraSensor *sensor);
+  /**
+   * Pushes the contacts the observer perceives to `sink`. Required. A non-`UMBRA_OK` result faults
+   * the capability and discards the call's contacts whole.
+   */
+  UmbraCode (*sense)(UmbraSensor *sensor,
+                     const UmbraSenseCall *call,
+                     const UmbraContactSink *sink,
+                     const UmbraErrorSink *err);
+} UmbraSensorVTable;
+
+/**
+ * One condition `check` or action `tick` call (ADR 0050). Written by the host; valid only during the
+ * call, like everything it points to.
+ */
+typedef struct {
+  /**
+   * ABI version the host was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct in the layout of the plugin's declared minor.
+   */
+  uint32_t struct_size;
+  /**
+   * Current tick number (simulation time = `tick / rate_hz`, REQ-K-4).
+   */
+  uint64_t tick;
+  /**
+   * Tick rate in Hz.
+   */
+  uint32_t rate_hz;
+  /**
+   * Reserved: written as 0, ignored by readers.
+   */
+  uint32_t reserved_0;
+  /**
+   * Read-only view of the entity's pre-tick state.
+   */
+  const UmbraEntityView *entity;
+  /**
+   * Opaque RNG token of the entity's stream, valid only during this call (REQ-K-4); used with
+   * `UmbraHostApi::rng_next_u64` and `rng_next_f64`.
+   */
+  UmbraToken rng;
+  /**
+   * Blackboard access for this call (the declared keys only).
+   */
+  const UmbraBlackboard *blackboard;
+} UmbraLeafCall;
+
+/**
+ * Function table of a condition capability (ABI 0.2, ADR 0050). Written by the plugin as a static with
+ * the descriptor's lifetime; the host copies the prefix it knows (`min(struct_size, own size)`) at
+ * load. Its header carries the condition kind's minor (2), never above the descriptor's. Calls into
+ * one plugin are never concurrent. Every entry is a nullable pointer; the required ones are checked by
+ * the host at load.
+ */
+typedef struct {
+  /**
+   * ABI version the plugin was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct as the plugin knows it.
+   */
+  uint32_t struct_size;
+  /**
+   * Builds a configured condition from `params` (JSON text, borrowed during the call) into `*out`.
+   * Required. A non-`UMBRA_OK` result (a panic included) or `UMBRA_OK` with a null `*out` is a
+   * build error naming the capability, not a fault.
+   */
+  UmbraCode (*configure)(UmbraStr params, UmbraCondition **out, const UmbraErrorSink *err);
+  /**
+   * Destroys a configured condition. Required; cannot report errors.
+   */
+  void (*destroy)(UmbraCondition *condition);
+  /**
+   * Evaluates the condition: writes 1 (true) or 0 (false) into `*out` (host-owned, pre-filled with
+   * `UMBRA_CONDITION_UNSET`). Required. A non-`UMBRA_OK` result or any other value in `*out` faults
+   * the capability.
+   */
+  UmbraCode (*check)(UmbraCondition *condition,
+                     const UmbraLeafCall *call,
+                     uint8_t *out,
+                     const UmbraErrorSink *err);
+} UmbraConditionVTable;
+
+/**
+ * Function table of an action capability (ABI 0.2, ADR 0050). Written by the plugin as a static with
+ * the descriptor's lifetime; the host copies the prefix it knows (`min(struct_size, own size)`) at
+ * load. Its header carries the action kind's minor (2), never above the descriptor's. Calls into one
+ * plugin are never concurrent. Every entry is a nullable pointer; the required ones are checked by the
+ * host at load.
+ */
+typedef struct {
+  /**
+   * ABI version the plugin was compiled against.
+   */
+  uint32_t abi_version;
+  /**
+   * `sizeof` this struct as the plugin knows it.
+   */
+  uint32_t struct_size;
+  /**
+   * Builds a configured action from `params` (JSON text, borrowed during the call) into `*out`.
+   * Required. A non-`UMBRA_OK` result (a panic included) or `UMBRA_OK` with a null `*out` is a
+   * build error naming the capability, not a fault.
+   */
+  UmbraCode (*configure)(UmbraStr params, UmbraAction **out, const UmbraErrorSink *err);
+  /**
+   * Destroys a configured action. Required; cannot report errors.
+   */
+  void (*destroy_action)(UmbraAction *action);
+  /**
+   * Creates an instance of `action` ticked at `rate_hz` into `*out`. Required. A non-`UMBRA_OK`
+   * result or `UMBRA_OK` with a null `*out` is a build error, not a fault.
+   */
+  UmbraCode (*instantiate)(UmbraAction *action,
+                           uint32_t rate_hz,
+                           UmbraActionInstance **out,
+                           const UmbraErrorSink *err);
+  /**
+   * Destroys an instance. Required; cannot report errors.
+   */
+  void (*destroy_instance)(UmbraActionInstance *instance);
+  /**
+   * Ticks the instance once: writes its status into `*out` (host-owned, pre-filled with
+   * `UMBRA_STATUS_UNSET`) and pushes intents to `intents` (item index 0). Required. A non-`UMBRA_OK`
+   * result or a status left unset or out of range faults the capability and discards the call's
+   * intents (ADR 0020).
+   */
+  UmbraCode (*tick)(UmbraActionInstance *instance,
+                    const UmbraLeafCall *call,
+                    const UmbraIntentSink *intents,
+                    UmbraStatus *out,
+                    const UmbraErrorSink *err);
+  /**
+   * Halts the instance (full reset): idempotent, callable when it is not running. Required. A
+   * non-`UMBRA_OK` result is a fault.
+   */
+  UmbraCode (*halt)(UmbraActionInstance *instance);
+} UmbraActionVTable;
+
+/**
  * The call succeeded.
  */
 #define UMBRA_OK 0
@@ -1028,7 +1528,8 @@ typedef struct {
 #define UMBRA_CAPABILITY_BEHAVIOR 1
 
 /**
- * Reserved: motion model (M7).
+ * A motion model (vtable `UmbraMotionVTable`, ABI 0.2, ADR 0050); needs a descriptor of minor 2 or
+ * newer.
  */
 #define UMBRA_CAPABILITY_MOTION_MODEL 2
 
@@ -1039,22 +1540,24 @@ typedef struct {
 #define UMBRA_CAPABILITY_NETWORK_ADAPTER 3
 
 /**
- * Reserved: sensor (M7).
+ * A sensor (vtable `UmbraSensorVTable`, ABI 0.2, ADR 0050); needs a descriptor of minor 2 or newer.
  */
 #define UMBRA_CAPABILITY_SENSOR 4
 
 /**
- * Reserved: component (M7).
+ * Reserved: component (no defined semantics, ASM-620); rejected as unsupported at every minor.
  */
 #define UMBRA_CAPABILITY_COMPONENT 5
 
 /**
- * Reserved: behavior-graph condition (M7).
+ * A behavior-graph condition (vtable `UmbraConditionVTable`, ABI 0.2, ADR 0050); needs a descriptor of
+ * minor 2 or newer.
  */
 #define UMBRA_CAPABILITY_CONDITION 6
 
 /**
- * Reserved: behavior-graph action (M7).
+ * A behavior-graph action (vtable `UmbraActionVTable`, ABI 0.2, ADR 0050); needs a descriptor of minor
+ * 2 or newer.
  */
 #define UMBRA_CAPABILITY_ACTION 7
 

@@ -57,6 +57,8 @@ macro_rules! layout {
 /// Every struct of the ABI except the opaque handles (`UmbraBehavior`, `UmbraInstance`), which are
 /// incomplete types in C.
 /// ABI 0.1 adds the opaque handle `UmbraNetAdapter` (not listed either); its structs follow the 0.0 ones.
+/// ABI 0.2 adds the opaque handles `UmbraMotionModel`, `UmbraSensor`, `UmbraCondition`, `UmbraAction` and
+/// `UmbraActionInstance` (not listed either); its structs follow the 0.1 ones.
 #[expect(
     clippy::too_many_lines,
     reason = "one entry per ABI struct, kept as one table"
@@ -242,6 +244,111 @@ pub fn structs() -> Vec<StructLayout> {
             stop,
             counters,
         }),
+        // ABI 0.2 (M7 WI-7, ADR 0050): services, motion model, sensor, condition and action kinds.
+        layout!(UmbraTerrain {
+            abi_version,
+            struct_size,
+            ctx,
+            height_at,
+            normal_at,
+            line_of_sight,
+        }),
+        layout!(UmbraBlackboard {
+            abi_version,
+            struct_size,
+            ctx,
+            get,
+            set,
+        }),
+        layout!(UmbraKinematicState {
+            abi_version,
+            struct_size,
+            position,
+            velocity,
+            orientation,
+        }),
+        layout!(UmbraMotionStep {
+            abi_version,
+            struct_size,
+            tick,
+            rate_hz,
+            reserved_0,
+            dt,
+            state,
+            intents,
+            intent_count,
+            terrain,
+        }),
+        layout!(UmbraMotionVTable {
+            abi_version,
+            struct_size,
+            configure,
+            destroy,
+            step,
+        }),
+        layout!(UmbraTarget {
+            abi_version,
+            struct_size,
+            id,
+            position,
+            velocity,
+            orientation,
+            force,
+            ownership,
+            reserved_0,
+        }),
+        layout!(UmbraSenseCall {
+            abi_version,
+            struct_size,
+            tick,
+            rate_hz,
+            reserved_0,
+            observer,
+            candidates,
+            candidate_count,
+            rng,
+            terrain,
+        }),
+        layout!(UmbraContactSink {
+            abi_version,
+            struct_size,
+            ctx,
+            push
+        }),
+        layout!(UmbraSensorVTable {
+            abi_version,
+            struct_size,
+            configure,
+            destroy,
+            sense,
+        }),
+        layout!(UmbraLeafCall {
+            abi_version,
+            struct_size,
+            tick,
+            rate_hz,
+            reserved_0,
+            entity,
+            rng,
+            blackboard,
+        }),
+        layout!(UmbraConditionVTable {
+            abi_version,
+            struct_size,
+            configure,
+            destroy,
+            check,
+        }),
+        layout!(UmbraActionVTable {
+            abi_version,
+            struct_size,
+            configure,
+            destroy_action,
+            instantiate,
+            destroy_instance,
+            tick,
+            halt,
+        }),
     ]
 }
 
@@ -341,5 +448,10 @@ pub fn constants() -> Vec<(&'static str, String)> {
         UMBRA_NET_CONTROL_PAUSE,
         UMBRA_NET_CONTROL_RESUME,
         UMBRA_NET_CONTROL_STOP,
+        // ABI 0.2 (M7 WI-7, ADR 0050).
+        UMBRA_MAX_CONTACTS_PER_SENSE,
+        UMBRA_OWNERSHIP_OWNED,
+        UMBRA_OWNERSHIP_REMOTE,
+        UMBRA_CONDITION_UNSET,
     ]
 }

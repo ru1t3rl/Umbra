@@ -276,12 +276,13 @@ REQ-P-2 applies in full (`docs/plugin-abi-changelog.md`).
   is incompatible. A plugin whose required minor is newer than the host's is rejected (REQ-P-9).
   Every appended field, vtable entry or kind bumps the minor and is optional, with a documented meaning
   when absent. A descriptor declares the lowest minor that defines every capability kind it exports
-  (behavior 0, network adapter 1; ADR 0033, amending ADR 0019's "the SDK writes its own minor"). A
+  (behavior 0, network adapter 1, motion model, sensor, condition and action 2; ADR 0033, ADR 0050,
+  amending ADR 0019's "the SDK writes its own minor"). A
   kind's minor is the newest minor that changed a struct on its call surface; a capability, its vtable
   and every struct written during its calls (intents, values) carry that minor, never one above the
   descriptor's (the host refuses them otherwise). So a behavior-only plugin built with a newer SDK
   still runs in an older host. A capability of a kind newer than the descriptor's minor is rejected
-  naming `capabilities[<i>].kind`. The current ABI is 0.1 (`docs/plugin-abi-changelog.md`).
+  naming `capabilities[<i>].kind`. The current ABI is 0.2 (`docs/plugin-abi-changelog.md`).
 - **Header and padding.** Every struct that can grow starts with `uint32_t abi_version; uint32_t
   struct_size;`. No struct has implicit padding, internal or trailing: every gap is a named
   `reserved_N` field that writers zero and readers ignore, and every headed size is a multiple of 8.
@@ -490,8 +491,11 @@ scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Load
 `POST /api/v1/scenario` over a running session) starts a new plugin lifecycle: `init` runs again.
 
 ## Not in v0
-- Kinds other than `behavior`: motion model, sensor, component, condition, action (M7). Their kind
-  numbers are reserved; a capability of such a kind is rejected as unsupported. The network adapter
+- The `component` kind (5) stays reserved (ASM-620); a capability of that kind is rejected as
+  unsupported. The motion model (2), sensor (4), condition (6) and action (7) kinds are defined in ABI 0.2
+  (ADR 0050): their structs are in the header and the host validates their descriptor entries (schema,
+  metadata, vtable), but until the host bridges land (M7 WI-8, WI-9) a plugin that exports one is then
+  rejected as unsupported, naming `capabilities[<i>].kind`. The network adapter
   kind (3) is defined in ABI 0.1 (ADR 0033): its structs are in the header, the host validates its
   descriptor entries and registers it as a network adapter through the host bridge (M6 WI-11: `configure`
   and `key_space` at build, `start` once, `publish`/`poll` on the tick path, `counters` read after each

@@ -296,11 +296,13 @@ rejected!(
 );
 
 // Kinds.
+// Since ABI 0.2 a motion model is a supported kind and `Unsupported` comes only after every check
+// passed (ASM-708): the behavior vtable behind this capability fails the motion vtable's size check.
 rejected!(
     motion_model_kind_is_unsupported,
     |p| p.caps[0].kind = UMBRA_CAPABILITY_MOTION_MODEL,
-    PluginError::Unsupported { .. },
-    "test.behavior.forge"
+    Descriptor,
+    "capabilities[0].vtable.struct_size"
 );
 rejected!(
     unknown_kind_is_unsupported,
@@ -367,7 +369,7 @@ rejected!(
 );
 rejected!(
     descriptor_abi_minor_is_newer,
-    |p| p.desc.abi_version = 2,
+    |p| p.desc.abi_version = umbra_plugin_api::UMBRA_ABI_VERSION_MINOR + 1,
     AbiMismatch,
     "descriptor.abi_version"
 );

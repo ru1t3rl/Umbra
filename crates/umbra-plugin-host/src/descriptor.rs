@@ -15,6 +15,14 @@
 //! that defines the kind (behavior 0, network adapter 1; [`required_minor`]). A network adapter's
 //! schema, metadata (empty in 0.1) and vtable (a struct that exists since minor 1) are validated here
 //! and copied into a [`KindVTable::Network`]; the network bridge (`bridge::network`) uses it.
+//!
+//! ABI 0.2 (ADR 0050): motion models, sensors, conditions and actions need minor 2. Their schema,
+//! metadata (empty for motion models and sensors; `blackboard_params` and `result` for conditions and
+//! actions, checked against the schema, ASM-643) and vtable (structs that exist since minor 2) are
+//! validated like every other capability. The host has no bridge for them before WI-8/9, so after every
+//! capability of the descriptor passed every check, the first one of these kinds ends the load as
+//! `Unsupported`, naming its index and kind (ASM-708). A reserved or unknown kind is deferred the same
+//! way after its id, version and schema checks (its metadata and vtable are not read).
 
 #![expect(
     unsafe_code,
@@ -24,14 +32,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::mem::{MaybeUninit, size_of};
 
-use umbra_core::{BbType, ComponentId, ComponentKind, ParamSchema, PluginId, Version};
+use umbra_core::{
+    Access, BbType, BlackboardParam, ComponentId, ComponentKind, ParamSchema, PluginId, Version,
+};
 use umbra_plugin_api::{
-    UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_CAPABILITY_BEHAVIOR,
-    UMBRA_CAPABILITY_NETWORK_ADAPTER, UMBRA_MAX_CAPABILITIES, UMBRA_MAX_ID_LEN,
-    UMBRA_MAX_METADATA_LEN, UMBRA_MAX_SCHEMA_LEN, UmbraBehavior, UmbraBehaviorBatch,
-    UmbraBehaviorVTable, UmbraCapability, UmbraCapabilityKind, UmbraCode, UmbraErrorSink,
-    UmbraHostApi, UmbraInstance, UmbraIntent, UmbraNetAdapter, UmbraNetBatch, UmbraNetMessage,
-    UmbraNetSink, UmbraNetworkVTable, UmbraPluginDescriptor, UmbraStr, UmbraValue, UmbraValueSink,
+    UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_CAPABILITY_ACTION,
+    UMBRA_CAPABILITY_BEHAVIOR, UMBRA_CAPABILITY_CONDITION, UMBRA_CAPABILITY_MOTION_MODEL,
+    UMBRA_CAPABILITY_NETWORK_ADAPTER, UMBRA_CAPABILITY_SENSOR, UMBRA_MAX_CAPABILITIES,
+    UMBRA_MAX_ID_LEN, UMBRA_MAX_METADATA_LEN, UMBRA_MAX_SCHEMA_LEN, UmbraAction,
+    UmbraActionInstance, UmbraActionVTable, UmbraBehavior, UmbraBehaviorBatch, UmbraBehaviorVTable,
+    UmbraCapability, UmbraCapabilityKind, UmbraCode, UmbraCondition, UmbraConditionVTable,
+    UmbraContactSink, UmbraErrorSink, UmbraHostApi, UmbraInstance, UmbraIntent, UmbraIntentSink,
+    UmbraKinematicState, UmbraLeafCall, UmbraMotionModel, UmbraMotionStep, UmbraMotionVTable,
+    UmbraNetAdapter, UmbraNetBatch, UmbraNetMessage, UmbraNetSink, UmbraNetworkVTable,
+    UmbraPluginDescriptor, UmbraSenseCall, UmbraSensor, UmbraSensorVTable, UmbraStatus, UmbraStr,
+    UmbraValue, UmbraValueSink,
 };
 
 use crate::error::PluginError;
@@ -44,19 +59,35 @@ const RESERVED_PREFIX: &str = "builtin.";
 const STRUCT_ALIGN: usize = 8;
 
 /// The size of each struct per ABI minor of this host, index = minor (append-only, ADR 0019 R-B3).
-/// Minor 1 (ADR 0033) changed none of the 0.0 structs.
+/// Minor 1 (ADR 0033) and minor 2 (ADR 0050) changed none of the 0.0 structs.
 const DESCRIPTOR_SIZES: [usize; HOST_MINORS] = [
     size_of::<UmbraPluginDescriptor>(),
     size_of::<UmbraPluginDescriptor>(),
+    size_of::<UmbraPluginDescriptor>(),
 ];
-const CAPABILITY_SIZES: [usize; HOST_MINORS] =
-    [size_of::<UmbraCapability>(), size_of::<UmbraCapability>()];
+const CAPABILITY_SIZES: [usize; HOST_MINORS] = [
+    size_of::<UmbraCapability>(),
+    size_of::<UmbraCapability>(),
+    size_of::<UmbraCapability>(),
+];
 const VTABLE_SIZES: [usize; HOST_MINORS] = [
     size_of::<UmbraBehaviorVTable>(),
     size_of::<UmbraBehaviorVTable>(),
+    size_of::<UmbraBehaviorVTable>(),
 ];
-/// `UmbraNetworkVTable` exists since minor 1 (ADR 0033); the minor-0 entry is never read.
-const NETWORK_VTABLE_SIZES: [usize; HOST_MINORS] = [0, size_of::<UmbraNetworkVTable>()];
+/// `UmbraNetworkVTable` exists since minor 1 (ADR 0033); the minor-0 entry is never read. Minor 2 did
+/// not change it.
+const NETWORK_VTABLE_SIZES: [usize; HOST_MINORS] = [
+    0,
+    size_of::<UmbraNetworkVTable>(),
+    size_of::<UmbraNetworkVTable>(),
+];
+/// The vtables of the ABI 0.2 kinds exist since minor 2 (ADR 0050); the earlier entries are never
+/// read.
+const MOTION_VTABLE_SIZES: [usize; HOST_MINORS] = [0, 0, size_of::<UmbraMotionVTable>()];
+const SENSOR_VTABLE_SIZES: [usize; HOST_MINORS] = [0, 0, size_of::<UmbraSensorVTable>()];
+const CONDITION_VTABLE_SIZES: [usize; HOST_MINORS] = [0, 0, size_of::<UmbraConditionVTable>()];
+const ACTION_VTABLE_SIZES: [usize; HOST_MINORS] = [0, 0, size_of::<UmbraActionVTable>()];
 /// Number of minors this host knows (`0..=UMBRA_ABI_VERSION_MINOR`).
 const HOST_MINORS: usize = UMBRA_ABI_VERSION_MINOR as usize + 1;
 
@@ -69,14 +100,22 @@ pub(crate) const fn required_minor(kind: UmbraCapabilityKind) -> Option<u32> {
     match kind {
         UMBRA_CAPABILITY_BEHAVIOR => Some(0),
         UMBRA_CAPABILITY_NETWORK_ADAPTER => Some(NETWORK_ADAPTER_MINOR),
+        UMBRA_CAPABILITY_MOTION_MODEL
+        | UMBRA_CAPABILITY_SENSOR
+        | UMBRA_CAPABILITY_CONDITION
+        | UMBRA_CAPABILITY_ACTION => Some(SIM_KINDS_MINOR),
         _ => None,
     }
 }
 
 /// The minor that defines the network adapter kind and its structs (ADR 0033).
 pub(crate) const NETWORK_ADAPTER_MINOR: u32 = 1;
+/// The minor that defines the motion model, sensor, condition and action kinds, their services and
+/// their structs (ADR 0050).
+pub(crate) const SIM_KINDS_MINOR: u32 = 2;
 // Every kind this host knows is defined in a minor it knows.
 const _: () = assert!(NETWORK_ADAPTER_MINOR <= UMBRA_ABI_VERSION_MINOR);
+const _: () = assert!(SIM_KINDS_MINOR <= UMBRA_ABI_VERSION_MINOR);
 
 /// `init` of a plugin.
 pub(crate) type InitFn =
@@ -132,13 +171,16 @@ pub(crate) enum KindVTable {
     Network(NetworkVTable),
 }
 
-/// Behavior metadata (ADR 0020): types of interface params and outputs, result text.
+/// Capability metadata: behaviors (ADR 0020) declare the types of interface params and outputs,
+/// conditions and actions (ADR 0050, ASM-643) their blackboard params; both a result text.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Metadata {
     /// Interface params and their types.
     pub(crate) param_types: BTreeMap<String, BbType>,
     /// Output ports and their types.
     pub(crate) outputs: BTreeMap<String, BbType>,
+    /// Leaves: the params that name blackboard keys, in declaration order.
+    pub(crate) blackboard_params: Vec<BlackboardParam>,
     /// Free-text result semantics.
     pub(crate) result: Option<String>,
 }
@@ -223,6 +265,126 @@ pub(crate) struct NetworkVTable {
     >,
 }
 
+/// The motion model vtable entries this host knows, copied from the plugin (ADR 0050; all required).
+#[derive(Debug, Clone, Copy)]
+#[expect(dead_code, reason = "the WI-8 bridge calls through the entries")]
+pub(crate) struct MotionVTable {
+    pub(crate) configure: unsafe extern "C" fn(
+        params: UmbraStr,
+        out: *mut *mut UmbraMotionModel,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) destroy: unsafe extern "C" fn(model: *mut UmbraMotionModel),
+    pub(crate) step: unsafe extern "C" fn(
+        model: *mut UmbraMotionModel,
+        step: *const UmbraMotionStep,
+        out: *mut UmbraKinematicState,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+}
+
+/// The sensor vtable entries this host knows, copied from the plugin (ADR 0050; all required).
+#[derive(Debug, Clone, Copy)]
+#[expect(dead_code, reason = "the WI-8 bridge calls through the entries")]
+pub(crate) struct SensorVTable {
+    pub(crate) configure: unsafe extern "C" fn(
+        params: UmbraStr,
+        out: *mut *mut UmbraSensor,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) destroy: unsafe extern "C" fn(sensor: *mut UmbraSensor),
+    pub(crate) sense: unsafe extern "C" fn(
+        sensor: *mut UmbraSensor,
+        call: *const UmbraSenseCall,
+        sink: *const UmbraContactSink,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+}
+
+/// The condition vtable entries this host knows, copied from the plugin (ADR 0050; all required).
+#[derive(Debug, Clone, Copy)]
+#[expect(dead_code, reason = "the WI-9 bridge calls through the entries")]
+pub(crate) struct ConditionVTable {
+    pub(crate) configure: unsafe extern "C" fn(
+        params: UmbraStr,
+        out: *mut *mut UmbraCondition,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) destroy: unsafe extern "C" fn(condition: *mut UmbraCondition),
+    pub(crate) check: unsafe extern "C" fn(
+        condition: *mut UmbraCondition,
+        call: *const UmbraLeafCall,
+        out: *mut u8,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+}
+
+/// The action vtable entries this host knows, copied from the plugin (ADR 0050; all required).
+#[derive(Debug, Clone, Copy)]
+#[expect(dead_code, reason = "the WI-9 bridge calls through the entries")]
+pub(crate) struct ActionVTable {
+    pub(crate) configure: unsafe extern "C" fn(
+        params: UmbraStr,
+        out: *mut *mut UmbraAction,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) destroy_action: unsafe extern "C" fn(action: *mut UmbraAction),
+    pub(crate) instantiate: unsafe extern "C" fn(
+        action: *mut UmbraAction,
+        rate_hz: u32,
+        out: *mut *mut UmbraActionInstance,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) destroy_instance: unsafe extern "C" fn(instance: *mut UmbraActionInstance),
+    pub(crate) tick: unsafe extern "C" fn(
+        instance: *mut UmbraActionInstance,
+        call: *const UmbraLeafCall,
+        intents: *const UmbraIntentSink,
+        out: *mut UmbraStatus,
+        err: *const UmbraErrorSink,
+    ) -> UmbraCode,
+    pub(crate) halt: unsafe extern "C" fn(instance: *mut UmbraActionInstance) -> UmbraCode,
+}
+
+/// The copied vtable of a validated ABI 0.2 capability whose kind has no host bridge yet; the bridges
+/// of WI-8 (motion, sensor) and WI-9 (condition, action) move these into [`KindVTable`].
+#[derive(Debug, Clone, Copy)]
+#[expect(
+    dead_code,
+    reason = "copied and validated at load; the bridges of WI-8 and WI-9 call through them"
+)]
+enum PendingVTable {
+    Motion(MotionVTable),
+    Sensor(SensorVTable),
+    Condition(ConditionVTable),
+    Action(ActionVTable),
+}
+
+/// One validated capability: ready for its bridge, or of a kind without a host bridge yet.
+enum Checked {
+    /// A capability of a bridged kind.
+    Ready(Capability),
+    /// A capability of an ABI 0.2 kind without a bridge (with its copied vtable), or of a reserved or
+    /// unknown kind (none); it ends the load as `Unsupported` once every capability of the descriptor
+    /// passed every check (ASM-708).
+    Unbridged {
+        id: ComponentId,
+        kind: UmbraCapabilityKind,
+        #[expect(dead_code, reason = "used by the bridges of WI-8 and WI-9")]
+        vtable: Option<PendingVTable>,
+    },
+}
+
+impl Checked {
+    /// The capability's id.
+    const fn id(&self) -> &ComponentId {
+        match self {
+            Self::Ready(capability) => &capability.id,
+            Self::Unbridged { id, .. } => id,
+        }
+    }
+}
+
 /// A headed ABI struct the host reads from plugin memory.
 ///
 /// # Safety
@@ -240,6 +402,14 @@ unsafe impl Headed for UmbraCapability {}
 unsafe impl Headed for UmbraBehaviorVTable {}
 // SAFETY: as above; integers and `Option`s of function pointers (ABI 0.1).
 unsafe impl Headed for UmbraNetworkVTable {}
+// SAFETY: as above; integers and `Option`s of function pointers (ABI 0.2).
+unsafe impl Headed for UmbraMotionVTable {}
+// SAFETY: as above; integers and `Option`s of function pointers (ABI 0.2).
+unsafe impl Headed for UmbraSensorVTable {}
+// SAFETY: as above; integers and `Option`s of function pointers (ABI 0.2).
+unsafe impl Headed for UmbraConditionVTable {}
+// SAFETY: as above; integers and `Option`s of function pointers (ABI 0.2).
+unsafe impl Headed for UmbraActionVTable {}
 // SAFETY: as above; integers, an `f64`, `UmbraVec3` (three `f64`) and `UmbraStr`s.
 unsafe impl Headed for UmbraIntent {}
 // SAFETY: as above; integers, `f64`s, a byte array, `UmbraStr` and `UmbraVec3`.
@@ -478,6 +648,7 @@ unsafe fn capabilities(
     }
     let mut out: Vec<Capability> = Vec::with_capacity(count);
     let mut seen = BTreeSet::new();
+    let mut unbridged: Option<(usize, ComponentId, UmbraCapabilityKind)> = None;
     for index in 0..count {
         let prefix = format!("capabilities[{index}]");
         // SAFETY: `index * stride` is within the checked array size; the plugin promises `count`
@@ -495,14 +666,28 @@ unsafe fn capabilities(
         // SAFETY: `size` bytes of this element are readable (caller), `size` checked.
         let cap = unsafe { read_prefix(ptr, size) };
         // SAFETY: forwarded caller contract for the strings and the vtable of this capability.
-        let capability = unsafe { capability(cx, &prefix, &cap, plugin_version, minor) }?;
-        if !seen.insert(capability.id.clone()) {
+        let checked = unsafe { capability(cx, &prefix, &cap, plugin_version, minor) }?;
+        if !seen.insert(checked.id().clone()) {
             return Err(cx.err(
                 format!("{prefix}.id"),
-                format!("duplicate capability {} in one plugin", capability.id),
+                format!("duplicate capability {} in one plugin", checked.id()),
             ));
         }
-        out.push(capability);
+        match checked {
+            Checked::Ready(capability) => out.push(capability),
+            Checked::Unbridged { id, kind, .. } => {
+                unbridged.get_or_insert((index, id, kind));
+            }
+        }
+    }
+    // Only after every capability passed every check (ASM-708): the first one without a bridge.
+    if let Some((index, id, kind)) = unbridged {
+        return Err(PluginError::Unsupported {
+            origin: cx.origin.to_owned(),
+            field: format!("capabilities[{index}].kind"),
+            capability: id.as_str().to_owned(),
+            kind,
+        });
     }
     Ok(out)
 }
@@ -517,7 +702,7 @@ unsafe fn capability(
     cap: &UmbraCapability,
     plugin_version: &Version,
     minor: u32,
-) -> Result<Capability, PluginError> {
+) -> Result<Checked, PluginError> {
     let id_field = format!("{prefix}.id");
     let id_text = cx.text(cap.id, UMBRA_MAX_ID_LEN, &id_field)?;
     let id = ComponentId::new(&id_text).map_err(|e| cx.err(&id_field, e.to_string()))?;
@@ -527,15 +712,10 @@ unsafe fn capability(
             id: id_text,
         });
     }
-    let unsupported = |id_text: String| PluginError::Unsupported {
-        origin: cx.origin.to_owned(),
-        capability: id_text,
-        kind: cap.kind,
-    };
-    let Some(needed) = required_minor(cap.kind) else {
-        return Err(unsupported(id_text));
-    };
-    if minor < needed {
+    let needed = required_minor(cap.kind);
+    if let Some(needed) = needed
+        && minor < needed
+    {
         return Err(cx.err(
             format!("{prefix}.kind"),
             format!(
@@ -567,42 +747,152 @@ unsafe fn capability(
         .and_then(|d| d.as_str())
         .unwrap_or_default()
         .to_owned();
+    if needed.is_none() {
+        // A reserved or unknown kind: its metadata and vtable have no defined layout, so they are not
+        // read; it is deferred like a kind without a bridge (ASM-708).
+        return Ok(Checked::Unbridged {
+            id,
+            kind: cap.kind,
+            vtable: None,
+        });
+    }
     let metadata_field = format!("{prefix}.metadata");
     let metadata_text = cx.text(cap.metadata, UMBRA_MAX_METADATA_LEN, &metadata_field)?;
     let vtable_field = format!("{prefix}.vtable");
-    if cap.kind == UMBRA_CAPABILITY_NETWORK_ADAPTER {
-        if !metadata_text.is_empty() {
-            return Err(cx.err(
-                &metadata_field,
-                "must be empty for a network adapter (ABI 0.1 defines no metadata for it)",
-            ));
+    let ptr = cap.vtable;
+    match cap.kind {
+        UMBRA_CAPABILITY_NETWORK_ADAPTER => {
+            no_metadata(cx, &metadata_field, &metadata_text, "a network adapter", 1)?;
+            // SAFETY: forwarded caller contract for the vtable pointer.
+            let vtable = unsafe { network_vtable(cx, &vtable_field, ptr.cast(), minor) }?;
+            Ok(Checked::Ready(Capability {
+                kind: ComponentKind::NetworkAdapter,
+                id,
+                version,
+                schema,
+                description,
+                metadata: Metadata::default(),
+                vtable: KindVTable::Network(vtable),
+            }))
         }
-        // SAFETY: forwarded caller contract for the vtable pointer.
-        let vtable = unsafe { network_vtable(cx, &vtable_field, cap.vtable.cast(), minor) }?;
-        return Ok(Capability {
-            kind: ComponentKind::NetworkAdapter,
-            id,
-            version,
-            schema,
-            description,
-            metadata: Metadata::default(),
-            vtable: KindVTable::Network(vtable),
-        });
+        UMBRA_CAPABILITY_MOTION_MODEL
+        | UMBRA_CAPABILITY_SENSOR
+        | UMBRA_CAPABILITY_CONDITION
+        | UMBRA_CAPABILITY_ACTION => {
+            let fields = (metadata_field.as_str(), vtable_field.as_str());
+            // SAFETY: forwarded caller contract for the vtable pointer.
+            let vtable = unsafe { sim_kind(cx, fields, cap, &metadata_text, &schema, minor) }?;
+            Ok(Checked::Unbridged {
+                id,
+                kind: cap.kind,
+                vtable: Some(vtable),
+            })
+        }
+        _ => {
+            let metadata = metadata(cx, &metadata_field, &metadata_text)?;
+            // SAFETY: forwarded caller contract for the vtable pointer.
+            let vtable = unsafe { vtable(cx, &vtable_field, ptr.cast(), minor) }?;
+            check_entries(cx, &vtable_field, &metadata, &vtable)?;
+            check_schema(cx, &metadata_field, &metadata, &schema)?;
+            Ok(Checked::Ready(Capability {
+                kind: ComponentKind::Behavior,
+                id,
+                version,
+                schema,
+                description,
+                metadata,
+                vtable: KindVTable::Behavior(vtable),
+            }))
+        }
     }
-    let metadata = metadata(cx, &metadata_field, &metadata_text)?;
-    // SAFETY: forwarded caller contract for the vtable pointer.
-    let vtable = unsafe { vtable(cx, &vtable_field, cap.vtable.cast(), minor) }?;
-    check_entries(cx, &vtable_field, &metadata, &vtable)?;
-    check_schema(cx, &metadata_field, &metadata, &schema)?;
-    Ok(Capability {
-        kind: ComponentKind::Behavior,
-        id,
-        version,
-        schema,
-        description,
-        metadata,
-        vtable: KindVTable::Behavior(vtable),
-    })
+}
+
+/// The metadata and vtable checks of a motion model, sensor, condition or action capability `cap`
+/// (ABI 0.2, ADR 0050), with `fields` = (metadata field, vtable field); returns the copied vtable.
+///
+/// # Safety
+/// As [`copy`], for the vtable `cap` points to.
+unsafe fn sim_kind(
+    cx: &Ctx<'_>,
+    (metadata_field, vtable_field): (&str, &str),
+    cap: &UmbraCapability,
+    metadata_text: &str,
+    schema: &ParamSchema,
+    minor: u32,
+) -> Result<PendingVTable, PluginError> {
+    let ptr = cap.vtable;
+    match cap.kind {
+        UMBRA_CAPABILITY_MOTION_MODEL => {
+            no_metadata(cx, metadata_field, metadata_text, "a motion model", 2)?;
+            // SAFETY: forwarded caller contract for the vtable pointer.
+            let vtable = unsafe { motion_vtable(cx, vtable_field, ptr.cast(), minor) }?;
+            Ok(PendingVTable::Motion(vtable))
+        }
+        UMBRA_CAPABILITY_SENSOR => {
+            no_metadata(cx, metadata_field, metadata_text, "a sensor", 2)?;
+            // SAFETY: forwarded caller contract for the vtable pointer.
+            let vtable = unsafe { sensor_vtable(cx, vtable_field, ptr.cast(), minor) }?;
+            Ok(PendingVTable::Sensor(vtable))
+        }
+        _ => {
+            let metadata = leaf_metadata(cx, metadata_field, metadata_text)?;
+            let vtable = if cap.kind == UMBRA_CAPABILITY_CONDITION {
+                // SAFETY: forwarded caller contract for the vtable pointer.
+                PendingVTable::Condition(unsafe {
+                    condition_vtable(cx, vtable_field, ptr.cast(), minor)
+                }?)
+            } else {
+                // SAFETY: forwarded caller contract for the vtable pointer.
+                PendingVTable::Action(unsafe {
+                    action_vtable(cx, vtable_field, ptr.cast(), minor)
+                }?)
+            };
+            check_blackboard_params(cx, metadata_field, &metadata, schema)?;
+            Ok(vtable)
+        }
+    }
+}
+
+/// A kind whose metadata ABI minor `since` defines as empty (network adapter 1, motion model and
+/// sensor 2): any text is refused.
+fn no_metadata(
+    cx: &Ctx<'_>,
+    field: &str,
+    text: &str,
+    kind: &str,
+    since: u32,
+) -> Result<(), PluginError> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    Err(cx.err(
+        field,
+        format!(
+            "must be empty for {kind} (ABI {}.{since} defines no metadata for it)",
+            HOST_ABI.0
+        ),
+    ))
+}
+
+/// Checks the header of the vtable at `ptr` of a kind that exists since minor `first`, in a
+/// descriptor declaring minor `minor`, and copies the prefix this host knows.
+///
+/// # Safety
+/// As [`copy`]: a non-null, aligned `ptr` points to a vtable of at least its `struct_size` bytes.
+unsafe fn read_vtable<T: Headed>(
+    cx: &Ctx<'_>,
+    field: &str,
+    ptr: *const T,
+    sizes: [usize; HOST_MINORS],
+    first: u32,
+    minor: u32,
+) -> Result<T, PluginError> {
+    cx.pointer(ptr, field)?;
+    // SAFETY: non-null and aligned (checked); the plugin's vtable has a header (caller).
+    let header = unsafe { read_header(ptr) };
+    let size = cx.header_since(field, header, sizes, first, minor)?;
+    // SAFETY: `size` bytes are readable (caller) and checked against the host's size.
+    Ok(unsafe { read_prefix(ptr, size) })
 }
 
 /// Copies the behavior vtable at `ptr` of a descriptor declaring minor `minor`.
@@ -674,18 +964,17 @@ unsafe fn network_vtable(
     ptr: *const UmbraNetworkVTable,
     minor: u32,
 ) -> Result<NetworkVTable, PluginError> {
-    cx.pointer(ptr, field)?;
-    // SAFETY: non-null and aligned (checked); the plugin's vtable has a header (caller).
-    let header = unsafe { read_header(ptr) };
-    let size = cx.header_since(
-        field,
-        header,
-        NETWORK_VTABLE_SIZES,
-        NETWORK_ADAPTER_MINOR,
-        minor,
-    )?;
-    // SAFETY: `size` bytes are readable (caller) and checked against the host's size.
-    let raw = unsafe { read_prefix(ptr, size) };
+    // SAFETY: forwarded caller contract.
+    let raw = unsafe {
+        read_vtable(
+            cx,
+            field,
+            ptr,
+            NETWORK_VTABLE_SIZES,
+            NETWORK_ADAPTER_MINOR,
+            minor,
+        )
+    }?;
     let required = |name: &str| cx.err(format!("{field}.{name}"), "required entry is null");
     Ok(NetworkVTable {
         configure: raw.configure.ok_or_else(|| required("configure"))?,
@@ -699,27 +988,142 @@ unsafe fn network_vtable(
     })
 }
 
-/// Parses behavior metadata (ADR 0020); empty text is no metadata.
-fn metadata(cx: &Ctx<'_>, field: &str, text: &str) -> Result<Metadata, PluginError> {
+/// Copies the motion model vtable at `ptr` of a descriptor declaring minor `minor` (ABI 0.2).
+///
+/// # Safety
+/// As [`copy`]: a non-null, aligned `ptr` points to a vtable of at least its `struct_size` bytes.
+unsafe fn motion_vtable(
+    cx: &Ctx<'_>,
+    field: &str,
+    ptr: *const UmbraMotionVTable,
+    minor: u32,
+) -> Result<MotionVTable, PluginError> {
+    // SAFETY: forwarded caller contract.
+    let raw = unsafe { read_vtable(cx, field, ptr, MOTION_VTABLE_SIZES, SIM_KINDS_MINOR, minor) }?;
+    let required = |name: &str| cx.err(format!("{field}.{name}"), "required entry is null");
+    Ok(MotionVTable {
+        configure: raw.configure.ok_or_else(|| required("configure"))?,
+        destroy: raw.destroy.ok_or_else(|| required("destroy"))?,
+        step: raw.step.ok_or_else(|| required("step"))?,
+    })
+}
+
+/// Copies the sensor vtable at `ptr` of a descriptor declaring minor `minor` (ABI 0.2).
+///
+/// # Safety
+/// As [`copy`]: a non-null, aligned `ptr` points to a vtable of at least its `struct_size` bytes.
+unsafe fn sensor_vtable(
+    cx: &Ctx<'_>,
+    field: &str,
+    ptr: *const UmbraSensorVTable,
+    minor: u32,
+) -> Result<SensorVTable, PluginError> {
+    // SAFETY: forwarded caller contract.
+    let raw = unsafe { read_vtable(cx, field, ptr, SENSOR_VTABLE_SIZES, SIM_KINDS_MINOR, minor) }?;
+    let required = |name: &str| cx.err(format!("{field}.{name}"), "required entry is null");
+    Ok(SensorVTable {
+        configure: raw.configure.ok_or_else(|| required("configure"))?,
+        destroy: raw.destroy.ok_or_else(|| required("destroy"))?,
+        sense: raw.sense.ok_or_else(|| required("sense"))?,
+    })
+}
+
+/// Copies the condition vtable at `ptr` of a descriptor declaring minor `minor` (ABI 0.2).
+///
+/// # Safety
+/// As [`copy`]: a non-null, aligned `ptr` points to a vtable of at least its `struct_size` bytes.
+unsafe fn condition_vtable(
+    cx: &Ctx<'_>,
+    field: &str,
+    ptr: *const UmbraConditionVTable,
+    minor: u32,
+) -> Result<ConditionVTable, PluginError> {
+    // SAFETY: forwarded caller contract.
+    let raw = unsafe {
+        read_vtable(
+            cx,
+            field,
+            ptr,
+            CONDITION_VTABLE_SIZES,
+            SIM_KINDS_MINOR,
+            minor,
+        )
+    }?;
+    let required = |name: &str| cx.err(format!("{field}.{name}"), "required entry is null");
+    Ok(ConditionVTable {
+        configure: raw.configure.ok_or_else(|| required("configure"))?,
+        destroy: raw.destroy.ok_or_else(|| required("destroy"))?,
+        check: raw.check.ok_or_else(|| required("check"))?,
+    })
+}
+
+/// Copies the action vtable at `ptr` of a descriptor declaring minor `minor` (ABI 0.2).
+///
+/// # Safety
+/// As [`copy`]: a non-null, aligned `ptr` points to a vtable of at least its `struct_size` bytes.
+unsafe fn action_vtable(
+    cx: &Ctx<'_>,
+    field: &str,
+    ptr: *const UmbraActionVTable,
+    minor: u32,
+) -> Result<ActionVTable, PluginError> {
+    // SAFETY: forwarded caller contract.
+    let raw = unsafe { read_vtable(cx, field, ptr, ACTION_VTABLE_SIZES, SIM_KINDS_MINOR, minor) }?;
+    let required = |name: &str| cx.err(format!("{field}.{name}"), "required entry is null");
+    Ok(ActionVTable {
+        configure: raw.configure.ok_or_else(|| required("configure"))?,
+        destroy_action: raw
+            .destroy_action
+            .ok_or_else(|| required("destroy_action"))?,
+        instantiate: raw.instantiate.ok_or_else(|| required("instantiate"))?,
+        destroy_instance: raw
+            .destroy_instance
+            .ok_or_else(|| required("destroy_instance"))?,
+        tick: raw.tick.ok_or_else(|| required("tick"))?,
+        halt: raw.halt.ok_or_else(|| required("halt"))?,
+    })
+}
+
+/// The metadata text as a JSON object; `None` for empty text (no metadata).
+fn metadata_object(
+    cx: &Ctx<'_>,
+    field: &str,
+    text: &str,
+) -> Result<Option<serde_json::Map<String, serde_json::Value>>, PluginError> {
     if text.is_empty() {
-        return Ok(Metadata::default());
+        return Ok(None);
     }
     let value: serde_json::Value =
         serde_json::from_str(text).map_err(|e| cx.err(field, format!("is not JSON: {e}")))?;
     let serde_json::Value::Object(map) = value else {
         return Err(cx.err(field, "must be a JSON object"));
     };
+    Ok(Some(map))
+}
+
+/// The `result` text of a metadata object.
+fn result_text(
+    cx: &Ctx<'_>,
+    field: &str,
+    value: &serde_json::Value,
+) -> Result<String, PluginError> {
+    value
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| cx.err(format!("{field}.result"), "must be a string"))
+}
+
+/// Parses behavior metadata (ADR 0020); empty text is no metadata.
+fn metadata(cx: &Ctx<'_>, field: &str, text: &str) -> Result<Metadata, PluginError> {
     let mut out = Metadata::default();
+    let Some(map) = metadata_object(cx, field, text)? else {
+        return Ok(out);
+    };
     for (key, value) in &map {
         match key.as_str() {
             "param_types" => out.param_types = ports(cx, &format!("{field}.param_types"), value)?,
             "outputs" => out.outputs = ports(cx, &format!("{field}.outputs"), value)?,
-            "result" => {
-                let text = value
-                    .as_str()
-                    .ok_or_else(|| cx.err(format!("{field}.result"), "must be a string"))?;
-                out.result = Some(text.to_owned());
-            }
+            "result" => out.result = Some(result_text(cx, field, value)?),
             other => {
                 return Err(cx.err(
                     field,
@@ -727,6 +1131,99 @@ fn metadata(cx: &Ctx<'_>, field: &str, text: &str) -> Result<Metadata, PluginErr
                 ));
             }
         }
+    }
+    Ok(out)
+}
+
+/// Parses condition and action metadata (ADR 0050, ASM-643): `{"blackboard_params": [{"param",
+/// "type", "access"}], "result"}`; empty text is no metadata.
+fn leaf_metadata(cx: &Ctx<'_>, field: &str, text: &str) -> Result<Metadata, PluginError> {
+    let mut out = Metadata::default();
+    let Some(map) = metadata_object(cx, field, text)? else {
+        return Ok(out);
+    };
+    for (key, value) in &map {
+        match key.as_str() {
+            "blackboard_params" => {
+                out.blackboard_params =
+                    blackboard_params(cx, &format!("{field}.blackboard_params"), value)?;
+            }
+            "result" => out.result = Some(result_text(cx, field, value)?),
+            other => {
+                return Err(cx.err(
+                    field,
+                    format!("unknown key {other:?}; expected blackboard_params, result"),
+                ));
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// `[{"param": name, "type": bbtype, "access": "read" | "write"}]` with `[a-z][a-z0-9_]*` names, each
+/// param at most once, exactly these three keys.
+fn blackboard_params(
+    cx: &Ctx<'_>,
+    field: &str,
+    value: &serde_json::Value,
+) -> Result<Vec<BlackboardParam>, PluginError> {
+    let items = value.as_array().ok_or_else(|| {
+        cx.err(
+            field,
+            "must be a JSON array of {\"param\", \"type\", \"access\"} objects",
+        )
+    })?;
+    let mut out = Vec::with_capacity(items.len());
+    let mut seen = BTreeSet::new();
+    for (index, item) in items.iter().enumerate() {
+        let at = format!("{field}[{index}]");
+        let entry = item
+            .as_object()
+            .ok_or_else(|| cx.err(&at, "must be a JSON object with param, type and access"))?;
+        if let Some(other) = entry
+            .keys()
+            .find(|k| !matches!(k.as_str(), "param" | "type" | "access"))
+        {
+            return Err(cx.err(
+                &at,
+                format!("unknown key {other:?}; expected param, type, access"),
+            ));
+        }
+        let text = |key: &str| {
+            entry
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| cx.err(format!("{at}.{key}"), "must be a string"))
+        };
+        let param = text("param")?;
+        umbra_core::validate_name(param)
+            .map_err(|e| cx.err(format!("{at}.param"), e.to_string()))?;
+        if !seen.insert(param) {
+            return Err(cx.err(
+                format!("{at}.param"),
+                format!("{param:?} is declared twice"),
+            ));
+        }
+        let ty_text = text("type")?;
+        let ty = BbType::from_name(ty_text).ok_or_else(|| {
+            cx.err(
+                format!("{at}.type"),
+                format!(
+                    "{ty_text:?} is not one of bool, number, integer, string, entity, position"
+                ),
+            )
+        })?;
+        let access = match text("access")? {
+            "read" => Access::Read,
+            "write" => Access::Write,
+            other => {
+                return Err(cx.err(
+                    format!("{at}.access"),
+                    format!("{other:?} is not read or write"),
+                ));
+            }
+        };
+        out.push(BlackboardParam::new(param, ty, access));
     }
     Ok(out)
 }
@@ -814,17 +1311,61 @@ fn check_schema(
                 ));
             }
         };
-        let agrees = match property.get("type") {
-            None => true,
-            Some(serde_json::Value::String(t)) => t == expected,
-            Some(serde_json::Value::Array(ts)) => ts.iter().any(|t| t == expected),
-            Some(_) => false,
-        };
-        if !agrees {
+        if !allows_type(property, expected) {
             return Err(cx.err(
                 at,
                 format!(
                     "declared {ty:?} but the schema property has type {}",
+                    property
+                        .get("type")
+                        .map(ToString::to_string)
+                        .unwrap_or_default()
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Whether a schema property admits the JSON type `expected`: untyped, that type, or a type list that
+/// contains it.
+fn allows_type(property: &serde_json::Value, expected: &str) -> bool {
+    match property.get("type") {
+        None => true,
+        Some(serde_json::Value::String(t)) => t == expected,
+        Some(serde_json::Value::Array(ts)) => ts.iter().any(|t| t == expected),
+        Some(_) => false,
+    }
+}
+
+/// ADR 0050, ASM-643, ASM-709: a blackboard param names a blackboard key in the leaf's params, so it
+/// must be a property of the param schema that admits a string.
+fn check_blackboard_params(
+    cx: &Ctx<'_>,
+    field: &str,
+    metadata: &Metadata,
+    schema: &ParamSchema,
+) -> Result<(), PluginError> {
+    let properties = schema.as_json().get("properties");
+    for (index, named) in metadata.blackboard_params.iter().enumerate() {
+        let at = format!("{field}.blackboard_params[{index}].param");
+        let Some(property) = properties.and_then(|p| p.get(&named.param)) else {
+            return Err(cx.err(
+                at,
+                format!(
+                    "{:?} is not a property of the param schema (a blackboard param is a param \
+                     naming a key)",
+                    named.param
+                ),
+            ));
+        };
+        if !allows_type(property, "string") {
+            return Err(cx.err(
+                at,
+                format!(
+                    "{:?} names a blackboard key, so its schema property must admit a string, \
+                     not {}",
+                    named.param,
                     property
                         .get("type")
                         .map(ToString::to_string)
@@ -854,7 +1395,7 @@ mod tests {
 
     #[test]
     fn minor_1_rows_keep_every_0_0_size_and_add_the_network_vtable() {
-        assert_eq!(HOST_MINORS, 2);
+        assert_eq!(HOST_MINORS, UMBRA_ABI_VERSION_MINOR as usize + 1);
         assert_eq!(DESCRIPTOR_SIZES[1], DESCRIPTOR_SIZES[0]);
         assert_eq!(CAPABILITY_SIZES[1], CAPABILITY_SIZES[0]);
         assert_eq!(VTABLE_SIZES[1], VTABLE_SIZES[0]);
@@ -862,10 +1403,75 @@ mod tests {
     }
 
     #[test]
+    fn minor_2_rows_keep_every_earlier_size_and_add_the_kind_vtables() {
+        for sizes in [
+            DESCRIPTOR_SIZES,
+            CAPABILITY_SIZES,
+            VTABLE_SIZES,
+            NETWORK_VTABLE_SIZES,
+        ] {
+            assert_eq!(sizes[2], sizes[1]);
+        }
+        let own = [
+            size_of::<UmbraMotionVTable>(),
+            size_of::<UmbraSensorVTable>(),
+            size_of::<UmbraConditionVTable>(),
+            size_of::<UmbraActionVTable>(),
+        ];
+        for (sizes, own) in [
+            MOTION_VTABLE_SIZES,
+            SENSOR_VTABLE_SIZES,
+            CONDITION_VTABLE_SIZES,
+            ACTION_VTABLE_SIZES,
+        ]
+        .into_iter()
+        .zip(own)
+        {
+            assert_eq!(sizes, [0, 0, own]);
+        }
+    }
+
+    #[test]
+    fn the_abi_0_2_kinds_need_minor_2_and_component_stays_reserved() {
+        for kind in [
+            UMBRA_CAPABILITY_MOTION_MODEL,
+            UMBRA_CAPABILITY_SENSOR,
+            UMBRA_CAPABILITY_CONDITION,
+            UMBRA_CAPABILITY_ACTION,
+        ] {
+            assert_eq!(required_minor(kind), Some(2), "kind {kind}");
+        }
+        for reserved in [0, 5, 8, 99] {
+            assert_eq!(required_minor(reserved), None, "kind {reserved}");
+        }
+    }
+
+    #[test]
+    fn leaf_metadata_parses_blackboard_params_in_order() {
+        let c = cx();
+        let m = leaf_metadata(
+            &c,
+            "m",
+            r#"{"result":"r","blackboard_params":[{"param":"b","type":"entity","access":"write"},{"param":"a","type":"number","access":"read"}]}"#,
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(
+            m.blackboard_params,
+            [
+                BlackboardParam::new("b", BbType::Entity, Access::Write),
+                BlackboardParam::new("a", BbType::Number, Access::Read),
+            ]
+        );
+        assert_eq!(m.result.as_deref(), Some("r"));
+        assert!(m.param_types.is_empty() && m.outputs.is_empty());
+        assert_eq!(leaf_metadata(&c, "m", "").ok(), Some(Metadata::default()));
+    }
+
+    #[test]
     fn required_minor_per_kind() {
         assert_eq!(required_minor(UMBRA_CAPABILITY_BEHAVIOR), Some(0));
         assert_eq!(required_minor(UMBRA_CAPABILITY_NETWORK_ADAPTER), Some(1));
-        for reserved in [0, 2, 4, 5, 6, 7, 99] {
+        for reserved in [0, 5, 99] {
             assert_eq!(required_minor(reserved), None, "kind {reserved}");
         }
     }
@@ -911,7 +1517,7 @@ mod tests {
             Err(PluginError::AbiMismatch { field, .. }) if field == "d.abi_version"
         ));
         assert!(matches!(
-            c.header("d", (2, own32), DESCRIPTOR_SIZES),
+            c.header("d", (UMBRA_ABI_VERSION_MINOR + 1, own32), DESCRIPTOR_SIZES),
             Err(PluginError::AbiMismatch { .. })
         ));
         for bad in [0, 8, own32 - 4, own32 + 8] {

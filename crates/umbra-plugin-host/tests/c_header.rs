@@ -137,6 +137,14 @@ fn c_type(rust: &str) -> Option<String> {
     prim(rust)
 }
 
+/// Pinned field counts per ABI minor, index = minor (ASM-641): 112 fields in ABI 0.0 (the M4 layout
+/// table), 38 appended by ABI 0.1 (M6, ADR 0033), 80 appended by ABI 0.2 (M7, ADR 0050). A minor bump
+/// appends one entry; an appended field changes the sum.
+const FIELDS_BY_MINOR: &[usize] = &[112, 38, 80];
+// One entry per minor of the header: a minor bump without its entry fails to compile.
+const _: () =
+    assert!(FIELDS_BY_MINOR.len() == umbra_plugin_api::UMBRA_ABI_VERSION_MINOR as usize + 1);
+
 /// The C file with every layout fact from Rust; returns it, the number of field offset asserts and the
 /// number of field type asserts.
 fn generated_asserts() -> (String, usize, usize) {
@@ -189,8 +197,9 @@ fn header_compiles_as_strict_c11() {
 fn generated_offset_and_size_asserts_compile() {
     let (source, offsets, types) = generated_asserts();
     // Pinned: the M4 layout table has 112 fields (ABI 0.0); an appended field changes this number.
-    // ABI 0.1 (M6, ADR 0033) appends four structs with 38 fields: 150.
-    assert_eq!(offsets, 150);
+    // ABI 0.1 (M6, ADR 0033) appends four structs with 38 fields, ABI 0.2 (M7, ADR 0050) twelve with
+    // 80: 230, the sum of `FIELDS_BY_MINOR`.
+    assert_eq!(offsets, FIELDS_BY_MINOR.iter().sum::<usize>());
     assert!(types >= 90, "only {types} field types checked");
 
     if let Err(e) = compile("layout_asserts", &source) {
@@ -225,6 +234,16 @@ fn header_declares_exactly_the_abi_types() {
     expected.extend(abi_layout::typedefs().iter().map(|(n, _)| (*n).to_string()));
     expected.extend(["UmbraBehavior".to_string(), "UmbraInstance".to_string()]);
     expected.insert("UmbraNetAdapter".to_string());
+    expected.extend(
+        [
+            "UmbraMotionModel",
+            "UmbraSensor",
+            "UmbraCondition",
+            "UmbraAction",
+            "UmbraActionInstance",
+        ]
+        .map(String::from),
+    );
 
     assert_eq!(declared, expected);
 }
@@ -343,5 +362,204 @@ UMBRA_EXPORT const UmbraPluginDescriptor *umbra_plugin_entry(const UmbraHostApi 
 
     if let Err(e) = compile("macros_and_handles", source) {
         panic!("UMBRA_STR/UMBRA_STR_INIT/UMBRA_EXPORT/handles do not compile cleanly:\n{e}");
+    }
+}
+
+/// R-M6 for the opaque handles of ABI 0.1 and 0.2 (ADR 0050, ASM-679): each stays incomplete in C, so a
+/// plugin can never take its size or dereference it.
+#[test]
+fn abi_0_2_handles_are_incomplete() {
+    for handle in [
+        "UmbraNetAdapter",
+        "UmbraMotionModel",
+        "UmbraSensor",
+        "UmbraCondition",
+        "UmbraAction",
+        "UmbraActionInstance",
+    ] {
+        let source = format!(
+            "#include \"umbra_plugin_api.h\"\n\
+             size_t umbra_probe(void);\n\
+             size_t umbra_probe(void) {{ return sizeof({handle}); }}\n"
+        );
+
+        let err = compile(&format!("sizeof_{handle}"), &source).err();
+
+        assert!(
+            err.as_deref().is_some_and(|e| e.contains(handle)),
+            "sizeof({handle}) compiled or failed for another reason: {err:?}"
+        );
+    }
+}
+
+/// A C plugin with one capability of each ABI 0.2 kind (for
+/// `abi_0_2_kinds_compile_cleanly_in_a_static_descriptor`).
+const ABI_0_2_KINDS_PROBE: &str = r#"#include "umbra_plugin_api.h"
+
+static UmbraCode m_configure(UmbraStr params, UmbraMotionModel **out, const UmbraErrorSink *err) {
+    (void)params;
+    (void)err;
+    *out = NULL;
+    return UMBRA_ERR_UNSUPPORTED;
+}
+static void m_destroy(UmbraMotionModel *model) { (void)model; }
+static UmbraCode m_step(UmbraMotionModel *model, const UmbraMotionStep *step,
+                        UmbraKinematicState *out, const UmbraErrorSink *err) {
+    double height = 0.0;
+    (void)model;
+    (void)err;
+    if (step->terrain->height_at(step->terrain->ctx, &step->state->position, &height) != UMBRA_OK) {
+        return UMBRA_ERR_INTERNAL;
+    }
+    out->position = step->state->position;
+    out->velocity = step->state->velocity;
+    out->orientation = step->state->orientation;
+    out->position.z += height * step->dt * (double)step->rate_hz * (double)step->tick;
+    return step->intent_count > 0 && step->intents[0].kind == UMBRA_INTENT_HOLD ? UMBRA_OK : UMBRA_OK;
+}
+
+static UmbraCode s_configure(UmbraStr params, UmbraSensor **out, const UmbraErrorSink *err) {
+    (void)params;
+    (void)err;
+    *out = NULL;
+    return UMBRA_ERR_UNSUPPORTED;
+}
+static void s_destroy(UmbraSensor *sensor) { (void)sensor; }
+static UmbraCode s_sense(UmbraSensor *sensor, const UmbraSenseCall *call,
+                         const UmbraContactSink *sink, const UmbraErrorSink *err) {
+    size_t i;
+    uint8_t visible = 0;
+    (void)sensor;
+    (void)err;
+    (void)call->rng;
+    for (i = 0; i < call->candidate_count; i++) {
+        const UmbraTarget *t = &call->candidates[i];
+        UmbraContact contact = {.abi_version = UMBRA_ABI_VERSION,
+                                .struct_size = (uint32_t)sizeof(UmbraContact)};
+        if (t->ownership != UMBRA_OWNERSHIP_OWNED && t->ownership != UMBRA_OWNERSHIP_REMOTE) {
+            return UMBRA_ERR_INVALID_ARGUMENT;
+        }
+        if (call->terrain->line_of_sight(call->terrain->ctx, &call->observer->position, &t->position,
+                                         &visible) != UMBRA_OK || !visible) {
+            continue;
+        }
+        contact.entity = t->id;
+        contact.position = t->position;
+        contact.velocity = t->velocity;
+        contact.force = t->force;
+        if (sink->push(sink->ctx, &contact) != UMBRA_OK) {
+            return UMBRA_ERR_INTERNAL;
+        }
+    }
+    return UMBRA_OK;
+}
+
+static UmbraCode c_configure(UmbraStr params, UmbraCondition **out, const UmbraErrorSink *err) {
+    (void)params;
+    (void)err;
+    *out = NULL;
+    return UMBRA_ERR_UNSUPPORTED;
+}
+static void c_destroy(UmbraCondition *condition) { (void)condition; }
+static UmbraCode c_check(UmbraCondition *condition, const UmbraLeafCall *call, uint8_t *out,
+                         const UmbraErrorSink *err) {
+    (void)condition;
+    (void)err;
+    (void)call->rng;
+    if (*out != UMBRA_CONDITION_UNSET) {
+        return UMBRA_ERR_INVALID_ARGUMENT;
+    }
+    if (call->blackboard->get(call->blackboard->ctx, UMBRA_STR("key"), NULL) != UMBRA_OK) {
+        return UMBRA_ERR_INTERNAL;
+    }
+    *out = call->entity->id > call->tick + call->rate_hz ? 1 : 0;
+    return UMBRA_OK;
+}
+
+static UmbraCode a_configure(UmbraStr params, UmbraAction **out, const UmbraErrorSink *err) {
+    (void)params;
+    (void)err;
+    *out = NULL;
+    return UMBRA_ERR_UNSUPPORTED;
+}
+static void a_destroy(UmbraAction *action) { (void)action; }
+static UmbraCode a_instantiate(UmbraAction *action, uint32_t rate_hz, UmbraActionInstance **out,
+                               const UmbraErrorSink *err) {
+    (void)action;
+    (void)rate_hz;
+    (void)err;
+    *out = NULL;
+    return UMBRA_ERR_UNSUPPORTED;
+}
+static void a_destroy_instance(UmbraActionInstance *instance) { (void)instance; }
+static UmbraCode a_tick(UmbraActionInstance *instance, const UmbraLeafCall *call,
+                        const UmbraIntentSink *intents, UmbraStatus *out, const UmbraErrorSink *err) {
+    UmbraIntent hold = {.abi_version = UMBRA_ABI_VERSION, .struct_size = (uint32_t)sizeof(UmbraIntent),
+                        .kind = UMBRA_INTENT_HOLD};
+    (void)instance;
+    (void)err;
+    if (call->blackboard->set(call->blackboard->ctx, UMBRA_STR("key"), NULL) != UMBRA_OK ||
+        intents->push(intents->ctx, 0, &hold) != UMBRA_OK) {
+        return UMBRA_ERR_INTERNAL;
+    }
+    *out = UMBRA_STATUS_SUCCESS;
+    return UMBRA_OK;
+}
+static UmbraCode a_halt(UmbraActionInstance *instance) {
+    (void)instance;
+    return UMBRA_OK;
+}
+
+static const UmbraMotionVTable MOTION = {
+    UMBRA_ABI_VERSION, (uint32_t)sizeof(UmbraMotionVTable), m_configure, m_destroy, m_step,
+};
+static const UmbraSensorVTable SENSOR = {
+    UMBRA_ABI_VERSION, (uint32_t)sizeof(UmbraSensorVTable), s_configure, s_destroy, s_sense,
+};
+static const UmbraConditionVTable CONDITION = {
+    UMBRA_ABI_VERSION, (uint32_t)sizeof(UmbraConditionVTable), c_configure, c_destroy, c_check,
+};
+static const UmbraActionVTable ACTION = {
+    UMBRA_ABI_VERSION, (uint32_t)sizeof(UmbraActionVTable), a_configure, a_destroy, a_instantiate,
+    a_destroy_instance, a_tick, a_halt,
+};
+
+static const UmbraCapability CAPABILITIES[4] = {
+    {UMBRA_ABI_VERSION, (uint32_t)sizeof(UmbraCapability), UMBRA_CAPABILITY_MOTION_MODEL, 0,
+     UMBRA_STR_INIT("example.motion.probe"), UMBRA_STR_INIT(""), UMBRA_STR_INIT("{}"),
+     UMBRA_STR_INIT(""), &MOTION},
+    {UMBRA_ABI_VERSION, (uint32_t)sizeof(UmbraCapability), UMBRA_CAPABILITY_SENSOR, 0,
+     UMBRA_STR_INIT("example.sensor.probe"), UMBRA_STR_INIT(""), UMBRA_STR_INIT("{}"),
+     UMBRA_STR_INIT(""), &SENSOR},
+    {UMBRA_ABI_VERSION, (uint32_t)sizeof(UmbraCapability), UMBRA_CAPABILITY_CONDITION, 0,
+     UMBRA_STR_INIT("example.cond.probe"), UMBRA_STR_INIT(""), UMBRA_STR_INIT("{}"),
+     UMBRA_STR_INIT(""), &CONDITION},
+    {UMBRA_ABI_VERSION, (uint32_t)sizeof(UmbraCapability), UMBRA_CAPABILITY_ACTION, 0,
+     UMBRA_STR_INIT("example.action.probe"), UMBRA_STR_INIT(""), UMBRA_STR_INIT("{}"),
+     UMBRA_STR_INIT(""), &ACTION},
+};
+
+static const UmbraPluginDescriptor DESCRIPTOR = {
+    UMBRA_ABI_VERSION, (uint32_t)sizeof(UmbraPluginDescriptor),
+    UMBRA_STR_INIT("example.plugin.kinds_probe"), UMBRA_STR_INIT("Kinds probe"),
+    UMBRA_STR_INIT("0.1.0"), CAPABILITIES, 4, NULL, NULL,
+};
+
+UMBRA_EXPORT const UmbraPluginDescriptor *umbra_plugin_entry(const UmbraHostApi *host) {
+    (void)host;
+    return &DESCRIPTOR;
+}
+"#;
+
+/// ADR 0050 (ASM-679): a static descriptor exporting one capability of each ABI 0.2 kind, every vtable
+/// initialised in field order with functions of the declared types, compiles cleanly as strict C11.
+/// The functions use the call records, services and sinks, so their field names and types are checked
+/// from C too. Compile-only: nothing is loaded.
+#[test]
+fn abi_0_2_kinds_compile_cleanly_in_a_static_descriptor() {
+    let source = ABI_0_2_KINDS_PROBE;
+
+    if let Err(e) = compile("abi_0_2_kinds", source) {
+        panic!("a descriptor with the ABI 0.2 kinds does not compile cleanly:\n{e}");
     }
 }

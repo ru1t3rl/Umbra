@@ -1,7 +1,8 @@
 //! AT-16 (part, M6 WI-10): the plugin's declared minor is the ceiling for every struct it writes
 //! during a call (ADR 0033, clarified 2026-10-21: structs written during a capability's calls carry the
 //! capability's minor). The raw plugin of `support/raw.rs` writes its intents and values with the
-//! header's `UMBRA_ABI_VERSION` (0.1); declaring 0.0 in its descriptor makes those structs too new.
+//! header's `UMBRA_ABI_VERSION` (the host's minor); declaring 0.0 in its descriptor makes those structs
+//! too new.
 #![expect(unsafe_code, reason = "forged! expands forged entry functions")]
 
 #[macro_use]
@@ -10,7 +11,7 @@ mod support;
 use support::bridge::{Ent, Env, rate, tick_batched};
 use support::raw;
 use umbra_core::{BbValue, Status};
-use umbra_plugin_api::UMBRA_ABI_VERSION_MAJOR;
+use umbra_plugin_api::{UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR};
 use umbra_plugin_host::HostOptions;
 
 /// `major << 16 | minor` of this host's major.
@@ -85,7 +86,7 @@ fn a_minor_0_plugin_reporting_a_minor_1_value_faults_naming_the_field() {
 #[test]
 fn a_minor_1_plugin_writing_minor_1_structs_does_not_fault() {
     raw::clear();
-    let env = raw_env_of_minor!(1);
+    let env = raw_env_of_minor!(UMBRA_ABI_VERSION_MINOR);
     let b = env.behavior("ok");
     let batch = b.batch().expect("batch");
     let mut ents = vec![Ent::new(1, &b, 3)];

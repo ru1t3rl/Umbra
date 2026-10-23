@@ -3,5 +3,5 @@
 schema_version = 1
 id = "example.plugin.c_circle"
 version = "0.1.0"
-abi = "0.1"
+abi = "0.2"
 name = "C circle example"

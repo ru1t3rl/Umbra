@@ -80,11 +80,16 @@ pub enum PluginError {
         /// Message.
         message: String,
     },
-    /// A capability kind this host cannot load.
-    #[error("{origin}: capability {capability}: unsupported kind {kind}")]
+    /// A capability kind this host cannot load: a reserved or unknown kind, or (ABI 0.2, until WI-8/9)
+    /// a kind this host has no bridge for yet. Reported for the first such capability, only after
+    /// every capability of the descriptor passed every descriptor check (ASM-708).
+    #[error("{origin}: {field}: capability {capability}: unsupported kind {kind}")]
     Unsupported {
         /// Origin.
         origin: String,
+        /// The offending field, `capabilities[<i>].kind` (names the capability's index; ASM-125 b3,
+        /// ASM-708).
+        field: String,
         /// Capability id.
         capability: String,
         /// Kind number.

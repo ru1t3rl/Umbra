@@ -13,7 +13,9 @@
 //! asserts of `umbra-plugin-host/tests/c_header.rs`. The ABI 0.0 layout is final as of M4 WI-14 and
 //! frozen at the M4 close-out (WI-16); after that it changes only append-only, by a minor bump (REQ-P-2,
 //! ASM-117). ABI 0.1 (M6, ADR 0033) appends the network adapter kind (`network` module) and changes no
-//! 0.0 layout. The plugin author's reference is `docs/plugin-guide.md`.
+//! 0.0 layout. ABI 0.2 (M7, ADR 0050) appends the motion model (`motion`), sensor (`sensor`), condition
+//! and action (`leaf`) kinds and their per-call services (`services`), and changes no 0.0 or 0.1
+//! layout. The plugin author's reference is `docs/plugin-guide.md`.
 //!
 //! The ABI supports 64-bit targets only (ADR 0019, ASM-120); the build fails elsewhere.
 //!
@@ -32,7 +34,11 @@ const _: () = assert!(
 mod behavior;
 mod consts;
 mod host;
+mod leaf;
+mod motion;
 mod network;
+mod sensor;
+mod services;
 mod types;
 
 pub use behavior::{
@@ -41,7 +47,14 @@ pub use behavior::{
 };
 pub use consts::*;
 pub use host::{UmbraCapability, UmbraHostApi, UmbraPluginDescriptor, UmbraPluginEntry};
+pub use leaf::{
+    UmbraAction, UmbraActionInstance, UmbraActionVTable, UmbraCondition, UmbraConditionVTable,
+    UmbraLeafCall,
+};
+pub use motion::{UmbraKinematicState, UmbraMotionModel, UmbraMotionStep, UmbraMotionVTable};
 pub use network::{
     UmbraNetAdapter, UmbraNetBatch, UmbraNetMessage, UmbraNetSink, UmbraNetworkVTable,
 };
+pub use sensor::{UmbraContactSink, UmbraSenseCall, UmbraSensor, UmbraSensorVTable, UmbraTarget};
+pub use services::{UmbraBlackboard, UmbraTerrain};
 pub use types::{UmbraErrorSink, UmbraQuat, UmbraStr, UmbraVec3};

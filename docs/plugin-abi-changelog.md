@@ -16,6 +16,43 @@ asserts of `c_header.rs` follow), the SDK's kind minors (`crates/umbra-sdk/src/m
 surface table), and an entry here. A minor that grows a struct on a kind's call surface bumps that
 kind's minor, or the SDK must keep writing the old prefix. A major bump needs an ADR.
 
+## 0.2 (M7)
+- ADR 0050 (human decisions H1 and H2 of 2026-10-22, H1 extended 2026-10-23; M7 WI-7). Append-only:
+  **no ABI 0.0 or 0.1 struct, field, size or constant value changed** (the 20 structs and 150 field pins
+  of 0.0 and 0.1 are unchanged; the host's size-per-minor tables have a minor-2 row equal to minor 1 for
+  every earlier struct, including `UmbraIntent`, `UmbraValue` and `UmbraNetMessage`). `UmbraHostApi`
+  does not grow: terrain and blackboard are per-call services, and events are `CUSTOM` intents
+  (H2, ADR 0021 amendment).
+- New kinds, supported only in a descriptor declaring minor 2 or newer (with minor 0 or 1 rejected
+  naming `capabilities[<i>].kind`): `UMBRA_CAPABILITY_MOTION_MODEL` (2), `UMBRA_CAPABILITY_SENSOR` (4),
+  `UMBRA_CAPABILITY_CONDITION` (6), `UMBRA_CAPABILITY_ACTION` (7). `UMBRA_CAPABILITY_COMPONENT` (5) stays
+  reserved at every minor (ASM-620). Motion model and sensor metadata must be empty; condition and
+  action metadata is `{"blackboard_params": [{"param", "type", "access"}], "result"}` (ASM-643), each
+  blackboard param a property of the param schema that admits a string (ASM-709).
+- New structs (minor-2 sizes): services `UmbraTerrain` 40 (`ctx`, `height_at`, `normal_at`,
+  `line_of_sight`) and `UmbraBlackboard` 32 (`ctx`, `get`, `set`); motion `UmbraKinematicState` 88,
+  `UmbraMotionStep` 64, `UmbraMotionVTable` 32 (`configure`, `destroy`, `step`); sensor `UmbraTarget`
+  120, `UmbraSenseCall` 64, `UmbraContactSink` 24, `UmbraSensorVTable` 32 (`configure`, `destroy`,
+  `sense`); leaves `UmbraLeafCall` 48, `UmbraConditionVTable` 32 (`configure`, `destroy`, `check`),
+  `UmbraActionVTable` 56 (`configure`, `destroy_action`, `instantiate`, `destroy_instance`, `tick`,
+  `halt`). Every vtable entry is required. The four vtables exist since minor 2: a header declaring
+  minor 0 or 1 is rejected. Call records hold their nested structs by pointer (`state`, `observer`,
+  `terrain`, `blackboard`), so each can grow on its own (ASM-710). New opaque handles
+  `UmbraMotionModel`, `UmbraSensor`, `UmbraCondition`, `UmbraAction`, `UmbraActionInstance`. 80 new
+  pinned fields (230 in total), 12 new headed structs (29 in total).
+- New constants (no new typedef): `UMBRA_MAX_CONTACTS_PER_SENSE` 4096, `UMBRA_OWNERSHIP_OWNED` 1,
+  `UMBRA_OWNERSHIP_REMOTE` 2 (`UmbraTarget::ownership`, a plain `uint32_t`), `UMBRA_CONDITION_UNSET`
+  0xFF (the pre-filled `check` result; the plugin writes 0 or 1). Intents of an action's `tick` reuse
+  `UmbraIntentSink` and `UMBRA_MAX_INTENTS_PER_ITEM`.
+- Host (WI-7): the descriptor validates the schema, the metadata and the vtable of every capability of
+  these kinds; only after every capability passed every check, the first one of them ends the load as
+  `Unsupported` naming `capabilities[<i>].kind` and the kind, until the host bridges of M7 WI-8 (motion
+  model, sensor, terrain service) and WI-9 (condition, action, blackboard service) land (ASM-708).
+  `PluginError::Unsupported` gained the field `field` (the capability's index).
+- The C example `c-circle` is compiled against the 0.2 header and declares 0.2 (`plugin.toml`
+  `abi = "0.2"`); its behavior structs are unchanged. Behavior-only SDK plugins still declare 0.0 and the
+  DIS plugin 0.1 (ADR 0033 rule).
+
 ## 0.1 (M6)
 - ADR 0033 (human decisions H1 and its extension of 2026-10-21; M6 WI-10). Append-only: **no ABI 0.0
   struct, field, size or constant value changed** (all 16 structs and 112 field pins unchanged; the

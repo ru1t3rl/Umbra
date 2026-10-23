@@ -409,15 +409,30 @@ pub fn stepper(dir: &str) -> Stepper {
     Stepper::new(start(&launcher_registry(), &fixture(dir)).engine)
 }
 
-/// Collects every WARN event (its message and fields, as one line) of the closure `f`
-/// (the capture pattern of `net_warnings.rs`).
+/// Collects every WARN event (its message and fields, as one line) that the closure `f` emits on
+/// this thread.
+///
+/// Deterministic under parallel tests (ASM-712): a scoped `with_default` subscriber only sees a
+/// callsite whose interest was computed while it existed, and a parallel test thread can register the
+/// spawner's `warn!` callsite on tracing's single-dispatcher fast path first, caching `never` (about
+/// 1 run in 15 lost the warning). So one process-wide subscriber is installed once; it answers
+/// `sometimes` for every WARN callsite and records an event only on a thread whose capture is active,
+/// and every capture rebuilds the interest cache before `f` runs, so a `never` cached before the
+/// subscriber was installed is recomputed.
 pub fn capture_warnings(f: impl FnOnce()) -> Vec<String> {
+    use std::cell::RefCell;
+    use std::sync::Once;
+
     use tracing::field::{Field, Visit};
+    use tracing::level_filters::LevelFilter;
     use tracing::span::{Attributes, Id, Record};
+    use tracing::subscriber::Interest;
     use tracing::{Event, Level, Metadata, Subscriber};
 
-    #[derive(Clone, Default)]
-    struct Warnings(Arc<Mutex<Vec<String>>>);
+    thread_local! {
+        /// The WARN lines of this thread's active capture; `None` when none is active.
+        static CAPTURED: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+    }
 
     struct Line(Vec<String>);
 
@@ -431,9 +446,22 @@ pub fn capture_warnings(f: impl FnOnce()) -> Vec<String> {
         }
     }
 
+    /// The process-wide capturing subscriber.
+    struct Warnings;
+
     impl Subscriber for Warnings {
+        fn register_callsite(&self, m: &'static Metadata<'static>) -> Interest {
+            if *m.level() == Level::WARN {
+                Interest::sometimes()
+            } else {
+                Interest::never()
+            }
+        }
+        fn max_level_hint(&self) -> Option<LevelFilter> {
+            Some(LevelFilter::WARN)
+        }
         fn enabled(&self, m: &Metadata<'_>) -> bool {
-            *m.level() == Level::WARN
+            *m.level() == Level::WARN && CAPTURED.with(|c| c.borrow().is_some())
         }
         fn new_span(&self, _: &Attributes<'_>) -> Id {
             Id::from_u64(1)
@@ -443,19 +471,34 @@ pub fn capture_warnings(f: impl FnOnce()) -> Vec<String> {
         fn event(&self, e: &Event<'_>) {
             let mut line = Line(Vec::new());
             e.record(&mut line);
-            self.0
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .push(line.0.join(" "));
+            CAPTURED.with(|c| {
+                if let Some(lines) = c.borrow_mut().as_mut() {
+                    lines.push(line.0.join(" "));
+                }
+            });
         }
         fn enter(&self, _: &Id) {}
         fn exit(&self, _: &Id) {}
     }
 
-    let warnings = Warnings::default();
-    tracing::subscriber::with_default(warnings.clone(), f);
-    let guard = warnings.0.lock().unwrap_or_else(PoisonError::into_inner);
-    let got = guard.clone();
-    drop(guard);
+    /// Ends this thread's capture even when `f` panics.
+    struct Active;
+    impl Drop for Active {
+        fn drop(&mut self) {
+            CAPTURED.with(|c| c.borrow_mut().take());
+        }
+    }
+
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        tracing::subscriber::set_global_default(Warnings)
+            .unwrap_or_else(|e| panic!("capture_warnings needs the global subscriber: {e}"));
+    });
+    tracing::callsite::rebuild_interest_cache();
+    CAPTURED.with(|c| *c.borrow_mut() = Some(Vec::new()));
+    let active = Active;
+    f();
+    let got = CAPTURED.with(|c| c.borrow_mut().take()).unwrap_or_default();
+    drop(active);
     got
 }

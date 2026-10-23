@@ -29,7 +29,7 @@ mod net_support;
 
 use std::sync::Arc;
 
-use net_support::{CAPABILITY, NAME};
+use net_support::{CAPABILITY, NAME, abi};
 use umbra_core::dead_reckoning::DeadReckoning;
 use umbra_core::net::{
     AdapterCounters, AdapterStart, KeySpace, NetEntityState, NetEntityType, NetError, NetKey,
@@ -39,7 +39,7 @@ use umbra_core::{
     ComponentId, ComponentKind, ControlAction, Ecef, Force, PluginFaultPolicy, Radians, SimTime,
     TickRate, Vec3, WeaponId, WorldEuler,
 };
-use umbra_plugin_api::{UMBRA_ABI_VERSION, UMBRA_MAX_NET_POLL, UmbraNetBatch, UmbraNetMessage};
+use umbra_plugin_api::{UMBRA_MAX_NET_POLL, UmbraNetBatch, UmbraNetMessage};
 use umbra_plugin_host::{HostMode, PluginHost};
 
 fn rate() -> TickRate {
@@ -384,25 +384,21 @@ fn every_message_kind_round_trips_through_publish_and_poll() {
     assert_eq!(got, sent);
     let msg = std::mem::size_of::<UmbraNetMessage>();
     let batch = std::mem::size_of::<UmbraNetBatch>();
+    let v = abi(1);
     assert!(
         env.events().contains(
-            &format!(
-                "publish v={UMBRA_ABI_VERSION:#x} size={batch} tick=4 rate=30 count=6 null=false"
-            )
-            .as_str()
+            &format!("publish v={v:#x} size={batch} tick=4 rate=30 count=6 null=false").as_str()
         ),
         "{:?}",
         env.events()
     );
     assert_eq!(
-        env.count(&format!("message v={UMBRA_ABI_VERSION:#x} size={msg}")),
+        env.count(&format!("message v={v:#x} size={msg}")),
         6,
         "every host-written message carries the plugin's minor (1) and size"
     );
     assert_eq!(
-        env.count(&format!(
-            "poll tick=5 max=64 sink v={UMBRA_ABI_VERSION:#x} size=24"
-        )),
+        env.count(&format!("poll tick=5 max=64 sink v={v:#x} size=24")),
         1
     );
     adapter.stop();

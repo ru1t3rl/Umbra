@@ -1,5 +1,5 @@
 //! Version constants, caps and the integer "enum" typedefs of ABI v0 (ADR 0019, ADR 0020, ADR 0021,
-//! ADR 0033).
+//! ADR 0033, ADR 0050).
 //!
 //! Every enum-like value crossing the boundary is a fixed-width integer with `UMBRA_*` constants, never a
 //! Rust `enum` or `bool`: an unknown value is an error for the reader, never undefined behavior
@@ -13,10 +13,12 @@
 /// the M4 close-out (WI-16, ASM-117).
 pub const UMBRA_ABI_VERSION_MAJOR: u32 = 0;
 /// ABI minor version: bumped for every appended field, vtable entry or kind (append-only, REQ-P-2).
-/// History (`docs/plugin-abi-changelog.md`): 0 (M4), 1 (M6: the network adapter kind, ADR 0033).
+/// History (`docs/plugin-abi-changelog.md`): 0 (M4), 1 (M6: the network adapter kind, ADR 0033), 2 (M7:
+/// the motion model, sensor, condition and action kinds, ADR 0050).
 /// A plugin declares in its descriptor the lowest minor that defines every capability kind it exports
-/// (behavior 0, network adapter 1; ADR 0033), not necessarily this one.
-pub const UMBRA_ABI_VERSION_MINOR: u32 = 1;
+/// (behavior 0, network adapter 1, motion model, sensor, condition and action 2; ADR 0033), not
+/// necessarily this one.
+pub const UMBRA_ABI_VERSION_MINOR: u32 = 2;
 /// Packed ABI version written into every `abi_version` field: `major << 16 | minor`.
 pub const UMBRA_ABI_VERSION: u32 = (UMBRA_ABI_VERSION_MAJOR << 16) | UMBRA_ABI_VERSION_MINOR;
 /// Version of the intent set the intent kinds below describe (ADR 0016); equals the host's
@@ -42,6 +44,9 @@ pub const UMBRA_MAX_INTENTS_PER_ITEM: usize = 64;
 pub const UMBRA_MAX_NET_POLL: usize = 4096;
 /// At most this many counters a network adapter's `counters` entry is asked for (ABI 0.1, ADR 0033).
 pub const UMBRA_MAX_NET_COUNTERS: usize = 8;
+/// At most this many contacts one sensor `sense` call may push (ABI 0.2, ADR 0050); one more push is
+/// refused and faults the capability.
+pub const UMBRA_MAX_CONTACTS_PER_SENSE: usize = 4096;
 
 // ---------------------------------------------------------------- tokens
 
@@ -75,24 +80,29 @@ pub const UMBRA_ERR_STATE: UmbraCode = 6;
 // ---------------------------------------------------------------- capability kinds (REQ-P-4)
 
 /// Kind of a capability in the descriptor. Written by the plugin. Supported: [`UMBRA_CAPABILITY_BEHAVIOR`]
-/// (minor 0) and, for descriptors declaring minor 1 or newer, [`UMBRA_CAPABILITY_NETWORK_ADAPTER`]
-/// (ADR 0033); the other numbers are reserved and rejected as unsupported; `0` and unknown values are
-/// invalid.
+/// (minor 0), for descriptors declaring minor 1 or newer [`UMBRA_CAPABILITY_NETWORK_ADAPTER`]
+/// (ADR 0033), and for descriptors declaring minor 2 or newer [`UMBRA_CAPABILITY_MOTION_MODEL`],
+/// [`UMBRA_CAPABILITY_SENSOR`], [`UMBRA_CAPABILITY_CONDITION`] and [`UMBRA_CAPABILITY_ACTION`]
+/// (ADR 0050); [`UMBRA_CAPABILITY_COMPONENT`] is reserved and rejected as unsupported; `0` and unknown
+/// values are invalid.
 pub type UmbraCapabilityKind = u32;
 /// A behavior (vtable `UmbraBehaviorVTable`, ADR 0020).
 pub const UMBRA_CAPABILITY_BEHAVIOR: UmbraCapabilityKind = 1;
-/// Reserved: motion model (M7).
+/// A motion model (vtable `UmbraMotionVTable`, ABI 0.2, ADR 0050); needs a descriptor of minor 2 or
+/// newer.
 pub const UMBRA_CAPABILITY_MOTION_MODEL: UmbraCapabilityKind = 2;
 /// A network adapter (vtable `UmbraNetworkVTable`, ABI 0.1, ADR 0033); needs a descriptor of minor 1 or
 /// newer.
 pub const UMBRA_CAPABILITY_NETWORK_ADAPTER: UmbraCapabilityKind = 3;
-/// Reserved: sensor (M7).
+/// A sensor (vtable `UmbraSensorVTable`, ABI 0.2, ADR 0050); needs a descriptor of minor 2 or newer.
 pub const UMBRA_CAPABILITY_SENSOR: UmbraCapabilityKind = 4;
-/// Reserved: component (M7).
+/// Reserved: component (no defined semantics, ASM-620); rejected as unsupported at every minor.
 pub const UMBRA_CAPABILITY_COMPONENT: UmbraCapabilityKind = 5;
-/// Reserved: behavior-graph condition (M7).
+/// A behavior-graph condition (vtable `UmbraConditionVTable`, ABI 0.2, ADR 0050); needs a descriptor of
+/// minor 2 or newer.
 pub const UMBRA_CAPABILITY_CONDITION: UmbraCapabilityKind = 6;
-/// Reserved: behavior-graph action (M7).
+/// A behavior-graph action (vtable `UmbraActionVTable`, ABI 0.2, ADR 0050); needs a descriptor of minor
+/// 2 or newer.
 pub const UMBRA_CAPABILITY_ACTION: UmbraCapabilityKind = 7;
 
 // ---------------------------------------------------------------- statuses (R-B2)
@@ -215,3 +225,14 @@ pub const UMBRA_NET_CONTROL_PAUSE: UmbraNetControl = 2;
 pub const UMBRA_NET_CONTROL_RESUME: UmbraNetControl = 3;
 /// Stop the exercise.
 pub const UMBRA_NET_CONTROL_STOP: UmbraNetControl = 4;
+
+// ---------------------------------------------------------------- motion, sensor, leaves (ABI 0.2, ADR 0050)
+
+/// `UmbraTarget::ownership` of an entity simulated by this engine (`umbra_core::Ownership::Owned`).
+/// Plain `u32` values (no typedef): `0` and unknown values are invalid.
+pub const UMBRA_OWNERSHIP_OWNED: u32 = 1;
+/// `UmbraTarget::ownership` of an entity mirrored from a network adapter (`Ownership::Remote`).
+pub const UMBRA_OWNERSHIP_REMOTE: u32 = 2;
+/// The host pre-fills a condition's `check` result byte with this value ("not written"); the plugin
+/// writes 0 (false) or 1 (true). Any other value, this one included, faults the capability.
+pub const UMBRA_CONDITION_UNSET: u8 = 0xFF;

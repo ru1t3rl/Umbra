@@ -21,8 +21,9 @@ use std::mem::size_of;
 use support::forge::{Parts, leak_str, parts};
 use umbra_core::ComponentKind;
 use umbra_plugin_api::{
-    UMBRA_ABI_VERSION_MAJOR, UMBRA_CAPABILITY_NETWORK_ADAPTER, UMBRA_OK, UmbraCode, UmbraErrorSink,
-    UmbraNetAdapter, UmbraNetBatch, UmbraNetSink, UmbraNetworkVTable, UmbraStr,
+    UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_CAPABILITY_NETWORK_ADAPTER, UMBRA_OK,
+    UmbraCode, UmbraErrorSink, UmbraNetAdapter, UmbraNetBatch, UmbraNetSink, UmbraNetworkVTable,
+    UmbraStr,
 };
 use umbra_plugin_host::{HostOptions, PluginError, PluginHost};
 
@@ -195,7 +196,8 @@ fn a_network_vtable_declaring_minor_0_is_rejected() {
 
 #[test]
 fn a_network_vtable_of_a_newer_minor_is_an_abi_mismatch() {
-    let err = load!(network_parts(1, |vt| vt.abi_version = abi(2))).expect_err("newer minor");
+    let err = load!(network_parts(1, |vt| vt.abi_version = abi(UMBRA_ABI_VERSION_MINOR + 1)))
+        .expect_err("newer minor");
 
     assert!(
         matches!(&err, PluginError::AbiMismatch { field, .. } if field == "capabilities[0].vtable.abi_version"),
@@ -267,6 +269,8 @@ fn a_minor_0_behavior_plugin_still_loads() {
 fn a_minor_1_behavior_plugin_loads() {
     let mut p = parts();
     p.desc.abi_version = abi(1);
+    p.caps[0].abi_version = abi(1);
+    p.vtable.abi_version = abi(1);
     p.link();
 
     let info = load!(p).expect("behaviors exist since minor 0");

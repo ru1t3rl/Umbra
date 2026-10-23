@@ -62,15 +62,28 @@ use crate::tokens::BatchCall;
 /// Number of minors this host knows.
 const HOST_MINORS: usize = UMBRA_ABI_VERSION_MINOR as usize + 1;
 /// Sizes of the plugin-written structs per minor (append-only, R-B3).
-/// Minor 1 (ADR 0033) changed neither struct.
-const INTENT_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraIntent>(), size_of::<UmbraIntent>()];
-const VALUE_SIZES: [usize; HOST_MINORS] = [size_of::<UmbraValue>(), size_of::<UmbraValue>()];
-/// `UmbraNetMessage` exists since minor 1 (ADR 0033); the minor-0 entry is never read.
-pub(crate) const NET_MESSAGE_SIZES: [usize; HOST_MINORS] = [0, size_of::<UmbraNetMessage>()];
+/// Minor 1 (ADR 0033) and minor 2 (ADR 0050) changed neither struct.
+const INTENT_SIZES: [usize; HOST_MINORS] = [
+    size_of::<UmbraIntent>(),
+    size_of::<UmbraIntent>(),
+    size_of::<UmbraIntent>(),
+];
+const VALUE_SIZES: [usize; HOST_MINORS] = [
+    size_of::<UmbraValue>(),
+    size_of::<UmbraValue>(),
+    size_of::<UmbraValue>(),
+];
+/// `UmbraNetMessage` exists since minor 1 (ADR 0033); the minor-0 entry is never read. Minor 2 did not
+/// change it.
+pub(crate) const NET_MESSAGE_SIZES: [usize; HOST_MINORS] = [
+    0,
+    size_of::<UmbraNetMessage>(),
+    size_of::<UmbraNetMessage>(),
+];
 
 /// `struct_size` of a host-written struct `T` for a plugin of minor `minor`: no host-written 0.0 struct
-/// changed in minor 1 (ADR 0033), so it is the host's own size (R-B3; a minor that grows one adds a
-/// size table here).
+/// changed in minor 1 (ADR 0033) or minor 2 (ADR 0050), so it is the host's own size (R-B3; a minor
+/// that grows one adds a size table here).
 pub(crate) const fn written_size<T>(_minor: u32) -> u32 {
     abi_size::<T>()
 }

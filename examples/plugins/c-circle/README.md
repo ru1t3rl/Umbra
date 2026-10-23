@@ -3,7 +3,7 @@
 An Umbra plugin written in plain C11 against the generated header
 `crates/umbra-plugin-api/include/umbra_plugin_api.h` (M4 acceptance 3, REQ-SDK-2, REQ-P-1, ADR 0023
 item 3). It shows that the plugin boundary is a C ABI: nothing here depends on Rust or on `umbra-sdk`.
-Plugin `example.plugin.c_circle` 0.1.0, ABI 0.1.
+Plugin `example.plugin.c_circle` 0.1.0, ABI 0.2.
 
 | Capability | Kind | Params | Interface |
 |---|---|---|---|

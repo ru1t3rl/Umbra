@@ -24,6 +24,11 @@ after_includes = """
 typedef struct UmbraBehavior UmbraBehavior;
 typedef struct UmbraInstance UmbraInstance;
 typedef struct UmbraNetAdapter UmbraNetAdapter;
+typedef struct UmbraMotionModel UmbraMotionModel;
+typedef struct UmbraSensor UmbraSensor;
+typedef struct UmbraCondition UmbraCondition;
+typedef struct UmbraAction UmbraAction;
+typedef struct UmbraActionInstance UmbraActionInstance;
 
 /* Umbra plugin ABI v0 supports 64-bit targets only (ADR 0019). */
 #if defined(__cplusplus)
@@ -87,9 +92,31 @@ include = [
     "UmbraNetBatch",
     "UmbraNetSink",
     "UmbraNetworkVTable",
+    # ABI 0.2 (ADR 0050).
+    "UmbraTerrain",
+    "UmbraBlackboard",
+    "UmbraKinematicState",
+    "UmbraMotionStep",
+    "UmbraMotionVTable",
+    "UmbraTarget",
+    "UmbraSenseCall",
+    "UmbraContactSink",
+    "UmbraSensorVTable",
+    "UmbraLeafCall",
+    "UmbraConditionVTable",
+    "UmbraActionVTable",
 ]
 # Opaque plugin-owned handles: declared as incomplete types in `after_includes` (R-M6).
-exclude = ["UmbraBehavior", "UmbraInstance", "UmbraNetAdapter"]
+exclude = [
+    "UmbraBehavior",
+    "UmbraInstance",
+    "UmbraNetAdapter",
+    "UmbraMotionModel",
+    "UmbraSensor",
+    "UmbraCondition",
+    "UmbraAction",
+    "UmbraActionInstance",
+]
 
 [parse]
 parse_deps = false

@@ -507,7 +507,7 @@ mod tests {
     use umbra_core::net::{NetEntityState, NetEntityType, NetKey, NetMessage};
     use umbra_core::{ControlAction, Ecef, Force, PluginId, Radians, Vec3, WeaponId, WorldEuler};
     use umbra_plugin_api::{
-        UMBRA_ABI_VERSION, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_STATE, UMBRA_MAX_ID_LEN,
+        UMBRA_ABI_VERSION_MAJOR, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_STATE, UMBRA_MAX_ID_LEN,
         UMBRA_NET_CONTROL, UMBRA_NET_ENTITY_REMOVED, UMBRA_NET_FIRE, UMBRA_OK, UmbraNetMessage,
         UmbraStr,
     };
@@ -583,7 +583,11 @@ mod tests {
     fn every_message_kind_round_trips_through_the_abi() {
         for m in every_kind() {
             let raw = marshal::net_message_out(&m, 1).unwrap_or_else(|| panic!("{m:?}"));
-            assert_eq!(raw.abi_version, UMBRA_ABI_VERSION, "written in minor 1");
+            assert_eq!(
+                raw.abi_version,
+                (UMBRA_ABI_VERSION_MAJOR << 16) | 1,
+                "written in minor 1"
+            );
             assert_eq!(read(&raw, 1), Ok(m));
         }
     }

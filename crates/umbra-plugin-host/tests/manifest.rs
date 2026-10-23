@@ -6,6 +6,7 @@
 mod support;
 
 use support::{garbage_package, tmp_dir};
+use umbra_plugin_api::UMBRA_ABI_VERSION_MINOR;
 use umbra_plugin_host::{HostOptions, PluginError, PluginHost};
 
 const VALID: &str =
@@ -62,7 +63,8 @@ fn given_a_manifest_with_another_abi_major_then_rejected_without_opening() {
 
 #[test]
 fn given_a_manifest_with_a_newer_abi_minor_then_rejected_without_opening() {
-    let (err, _) = load_garbage(Some(&VALID.replace("\"0.0\"", "\"0.2\"")));
+    let newer = format!("\"0.{}\"", UMBRA_ABI_VERSION_MINOR + 1);
+    let (err, _) = load_garbage(Some(&VALID.replace("\"0.0\"", &newer)));
 
     assert!(matches!(err, PluginError::AbiMismatch { .. }), "{err:?}");
 }

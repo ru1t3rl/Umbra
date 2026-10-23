@@ -33,7 +33,7 @@ macro_rules! pin {
 }
 
 /// The structs that carry the `abi_version`/`struct_size` header (all but the value primitives).
-const HEADED: [&str; 17] = [
+const HEADED: &[&str] = &[
     "UmbraErrorSink",
     "UmbraHostApi",
     "UmbraPluginDescriptor",
@@ -51,10 +51,65 @@ const HEADED: [&str; 17] = [
     "UmbraNetBatch",
     "UmbraNetSink",
     "UmbraNetworkVTable",
+    // ABI 0.2 (M7 WI-7, ADR 0050).
+    "UmbraTerrain",
+    "UmbraBlackboard",
+    "UmbraKinematicState",
+    "UmbraMotionStep",
+    "UmbraMotionVTable",
+    "UmbraTarget",
+    "UmbraSenseCall",
+    "UmbraContactSink",
+    "UmbraSensorVTable",
+    "UmbraLeafCall",
+    "UmbraConditionVTable",
+    "UmbraActionVTable",
 ];
 
 /// The frozen value primitives without header (ADR 0019).
 const PRIMITIVES: [&str; 3] = ["UmbraStr", "UmbraVec3", "UmbraQuat"];
+
+/// What one ABI minor added to the support table (ASM-641).
+struct Added {
+    /// Headed structs.
+    headed: usize,
+    /// `UMBRA_*` constants.
+    constants: usize,
+    /// `reserved_N` fields.
+    reserved: usize,
+}
+
+/// What each ABI minor added, index = minor. A minor bump appends one row and changes no existing
+/// literal (ASM-641); the counts of the tests below are the sums over the host's minors.
+const ADDED_BY_MINOR: &[Added] = &[
+    // 0.0 (M4): reserved fields in UmbraCapability, UmbraBehaviorBatch, UmbraEntityView, UmbraIntent,
+    // UmbraValue.
+    Added {
+        headed: 13,
+        constants: 48,
+        reserved: 5,
+    },
+    // 0.1 (M6, ADR 0033): reserved fields in UmbraNetMessage, UmbraNetBatch.
+    Added {
+        headed: 4,
+        constants: 20,
+        reserved: 2,
+    },
+    // 0.2 (M7, ADR 0050): reserved fields in UmbraMotionStep, UmbraTarget, UmbraSenseCall,
+    // UmbraLeafCall.
+    Added {
+        headed: 12,
+        constants: 4,
+        reserved: 4,
+    },
+];
+// One row per minor of this crate: a minor bump without its row fails to compile.
+const _: () = assert!(ADDED_BY_MINOR.len() == UMBRA_ABI_VERSION_MINOR as usize + 1);
+
+/// The sum of one count over every minor.
+fn total(count: fn(&Added) -> usize) -> usize {
+    ADDED_BY_MINOR.iter().map(count).sum()
+}
 
 fn find<'a>(all: &'a [StructLayout], name: &str) -> &'a StructLayout {
     all.iter()
@@ -111,6 +166,34 @@ fn layouts_are_pinned_on_64_bit() {
         pin!(UmbraNetworkVTable, size 72;
             abi_version 0, struct_size 4, configure 8, destroy 16, key_space 24, start 32,
             publish 40, poll 48, stop 56, counters 64),
+        // ABI 0.2 (M7 WI-7, ADR 0050): appended structs; every 0.0 and 0.1 row above is unchanged.
+        pin!(UmbraTerrain, size 40;
+            abi_version 0, struct_size 4, ctx 8, height_at 16, normal_at 24, line_of_sight 32),
+        pin!(UmbraBlackboard, size 32; abi_version 0, struct_size 4, ctx 8, get 16, set 24),
+        pin!(UmbraKinematicState, size 88;
+            abi_version 0, struct_size 4, position 8, velocity 32, orientation 56),
+        pin!(UmbraMotionStep, size 64;
+            abi_version 0, struct_size 4, tick 8, rate_hz 16, reserved_0 20, dt 24, state 32,
+            intents 40, intent_count 48, terrain 56),
+        pin!(UmbraMotionVTable, size 32;
+            abi_version 0, struct_size 4, configure 8, destroy 16, step 24),
+        pin!(UmbraTarget, size 120;
+            abi_version 0, struct_size 4, id 8, position 16, velocity 40, orientation 64, force 96,
+            ownership 112, reserved_0 116),
+        pin!(UmbraSenseCall, size 64;
+            abi_version 0, struct_size 4, tick 8, rate_hz 16, reserved_0 20, observer 24,
+            candidates 32, candidate_count 40, rng 48, terrain 56),
+        pin!(UmbraContactSink, size 24; abi_version 0, struct_size 4, ctx 8, push 16),
+        pin!(UmbraSensorVTable, size 32;
+            abi_version 0, struct_size 4, configure 8, destroy 16, sense 24),
+        pin!(UmbraLeafCall, size 48;
+            abi_version 0, struct_size 4, tick 8, rate_hz 16, reserved_0 20, entity 24, rng 32,
+            blackboard 40),
+        pin!(UmbraConditionVTable, size 32;
+            abi_version 0, struct_size 4, configure 8, destroy 16, check 24),
+        pin!(UmbraActionVTable, size 56;
+            abi_version 0, struct_size 4, configure 8, destroy_action 16, instantiate 24,
+            destroy_instance 32, tick 40, halt 48),
     ];
 
     // The reserved arrays have the documented widths.
@@ -126,6 +209,11 @@ fn layouts_are_pinned_on_64_bit() {
     assert_eq!(size_of::<UmbraBehavior>(), 0);
     assert_eq!(size_of::<UmbraInstance>(), 0);
     assert_eq!(size_of::<UmbraNetAdapter>(), 0);
+    assert_eq!(size_of::<UmbraMotionModel>(), 0);
+    assert_eq!(size_of::<UmbraSensor>(), 0);
+    assert_eq!(size_of::<UmbraCondition>(), 0);
+    assert_eq!(size_of::<UmbraAction>(), 0);
+    assert_eq!(size_of::<UmbraActionInstance>(), 0);
 
     // The support table (used for the C asserts) lists exactly these structs and fields, in order.
     let support = abi_layout::structs();
@@ -163,6 +251,7 @@ fn no_struct_has_padding() {
 #[test]
 fn every_headed_struct_starts_with_abi_version_and_struct_size() {
     let all = abi_layout::structs();
+    assert_eq!(HEADED.len(), total(|a| a.headed));
     assert_eq!(all.len(), HEADED.len() + PRIMITIVES.len());
     for name in HEADED {
         let s = find(&all, name);
@@ -199,7 +288,8 @@ fn headed_sizes_are_multiples_of_8_with_align_8() {
     }
 }
 
-/// ADR 0019: `UMBRA_ABI_VERSION = major << 16 | minor`; ABI 0.1 since M6 (ADR 0033).
+/// ADR 0019: `UMBRA_ABI_VERSION = major << 16 | minor`; major 0, and the minor is the newest row of
+/// `ADDED_BY_MINOR` (ABI 0.2 since M7, ADR 0050; ASM-641).
 #[test]
 fn abi_version_packs_major_and_minor() {
     assert_eq!(UMBRA_ABI_VERSION >> 16, UMBRA_ABI_VERSION_MAJOR);
@@ -210,7 +300,7 @@ fn abi_version_packs_major_and_minor() {
             UMBRA_ABI_VERSION_MINOR,
             UMBRA_ABI_VERSION
         ),
-        (0, 1, 1)
+        (0, newest_minor(), UMBRA_ABI_VERSION_MINOR)
     );
 }
 
@@ -302,8 +392,8 @@ fn constants_and_caps_have_documented_values() {
     // The support table used for the C asserts lists every constant above once.
     let names: std::collections::BTreeSet<&str> =
         abi_layout::constants().iter().map(|(n, _)| *n).collect();
-    assert_eq!(names.len(), 68);
-    assert_eq!(abi_layout::constants().len(), 68);
+    assert_eq!(names.len(), total(|a| a.constants));
+    assert_eq!(abi_layout::constants().len(), total(|a| a.constants));
 }
 
 /// Typedef widths: tokens 8 bytes, codes `i32`, enums `u32`, the entry a (non-null) function pointer.
@@ -422,8 +512,9 @@ fn reserved_fields_are_u32_or_byte_arrays() {
         }
     }
     assert_eq!(
-        seen, 7,
-        "UmbraCapability, UmbraBehaviorBatch, UmbraEntityView, UmbraIntent, UmbraValue, UmbraNetMessage, UmbraNetBatch"
+        seen,
+        total(|a| a.reserved),
+        "the reserved fields ADDED_BY_MINOR lists"
     );
 }
 
@@ -463,6 +554,16 @@ fn source_types_match_the_support_table() {
         .collect();
     expected_structs.extend(["UmbraBehavior".to_string(), "UmbraInstance".to_string()]);
     expected_structs.insert("UmbraNetAdapter".to_string());
+    expected_structs.extend(
+        [
+            "UmbraMotionModel",
+            "UmbraSensor",
+            "UmbraCondition",
+            "UmbraAction",
+            "UmbraActionInstance",
+        ]
+        .map(String::from),
+    );
     let expected_types: std::collections::BTreeSet<String> = abi_layout::typedefs()
         .iter()
         .map(|(n, _)| (*n).to_string())
@@ -556,6 +657,122 @@ fn network_reserved_fields_fill_their_gaps() {
     );
     assert_eq!(
         offset_of!(UmbraNetBatch, messages) - offset_of!(UmbraNetBatch, reserved_0),
+        4
+    );
+}
+
+/// The newest minor: the last row of `ADDED_BY_MINOR`.
+fn newest_minor() -> u32 {
+    u32::try_from(ADDED_BY_MINOR.len() - 1).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// ADR 0050: the ABI 0.2 constants have their documented values; the ownership values are never 0
+/// (invalid), and the unset condition result is neither false (0) nor true (1).
+#[test]
+fn kind_constants_of_minor_2_have_documented_values() {
+    assert_eq!(
+        [
+            UMBRA_CAPABILITY_MOTION_MODEL,
+            UMBRA_CAPABILITY_SENSOR,
+            UMBRA_CAPABILITY_CONDITION,
+            UMBRA_CAPABILITY_ACTION,
+        ],
+        [2, 4, 6, 7]
+    );
+    assert_eq!(UMBRA_MAX_CONTACTS_PER_SENSE, 4096);
+    assert_eq!([UMBRA_OWNERSHIP_OWNED, UMBRA_OWNERSHIP_REMOTE], [1, 2]);
+    assert_eq!(UMBRA_CONDITION_UNSET, 0xFF);
+}
+
+/// ADR 0019 for the ABI 0.2 structs: every function-pointer field is nullable (compiles only for
+/// `Option`), and the literals list every field.
+#[test]
+fn minor_2_function_pointer_fields_are_nullable() {
+    let terrain = UmbraTerrain {
+        abi_version: 0,
+        struct_size: 0,
+        ctx: 0,
+        height_at: None,
+        normal_at: None,
+        line_of_sight: None,
+    };
+    let blackboard = UmbraBlackboard {
+        abi_version: 0,
+        struct_size: 0,
+        ctx: 0,
+        get: None,
+        set: None,
+    };
+    let contacts = UmbraContactSink {
+        abi_version: 0,
+        struct_size: 0,
+        ctx: 0,
+        push: None,
+    };
+    let motion = UmbraMotionVTable {
+        abi_version: 0,
+        struct_size: 0,
+        configure: None,
+        destroy: None,
+        step: None,
+    };
+    let sensor = UmbraSensorVTable {
+        abi_version: 0,
+        struct_size: 0,
+        configure: None,
+        destroy: None,
+        sense: None,
+    };
+    let condition = UmbraConditionVTable {
+        abi_version: 0,
+        struct_size: 0,
+        configure: None,
+        destroy: None,
+        check: None,
+    };
+    let action = UmbraActionVTable {
+        abi_version: 0,
+        struct_size: 0,
+        configure: None,
+        destroy_action: None,
+        instantiate: None,
+        destroy_instance: None,
+        tick: None,
+        halt: None,
+    };
+    assert!(terrain.height_at.is_none() && terrain.normal_at.is_none());
+    assert!(terrain.line_of_sight.is_none() && contacts.push.is_none());
+    assert!(blackboard.get.is_none() && blackboard.set.is_none());
+    assert!(motion.configure.is_none() && motion.destroy.is_none() && motion.step.is_none());
+    assert!(sensor.configure.is_none() && sensor.destroy.is_none() && sensor.sense.is_none());
+    assert!(condition.configure.is_none() && condition.destroy.is_none());
+    assert!(condition.check.is_none() && action.configure.is_none());
+    assert!(action.destroy_action.is_none() && action.instantiate.is_none());
+    assert!(action.destroy_instance.is_none() && action.tick.is_none() && action.halt.is_none());
+}
+
+/// R-B1 for the ABI 0.2 reserved fields: each is the `u32` after a `u32` `rate_hz` or `ownership`, so
+/// the next field starts 8-aligned.
+#[test]
+fn minor_2_reserved_fields_fill_their_gaps() {
+    assert_eq!(
+        offset_of!(UmbraMotionStep, reserved_0) - offset_of!(UmbraMotionStep, rate_hz),
+        4
+    );
+    assert_eq!(
+        offset_of!(UmbraMotionStep, dt) - offset_of!(UmbraMotionStep, reserved_0),
+        4
+    );
+    assert_eq!(
+        offset_of!(UmbraSenseCall, observer) - offset_of!(UmbraSenseCall, reserved_0),
+        4
+    );
+    assert_eq!(
+        offset_of!(UmbraLeafCall, entity) - offset_of!(UmbraLeafCall, reserved_0),
+        4
+    );
+    assert_eq!(
+        size_of::<UmbraTarget>() - offset_of!(UmbraTarget, reserved_0),
         4
     );
 }
