@@ -2,14 +2,11 @@
 //!
 //! A [`MotionModel`] is configured once from JSON params and stepped once per entity and tick, like a
 //! built-in `umbra_core::MotionModel`: stateless across ticks, equal inputs give bit-identical
-//! outputs. The terrain comes with the call ([`MotionCtx::terrain`]).
-//!
-//! Status: M7 WI-2 stub. The signatures follow `docs/plans/M7.md` (section "SDK"); the behavior is
-//! implemented in M7 WI-10.
+//! outputs. The terrain comes with the call ([`MotionCtx::terrain`]). A motion model has no
+//! randomness (like the core trait) and must not use a clock of its own (REQ-K-4).
 
-use std::marker::PhantomData;
-
-use crate::behavior::Intent;
+use crate::behavior::{Fault, Intent};
+use crate::convert::TerrainSvc;
 use crate::error::Error;
 use crate::services::{Terrain, Vec3};
 
@@ -30,27 +27,39 @@ pub struct KinematicState {
 pub struct MotionCtx<'a> {
     tick: u64,
     rate_hz: u32,
-    call: PhantomData<&'a ()>,
+    terrain: TerrainSvc,
+    fault: &'a Fault,
+}
+
+impl<'a> MotionCtx<'a> {
+    /// The context of one `step` call.
+    pub(crate) fn new(tick: u64, rate_hz: u32, terrain: TerrainSvc, fault: &'a Fault) -> Self {
+        Self {
+            tick,
+            rate_hz,
+            terrain,
+            fault,
+        }
+    }
 }
 
 impl MotionCtx<'_> {
     /// Simulation tick number.
     #[must_use]
     pub fn tick(&self) -> u64 {
-        let _ = (self.tick, self.rate_hz, &self.call);
-        unimplemented!("M7 WI-10")
+        self.tick
     }
 
     /// Tick rate in Hz.
     #[must_use]
     pub fn rate_hz(&self) -> u32 {
-        unimplemented!("M7 WI-10")
+        self.rate_hz
     }
 
     /// The terrain of this call.
     #[must_use]
     pub fn terrain(&self) -> Terrain<'_> {
-        unimplemented!("M7 WI-10")
+        Terrain::new(self.terrain, self.fault)
     }
 }
 
@@ -60,6 +69,8 @@ pub trait MotionModel: Sized + Send + Sync + 'static {
     const ID: &'static str;
     /// JSON Schema of the params (ADR 0009 subset); the top-level `description` is the catalog text.
     const SCHEMA: &'static str;
+    /// Capability version; `None` means the plugin version.
+    const VERSION: Option<&'static str> = None;
 
     /// Builds the model from the JSON params.
     ///
@@ -67,8 +78,10 @@ pub trait MotionModel: Sized + Send + Sync + 'static {
     /// Bad params.
     fn configure(params: &str) -> Result<Self, Error>;
 
-    /// Advances `state` by `dt` seconds under `intents`. The host refuses a result that is not
-    /// finite or whose orientation is not a unit quaternion within 1e-9.
+    /// Advances `state` by `dt` seconds under `intents` (this tick's intents of the entity, in
+    /// emission order). The host refuses a result that is not finite or whose orientation is not a
+    /// unit quaternion within 1e-9. If a terrain query was refused during the step, the result is not
+    /// reported (the host faulted the capability).
     fn step(
         &self,
         ctx: &MotionCtx<'_>,

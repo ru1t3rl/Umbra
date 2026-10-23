@@ -7,7 +7,7 @@
 //! the entity's own stream through the host API (REQ-K-4); time is [`TickContext::tick`] and
 //! [`TickContext::rate_hz`]. A plugin must not use its own RNG or the wall clock.
 
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::fmt;
 
 use crate::abi::{UMBRA_ERR_STATE, UMBRA_OK, UmbraCode, UmbraToken, UmbraVec3};
@@ -349,21 +349,23 @@ pub enum Intent<'a> {
 }
 
 /// The first host refusal of one call (an RNG draw or intent of a tick, a message of a network
-/// `poll`): the SDK ends the call with its code.
+/// `poll`, a service call or pushed contact of an ABI 0.2 kind): the SDK ends the call with its code.
+/// The call text names what was refused (for a blackboard access, its key).
 #[derive(Debug, Default)]
-pub(crate) struct Fault(Cell<Option<(UmbraCode, &'static str)>>);
+pub(crate) struct Fault(RefCell<Option<(UmbraCode, String)>>);
 
 impl Fault {
     /// Records `code` from `call` unless a fault is already recorded.
-    pub(crate) fn record(&self, code: UmbraCode, call: &'static str) {
-        if self.0.get().is_none() {
-            self.0.set(Some((code, call)));
+    pub(crate) fn record(&self, code: UmbraCode, call: &str) {
+        let mut first = self.0.borrow_mut();
+        if first.is_none() {
+            *first = Some((code, call.to_owned()));
         }
     }
 
     /// The recorded fault, if any.
-    pub(crate) fn get(&self) -> Option<(UmbraCode, &'static str)> {
-        self.0.get()
+    pub(crate) fn get(&self) -> Option<(UmbraCode, String)> {
+        self.0.borrow().clone()
     }
 }
 
@@ -446,11 +448,7 @@ impl TickContext<'_> {
 
     /// The entity's own RNG stream, through the host API.
     pub fn rng(&mut self) -> Rng<'_> {
-        Rng {
-            host: self.host,
-            token: self.rng,
-            fault: self.fault,
-        }
+        Rng::new(self.host, self.rng, self.fault)
     }
 }
 
@@ -462,8 +460,16 @@ pub struct Rng<'a> {
     fault: &'a Fault,
 }
 
+impl<'a> Rng<'a> {
+    /// The stream of `token` through `host`, reporting refusals to `fault`.
+    pub(crate) fn new(host: Option<HostCopy>, token: UmbraToken, fault: &'a Fault) -> Self {
+        Self { host, token, fault }
+    }
+}
+
 impl Rng<'_> {
-    /// Next `u64`. A refused draw returns 0 and makes this `tick_batch` call return the host's code.
+    /// Next `u64`. A refused draw returns 0 and makes this call (`tick_batch`, `sense`, `check`,
+    /// `tick`) return the host's code.
     pub fn next_u64(&mut self) -> u64 {
         let drawn = self
             .host
@@ -475,8 +481,7 @@ impl Rng<'_> {
         })
     }
 
-    /// Next `f64` in `[0, 1)`. A refused draw returns 0.0 and makes this `tick_batch` call return the
-    /// host's code.
+    /// Next `f64` in `[0, 1)`. A refused draw returns 0.0 and makes this call return the host's code.
     pub fn next_f64(&mut self) -> f64 {
         let drawn = self
             .host

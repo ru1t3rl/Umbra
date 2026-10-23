@@ -101,10 +101,11 @@ impl NetFixture {
         let detonate_position = match params.get("detonate_position") {
             None => [6_378_237.0, 0.0, 0.0],
             Some(v) => {
-                let numbers: Option<Vec<f64>> = v
-                    .as_array()
-                    .map(|a| a.iter().map(|n| n.as_f64()).collect::<Option<_>>())
-                    .unwrap_or(None);
+                let numbers: Option<Vec<f64>> = v.as_array().and_then(|a| {
+                    a.iter()
+                        .map(umbra_sdk::serde_json::Value::as_f64)
+                        .collect::<Option<_>>()
+                });
                 match numbers.as_deref() {
                     Some(&[x, y, z]) => [x, y, z],
                     _ => {

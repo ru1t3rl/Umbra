@@ -126,10 +126,51 @@
 //! Implement [`MotionModel`], [`Sensor`], [`Condition`] or [`Action`] (with its [`ActionInstance`]) and
 //! list the type under `motion_models:`, `sensors:`, `conditions:` or `actions:` of `export_plugin!`.
 //! Terrain ([`Terrain`]) and blackboard ([`BlackboardAccess`]) access arrive with the call and are valid
-//! only during it. A plugin that exports any of these kinds declares ABI minor 2.
+//! only during it. A plugin that exports any of these kinds declares ABI minor 2 (`docs/plugin-guide.md`,
+//! "Motion models, sensors, conditions and actions in Rust"). Use [`math`] for trigonometry (ADR 0059):
 //!
-//! Status: M7 WI-2 stubs. The traits and context types are final in shape (`docs/plans/M7.md`, ASM-666)
-//! but their exports panic with `M7 WI-10` until the SDK side is implemented.
+//! ```
+//! #![forbid(unsafe_code)]
+//! use umbra_sdk::{Error, Intent, KinematicState, MotionCtx, MotionModel, export_plugin, math};
+//!
+//! /// Keeps the speed and turns the velocity toward each `SetHeading` (east = 0, radians).
+//! struct Turn;
+//!
+//! impl MotionModel for Turn {
+//!     const ID: &'static str = "example.motion.turn";
+//!     const SCHEMA: &'static str = r#"{"type":"object","description":"Turns on SetHeading"}"#;
+//!     fn configure(_params: &str) -> Result<Self, Error> {
+//!         Ok(Self)
+//!     }
+//!     fn step(&self, ctx: &MotionCtx<'_>, s: &KinematicState, intents: &[Intent<'_>], dt: f64)
+//!         -> KinematicState {
+//!         let speed = math::hypot(s.velocity[0], s.velocity[1]);
+//!         let mut velocity = s.velocity;
+//!         for intent in intents {
+//!             if let Intent::SetHeading(h) = *intent {
+//!                 let (sin, cos) = math::sin_cos(h);
+//!                 velocity = [speed * cos, speed * sin, s.velocity[2]];
+//!             }
+//!         }
+//!         // Terrain of this call (for example to hold a height above ground). A refused query makes
+//!         // the step report the host's code, and the result below is then not used.
+//!         let _ground_m = ctx.terrain().height_at(s.position).unwrap_or(0.0);
+//!         let p = s.position;
+//!         KinematicState {
+//!             position: [p[0] + velocity[0] * dt, p[1] + velocity[1] * dt, p[2] + velocity[2] * dt],
+//!             velocity,
+//!             orientation: s.orientation,
+//!         }
+//!     }
+//! }
+//!
+//! export_plugin! {
+//!     id: "example.plugin.turn",
+//!     name: "Turn example",
+//!     version: "0.1.0",
+//!     motion_models: [Turn],
+//! }
+//! ```
 //!
 //! # What the SDK guarantees at the boundary (ADR 0019, ADR 0020, ADR 0021)
 //! - **Panics** never unwind into the host: every exported function runs under `catch_unwind`; the
@@ -141,16 +182,21 @@
 //!   `BbValue` invariants. Malformed input is `UMBRA_ERR_INVALID_ARGUMENT` (R-M2).
 //! - **Batches** (`tick_batch`) are validated completely first, then each item is ticked in order and
 //!   gets its status; the first host refusal or panic ends the call with its code (REQ-B-4).
-//! - **Output** structs (descriptor, capabilities, vtables, intents, values, network messages) carry
-//!   the minor of the capability kind they belong to (behavior 0, network adapter 1; ADR 0033,
-//!   `minor.rs`) and that minor's size; the descriptor declares the highest of its capabilities'.
+//! - **Output** structs (descriptor, capabilities, vtables, intents, values, network messages,
+//!   contacts) carry the minor of the capability kind they belong to (behavior 0, network adapter 1,
+//!   the ABI 0.2 kinds 2; ADR 0033, [`BEHAVIOR_MINOR`] and the other kind minors) and that minor's
+//!   size; the descriptor declares the highest of its capabilities'.
 //! - **Network adapters** (ADR 0033): messages in both directions are checked against the ABI rules
 //!   of their kind (malformed host input is `UMBRA_ERR_INVALID_ARGUMENT` before any trait call; an
 //!   invalid pushed message is refused before it reaches the host), at most `max` messages are passed
 //!   per `poll`, the sink is reachable only during its call, and the lifecycle (`start` once, `stop`
 //!   before drop, adapter before configuration) is enforced by the SDK.
-//! - **Determinism** (REQ-K-4): time arrives in [`TickContext`]; randomness only through
-//!   [`TickContext::rng`], with the batch item's own host token. The SDK has no clock and no RNG.
+//! - **Determinism** (REQ-K-4): time arrives in [`TickContext`] (and the contexts of the ABI 0.2 kinds);
+//!   randomness only through their `rng()`, with the call's own host token. The SDK has no clock and no
+//!   RNG; [`math`] mirrors the engine's float functions (ADR 0059).
+//! - **ABI 0.2 kinds** (ADR 0050): every call record is validated before the trait runs; a refused
+//!   service call, draw, contact or intent ends the call with the host's code, and no result is written
+//!   then; a blackboard read accepts exactly one report from the host.
 //! - **Handles** are plugin-owned boxes tagged per capability; a handle of another capability is
 //!   refused, never reinterpreted.
 //!
@@ -171,7 +217,8 @@
 //!   `static` with `Mutex` or `OnceLock`, as the SDK does.
 //!
 //! This is one of the three crates allowed to contain `unsafe` (CLAUDE.md rule 5, NFR-2). It lives in
-//! the modules `convert`, `guard`, `host` and `export` (with their `network` children); every `unsafe` block carries a `// SAFETY:`
+//! the modules `convert`, `guard`, `host` and `export` (with their `network`, `kinds`, `motion`,
+//! `sensor` and `leaf` children); every `unsafe` block carries a `// SAFETY:`
 //! comment naming the invariant it relies on and is exercised by a test.
 
 #![deny(unsafe_op_in_unsafe_fn)]
@@ -192,6 +239,7 @@ mod export;
 mod guard;
 mod host;
 mod leaf;
+pub mod math;
 mod minor;
 mod motion;
 mod network;
@@ -206,6 +254,10 @@ pub use error::Error;
 #[doc(hidden)]
 pub use export::__private;
 pub use leaf::{Action, ActionInstance, Condition, LeafCtx};
+pub use minor::{
+    ACTION_MINOR, BEHAVIOR_MINOR, CONDITION_MINOR, MOTION_MODEL_MINOR, NETWORK_ADAPTER_MINOR,
+    SENSOR_MINOR,
+};
 pub use motion::{KinematicState, MotionCtx, MotionModel};
 pub use network::{
     ConfigureInput, ControlAction, Counters, DeadReckoning, EntityState, Euler, Inbox, KeySpace,

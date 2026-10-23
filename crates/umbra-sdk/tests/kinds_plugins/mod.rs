@@ -1,7 +1,7 @@
 //! Plugin declarations of the ABI 0.2 kinds for the SDK descriptor tests (M7 WI-2, ADR 0050): one tiny
 //! capability per kind and the plugins built from them, declared through `__private::Plugin` like the
 //! M6 rows of `required_minor.rs`. The capabilities do nothing: the descriptor tests never call them
-//! (the call-level rows need the ABI 0.2 structs and are written with WI-7/WI-10).
+//! (the call-level rows are in `kinds_calls.rs`, WI-10).
 #![expect(
     dead_code,
     reason = "each test binary uses a subset of the declarations"
@@ -9,10 +9,11 @@
 
 use umbra_sdk::__private::{Capabilities, Plugin};
 use umbra_sdk::{
-    Action, ActionInstance, BlackboardAccess, Condition, ConfigureInput, Contacts, EntityView,
-    Error, Inbox, Intent, Intents, KeySpace, KinematicState, LeafCtx, MotionCtx, MotionModel,
-    NetMessage, NetworkAdapter, NetworkAdapterConfig, NetworkAdapterFactory, SenseCtx, Sensor,
-    SimTime, Status, TargetView,
+    Action, ActionInstance, Behavior, BehaviorFactory, BehaviorInstance, BlackboardAccess,
+    Condition, ConfigureInput, Contacts, EntityView, Error, Inbox, Intent, Intents, KeySpace,
+    KinematicState, LeafCtx, MotionCtx, MotionModel, NetMessage, NetworkAdapter,
+    NetworkAdapterConfig, NetworkAdapterFactory, Params, SenseCtx, Sensor, SimTime, Status,
+    TargetView, TickContext,
 };
 
 pub const MOTION_ID: &str = "test.motion.glide";
@@ -138,6 +139,30 @@ impl NetworkAdapter for NullNetAdapter {
     fn stop(&mut self) {}
 }
 
+/// A behavior for the compatibility rows (WI-10): with the ABI 0.2 SDK it keeps minor 0.
+pub struct Idle;
+pub struct IdleInstance;
+impl BehaviorFactory for Idle {
+    const ID: &'static str = "test.behavior.kinds_idle";
+    const PARAM_SCHEMA: &'static str = r#"{"type":"object"}"#;
+    type Behavior = Idle;
+    fn configure(_: &Params<'_>) -> Result<Idle, Error> {
+        Ok(Idle)
+    }
+}
+impl Behavior for Idle {
+    type Instance = IdleInstance;
+    fn instantiate(&self, _: u32) -> Result<IdleInstance, Error> {
+        Ok(IdleInstance)
+    }
+}
+impl BehaviorInstance for IdleInstance {
+    fn tick(&mut self, _: &mut TickContext<'_>, _: &EntityView<'_>, _: &mut Intents<'_>) -> Status {
+        Status::Running
+    }
+    fn halt(&mut self) {}
+}
+
 macro_rules! plugin {
     ($name:ident, $id:literal, |$caps:ident| $body:block) => {
         pub struct $name;
@@ -169,3 +194,21 @@ plugin!(AllKinds, "test.plugin.kinds_all", |caps| {
     caps.condition::<Always>();
     caps.action::<Once>();
 });
+plugin!(BehaviorOnly, "test.plugin.kinds_behavior", |caps| {
+    caps.behavior::<Idle>();
+});
+plugin!(NetOnly, "test.plugin.kinds_net", |caps| {
+    caps.network_adapter::<NullNet>();
+});
+plugin!(BehaviorAndNet, "test.plugin.kinds_behavior_net", |caps| {
+    caps.behavior::<Idle>();
+    caps.network_adapter::<NullNet>();
+});
+plugin!(
+    BehaviorAndMotion,
+    "test.plugin.kinds_behavior_motion",
+    |caps| {
+        caps.behavior::<Idle>();
+        caps.motion_model::<Glide>();
+    }
+);

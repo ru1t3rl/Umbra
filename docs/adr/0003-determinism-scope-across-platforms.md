@@ -34,3 +34,10 @@ single point where `libm` would be swapped in.
 - M1 must create the math module and a clippy `disallowed-methods` entry for direct `f64::sin` and similar
   calls in simulation crates, if the human prefers to keep option 2 open cheaply.
 - Revisit if cross-OS replay or mixed-OS federations that compare hashes become a requirement.
+
+## Amendment (ADR 0059, accepted by the human 2026-10-22; delivered in M7 WI-10)
+The "single point" is now **one point per side of the ABI, kept identical by test**: `umbra_core::math`
+for the engine and `umbra_sdk::math` for plugins (same functions, semantics and implementations). The
+parity test `crates/umbra-plugin-host/tests/sdk_math_parity.rs` compares them bit for bit, so a `libm`
+switch changes both modules in one commit. The `clippy.toml` reasons read "REQ-K-4, ADR 0003: use
+umbra_core::math (umbra_sdk::math in plugins)".

@@ -9,17 +9,18 @@
 //! traits. Every trampoline runs its body under a panic guard (`guard::catch`) and validates every
 //! input before any trait call. Every struct the SDK writes carries the minor of the capability kind it
 //! belongs to (ADR 0033, `minor.rs`): a capability, its vtable and the structs of its calls the kind's
-//! minor (behavior 0, network adapter 1), the descriptor the highest of its capabilities' minors, so a
-//! behavior-only plugin built with this SDK still loads and runs in an ABI 0.0 host, and only a plugin
-//! with a network adapter needs an ABI 0.1 host. The network adapter trampolines are in the child
-//! module `network`.
+//! minor (behavior 0, network adapter 1, motion model, sensor, condition and action 2), the descriptor
+//! the highest of its capabilities' minors, so a behavior-only plugin built with this SDK still loads
+//! and runs in an ABI 0.0 host, a plugin with a network adapter needs an ABI 0.1 host and only a plugin
+//! with an ABI 0.2 kind needs an ABI 0.2 host. The network adapter trampolines are in the child module
+//! `network`, those of the ABI 0.2 kinds in `motion`, `sensor` and `leaf` (conditions and actions).
 //!
 //! Handles: a configured behavior and an instance are each one `Box<Handle<T>>`, whose first field is
 //! the `TypeId` of a per-capability tag. Every call checks the tag before touching the value, so a
 //! handle of another capability, or a behavior passed as an instance, is refused
 //! (`UMBRA_ERR_INVALID_ARGUMENT`) instead of being reinterpreted. Panics in calls without an error
-//! sink (`halt`, `halt_running`, `output`, `destroy_*`, `shutdown`) are logged at error level through
-//! the host API, so their message is not lost.
+//! sink (`halt`, `halt_running`, `output`, `destroy_*`, `shutdown`, an action's `halt`) are logged at
+//! error level through the host API, so their message is not lost.
 #![expect(unsafe_code, reason = "the C side of the plugin ABI (ADR 0019)")]
 
 use std::any::TypeId;
@@ -27,10 +28,12 @@ use std::marker::PhantomData;
 use std::sync::{Mutex, OnceLock, PoisonError};
 
 use crate::abi::{
-    UMBRA_CAPABILITY_BEHAVIOR, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_PANIC, UMBRA_OK,
-    UmbraBehavior, UmbraBehaviorBatch, UmbraBehaviorVTable, UmbraCapability, UmbraCapabilityKind,
-    UmbraCode, UmbraErrorSink, UmbraHostApi, UmbraInstance, UmbraNetworkVTable,
-    UmbraPluginDescriptor, UmbraStr, UmbraValue, UmbraValueSink,
+    UMBRA_CAPABILITY_ACTION, UMBRA_CAPABILITY_BEHAVIOR, UMBRA_CAPABILITY_CONDITION,
+    UMBRA_CAPABILITY_MOTION_MODEL, UMBRA_CAPABILITY_SENSOR, UMBRA_ERR_INVALID_ARGUMENT,
+    UMBRA_ERR_PANIC, UMBRA_OK, UmbraActionVTable, UmbraBehavior, UmbraBehaviorBatch,
+    UmbraBehaviorVTable, UmbraCapability, UmbraCapabilityKind, UmbraCode, UmbraConditionVTable,
+    UmbraErrorSink, UmbraHostApi, UmbraInstance, UmbraMotionVTable, UmbraNetworkVTable,
+    UmbraPluginDescriptor, UmbraSensorVTable, UmbraStr, UmbraValue, UmbraValueSink,
 };
 use crate::behavior::{
     Behavior, BehaviorFactory, BehaviorInstance, Contact, EntityView, Fault, Intents, Level,
@@ -46,6 +49,9 @@ use crate::minor::{BEHAVIOR_MINOR, abi_version};
 pub mod __private {
     use std::any::TypeId;
 
+    use super::leaf::{action_cap, condition_cap};
+    use super::motion::motion_cap;
+    use super::sensor::sensor_cap;
     use super::{Built, Cap, DESCRIPTOR, behavior_cap, network::network_cap};
     use crate::abi::{UmbraHostApi, UmbraPluginDescriptor};
     use crate::behavior::BehaviorFactory;
@@ -95,24 +101,24 @@ pub mod __private {
             self.caps.push(network_cap::<F>());
         }
 
-        /// Adds the motion model capability `M` (ABI 0.2, ADR 0050). M7 WI-2 stub.
+        /// Adds the motion model capability `M` (ABI 0.2, ADR 0050).
         pub fn motion_model<M: MotionModel>(&mut self) {
-            unimplemented!("M7 WI-10")
+            self.caps.push(motion_cap::<M>());
         }
 
-        /// Adds the sensor capability `S` (ABI 0.2, ADR 0050). M7 WI-2 stub.
+        /// Adds the sensor capability `S` (ABI 0.2, ADR 0050).
         pub fn sensor<S: Sensor>(&mut self) {
-            unimplemented!("M7 WI-10")
+            self.caps.push(sensor_cap::<S>());
         }
 
-        /// Adds the condition capability `C` (ABI 0.2, ADR 0050). M7 WI-2 stub.
+        /// Adds the condition capability `C` (ABI 0.2, ADR 0050).
         pub fn condition<C: Condition>(&mut self) {
-            unimplemented!("M7 WI-10")
+            self.caps.push(condition_cap::<C>());
         }
 
-        /// Adds the action capability `A` (ABI 0.2, ADR 0050). M7 WI-2 stub.
+        /// Adds the action capability `A` (ABI 0.2, ADR 0050).
         pub fn action<A: Action>(&mut self) {
-            unimplemented!("M7 WI-10")
+            self.caps.push(action_cap::<A>());
         }
     }
 
@@ -173,6 +179,14 @@ pub(crate) enum VTable {
     Behavior(UmbraBehaviorVTable),
     /// `UMBRA_CAPABILITY_NETWORK_ADAPTER` (ABI 0.1).
     Network(UmbraNetworkVTable),
+    /// `UMBRA_CAPABILITY_MOTION_MODEL` (ABI 0.2).
+    Motion(UmbraMotionVTable),
+    /// `UMBRA_CAPABILITY_SENSOR` (ABI 0.2).
+    Sensor(UmbraSensorVTable),
+    /// `UMBRA_CAPABILITY_CONDITION` (ABI 0.2).
+    Condition(UmbraConditionVTable),
+    /// `UMBRA_CAPABILITY_ACTION` (ABI 0.2).
+    Action(UmbraActionVTable),
 }
 
 impl VTable {
@@ -181,6 +195,10 @@ impl VTable {
         match self {
             Self::Behavior(_) => UMBRA_CAPABILITY_BEHAVIOR,
             Self::Network(_) => crate::abi::UMBRA_CAPABILITY_NETWORK_ADAPTER,
+            Self::Motion(_) => UMBRA_CAPABILITY_MOTION_MODEL,
+            Self::Sensor(_) => UMBRA_CAPABILITY_SENSOR,
+            Self::Condition(_) => UMBRA_CAPABILITY_CONDITION,
+            Self::Action(_) => UMBRA_CAPABILITY_ACTION,
         }
     }
 
@@ -189,6 +207,10 @@ impl VTable {
         match self {
             Self::Behavior(v) => std::ptr::from_ref(v).cast(),
             Self::Network(v) => std::ptr::from_ref(v).cast(),
+            Self::Motion(v) => std::ptr::from_ref(v).cast(),
+            Self::Sensor(v) => std::ptr::from_ref(v).cast(),
+            Self::Condition(v) => std::ptr::from_ref(v).cast(),
+            Self::Action(v) => std::ptr::from_ref(v).cast(),
         }
     }
 }
@@ -451,6 +473,42 @@ unsafe fn destroy<Tag: 'static, T>(p: *mut Handle<T>, call: &str) {
     });
 }
 
+/// The body of every `configure`: clears `*out`, reads the params as UTF-8, builds the value with
+/// `build` and returns it as a new handle tagged `Tag` in `*out`, all under the error sink's panic
+/// guard.
+///
+/// # Safety
+/// The `configure` contract of every vtable: `params` is borrowed for the call, `out` is null or
+/// writable for one pointer, `err` is null or a sink valid for the call.
+unsafe fn configure_into<Tag: 'static, T, H>(
+    params: UmbraStr,
+    out: *mut *mut H,
+    err: *const UmbraErrorSink,
+    build: impl FnOnce(&str) -> Result<T, Error>,
+) -> UmbraCode {
+    let body = || {
+        // SAFETY: `out` is the call's out-pointer.
+        unsafe { write_out(out, std::ptr::null_mut()) }?;
+        // SAFETY: `params` is borrowed for the call.
+        let json = unsafe { str_from(params) }
+            .ok_or_else(|| Error::invalid("configure: params are not UTF-8"))?;
+        let value = build(json)?;
+        let handle = new_handle::<Tag, _>(value).cast::<H>();
+        // SAFETY: as above (checked by the first write).
+        unsafe { write_out(out, handle) }
+    };
+    // SAFETY: forwarded from this function's contract.
+    unsafe { with_error_sink(err, body) }
+}
+
+/// The error a call returns when the host refused one of its service or sink calls (the first
+/// refusal, recorded in `fault`), if any.
+fn host_refusal(fault: &Fault) -> Option<Error> {
+    fault
+        .get()
+        .map(|(code, call)| crate::services::refusal(code, &call))
+}
+
 /// Runs a call without an error sink: a panic is logged at error level and is `UMBRA_ERR_PANIC`.
 fn without_sink(call: &str, body: impl FnOnce() -> UmbraCode) -> UmbraCode {
     catch(body).unwrap_or_else(|panic| {
@@ -466,19 +524,12 @@ unsafe extern "C" fn configure<F: BehaviorFactory>(
     out: *mut *mut UmbraBehavior,
     err: *const UmbraErrorSink,
 ) -> UmbraCode {
-    let body = || {
-        // SAFETY: `out` is the call's out-pointer.
-        unsafe { write_out(out, std::ptr::null_mut()) }?;
-        // SAFETY: `params` is borrowed for the call.
-        let json = unsafe { str_from(params) }
-            .ok_or_else(|| Error::invalid("configure: params are not UTF-8"))?;
-        let behavior = F::configure(&Params::new(json))?;
-        let handle = new_handle::<BehaviorTag<F>, _>(behavior).cast::<UmbraBehavior>();
-        // SAFETY: as above (checked by the first write).
-        unsafe { write_out(out, handle) }
-    };
-    // SAFETY: the vtable contract (ADR 0020): `err` is null or a sink valid for this call.
-    unsafe { with_error_sink(err, body) }
+    // SAFETY: the vtable contract (ADR 0020): `params`, `out` and `err` are valid for this call.
+    unsafe {
+        configure_into::<BehaviorTag<F>, _, _>(params, out, err, |json| {
+            F::configure(&Params::new(json))
+        })
+    }
 }
 
 unsafe extern "C" fn destroy_behavior<F: BehaviorFactory>(behavior: *mut UmbraBehavior) {
@@ -664,6 +715,12 @@ unsafe extern "C" fn output<F: BehaviorFactory>(
 
 mod network;
 
+// ---------------------------------------------------------------- the ABI 0.2 vtables
+
+mod leaf;
+mod motion;
+mod sensor;
+
 // ---------------------------------------------------------------- the macro
 
 /// Exports a plugin (REQ-P-1): generates exactly one item, `#[unsafe(no_mangle)] pub unsafe extern
@@ -677,9 +734,10 @@ mod network;
 /// stored the host API; reset any global state there (ADR 0021). `shutdown` (optional) is a `fn()`
 /// run once at the end of a lifecycle in which `init` succeeded; `log` still works inside it.
 ///
-/// `behaviors` and `network_adapters` (ABI 0.1, ADR 0033) are each optional, in this order; the
-/// capabilities are declared in list order, behaviors first. The descriptor declares the lowest ABI
-/// minor that defines every listed kind: 0 for behaviors only, 1 with a network adapter.
+/// `behaviors`, `network_adapters` (ABI 0.1, ADR 0033), `motion_models`, `sensors`, `conditions` and
+/// `actions` (ABI 0.2, ADR 0050) are each optional, in this order; the capabilities are declared in
+/// list order. The descriptor declares the lowest ABI minor that defines every listed kind: 0 for
+/// behaviors only, 1 with a network adapter, 2 with any of the last four.
 ///
 /// Syntax (a complete plugin is in the crate docs):
 ///

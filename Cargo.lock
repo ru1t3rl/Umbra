@@ -1490,6 +1490,7 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "libloading",
+ "proptest",
  "serde_json",
  "thiserror",
  "toml",

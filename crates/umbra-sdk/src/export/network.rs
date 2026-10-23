@@ -18,13 +18,13 @@
 
 use std::marker::PhantomData;
 
-use super::{Cap, VTable, destroy, handle, new_handle, without_sink, write_out};
+use super::{Cap, VTable, configure_into, destroy, handle, without_sink};
 use crate::abi::{
     UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_STATE, UMBRA_MAX_NET_POLL, UMBRA_OK, UmbraCode,
     UmbraErrorSink, UmbraNetAdapter, UmbraNetBatch, UmbraNetSink, UmbraNetworkVTable, UmbraStr,
 };
 use crate::behavior::Fault;
-use crate::convert::{net_batch_in, net_sink, sim_time, size_of_u32, str_from};
+use crate::convert::{net_batch_in, net_sink, sim_time, size_of_u32};
 use crate::error::Error;
 use crate::guard::with_error_sink;
 use crate::minor::{NETWORK_ADAPTER_MINOR, abi_version};
@@ -123,27 +123,19 @@ unsafe extern "C" fn configure<F: NetworkAdapterFactory>(
     out: *mut *mut UmbraNetAdapter,
     err: *const UmbraErrorSink,
 ) -> UmbraCode {
-    let body = || {
-        // SAFETY: `out` is the call's out-pointer.
-        unsafe { write_out(out, std::ptr::null_mut()) }?;
-        // SAFETY: `params` is borrowed for the call.
-        let json = unsafe { str_from(params) }
-            .ok_or_else(|| Error::invalid("configure: params are not UTF-8"))?;
-        let input = ConfigureInput::parse(json)?;
-        let config = F::configure(&input)?;
-        let state = NetState::<F> {
-            adapter: None,
-            config,
-            started: false,
-            stopped: false,
-            rate_hz: 0,
-        };
-        let handle = new_handle::<NetTag<F>, _>(state).cast::<UmbraNetAdapter>();
-        // SAFETY: as above (checked by the first write).
-        unsafe { write_out(out, handle) }
-    };
-    // SAFETY: the vtable contract (ADR 0033): `err` is null or a sink valid for this call.
-    unsafe { with_error_sink(err, body) }
+    // SAFETY: the vtable contract (ADR 0033): `params`, `out` and `err` are valid for this call.
+    unsafe {
+        configure_into::<NetTag<F>, _, _>(params, out, err, |json| {
+            let input = ConfigureInput::parse(json)?;
+            Ok(NetState::<F> {
+                adapter: None,
+                config: F::configure(&input)?,
+                started: false,
+                stopped: false,
+                rate_hz: 0,
+            })
+        })
+    }
 }
 
 /// Stops a started, unstopped adapter under its own panic guard (a panic is logged), then drops the

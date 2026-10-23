@@ -31,7 +31,7 @@
 //!
 //! ABI 0.2 kinds (M7 WI-2, ASM-668, module `kinds`): the feature `kinds` makes the crate plugin
 //! `test.plugin.kinds` 0.1.0 with a motion model, sensor, condition and action fixture each
-//! (`test.motion.*`, `test.sensor.*`, `test.cond.*`, `test.action.*`). Skeleton until M7 WI-10.
+//! (`test.motion.*`, `test.sensor.*`, `test.cond.*`, `test.action.*`), implemented in M7 WI-10.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(

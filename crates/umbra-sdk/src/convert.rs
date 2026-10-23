@@ -2,9 +2,10 @@
 //! (REQ-P-2, REQ-P-6, R-M2): own major, `struct_size` at least the minor-0 size, at most the SDK's own
 //! size for a struct that declares a minor the SDK knows, a multiple of 8; non-null and aligned
 //! pointers; `len <= isize::MAX` and `checked_mul` before any slice; UTF-8; known enum values and the
-//! `BbValue` invariants. Structs the SDK writes during a behavior's calls (intents, values) carry the
-//! behavior kind's minor (`BEHAVIOR_MINOR`, ADR 0033) and its size. The network adapter kind's
-//! conversions (ABI 0.1) are in the child module `network`.
+//! `BbValue` invariants. Structs the SDK writes during a capability's calls (intents, values) carry the
+//! minor of the capability's kind (`BEHAVIOR_MINOR` for behaviors, ADR 0033) and its size. The network
+//! adapter kind's conversions (ABI 0.1) are in the child module `network`, those of the ABI 0.2 kinds
+//! (motion model, sensor, condition, action) and their services in `kinds`.
 #![expect(
     unsafe_code,
     reason = "turns host pointers into references after checking them (ADR 0019)"
@@ -178,20 +179,38 @@ fn flag(v: u8) -> Option<bool> {
 
 // ---------------------------------------------------------------- the batch
 
-/// A validated copy of the host's intent sink.
+/// A validated copy of the host's intent sink, with the minor the pushed intents carry.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct IntentSink {
     pub(crate) ctx: UmbraToken,
     pub(crate) push: unsafe extern "C" fn(UmbraToken, usize, *const UmbraIntent) -> UmbraCode,
+    /// The minor of the capability kind whose call this sink belongs to (ADR 0033).
+    pub(crate) minor: u32,
 }
 
 impl IntentSink {
-    /// Pushes `intent` (in the behavior kind's minor) for batch item `item`; returns the host's code.
+    /// Validates the intent sink of a call of a capability of kind minor `minor`.
+    ///
+    /// # Safety
+    /// As [`checked_ref`].
+    pub(crate) unsafe fn from_raw(sink: *const UmbraIntentSink, minor: u32) -> Result<Self, Error> {
+        // SAFETY: forwarded from this function's contract.
+        let s = unsafe { checked_ref(sink) }
+            .ok_or_else(|| malformed("intents", "header or pointer"))?;
+        let push = s.push.ok_or_else(|| malformed("intents.push", "null"))?;
+        Ok(Self {
+            ctx: s.ctx,
+            push,
+            minor,
+        })
+    }
+
+    /// Pushes `intent` (in the sink's minor) for batch item `item`; returns the host's code.
     pub(crate) fn push(&self, item: usize, intent: &Intent<'_>) -> UmbraCode {
-        let raw = intent_out(intent);
-        // SAFETY: `push` comes from the sink validated by `batch_in` for the current call; `raw` and
-        // the strings it borrows from `intent` live across the call, and the host copies them;
-        // host callbacks cannot unwind.
+        let raw = intent_out(intent, self.minor);
+        // SAFETY: `push` comes from a sink validated for the current call (`batch_in` or
+        // `from_raw`); `raw` and the strings it borrows from `intent` live across the call, and the
+        // host copies them; host callbacks cannot unwind.
         unsafe { (self.push)(self.ctx, item, &raw const raw) }
     }
 }
@@ -228,11 +247,8 @@ pub(crate) unsafe fn batch_in<'a>(batch: *const UmbraBehaviorBatch) -> Result<Ba
     // SAFETY: forwarded from this function's contract.
     let b = unsafe { checked_ref(batch) }.ok_or_else(|| malformed("batch", "header or pointer"))?;
     // SAFETY: the sink pointer comes from the batch, valid for the call by this function's contract.
-    let sink = unsafe { checked_ref(b.intents) }
-        .ok_or_else(|| malformed("batch.intents", "header or pointer"))?;
-    let push = sink
-        .push
-        .ok_or_else(|| malformed("batch.intents.push", "null"))?;
+    let sink = unsafe { IntentSink::from_raw(b.intents, BEHAVIOR_MINOR) }
+        .map_err(|e| Error::invalid(format!("batch.{}", e.message())))?;
     // SAFETY: `items` holds `count` items, readable for the call; every bit pattern is valid.
     let items = unsafe { slice_from(b.items, b.count) }
         .ok_or_else(|| malformed("batch.items", "null, misaligned or too long"))?;
@@ -259,10 +275,7 @@ pub(crate) unsafe fn batch_in<'a>(batch: *const UmbraBehaviorBatch) -> Result<Ba
         rate_hz: b.rate_hz,
         items,
         statuses: b.statuses,
-        sink: IntentSink {
-            ctx: sink.ctx,
-            push,
-        },
+        sink,
     })
 }
 
@@ -353,11 +366,11 @@ pub(crate) fn status_code(status: Status) -> UmbraStatus {
     }
 }
 
-/// An intent in the behavior kind's minor, its strings borrowed from `intent` (ADR 0016 table).
-pub(crate) fn intent_out(intent: &Intent<'_>) -> UmbraIntent {
+/// An intent in minor `minor`, its strings borrowed from `intent` (ADR 0016 table).
+pub(crate) fn intent_out(intent: &Intent<'_>, minor: u32) -> UmbraIntent {
     let empty = umbra_str("");
     let mut out = UmbraIntent {
-        abi_version: abi_version(BEHAVIOR_MINOR),
+        abi_version: abi_version(minor),
         struct_size: size_of_u32::<UmbraIntent>(),
         kind: 0,
         reserved_0: 0,
@@ -412,6 +425,13 @@ pub(crate) fn intent_out(intent: &Intent<'_>) -> UmbraIntent {
 mod network;
 pub(crate) use network::{NetSink, batch_in as net_batch_in, net_sink, sim_time};
 
+// ---------------------------------------------------------------- the ABI 0.2 kinds
+
+mod kinds;
+pub(crate) use kinds::{
+    BlackboardSvc, ContactSink, GetError, TerrainSvc, leaf_in, rate, sense_in, state_out, step_in,
+};
+
 /// `size_of::<T>()` as the `u32` of a `struct_size` field (every ABI struct is far below 4 GiB).
 pub(crate) fn size_of_u32<T>() -> u32 {
     u32::try_from(size_of::<T>()).unwrap_or(u32::MAX)
@@ -429,7 +449,7 @@ pub(crate) struct ValueSink {
 impl ValueSink {
     /// Reports `value` (`None` = unset) to the host, once; returns the host's code.
     pub(crate) fn set(&self, value: Option<&Value>) -> UmbraCode {
-        let raw = value.map(value_out);
+        let raw = value.map(|v| value_out(v, BEHAVIOR_MINOR));
         let ptr = raw.as_ref().map_or(std::ptr::null(), std::ptr::from_ref);
         // SAFETY: `set` comes from the sink validated by `value_sink` for the current call; `ptr` is
         // null or points at `raw`, which with the string it borrows from `value` lives across the
@@ -485,10 +505,10 @@ pub(crate) unsafe fn value_in(value: *const UmbraValue) -> Result<Option<Value>,
     Ok(Some(out))
 }
 
-/// A value in the behavior kind's minor, its string borrowed from `value`.
-pub(crate) fn value_out(value: &Value) -> UmbraValue {
+/// A value in minor `minor`, its string borrowed from `value`.
+pub(crate) fn value_out(value: &Value, minor: u32) -> UmbraValue {
     let mut out = UmbraValue {
-        abi_version: abi_version(BEHAVIOR_MINOR),
+        abi_version: abi_version(minor),
         struct_size: size_of_u32::<UmbraValue>(),
         ty: 0,
         boolean: 0,

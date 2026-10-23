@@ -1,9 +1,10 @@
 # Plugin guide
 
-How to write, build, package and run native Umbra plugins against **ABI 0.0** (M4) and **0.1** (M6,
-ADR 0033). A plugin is a 64-bit dynamic library that exports one symbol, `umbra_plugin_entry`, and
-offers **capabilities**: `behavior`, and from ABI 0.1 `network adapter`
-([network adapters](#writing-a-network-adapter-in-rust-abi-01)). Once loaded, a plugin behavior is used exactly like any registered
+How to write, build, package and run native Umbra plugins against **ABI 0.0** (M4), **0.1** (M6,
+ADR 0033) and **0.2** (M7, ADR 0050). A plugin is a 64-bit dynamic library that exports one symbol,
+`umbra_plugin_entry`, and offers **capabilities**: `behavior`, from ABI 0.1 `network adapter`
+([network adapters](#writing-a-network-adapter-in-rust-abi-01)), and from ABI 0.2 `motion model`,
+`sensor`, `condition` and `action` ([ABI 0.2 kinds](#motion-models-sensors-conditions-and-actions-in-rust-abi-02)). Once loaded, a plugin behavior is used exactly like any registered
 behavior: as a template `[behavior] ref` and as a `subgraph` target (D-8, REQ-B-9).
 
 Decisions behind this guide:
@@ -24,7 +25,8 @@ Examples (the code this guide walks through; it is not copied here):
 
 Contents: [trust model](#trust-model-and-in-process-risk), [packages](#packages-discovery-and-plugintoml),
 [build and run](#build-and-run), [Rust SDK](#writing-a-plugin-in-rust-umbra-sdk),
-[network adapters](#writing-a-network-adapter-in-rust-abi-01), [C](#writing-a-plugin-in-c), [ABI rules](#abi-rules), [tokens and lifetimes](#tokens-and-lifetimes),
+[network adapters](#writing-a-network-adapter-in-rust-abi-01),
+[ABI 0.2 kinds](#motion-models-sensors-conditions-and-actions-in-rust-abi-02), [C](#writing-a-plugin-in-c), [ABI rules](#abi-rules), [tokens and lifetimes](#tokens-and-lifetimes),
 [threads](#threads-and-re-entry), [panics](#panics-c-exceptions-and-longjmp), [faults](#faults),
 [determinism](#determinism), [state and reload](#state-reload-and-thread-locals),
 [params](#params-schemas-and-bindable-params), [behaviors in graphs](#plugin-behaviors-in-graphs),
@@ -153,7 +155,8 @@ next to this list.
 What the SDK does for you (crate docs of `umbra-sdk`): validates every host struct before any trait
 call (nulls, alignment, major, `struct_size`, exact element stride, bounds, UTF-8, enums, value
 invariants), catches every panic, writes the minor of each capability's kind into everything it
-produces for it (behavior 0, network adapter 1) and the highest of them into the descriptor (ADR 0033,
+produces for it (behavior 0, network adapter 1, motion model, sensor, condition and action 2; public as
+`umbra_sdk::BEHAVIOR_MINOR` and so on) and the highest of them into the descriptor (ADR 0033,
 ASM-403, ASM-406), tags handles per capability, and ends a `tick_batch` call at the first refused draw or
 intent (ASM-128..ASM-131).
 
@@ -233,6 +236,95 @@ are `UMBRA_ERR_STATE` without a trait call; every entry is panic-guarded (a pani
 carry minor 1 with unused fields zero; the network capability's metadata is empty (ABI 0.1 defines none).
 How the host and engine treat faults (`abort` ends the run after the tick, `disable_capability` disables
 that adapter while the others go on) is in [faults](#faults) and the [list below](#not-in-v0).
+
+## Motion models, sensors, conditions and actions in Rust (ABI 0.2)
+ABI 0.2 (ADR 0050) adds four kinds that plug into the same places as the built-ins: a **motion model**
+(kind 2) moves entities like `builtin.ground.kinematic`, a **sensor** (kind 4) produces contacts like
+`builtin.visual`, and a **condition** (kind 6) and an **action** (kind 7) are behavior-graph leaves like
+`builtin.cond.*` and `builtin.action.*`. A plugin that exports any of them declares ABI 0.2, so its
+`plugin.toml` says `abi = "0.2"`; behaviors and network adapters in the same plugin keep their own minors
+(0 and 1), and a plugin without an ABI 0.2 kind keeps declaring 0.0 or 0.1 (ADR 0033). The SDK side is
+complete; the host bridges that register these kinds land in M7 WI-8 (motion models, sensors) and WI-9
+(conditions, actions); until then the host validates such a plugin completely and then rejects it as
+unsupported, naming `capabilities[<i>].kind` ([not in v0](#not-in-v0)). The fixture
+`crates/umbra-test-plugin/src/kinds.rs` (feature `kinds`) has a small example of every kind; the example
+plugins `hover`, `radar`, `bearing` and `dispatch` follow (M7 WI-17, WI-18).
+
+Shared rules of the four kinds:
+- **Traits.** Each has `ID`, `SCHEMA` (the params' JSON Schema, ADR 0009 subset, whose top-level
+  `description` is the catalog text), an optional `VERSION` (default: the plugin version) and
+  `configure(params: &str)`, which receives the params as JSON text (parse it with `umbra_sdk::serde_json`
+  and refuse bad values with `Error::params`; the host reports a build error naming the capability).
+  Conditions and actions also have `METADATA` (below).
+- **One call per item, not batched** (ASM-612): one `step` per entity and tick, one `sense` per observer,
+  sensor and tick, one `check` or `tick` per node tick.
+- **Services come with the call** (ADR 0050, H2): the terrain in a motion step or a sense call
+  (`ctx.terrain()`), the blackboard in a condition check or an action tick (`bb`). They borrow the call,
+  so they cannot be kept or sent to another thread, and the host resolves their tokens against the call
+  (a stale or foreign token faults the capability, REQ-P-11).
+- **Refusals end the call.** A refused terrain query, blackboard access, RNG draw, contact or intent
+  returns an `Err` naming what was refused, and the whole call then returns the host's code whether or
+  not the plugin looks at the error: the host has faulted the capability, so a result built afterwards
+  (a motion state, a condition answer, an action status) is never reported. Propagate with `?`.
+- **Faults** (ADR 0050; the host side from WI-8/WI-9): a panic or an `Err` faults the capability; motion keeps the entity's position and
+  orientation with zero velocity, a sensor gives no contacts that tick, a condition answers false, an action
+  reports Failure with that call's intents discarded. `abort` ends the run after the tick
+  ([faults](#faults)).
+- **Determinism**: time is `ctx.tick()` and `ctx.rate_hz()`; randomness only from `ctx.rng()` (sensors:
+  the observer's stream; leaves: the entity's stream); trigonometry only through
+  [`umbra_sdk::math`](#determinism).
+
+**Motion model** (`MotionModel`, list under `motion_models:`).
+`step(&self, ctx, state, intents, dt) -> KinematicState` advances one entity by `dt` seconds. `state` is
+the pre-step ECEF position, velocity and orientation quaternion `[w, x, y, z]` (body FRD to ECEF);
+`intents` are the entity's intents of this tick in emission order. Like the core trait it is stateless
+across ticks (`&self`): equal inputs must give bit-identical outputs. The host refuses a result that is
+not finite or whose orientation is not a unit quaternion within 1e-9 (the SDK passes the result on
+unchanged). Terrain: `ctx.terrain().height_at(p)` (metres above the ellipsoid under `p`; the point's own
+height is ignored, and a provider may answer a non-finite height), `normal_at(p)` (`[east, north, up]`)
+and `line_of_sight(a, b)`. Motion models have no metadata and no randomness.
+
+**Sensor** (`Sensor`, list under `sensors:`).
+`sense(&self, ctx, observer, candidates, out)` runs for one observer against every other entity in id
+order, as they were before the tick (`TargetView`: id, kinematic state, force, `Ownership::Owned` or
+`Remote`). Push a `Contact` per perceived candidate with `out.push(&contact)`; the contact must name a
+candidate id (the host refuses others), and the kernel sorts and deduplicates contacts as it does for
+built-ins. Draw from `ctx.rng()` in a fixed order (for example one draw per candidate that passed your
+gates, in candidate order). Sensors have no metadata.
+
+**Condition** (`Condition`, list under `conditions:`).
+`check(&self, ctx, entity, bb) -> Result<bool, Error>` answers for the entity's pre-tick view
+(`EntityView`, as for behaviors). `METADATA` declares the blackboard keys the leaf may touch:
+`{"blackboard_params": [{"param": "key", "type": "bool", "access": "read"}], "result": "text"}`
+(ASM-643, ASM-709); empty text means none. Each entry names a param of `SCHEMA` (a string property)
+whose value is the key's name, its type (`bool`, `number`, `integer`, `string`, `entity`, `position`)
+and its access (`read` or `write`). The host grants exactly those keys with that type and access;
+read your key's name from the params in `configure` and use it with `bb.get(&key)` (`Ok(None)` when
+unset) and `bb.set(&key, Some(value))` (`None` unsets). Any other key, a wrong type, a non-finite
+number or a write to a `read` key is refused. The metadata also becomes the catalog entry
+(`Provenance::Plugin`).
+
+**Action** (`Action` and `ActionInstance`, list under `actions:`).
+`Action::instantiate(rate_hz)` makes one `ActionInstance` per activation; convert periods to ticks here
+([period-to-ticks rule](#determinism)). `tick(&mut self, ctx, entity, bb, out) -> Result<Status, Error>`
+runs once per node tick: `Running` until done, then `Success` or `Failure`; push intents with
+`out.push(..)` (events leave as `Intent::Custom`, ADR 0028). `halt(&mut self)` is a full reset, idempotent
+and safe before the first tick. `METADATA` and the blackboard are as for conditions. Instances of one
+configured action must not share state (REQ-B-11).
+
+**Export** with the lists after the older two, each optional, in this order:
+`export_plugin! { id, name, version, behaviors: [..], network_adapters: [..], motion_models: [..],
+sensors: [..], conditions: [..], actions: [..], init, shutdown }`.
+
+What the SDK enforces for these kinds: every call record (state, intents, targets, entity view, the
+services and sinks) is validated before the trait runs, and the structs new in ABI 0.2 must declare
+minor 2 or newer (malformed input is `UMBRA_ERR_INVALID_ARGUMENT`); handles are tagged per capability
+(an action passed as an instance is refused); every entry is panic-guarded (a panic in an action's `halt`,
+which has no error sink, is logged at error level); contacts, intents, blackboard values and the value
+sink of a blackboard read carry minor 2; a blackboard read accepts exactly one report from the host and
+refuses a late, second or unknown-token one (each read has its own entry, so reads on several threads
+at once stay apart); results are written only when the call succeeded; an action's `instantiate` refuses
+a tick rate of 0.
 
 ## Writing a plugin in C
 Include `umbra_plugin_api.h` only; compile as C11 with strict warnings, as
@@ -403,6 +495,12 @@ in-process; gate 4 checks the example plugin, not yours.
   Compile C with `-ffp-contract=off` (GCC/Clang) or `/fp:precise` (MSVC) so no compiler fuses a
   multiply and an add into an FMA; keep `-ffast-math` off. Prefer exact IEEE operations; transcendental
   functions from the platform `libm` may differ between platforms.
+- **`umbra_sdk::math`** (ADR 0059): in Rust, call `sin`, `cos`, `sin_cos`, `tan`, `asin`, `acos`, `atan`,
+  `atan2`, `hypot`, `cbrt`, `powi`, `powf`, `exp`, `ln` and `wrap_pi` (plain `f64` radians, result in
+  `(-pi, pi]`) from this module, never the `f64` methods (the workspace `clippy.toml` bans those). It
+  mirrors the engine's `umbra_core::math` bit for bit (a parity test in the host keeps them identical), so
+  a plugin computes exactly what a built-in would on the same OS. `+ - * /`, `sqrt`, `abs`, `floor` are exact and fine
+  anywhere.
 - **Ordered containers** in Rust (`BTreeMap`, `Vec`), never iteration over `HashMap`/`HashSet`.
 
 ## State, reload and thread-locals
@@ -507,8 +605,9 @@ scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Load
   may run at once, from one plugin or several and one capability under several names; each has its own
   handle, key space and sink (ASM-410). The SDK traits are in
   [network adapters](#writing-a-network-adapter-in-rust-abi-01) (WI-12).
-- Host API beyond `log` and RNG: terrain queries and event emit come with M7 (REQ-P-5 is staged);
-  there is no memory helper and no runtime registration call (the descriptor is the only registration).
+- Host API beyond `log` and RNG: none. Terrain and blackboard access are per-call services of the ABI 0.2
+  kinds, and events leave as `Custom` intents (ADR 0050, H2; REQ-P-5 is staged); there is no memory
+  helper and no runtime registration call (the descriptor is the only registration).
 - Saving and restoring instance state (replay, M7); hot reload; plugin-level configuration in scenarios;
   selecting individual plugins inside a plugin directory; plugin signing. (The REST plugin listing, `GET /api/v1/plugins`, exists since M5.)
 - `umbra new-plugin` scaffolding (M7); the C# NativeAOT sample and a C++ check of the header (M9).

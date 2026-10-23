@@ -7,19 +7,38 @@
 //! newer host only when it exports a newer kind. A minor that grows a struct on a kind's call surface
 //! bumps the kind's minor here (or the SDK keeps writing the old prefix); the surface table in the tests
 //! below pins this.
+//!
+//! The constants are public (ASM-714): a plugin's `plugin.toml` declares `abi = "0.<minor>"` with the
+//! highest minor of its kinds, which tools such as `umbra new-plugin` (WI-20) read from here.
 
 use crate::abi::{UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR};
 
-/// The minor of the behavior kind: the newest minor that changed a struct of its call surface.
-pub(crate) const BEHAVIOR_MINOR: u32 = 0;
+/// The ABI minor of the behavior kind: the newest minor that changed a struct of its call surface.
+pub const BEHAVIOR_MINOR: u32 = 0;
 
-/// The minor of the network adapter kind (ABI 0.1, ADR 0033): the kind and every struct of its call
-/// surface exist since minor 1.
-pub(crate) const NETWORK_ADAPTER_MINOR: u32 = 1;
+/// The ABI minor of the network adapter kind (ABI 0.1, ADR 0033): the kind and every struct of its
+/// call surface exist since minor 1.
+pub const NETWORK_ADAPTER_MINOR: u32 = 1;
+
+/// The ABI minor of the motion model kind (ABI 0.2, ADR 0050).
+pub const MOTION_MODEL_MINOR: u32 = 2;
+
+/// The ABI minor of the sensor kind (ABI 0.2, ADR 0050).
+pub const SENSOR_MINOR: u32 = 2;
+
+/// The ABI minor of the condition kind (ABI 0.2, ADR 0050).
+pub const CONDITION_MINOR: u32 = 2;
+
+/// The ABI minor of the action kind (ABI 0.2, ADR 0050).
+pub const ACTION_MINOR: u32 = 2;
 
 // A kind's minor never exceeds the minor of the `umbra-plugin-api` the SDK is built on (behavior 0
 // trivially).
 const _: () = assert!(NETWORK_ADAPTER_MINOR <= UMBRA_ABI_VERSION_MINOR);
+const _: () = assert!(MOTION_MODEL_MINOR <= UMBRA_ABI_VERSION_MINOR);
+const _: () = assert!(SENSOR_MINOR <= UMBRA_ABI_VERSION_MINOR);
+const _: () = assert!(CONDITION_MINOR <= UMBRA_ABI_VERSION_MINOR);
+const _: () = assert!(ACTION_MINOR <= UMBRA_ABI_VERSION_MINOR);
 
 /// The packed `abi_version` of minor `minor` of this SDK's major.
 pub(crate) const fn abi_version(minor: u32) -> u32 {
@@ -57,6 +76,55 @@ mod tests {
         ("UmbraNetSink", 1),
     ];
 
+    /// The call surface of the motion model kind (ADR 0050): its vtable, the step record and the
+    /// structs it points to or reads. `UmbraIntent` is read here (host-written in the kind's minor).
+    const MOTION_MODEL_SURFACE: [(&str, u32); 6] = [
+        ("UmbraCapability", 0),
+        ("UmbraErrorSink", 0),
+        ("UmbraMotionVTable", 2),
+        ("UmbraMotionStep", 2),
+        ("UmbraKinematicState", 2),
+        ("UmbraTerrain", 2),
+    ];
+
+    /// The call surface of the sensor kind (ADR 0050): `UmbraContact` is written by the plugin.
+    const SENSOR_SURFACE: [(&str, u32); 7] = [
+        ("UmbraCapability", 0),
+        ("UmbraErrorSink", 0),
+        ("UmbraSensorVTable", 2),
+        ("UmbraSenseCall", 2),
+        ("UmbraTarget", 2),
+        ("UmbraContactSink", 2),
+        ("UmbraTerrain", 2),
+    ];
+
+    /// The call surface of the condition kind (ADR 0050): the leaf call, the blackboard and the values
+    /// it moves.
+    const CONDITION_SURFACE: [(&str, u32); 8] = [
+        ("UmbraCapability", 0),
+        ("UmbraErrorSink", 0),
+        ("UmbraLeafCall", 2),
+        ("UmbraEntityView", 0),
+        ("UmbraBlackboard", 2),
+        ("UmbraValue", 0),
+        ("UmbraValueSink", 0),
+        ("UmbraConditionVTable", 2),
+    ];
+
+    /// The call surface of the action kind (ADR 0050): as the condition's, plus the intents it pushes.
+    const ACTION_SURFACE: [(&str, u32); 10] = [
+        ("UmbraCapability", 0),
+        ("UmbraErrorSink", 0),
+        ("UmbraLeafCall", 2),
+        ("UmbraEntityView", 0),
+        ("UmbraBlackboard", 2),
+        ("UmbraValue", 0),
+        ("UmbraValueSink", 0),
+        ("UmbraActionVTable", 2),
+        ("UmbraIntentSink", 0),
+        ("UmbraIntent", 0),
+    ];
+
     /// Whether a kind of minor `kind_minor` covers every struct of `surface`.
     fn covers(kind_minor: u32, surface: &[(&str, u32)]) -> bool {
         surface.iter().all(|&(_, changed)| changed <= kind_minor)
@@ -83,6 +151,24 @@ mod tests {
             !covers(NETWORK_ADAPTER_MINOR - 1, &NETWORK_ADAPTER_SURFACE),
             "the kind's structs are defined by minor 1, so minor 0 cannot carry it"
         );
+    }
+
+    /// ADR 0050: each ABI 0.2 kind's minor covers its call surface, and minor 1 could not carry it.
+    #[test]
+    fn the_abi_0_2_kind_minors_cover_their_call_surfaces_and_no_less_would() {
+        for (name, minor, surface) in [
+            ("motion", MOTION_MODEL_MINOR, &MOTION_MODEL_SURFACE[..]),
+            ("sensor", SENSOR_MINOR, &SENSOR_SURFACE[..]),
+            ("condition", CONDITION_MINOR, &CONDITION_SURFACE[..]),
+            ("action", ACTION_MINOR, &ACTION_SURFACE[..]),
+        ] {
+            assert!(covers(minor, surface), "{name}");
+            assert!(
+                !covers(minor - 1, surface),
+                "{name}: minor {} suffices",
+                minor - 1
+            );
+        }
     }
 
     #[test]

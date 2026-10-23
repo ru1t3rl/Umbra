@@ -3,16 +3,14 @@
 //! A [`Sensor`] runs once per observer and tick against all other entities as they were before the
 //! tick (id order), like a built-in `umbra_core::Sensor`. Randomness only from the observer's own
 //! stream ([`SenseCtx::rng`], REQ-K-4); terrain through [`SenseCtx::terrain`].
-//!
-//! Status: M7 WI-2 stub. The signatures follow `docs/plans/M7.md` (section "SDK"); the behavior is
-//! implemented in M7 WI-10.
 
-use std::marker::PhantomData;
-
-use crate::behavior::{Contact, Rng};
+use crate::abi::{UMBRA_OK, UmbraToken};
+use crate::behavior::{Contact, Fault, Rng};
+use crate::convert::{ContactSink, TerrainSvc};
 use crate::error::Error;
+use crate::host::HostCopy;
 use crate::motion::KinematicState;
-use crate::services::Terrain;
+use crate::services::{Terrain, refused};
 
 /// Who simulates an entity (`umbra_core::Ownership` reduced to the two cases a plugin can see).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,32 +39,55 @@ pub struct TargetView<'a> {
 pub struct SenseCtx<'a> {
     tick: u64,
     rate_hz: u32,
-    call: PhantomData<&'a ()>,
+    host: Option<HostCopy>,
+    rng: UmbraToken,
+    terrain: TerrainSvc,
+    fault: &'a Fault,
+}
+
+impl<'a> SenseCtx<'a> {
+    /// The context of one `sense` call.
+    pub(crate) fn new(
+        tick: u64,
+        rate_hz: u32,
+        host: Option<HostCopy>,
+        rng: UmbraToken,
+        terrain: TerrainSvc,
+        fault: &'a Fault,
+    ) -> Self {
+        Self {
+            tick,
+            rate_hz,
+            host,
+            rng,
+            terrain,
+            fault,
+        }
+    }
 }
 
 impl SenseCtx<'_> {
     /// Simulation tick number.
     #[must_use]
     pub fn tick(&self) -> u64 {
-        let _ = (self.tick, self.rate_hz, &self.call);
-        unimplemented!("M7 WI-10")
+        self.tick
     }
 
     /// Tick rate in Hz.
     #[must_use]
     pub fn rate_hz(&self) -> u32 {
-        unimplemented!("M7 WI-10")
+        self.rate_hz
     }
 
     /// The observer's own RNG stream through the host.
     pub fn rng(&mut self) -> Rng<'_> {
-        unimplemented!("M7 WI-10")
+        Rng::new(self.host, self.rng, self.fault)
     }
 
     /// The terrain of this call.
     #[must_use]
     pub fn terrain(&self) -> Terrain<'_> {
-        unimplemented!("M7 WI-10")
+        Terrain::new(self.terrain, self.fault)
     }
 }
 
@@ -74,17 +95,34 @@ impl SenseCtx<'_> {
 /// refuses and faults otherwise); the kernel sorts and deduplicates by id as it does for built-ins.
 #[derive(Debug)]
 pub struct Contacts<'a> {
-    call: PhantomData<&'a ()>,
+    sink: ContactSink,
+    fault: &'a Fault,
+}
+
+impl<'a> Contacts<'a> {
+    /// The contact output of one `sense` call.
+    pub(crate) fn new(sink: ContactSink, fault: &'a Fault) -> Self {
+        Self { sink, fault }
+    }
 }
 
 impl Contacts<'_> {
     /// Appends a contact (copied into the host at once).
     ///
     /// # Errors
-    /// The host refused the contact (it names no candidate, or the host's cap per call is reached).
+    /// The host refused the contact (it names no candidate, or the host's cap per call is reached);
+    /// the capability is then faulted and this `sense` call returns the host's code whether or not the
+    /// sensor looks at the error.
     pub fn push(&mut self, contact: &Contact<'_>) -> Result<(), Error> {
-        let _ = (&self.call, contact);
-        unimplemented!("M7 WI-10")
+        let code = self.sink.push(contact);
+        if code == UMBRA_OK {
+            return Ok(());
+        }
+        Err(refused(
+            self.fault,
+            code,
+            &format!("contact push of entity {} refused", contact.entity),
+        ))
     }
 }
 
@@ -94,6 +132,8 @@ pub trait Sensor: Sized + Send + Sync + 'static {
     const ID: &'static str;
     /// JSON Schema of the params (ADR 0009 subset).
     const SCHEMA: &'static str;
+    /// Capability version; `None` means the plugin version.
+    const VERSION: Option<&'static str> = None;
 
     /// Builds the sensor from the JSON params.
     ///

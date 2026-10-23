@@ -1,6 +1,6 @@
 //! AT-17 (part, M7 WI-2): what the descriptor of the ABI 0.2 kinds carries (ADR 0050): the component
 //! id, the parameter schema, and the metadata (`blackboard_params` for conditions and actions, ASM-643;
-//! empty for motion models and sensors). Ignored until WI-10 (the stubs panic with `M7 WI-10`).
+//! empty for motion models and sensors). Un-ignored by WI-10.
 #![expect(clippy::expect_used, reason = "test harness")]
 
 mod kinds_plugins;
@@ -31,7 +31,6 @@ fn is_empty_metadata(text: &str) -> bool {
 }
 
 #[test]
-#[ignore = "M7 WI-10"]
 fn a_motion_model_has_its_id_and_schema_and_no_metadata() {
     let (id, schema, metadata) = only_capability::<MotionOnly>();
 
@@ -40,7 +39,6 @@ fn a_motion_model_has_its_id_and_schema_and_no_metadata() {
 }
 
 #[test]
-#[ignore = "M7 WI-10"]
 fn a_sensor_has_its_id_and_schema_and_no_metadata() {
     let (id, schema, metadata) = only_capability::<SensorOnly>();
 
@@ -49,7 +47,6 @@ fn a_sensor_has_its_id_and_schema_and_no_metadata() {
 }
 
 #[test]
-#[ignore = "M7 WI-10"]
 fn a_condition_has_its_id_schema_and_blackboard_metadata() {
     let (id, schema, metadata) = only_capability::<ConditionOnly>();
 
@@ -60,7 +57,6 @@ fn a_condition_has_its_id_schema_and_blackboard_metadata() {
 }
 
 #[test]
-#[ignore = "M7 WI-10"]
 fn an_action_has_its_id_schema_and_blackboard_metadata() {
     let (id, schema, metadata) = only_capability::<ActionOnly>();
 
