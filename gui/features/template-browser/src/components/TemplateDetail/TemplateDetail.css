@@ -1,0 +1,31 @@
+.umbra-template-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.umbra-template-detail h2,
+.umbra-template-detail h3,
+.umbra-template-detail p {
+  margin: 0;
+}
+
+.umbra-template-detail-chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.umbra-template-detail-chain li:not(:last-child)::after {
+  content: " ›";
+  color: var(--ink-muted);
+}
+
+.umbra-template-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}

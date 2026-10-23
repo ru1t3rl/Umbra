@@ -29,6 +29,11 @@ interface CommonProps {
   /** Reports the viewport height; default uses ResizeObserver. Tests inject a fake. */
   observeSize?: ObserveSize;
   className?: string;
+  /**
+   * Window the rows (default true). False mounts every row with the same classes, ids, ARIA and keyboard model,
+   * for short lists whose rows must all be in the DOM (ASM-953); switching it keeps the same element.
+   */
+  virtualize?: boolean;
 }
 
 interface ListboxProps extends CommonProps {
@@ -63,6 +68,7 @@ const sameRange = (a: WindowRange, b: WindowRange): boolean =>
 export function VirtualList(props: VirtualListProps): ReactElement {
   const { label, count, rowHeight, renderRow, getRowId, observeSize, className } = props;
   const overscan = props.overscan ?? DEFAULT_OVERSCAN;
+  const virtualize = props.virtualize ?? true;
   const rh = ROW_HEIGHT_PX[rowHeight];
   const ref = useRef<HTMLDivElement>(null);
   const viewport = useElementHeight(ref, observeSize);
@@ -146,9 +152,11 @@ export function VirtualList(props: VirtualListProps): ReactElement {
   };
 
   const indexes: number[] = [];
-  for (let i = range.start; i < Math.min(range.end, count); i++) indexes.push(i);
+  const first = virtualize ? range.start : 0;
+  const end = virtualize ? Math.min(range.end, count) : count;
+  for (let i = first; i < end; i++) indexes.push(i);
   // The active row stays mounted so aria-activedescendant never points at nothing.
-  if (active !== null && (active < range.start || active >= range.end)) {
+  if (virtualize && active !== null && (active < range.start || active >= range.end)) {
     if (active < range.start) indexes.unshift(active);
     else indexes.push(active);
   }
@@ -180,7 +188,7 @@ export function VirtualList(props: VirtualListProps): ReactElement {
       aria-label={label}
       aria-live={listbox ? undefined : "off"}
       aria-activedescendant={active === null ? undefined : getRowId(active)}
-      tabIndex={0}
+      tabIndex={listbox && count === 0 ? -1 : 0}
       className={["vt-vlist", `vt-vlist-${props.role}`, className].filter(Boolean).join(" ")}
       onScroll={onScroll}
       onKeyDown={onKeyDown}

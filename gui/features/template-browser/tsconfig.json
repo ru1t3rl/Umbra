@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/template-browser.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["src", "../../test/jest-dom.d.ts"],
+  "references": [
+    {
+      "path": "../data"
+    },
+    {
+      "path": "../engine-stream"
+    },
+    {
+      "path": "../schema-form"
+    },
+    {
+      "path": "../ui-kit"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@umbra/template-browser",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "feature",
+    "tier": "domain"
+  },
+  "dependencies": {
+    "@umbra/data": "workspace:*",
+    "@umbra/engine-stream": "workspace:*",
+    "@umbra/schema-form": "workspace:*",
+    "@umbra/ui-kit": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
+  }
+}

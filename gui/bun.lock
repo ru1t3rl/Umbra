@@ -170,6 +170,19 @@
         "react": "^19.3.1",
       },
     },
+    "features/template-browser": {
+      "name": "@umbra/template-browser",
+      "version": "0.0.0",
+      "dependencies": {
+        "@umbra/data": "workspace:*",
+        "@umbra/engine-stream": "workspace:*",
+        "@umbra/schema-form": "workspace:*",
+        "@umbra/ui-kit": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
+      },
+    },
     "features/ui-kit": {
       "name": "@umbra/ui-kit",
       "version": "0.0.0",
@@ -563,6 +576,8 @@
     "@umbra/shell-dashboard": ["@umbra/shell-dashboard@workspace:feature-shells/dashboard"],
 
     "@umbra/shell-showcase": ["@umbra/shell-showcase@workspace:feature-shells/showcase"],
+
+    "@umbra/template-browser": ["@umbra/template-browser@workspace:features/template-browser"],
 
     "@umbra/ui-kit": ["@umbra/ui-kit@workspace:features/ui-kit"],
 

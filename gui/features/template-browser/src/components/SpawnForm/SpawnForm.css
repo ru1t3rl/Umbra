@@ -1,0 +1,29 @@
+.umbra-spawn-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.umbra-spawn-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.umbra-spawn-form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.umbra-spawn-form-done {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--success-dim);
+  color: var(--success);
+}
+
+/* The live region stays mounted so its text is announced; empty it takes no room. */
+.umbra-spawn-form-done:empty {
+  padding: 0;
+  background: none;
+}

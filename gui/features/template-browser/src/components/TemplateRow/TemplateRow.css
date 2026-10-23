@@ -1,0 +1,26 @@
+.umbra-template-row {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.umbra-template-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.umbra-template-row-id {
+  color: var(--ink);
+}
+
+.umbra-template-row-desc,
+.umbra-template-row-meta {
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

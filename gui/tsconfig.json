@@ -15,6 +15,7 @@
     { "path": "./features/runtime-config" },
     { "path": "./features/schema-form" },
     { "path": "./features/scenario-control" },
+    { "path": "./features/template-browser" },
     { "path": "./features/ui-kit" }
   ]
 }
