@@ -109,7 +109,7 @@ pub struct FaultRecord {
     pub tick: u64,
     /// The adapter's scenario name.
     pub adapter: String,
-    /// The adapter call that failed (`poll` or `publish`).
+    /// The adapter call that failed (`poll`, `publish` or `control`).
     pub call: String,
 }
 

@@ -227,7 +227,7 @@
         "type": { "const": "fault" },
         "tick": { "$ref": "#/$defs/tick" },
         "adapter": { "type": "string" },
-        "call": { "type": "string", "description": "The adapter call that failed: poll or publish" }
+        "call": { "type": "string", "description": "The adapter call that failed: poll, publish or control" }
       },
       "required": ["type", "tick", "adapter", "call"]
     },

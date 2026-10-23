@@ -197,6 +197,8 @@ struct Runner {
     /// Owned entities refused a key, so each is counted once.
     exhausted: BTreeSet<EntityId>,
     inbox: Vec<NetMessage>,
+    /// The call of a fault the tap has not heard yet (`poll`, `publish`, or `control` for run control).
+    fresh_fault: Option<&'static str>,
     tally: Tally,
     /// The adapter's counters when it was last stopped.
     last_counters: AdapterCounters,
@@ -223,6 +225,7 @@ impl Runner {
             notices: Vec::new(),
             exhausted: BTreeSet::new(),
             inbox: Vec::new(),
+            fresh_fault: None,
             tally: Tally::default(),
             last_counters: AdapterCounters::default(),
             settings: slot.settings,
@@ -243,7 +246,8 @@ impl Runner {
     }
 
     /// An adapter error disables the adapter; its ghosts time out (ASM-252).
-    fn fault(&mut self, why: &NetError) {
+    fn fault(&mut self, why: &NetError, call: &'static str) {
+        self.fresh_fault = Some(call);
         self.stop();
         self.faulted = true;
         self.fault_reason = Some(why.to_string());
@@ -274,19 +278,35 @@ impl Runner {
         self.identity.entity(key).map(|(e, _)| e)
     }
 
-    fn poll(&mut self, now: SimTime) {
+    /// Polls the adapter and tells the tap what came back, exactly as polled and before anything
+    /// is applied (ASM-627): the messages (also those a failing poll left behind), then the fault.
+    fn poll(&mut self, now: SimTime, tap: &mut Option<Box<dyn InboundTap>>) {
         let max = self.settings.ghosts.max_inbound_per_tick;
         let mut inbox = std::mem::take(&mut self.inbox);
         inbox.clear();
         let polled = match self.adapter.as_mut() {
-            Some(adapter) if self.enabled => adapter.poll(now, max, &mut inbox),
-            _ => Ok(()),
+            Some(adapter) if self.enabled => Some(adapter.poll(now, max, &mut inbox)),
+            _ => None,
         };
-        if let Err(e) = polled {
-            self.fault(&e);
+        if let Some(t) = tap.as_deref_mut() {
+            let failed = matches!(polled, Some(Err(_)));
+            if polled.is_some() && (!failed || !inbox.is_empty()) {
+                t.polled(now.tick(), &self.settings.name, &inbox);
+            }
         }
+        if let Some(Err(e)) = polled {
+            self.fault(&e, "poll");
+        }
+        self.report_fault(now, tap);
         self.tally.received += inbox.len() as u64;
         self.inbox = inbox;
+    }
+
+    /// Tells the tap about a fault that happened since the last call.
+    fn report_fault(&mut self, now: SimTime, tap: &mut Option<Box<dyn InboundTap>>) {
+        if let (Some(call), Some(t)) = (self.fresh_fault.take(), tap.as_deref_mut()) {
+            t.faulted(now.tick(), &self.settings.name, call);
+        }
     }
 
     fn apply_inbox(
@@ -493,10 +513,17 @@ impl Runner {
         for ev in events {
             self.publish_event(owned, order, ev, emit, &mut out);
         }
+        // Only `publish_control` sends run control; replay relies on it to tell the two publish
+        // calls apart (ASM-731 g).
+        debug_assert!(
+            !out.iter()
+                .any(|m| matches!(m, NetMessage::SimulationControl(_))),
+            "entity traffic never carries run control"
+        );
         if let (false, Some(adapter)) = (out.is_empty(), self.adapter.as_mut()) {
             match adapter.publish(now, &out) {
                 Ok(()) => self.tally.published += out.len() as u64,
-                Err(e) => self.fault(&e),
+                Err(e) => self.fault(&e, "publish"),
             }
         }
         self.out = out;
@@ -640,6 +667,8 @@ pub struct NetworkManager {
     runners: Vec<Runner>,
     /// Indices into `owned` in ascending id, reused every tick.
     order: Vec<usize>,
+    /// The inbound observer, if any (ASM-627).
+    tap: Option<Box<dyn InboundTap>>,
 }
 
 impl fmt::Debug for NetworkManager {
@@ -676,18 +705,14 @@ impl NetworkManager {
         Ok(Self {
             runners,
             order: Vec::new(),
+            tap: None,
         })
     }
 
-    /// Attaches (or, with `None`, removes) the inbound tap (ADR 0053). M7 WI-12 implements it; until
-    /// then this is a stub.
-    #[expect(
-        clippy::needless_pass_by_value,
-        reason = "M7 WI-1 stub: WI-12 stores the tap"
-    )]
+    /// Attaches (or, with `None`, removes) the inbound tap (ADR 0053, ASM-627). The tap only
+    /// observes: with and without one the manager behaves identically.
     pub fn set_tap(&mut self, tap: Option<Box<dyn InboundTap>>) {
-        let _ = tap;
-        unimplemented!("M7 WI-12")
+        self.tap = tap;
     }
 
     /// Polls the enabled adapters in scenario order and applies the messages in delivery order:
@@ -695,7 +720,7 @@ impl NetworkManager {
     /// adapters), and appends the resulting events (ASM-248) to `events`.
     pub fn ingest(&mut self, now: SimTime, world: &mut dyn GhostWorld, events: &mut Vec<SimEvent>) {
         for r in &mut self.runners {
-            r.poll(now);
+            r.poll(now, &mut self.tap);
             r.apply_inbox(now, world, events);
             r.expire(now, world, events);
         }
@@ -724,6 +749,7 @@ impl NetworkManager {
         order.sort_by_key(|&i| owned.get(i).map(|v| v.id));
         for r in &mut self.runners {
             r.publish(now, owned, &order, meta, events);
+            r.report_fault(now, &mut self.tap);
         }
         self.order = order;
     }
@@ -759,9 +785,10 @@ impl NetworkManager {
             if let Some(adapter) = r.adapter.as_mut() {
                 match adapter.publish(now, &msg) {
                     Ok(()) => r.tally.published += 1,
-                    Err(e) => r.fault(&e),
+                    Err(e) => r.fault(&e, "control"),
                 }
             }
+            r.report_fault(now, &mut self.tap);
         }
     }
 

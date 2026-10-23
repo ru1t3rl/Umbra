@@ -12,6 +12,6 @@ pub trait InboundTap: Send {
     /// An adapter's poll for `tick` (the tick about to run) returned `messages` (possibly none).
     fn polled(&mut self, tick: u64, adapter: &str, messages: &[NetMessage]);
 
-    /// An adapter faulted during `call` (`poll` or `publish`) at `tick`.
+    /// An adapter faulted during `call` (`poll`, `publish`, or `control` for run-control publishes) at `tick`.
     fn faulted(&mut self, tick: u64, adapter: &str, call: &str);
 }
