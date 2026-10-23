@@ -1,5 +1,5 @@
 //! AT-14 (M7): property tests for `builtin.sea.kinematic`: whatever the state and intents, the
-//! per-step limits hold. Requirements: REQ-M-2, REQ-K-4, ADR 0051, ASM-610. Ignored until M7 WI-5.
+//! per-step limits hold. Requirements: REQ-M-2, REQ-K-4, ADR 0051, ASM-610.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -43,7 +43,6 @@ proptest! {
     /// `v / min_turn_radius * dt` (so the turn radius never drops below the minimum), height
     /// pinned, pitch and roll zero, output finite.
     #[test]
-    #[ignore = "M7 WI-5"]
     fn given_any_state_and_intents_when_stepped_then_every_limit_holds(
         heading in -3.0..3.0_f64,
         speed in 0.0..MAX_SPEED,
@@ -75,7 +74,6 @@ proptest! {
 
     /// REQ-K-4: a step is a pure function of its inputs.
     #[test]
-    #[ignore = "M7 WI-5"]
     fn given_the_same_inputs_when_stepped_twice_then_outputs_are_bit_identical(
         heading in -3.0..3.0_f64,
         speed in 0.0..MAX_SPEED,

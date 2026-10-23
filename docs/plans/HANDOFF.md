@@ -7,8 +7,8 @@ running logs and assumptions stay the detailed source: `docs/plans/M7.md`, `docs
 ## Branches and setup
 | Branch | Track | Last commit | Notes |
 |---|---|---|---|
-| `develop` | base | `a043c6e` | ADR 0047 (M8 alongside M7) |
-| `m7` | M7 engine | see `git log origin/m7` | WI-4 is a WIP commit, NOT reviewed (see below) |
+| `develop` | base | `bae882e` | ADR 0047 (M8 alongside M7); A-004 (M10 documentation, after M9) |
+| `m7` | M7 engine | see `git log origin/m7` | WI-1..WI-5 done |
 | `m8` | M8 GUI | see `git log origin/m8` | WI-1..WI-7 done |
 
 Working layout used on the first PC: `m7` in the main clone, `m8` in a second worktree
@@ -32,9 +32,13 @@ Done, reviewed, pushed: WI-1 (engine acceptance tests), WI-2 (plugin acceptance 
 (directory in the engine, caps as `Limits`, owned-only total cap, publish-order and build-scope tests,
 ASM-688..693), the re-review approved, and the fixes are committed on top of it. Gates green (gate 3: 3068
 passed), goldens `849026656b7b42d2`, `3a7bfda0a76111b9`, `88954c5dc6b52b48`, `3cc077a4c83c4a63` unchanged.
-Next is WI-5.
 
-Then, in the execution order the plan states (ASM-679): WI-5, WI-6, WI-7, WI-10 (with ADR 0059 math),
+**WI-5 (`builtin.sea.kinematic`, ADR 0051): done** (2026-10-23) after four review rounds (arrival by
+construction: hold-then-turn with a behind-band, ground's near snap, no pass capture; ASM-694..698).
+Gates green (gate 3: 3108 passed), goldens unchanged, `m2-compat` ok with the permanent ASM-698 allowlist.
+Next is WI-6.
+
+Then, in the execution order the plan states (ASM-679): WI-6, WI-7, WI-10 (with ADR 0059 math),
 WI-10b, WI-8, WI-9, WI-11, WI-12, WI-13, WI-14, WI-15, WI-16, WI-16a, WI-16b, WI-17..WI-24.
 
 ## M8 (branch `m8`)
@@ -52,6 +56,10 @@ M7 H1..H10 (plan), ADR 0058 accepted, ADR 0059 accepted, frozen-test edits for W
 version literal, `recording: None,` in `wire.rs`, append-only AT-21 rows in `contract.rs`; no standing
 rule: ask again for any other existing-test edit). M8 H-1..H-10 (plan), ADR 0043 amendment (option a),
 bun pin 1.4.4, showcase baselines.
+Frozen motion-model assertions (2026-10-23, M7 WI-5, option "assert containment"): the four pre-M7 tests
+that pin the exact motion-model list or count (`umbra-motion/tests/factory.rs:233`,
+`umbra-engine/tests/{builtin_schemas.rs:73, registered_schemas.rs:94, standard_registry.rs:52}`) assert
+containment instead; standing approval for these four files through WI-6 (air), nothing else.
 
 ## Working rules learned in this session
 - Each work item: failing tests (test engineer) -> implementation -> `code-reviewer` -> fixes ->

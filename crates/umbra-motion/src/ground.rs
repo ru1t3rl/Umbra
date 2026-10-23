@@ -53,9 +53,17 @@ pub enum MotionParamError {
         /// The rejected value.
         value: f64,
     },
+    /// A value was NaN or infinite (it may be zero or negative).
+    #[error("{name} must be finite, got {value}")]
+    NotFinite {
+        /// The offending parameter.
+        name: &'static str,
+        /// The rejected value.
+        value: f64,
+    },
 }
 
-fn require_positive(name: &'static str, value: f64) -> Result<(), MotionParamError> {
+pub(crate) fn require_positive(name: &'static str, value: f64) -> Result<(), MotionParamError> {
     if value.is_finite() && value > 0.0 {
         Ok(())
     } else {

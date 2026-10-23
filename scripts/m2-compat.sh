@@ -22,6 +22,11 @@
 #     `const COUNT: usize = 6;` and the added lines `const COUNT: usize = 7;` and
 #     `ComponentKind::NetworkAdapter => 6,`, each matched exactly and at most once. Any other
 #     changed or added line, in that test or elsewhere, still fails.
+#     Check 2 has one allowlist too (M7 WI-5, human decision 2026-10-23, ASM-698, precedent ASM-266): two
+#     files, crates/umbra-motion/tests/factory.rs and crates/umbra-engine/tests/builtin_schemas.rs, are
+#     accepted only when their whole diff equals the WI-5 edit (one removed exact motion-model assert, one
+#     comment line and one containment assert added), each line matched exactly, once, per file. Any other
+#     change in those files, or any other test file, still fails.
 # 3.  The M2 test-name baseline, regenerated from m2-done in a scratch worktree under target/ (the
 #     default target directory, never /tmp), is a subset of the test names now, keyed by
 #     package, test binary and name, after mapping cgf-<x> to umbra-<x>, cgf_<x> to umbra_<x> and the
@@ -73,6 +78,26 @@ changed_files() {
     printf '%s\n' "$_f" | xargs git diff --name-only --diff-filter=MDR "$_t" --
 }
 
+# wi5_residual CONTENT_TAG FILE: diff lines of FILE against CONTENT_TAG that are not on the WI-5 allowlist
+# (ASM-698, precedent ASM-266): exact lines, each usable once, scoped per file. Empty output = only allowlisted edits.
+wi5_residual() {
+    git diff --no-renames -U0 "$1" -- "$2" | awk -v file="$2" '
+        BEGIN {
+            if (file == "crates/umbra-motion/tests/factory.rs") {
+                allow["-    assert_eq!(registry.ids(ComponentKind::MotionModel), [&id]);"] = 1
+                allow["+    // human decision 2026-10-23, M7 WI-5: motion models are checked by containment (later milestones add models); exact checks stay for the other kinds."] = 1
+                allow["+    assert!(registry.ids(ComponentKind::MotionModel).contains(&&id));"] = 1
+            }
+            if (file == "crates/umbra-engine/tests/builtin_schemas.rs") {
+                allow["-    assert_eq!(motion, [\"builtin.ground.kinematic\"]);"] = 1
+                allow["+    // human decision 2026-10-23, M7 WI-5: motion models are checked by containment (later milestones add models); exact checks stay for the other kinds."] = 1
+                allow["+    assert!(motion.iter().any(|id| id == \"builtin.ground.kinematic\"));"] = 1
+            }
+        }
+        /^@@/ || /^---/ || /^\+\+\+/ { next }
+        /^[-+]/ { if (allow[$0] > 0) { allow[$0]--; next } print file ": " $0 }'
+}
+
 # check_1_2 CONTENT_TAG SCOPE_TAG: prints failures, returns 1 on any. Runs in the current directory (a git tree).
 check_1_2() {
     _tag=$1; _scope=$2; _bad=0
@@ -81,7 +106,20 @@ check_1_2() {
     if [ -n "$_c" ]; then echo "FAIL: changed fixture files:"; echo "$_c"; _bad=1; else echo ok; fi
     echo "== 2. M1/M2 test and bench files unchanged since $_tag (scope $_scope)"
     _c=$(changed_files "$_tag" "$(scope_files "$_scope" '^crates/[^/]+/(tests|benches)/')")
-    if [ -n "$_c" ]; then echo "FAIL: changed test files:"; echo "$_c"; _bad=1; else echo ok; fi
+    # WI-5 allowlist (ASM-698): the two files are accepted only when their whole diff is the allowlisted lines.
+    _k=""
+    for _f in $_c; do
+        case "$_f" in
+            crates/umbra-motion/tests/factory.rs|crates/umbra-engine/tests/builtin_schemas.rs)
+                _r=$(wi5_residual "$_tag" "$_f")
+                if [ -n "$_r" ]; then _k="$_k$_f
+$_r
+"; fi ;;
+            *) _k="$_k$_f
+" ;;
+        esac
+    done
+    if [ -n "$_k" ]; then echo "FAIL: changed test files:"; printf '%s' "$_k"; _bad=1; else echo ok; fi
     return "$_bad"
 }
 
@@ -231,6 +269,39 @@ if [ "$self_test" -eq 1 ]; then
     git checkout -q -- .
     echo "            ComponentKind::NetworkAdapter => 6," >> crates/umbra-templates/src/diagnostic.rs
     expect FAIL "H4 arm in another file" check_2b "$tag" "$scope_tag"
+    git checkout -q -- .
+    # WI-5 allowlist (ASM-698): applied here because the baseline tags do not contain the edit.
+    wi5_cmt='    // human decision 2026-10-23, M7 WI-5: motion models are checked by containment (later milestones add models); exact checks stay for the other kinds.'
+    wi5_apply() {
+        git checkout -q -- crates/umbra-motion/tests/factory.rs crates/umbra-engine/tests/builtin_schemas.rs
+        sed -i -e 's#^    assert_eq!(registry.ids(ComponentKind::MotionModel), \[&id\]);$#'"$wi5_cmt"'\n    assert!(registry.ids(ComponentKind::MotionModel).contains(\&\&id));#' \
+            crates/umbra-motion/tests/factory.rs
+        sed -i -e 's#^    assert_eq!(motion, \["builtin.ground.kinematic"\]);$#'"$wi5_cmt"'\n    assert!(motion.iter().any(|id| id == "builtin.ground.kinematic"));#' \
+            crates/umbra-engine/tests/builtin_schemas.rs
+    }
+    wi5_apply
+    expect PASS "WI-5 edit alone is allowlisted" check_1_2 "$tag" "$scope_tag"
+    echo "    // extra" >> crates/umbra-motion/tests/factory.rs
+    expect FAIL "WI-5 edit plus one extra line in factory.rs" check_1_2 "$tag" "$scope_tag"
+    wi5_apply
+    echo "    // extra" >> crates/umbra-engine/tests/builtin_schemas.rs
+    expect FAIL "WI-5 edit plus one extra line in builtin_schemas.rs" check_1_2 "$tag" "$scope_tag"
+    wi5_apply
+    sed -i 's/^    assert!(motion.iter().any.*$/&\n&/' crates/umbra-engine/tests/builtin_schemas.rs
+    expect FAIL "WI-5 added line twice" check_1_2 "$tag" "$scope_tag"
+    git checkout -q -- .
+    sed -i '0,/^#\[test\]$/s//#[test]\n#[ignore]/' crates/umbra-motion/tests/factory.rs
+    expect FAIL "other edit in factory.rs" check_1_2 "$tag" "$scope_tag"
+    git checkout -q -- .
+    sed -i '0,/^#\[test\]$/s//#[test]\n#[ignore]/' crates/umbra-engine/tests/builtin_schemas.rs
+    expect FAIL "other edit in builtin_schemas.rs" check_1_2 "$tag" "$scope_tag"
+    git checkout -q -- .
+    wi5_apply
+    echo "    // extra" >> crates/umbra-core/tests/ids.rs
+    expect FAIL "WI-5 edit does not cover other test files" check_1_2 "$tag" "$scope_tag"
+    git checkout -q -- .
+    echo "$wi5_cmt" >> crates/umbra-core/tests/ids.rs
+    expect FAIL "WI-5 comment line in another file" check_1_2 "$tag" "$scope_tag"
     git checkout -q -- .
     # Check 3 failure paths and the name mapping.
     expect PASS "name mapping: package, binary and unit-test binary" test "$(printf 'cgf-cli::cgf_cli::t\ncgf-core::cgf_core::u\ncgf-core::ids::cgf_x\n' | rename_names | tr '\n' ' ')" = "umbra-cli::umbra::t umbra-core::umbra_core::u umbra-core::ids::umbra_x "

@@ -2,8 +2,8 @@
 //! ASM-610, ASM-611.
 //!
 //! Parameters: 10 m/s, 1 m/s^2, 50 m minimum turn radius (turn rate 0.2 rad/s at full speed),
-//! surface height 2 m, 30 Hz, near 52 N 4 E. Written in M7 WI-1 against stubs; every test is
-//! ignored until M7 WI-5 implements the model.
+//! surface height 2 m, 30 Hz, near 52 N 4 E. Written in M7 WI-1
+//! against stubs, enabled by M7 WI-5.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -41,7 +41,6 @@ fn model() -> SeaKinematic {
 
 /// REQ-M-2, ADR 0002: the model id is the namespaced built-in id.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_the_model_when_asked_for_its_id_then_it_is_builtin_sea_kinematic() {
     assert_eq!(model().id().as_str(), "builtin.sea.kinematic");
     assert_eq!(SEA_KINEMATIC_ID, "builtin.sea.kinematic");
@@ -49,14 +48,12 @@ fn given_the_model_when_asked_for_its_id_then_it_is_builtin_sea_kinematic() {
 
 /// REQ-M-2: `params()` returns what the model was built with.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_valid_params_when_built_then_params_round_trip() {
     assert_eq!(model().params(), params());
 }
 
 /// REQ-M-2: speed, acceleration and turn radius must be finite and > 0, the surface height finite.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_a_non_positive_or_non_finite_limit_when_built_then_it_is_rejected() {
     let bad = [
         SeaKinematicParams {
@@ -93,7 +90,6 @@ fn given_a_non_positive_or_non_finite_limit_when_built_then_it_is_rejected() {
 /// REQ-M-1: the shared motion-model contract (deterministic, finite, unit quaternion, no drift at
 /// rest) holds for at rest, under way, `MoveTo`, `SetHeading` and `Hold`.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_assorted_states_and_intents_when_checked_then_the_motion_contract_holds() {
     let rest = start(0.0, 0.0, SURFACE);
     let cases = vec![
@@ -118,7 +114,6 @@ fn given_assorted_states_and_intents_when_checked_then_the_motion_contract_holds
 /// ASM-610: the height is pinned to `surface_height`, whatever the start height, the `MoveTo`
 /// height or the terrain.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_a_high_start_and_a_high_destination_over_hills_when_stepped_then_height_is_the_surface() {
     let hills = SlopedTerrain { slope: 0.5 };
     let states = run(
@@ -140,7 +135,6 @@ fn given_a_high_start_and_a_high_destination_over_hills_when_stepped_then_height
 
 /// ASM-610: pitch and roll stay zero.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_a_turning_vessel_when_stepped_then_pitch_and_roll_are_zero() {
     let states = run(
         &model(),
@@ -158,7 +152,6 @@ fn given_a_turning_vessel_when_stepped_then_pitch_and_roll_are_zero() {
 
 /// ADR 0051: `Hold` decelerates at `max_accel` to a stop and never reverses.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_a_moving_vessel_when_holding_then_it_stops_at_max_deceleration_without_reversing() {
     let from = start(0.0, MAX_SPEED, SURFACE);
     let steps = 330;
@@ -182,7 +175,6 @@ fn given_a_moving_vessel_when_holding_then_it_stops_at_max_deceleration_without_
 
 /// ASM-610: no turn at rest, so a `SetHeading` without a speed leaves the heading alone.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_a_vessel_at_rest_when_told_a_heading_then_it_does_not_pivot() {
     let from = start(0.0, 0.0, SURFACE);
 
@@ -203,7 +195,6 @@ fn given_a_vessel_at_rest_when_told_a_heading_then_it_does_not_pivot() {
 /// turn to the east takes (pi/2) / (0.2 / 30) = 235.6 steps: still turning after 235, on heading
 /// after 236, at constant speed.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_full_speed_when_told_east_then_the_quarter_turn_takes_236_steps_at_the_minimum_radius() {
     let from = start(0.0, MAX_SPEED, SURFACE);
     let intents = [
@@ -228,7 +219,6 @@ fn given_full_speed_when_told_east_then_the_quarter_turn_takes_236_steps_at_the_
 
 /// ADR 0051: the model never exceeds `max_speed` and reaches it at `max_accel`.
 #[test]
-#[ignore = "M7 WI-5"]
 fn given_a_far_destination_when_stepped_then_speed_ramps_at_max_accel_up_to_max_speed() {
     let states = run(
         &model(),

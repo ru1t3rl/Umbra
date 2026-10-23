@@ -6,14 +6,16 @@
 use std::sync::Arc;
 
 use umbra_core::{
-    BuildError, ComponentId, Factory, MetersPerSecond, MetersPerSecondSquared, MotionModel,
+    BuildError, ComponentId, Factory, Meters, MetersPerSecond, MetersPerSecondSquared, MotionModel,
     ParamSchema, ParamValue, RadiansPerSecond, Registry, RegistryError,
 };
 
 use crate::ground::{
     GROUND_KINEMATIC_ID, GroundKinematic, GroundKinematicParams, MotionParamError,
 };
+use crate::sea::{SEA_KINEMATIC_ID, SeaKinematic, SeaKinematicParams};
 
+const SEA_SCHEMA_JSON: &str = include_str!("../schemas/builtin.sea.kinematic.json");
 const SCHEMA_JSON: &str = include_str!("../schemas/builtin.ground.kinematic.json");
 
 /// Builds [`crate::GroundKinematic`] from validated parameters.
@@ -34,21 +36,29 @@ fn number(params: &ParamValue, key: &str) -> Result<f64, BuildError> {
 }
 
 /// Maps a model limit name to the parameter key that sets it (`None` for an unknown name).
+/// Shared by the ground and sea factories.
 fn key_of(name: &str) -> Option<&'static str> {
     match name {
         "max_speed" => Some("max_speed_mps"),
         "max_turn_rate" => Some("max_turn_rate_dps"),
         "max_accel" => Some("max_accel_mps2"),
+        "min_turn_radius" => Some("min_turn_radius_m"),
+        "surface_height" => Some("surface_height_m"),
         _ => None,
     }
 }
 
-/// Locates a model error at the TOML key that caused it.
-fn located(error: &MotionParamError) -> BuildError {
+/// Locates a model error at the TOML key that caused it. (`pub(crate)` for the unit test in
+/// `sea.rs`: `m2-compat` check 2b forbids new lines in this file's `#[cfg(test)]` region.)
+pub(crate) fn located(error: &MotionParamError) -> BuildError {
+    let at = |key: &str, message: String| BuildError::new(message).at(format!("/{key}"));
     match error {
         MotionParamError::NotPositive { name, value } => match key_of(name) {
-            Some(key) => BuildError::new(format!("`{key}` must be greater than 0, got {value}"))
-                .at(format!("/{key}")),
+            Some(key) => at(key, format!("`{key}` must be greater than 0, got {value}")),
+            None => BuildError::new(error.to_string()),
+        },
+        MotionParamError::NotFinite { name, value } => match key_of(name) {
+            Some(key) => at(key, format!("`{key}` must be finite, got {value}")),
             None => BuildError::new(error.to_string()),
         },
         // The built-in id is a constant checked by a unit test: no parameter is at fault, so
@@ -103,19 +113,27 @@ impl Factory<dyn MotionModel> for GroundKinematicFactory {
     }
 }
 
-/// Builds [`crate::SeaKinematic`] from validated parameters. M7 WI-1 stub: implemented, with its schema
-/// `schemas/builtin.sea.kinematic.json`, in M7 WI-5 (ADR 0051); not yet registered by [`register_builtins`].
+/// Builds [`crate::SeaKinematic`] from validated parameters (ADR 0051). The schema is
+/// `schemas/builtin.sea.kinematic.json`; `surface_height_m` defaults to 0.
 pub struct SeaKinematicFactory {
-    _private: (),
+    id: ComponentId,
+    schema: ParamSchema,
 }
 
 impl SeaKinematicFactory {
-    /// The factory.
+    /// The factory, with its schema loaded from `schemas/builtin.sea.kinematic.json`.
     ///
     /// # Panics
-    /// Always, until M7 WI-5.
+    /// Never in practice: the id constant and the embedded schema are valid (unit-tested).
+    #[expect(
+        clippy::expect_used,
+        reason = "embedded constants, proven valid by tests"
+    )]
     pub fn new() -> Self {
-        unimplemented!("M7 WI-5")
+        Self {
+            id: ComponentId::new(SEA_KINEMATIC_ID).expect("built-in id is valid"),
+            schema: ParamSchema::from_json_str(SEA_SCHEMA_JSON).expect("embedded schema is valid"),
+        }
     }
 }
 
@@ -127,16 +145,26 @@ impl Default for SeaKinematicFactory {
 
 impl Factory<dyn MotionModel> for SeaKinematicFactory {
     fn id(&self) -> &ComponentId {
-        unimplemented!("M7 WI-5")
+        &self.id
     }
 
     fn param_schema(&self) -> &ParamSchema {
-        unimplemented!("M7 WI-5")
+        &self.schema
     }
 
     fn build(&self, params: &ParamValue) -> Result<Arc<dyn MotionModel>, BuildError> {
-        let _ = params;
-        unimplemented!("M7 WI-5")
+        let surface_height = match params.get("surface_height_m") {
+            None => 0.0,
+            Some(_) => number(params, "surface_height_m")?,
+        };
+        let limits = SeaKinematicParams {
+            max_speed: MetersPerSecond(number(params, "max_speed_mps")?),
+            max_accel: MetersPerSecondSquared(number(params, "max_accel_mps2")?),
+            min_turn_radius: Meters(number(params, "min_turn_radius_m")?),
+            surface_height: Meters(surface_height),
+        };
+        let model = SeaKinematic::new(limits).map_err(|e| located(&e))?;
+        Ok(Arc::new(model))
     }
 }
 
@@ -183,7 +211,8 @@ impl Factory<dyn MotionModel> for AirKinematicFactory {
 /// [`RegistryError::Duplicate`] if called twice on one registry, or if any kind already holds
 /// the id (IDs are unique across kinds, ASM-063).
 pub fn register_builtins(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.register_motion_model(Arc::new(GroundKinematicFactory::new()))
+    registry.register_motion_model(Arc::new(GroundKinematicFactory::new()))?;
+    registry.register_motion_model(Arc::new(SeaKinematicFactory::new()))
 }
 
 #[cfg(test)]

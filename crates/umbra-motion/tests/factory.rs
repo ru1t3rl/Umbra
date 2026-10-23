@@ -230,7 +230,8 @@ fn register_builtins_makes_the_factory_available_by_id() {
             .param_schema(ComponentKind::MotionModel, &id)
             .is_some()
     );
-    assert_eq!(registry.ids(ComponentKind::MotionModel), [&id]);
+    // human decision 2026-10-23, M7 WI-5: motion models are checked by containment (later milestones add models); exact checks stay for the other kinds.
+    assert!(registry.ids(ComponentKind::MotionModel).contains(&&id));
 }
 
 #[test]

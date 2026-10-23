@@ -70,7 +70,8 @@ fn builtin_registry_registers_exactly_the_m2_components() {
         .map(ToString::to_string)
         .collect();
 
-    assert_eq!(motion, ["builtin.ground.kinematic"]);
+    // human decision 2026-10-23, M7 WI-5: motion models are checked by containment (later milestones add models); exact checks stay for the other kinds.
+    assert!(motion.iter().any(|id| id == "builtin.ground.kinematic"));
     assert_eq!(terrain, ["builtin.terrain.flat"]);
 }
 

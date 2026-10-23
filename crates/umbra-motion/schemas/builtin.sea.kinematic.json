@@ -1,0 +1,37 @@
+{
+  "title": "builtin.sea.kinematic parameters",
+  "description": "Kinematic surface vessel limits. Units are given by key suffix. The height is pinned to the surface height; the vessel never reverses and does not turn at rest.",
+  "type": "object",
+  "properties": {
+    "max_speed_mps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000,
+      "description": "Maximum speed in meters per second."
+    },
+    "max_accel_mps2": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000,
+      "description": "Maximum acceleration and deceleration in meters per second squared."
+    },
+    "min_turn_radius_m": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000000,
+      "description": "Smallest turn radius in meters; the turn rate is speed divided by this radius."
+    },
+    "surface_height_m": {
+      "type": "number",
+      "minimum": -10000,
+      "maximum": 10000,
+      "default": 0,
+      "description": "Height of the sea surface above the WGS84 ellipsoid in meters (not above the geoid)."
+    }
+  },
+  "required": ["max_speed_mps", "max_accel_mps2", "min_turn_radius_m"],
+  "additionalProperties": false,
+  "examples": [
+    { "max_speed_mps": 12.0, "max_accel_mps2": 0.5, "min_turn_radius_m": 80.0, "surface_height_m": 0.0 }
+  ]
+}

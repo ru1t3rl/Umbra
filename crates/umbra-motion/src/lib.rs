@@ -12,6 +12,7 @@ pub mod air;
 pub mod factory;
 pub mod ground;
 pub mod sea;
+mod steer;
 
 pub use air::{AIR_KINEMATIC_ID, AirKinematic, AirKinematicParams};
 pub use factory::{

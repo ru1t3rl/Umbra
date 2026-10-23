@@ -49,9 +49,12 @@ fn standard_registry_holds_the_m2_set_and_the_m3_builtins() {
     let ids =
         |kind| -> Vec<String> { registry.ids(kind).iter().map(ToString::to_string).collect() };
 
-    assert_eq!(
-        ids(ComponentKind::MotionModel),
-        ["builtin.ground.kinematic"]
+    // human decision 2026-10-23, M7 WI-5: containment for motion models (later milestones add
+    // models); the other kinds stay exact.
+    assert!(
+        ids(ComponentKind::MotionModel)
+            .iter()
+            .any(|id| id == "builtin.ground.kinematic")
     );
     assert_eq!(ids(ComponentKind::Terrain), ["builtin.terrain.flat"]);
     assert_eq!(ids(ComponentKind::Sensor), ["builtin.visual"]);

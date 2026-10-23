@@ -91,5 +91,8 @@ fn every_schema_of_every_kind_compiles_validates_its_examples_and_builds() {
     }
 
     // motion, terrain, behaviors (2 graphs), sensor, 4 conditions, 4 actions
-    assert_eq!(seen, [1, 1, 2, 1, 4, 4]);
+    // human decision 2026-10-23, M7 WI-5: the motion slot is at least the M2 model (later
+    // milestones add models); the other slots stay exact.
+    assert!(seen[0] >= 1, "motion models: {}", seen[0]);
+    assert_eq!(seen[1..], [1, 2, 1, 4, 4]);
 }

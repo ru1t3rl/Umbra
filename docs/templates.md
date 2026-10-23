@@ -307,6 +307,24 @@ are accepted), greater than 0, with upper bounds that reject absurd values (ASM-
 params = { max_speed_mps = 18.0, max_turn_rate_dps = 40.0, max_accel_mps2 = 2.5 }
 ```
 
+### `builtin.sea.kinematic` (motion model, M7)
+Kinematic surface vessel (REQ-M-2, ADR 0051, ASM-610, ASM-694..697). The height is pinned to
+`surface_height_m` above the WGS-84 ellipsoid (terrain and `MoveTo` heights are ignored), the vessel
+never reverses, does not turn at rest, and turns at `speed / min_turn_radius_m`. Pitch and roll are 0.
+`Hold` decelerates to a stop. Intents follow the ground rules (`Hold` wins, the last of `MoveTo` and
+`SetHeading` steers, the last `SetSpeed` wins).
+
+| Parameter | Unit | Bound |
+|---|---|---|
+| `max_speed_mps` (required) | m/s | > 0, <= 1000 |
+| `max_accel_mps2` (required) | m/s^2 (acceleration and braking) | > 0, <= 1000 |
+| `min_turn_radius_m` (required) | m | > 0, <= 1000000 |
+| `surface_height_m` (default 0) | m above the ellipsoid, not the geoid | within [-10000, 10000] |
+
+```toml
+params = { max_speed_mps = 12.0, max_accel_mps2 = 0.5, min_turn_radius_m = 80.0, surface_height_m = 0.0 }
+```
+
 ### `builtin.terrain.flat` (terrain provider, the default for scenarios)
 Flat terrain at a constant height above the WGS-84 ellipsoid.
 
