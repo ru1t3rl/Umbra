@@ -9,6 +9,7 @@
     "tier": "domain"
   },
   "dependencies": {
+    "@umbra/desktop": "workspace:*",
     "@umbra/engine-stream": "workspace:*",
     "@umbra/ui-kit": "workspace:*"
   },

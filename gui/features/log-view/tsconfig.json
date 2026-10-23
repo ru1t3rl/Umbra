@@ -8,6 +8,9 @@
   "include": ["src", "../../test/jest-dom.d.ts"],
   "references": [
     {
+      "path": "../desktop"
+    },
+    {
       "path": "../engine-stream"
     },
     {

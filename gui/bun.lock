@@ -74,6 +74,16 @@
         "react": "^19.3.1",
       },
     },
+    "features/desktop": {
+      "name": "@umbra/desktop",
+      "version": "0.0.0",
+      "dependencies": {
+        "@umbra/engine-stream": "workspace:*",
+      },
+      "peerDependencies": {
+        "react": "^19.3.1",
+      },
+    },
     "features/engine-stream": {
       "name": "@umbra/engine-stream",
       "version": "0.0.0",
@@ -100,6 +110,7 @@
       "name": "@umbra/log-view",
       "version": "0.0.0",
       "dependencies": {
+        "@umbra/desktop": "workspace:*",
         "@umbra/engine-stream": "workspace:*",
         "@umbra/ui-kit": "workspace:*",
       },
@@ -530,6 +541,8 @@
     "@types/ws": ["@types/ws@8.18.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w=="],
 
     "@umbra/data": ["@umbra/data@workspace:features/data"],
+
+    "@umbra/desktop": ["@umbra/desktop@workspace:features/desktop"],
 
     "@umbra/engine-stream": ["@umbra/engine-stream@workspace:features/engine-stream"],
 

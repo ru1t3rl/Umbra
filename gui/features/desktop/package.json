@@ -1,0 +1,17 @@
+{
+  "name": "@umbra/desktop",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "umbra": {
+    "type": "feature",
+    "tier": "foundation"
+  },
+  "dependencies": {
+    "@umbra/engine-stream": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.3.1"
+  }
+}

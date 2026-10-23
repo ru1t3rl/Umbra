@@ -1,0 +1,43 @@
+.umbra-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+  height: 100%;
+}
+
+.umbra-log-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.umbra-log-count {
+  margin: 0;
+  margin-inline-end: auto;
+  color: var(--ink-muted);
+}
+
+.umbra-log-empty {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.umbra-log-rows {
+  flex: 1;
+  min-height: 0;
+}
+
+.umbra-log-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.umbra-log-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

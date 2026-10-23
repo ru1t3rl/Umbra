@@ -73,3 +73,24 @@ describe("filterRecords", () => {
     expect(records).toEqual(copy);
   });
 });
+
+describe("filterRecords: label and cache (m4, n1)", () => {
+  const label = (source: string): string => (source === "run" ? "Operation" : source);
+  test("the text also matches the translated source label", () => {
+    expect(seqs(filterRecords(records, filter({ text: "operation" }), label))).toEqual([2, 4]);
+    expect(seqs(filterRecords(records, filter({ text: "operation" })))).toEqual([]);
+  });
+  test("the searchable text of a record is built once per label function, not per call", () => {
+    let calls = 0;
+    const counting = (source: string): string => {
+      calls += 1;
+      return source;
+    };
+    const f = filter({ text: "listening" });
+    filterRecords(records, f, counting);
+    const first = calls;
+    expect(first).toBe(records.length);
+    filterRecords(records, filter({ text: "stopped" }), counting);
+    expect(calls).toBe(first);
+  });
+});

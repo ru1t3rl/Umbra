@@ -5,7 +5,7 @@
 // - `mount`: LogView under an `EngineStreamProvider` whose connection is only `{ journal }` (cast);
 // - `installResizeObserver`: a viewport height for `VirtualList` (happy-dom has no layout, ASM-873);
 // - `engineOutput`: what the mocked `@umbra/desktop` `useEngineOutputSource()` returns (undefined = web build).
-import { render } from "@testing-library/react";
+import { type RenderResult, render } from "@testing-library/react";
 import {
   type EngineStreamConnection,
   EngineStreamProvider,
@@ -86,7 +86,10 @@ export class FakeJournal implements JournalSource {
 /** Set by a test; read by the mocked `@umbra/desktop` (`undefined` is the web build). */
 export const engineOutput: { current: JournalSource | undefined } = { current: undefined };
 
-export function mount(ui: ReactElement, journal: JournalSource) {
+export function mount(
+  ui: ReactElement,
+  journal: JournalSource,
+): Omit<RenderResult, "rerender"> & { rerender: (next: ReactElement) => void } {
   const connection = { journal } as unknown as EngineStreamConnection;
   const wrap = (element: ReactElement) => (
     <EngineStreamProvider connection={connection}>{element}</EngineStreamProvider>

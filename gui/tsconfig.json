@@ -6,6 +6,7 @@
     { "path": "./feature-shells/dashboard" },
     { "path": "./feature-shells/showcase" },
     { "path": "./features/data" },
+    { "path": "./features/desktop" },
     { "path": "./features/entity-inspector" },
     { "path": "./features/engine-stream" },
     { "path": "./features/settings" },

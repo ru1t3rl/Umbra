@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/desktop.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["src"],
+  "references": [
+    {
+      "path": "../engine-stream"
+    }
+  ]
+}
