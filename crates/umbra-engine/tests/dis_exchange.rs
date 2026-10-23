@@ -26,7 +26,9 @@
 
 mod net_support;
 mod plugin_support;
+mod port_support;
 
+use port_support::{ports, retry_on_port_in_use};
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::net::UdpSocket;
@@ -127,17 +129,6 @@ fn write_node(root: &Path, dir: &str, side: &str, prefix: &str, adapters: &str) 
     let file = dir_path.join("scenario.toml");
     std::fs::write(&file, format!("{head}{adapters}{entities}")).expect("write scenario");
     file
-}
-
-/// `n` distinct free loopback ports, held until all are chosen (ASM-246).
-fn ports(n: usize) -> Vec<u16> {
-    let sockets: Vec<UdpSocket> = (0..n)
-        .map(|_| UdpSocket::bind("127.0.0.1:0").expect("ephemeral port"))
-        .collect();
-    sockets
-        .iter()
-        .map(|s| s.local_addr().expect("address").port())
-        .collect()
 }
 
 fn unicast(version: u8, app: u16, bind: u16, peers: &[u16]) -> String {
@@ -690,27 +681,29 @@ fn run_pair(label: &str, params_a: &str, params_b: &str, echoes: bool) {
 
 /// `run_pair` with the opt-in capture destination added to both senders.
 fn run_unicast_pair(label: &str, version_a: u8, version_b: u8) {
-    let capture = Capture::start(label);
-    let [pa, pb] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let mut to_b = vec![pb];
-    let mut to_a = vec![pa];
-    if let Some(c) = &capture {
-        to_b.push(c.port);
-        to_a.push(c.port);
-    }
-    run_pair(
-        label,
-        &unicast(version_a, 1, pa, &to_b),
-        &unicast(version_b, 2, pb, &to_a),
-        false,
-    );
-    if let Some(c) = capture {
-        let files = c.finish();
-        assert!(files > 0, "the capture socket saw nothing");
-        eprintln!("captured {files} datagrams for {label}");
-    }
+    retry_on_port_in_use(|| {
+        let capture = Capture::start(label);
+        let [pa, pb] = ports(2)[..] else {
+            panic!("two ports")
+        };
+        let mut to_b = vec![pb];
+        let mut to_a = vec![pa];
+        if let Some(c) = &capture {
+            to_b.push(c.port);
+            to_a.push(c.port);
+        }
+        run_pair(
+            label,
+            &unicast(version_a, 1, pa, &to_b),
+            &unicast(version_b, 2, pb, &to_a),
+            false,
+        );
+        if let Some(c) = capture {
+            let files = c.finish();
+            assert!(files > 0, "the capture socket saw nothing");
+            eprintln!("captured {files} datagrams for {label}");
+        }
+    });
 }
 
 #[test]
@@ -730,23 +723,27 @@ fn v6_sender_v7_receiver_interoperate() {
 
 #[test]
 fn broadcast_on_loopback_exchanges_entities() {
-    let [port] = ports(1)[..] else {
-        panic!("one port")
-    };
-    run_pair("broadcast", &broadcast(1, port), &broadcast(2, port), true);
+    retry_on_port_in_use(|| {
+        let [port] = ports(1)[..] else {
+            panic!("one port")
+        };
+        run_pair("broadcast", &broadcast(1, port), &broadcast(2, port), true);
+    });
 }
 
 #[test]
 fn multicast_on_loopback_exchanges_entities() {
-    let [port] = ports(1)[..] else {
-        panic!("one port")
-    };
-    run_pair(
-        "multicast",
-        &multicast(1, "239.255.42.21", port),
-        &multicast(2, "239.255.42.21", port),
-        true,
-    );
+    retry_on_port_in_use(|| {
+        let [port] = ports(1)[..] else {
+            panic!("one port")
+        };
+        run_pair(
+            "multicast",
+            &multicast(1, "239.255.42.21", port),
+            &multicast(2, "239.255.42.21", port),
+            true,
+        );
+    });
 }
 
 // --------------------------------------------------------------------------------- AT-6
@@ -815,62 +812,64 @@ impl Drop for Observer {
 
 #[test]
 fn multicast_loop_back_is_dropped_as_echo_and_counts_stay_constant() {
-    let [port] = ports(1)[..] else {
-        panic!("one port")
-    };
-    let group = "239.255.42.22";
-    let root = scratch("echo");
-    let file = write_node(
-        &root,
-        "na",
-        "a",
-        "a",
-        &dis_block("dis", &multicast(1, group, port)),
-    );
-    let mut observer = Observer::join(group, port);
-    let gate = Arc::new(Gate {
-        ready: AtomicUsize::new(0),
-        nodes: 1,
-    });
-    let a = spawn_node("a", file, plain_registry(), &gate);
+    retry_on_port_in_use(|| {
+        let [port] = ports(1)[..] else {
+            panic!("one port")
+        };
+        let group = "239.255.42.22";
+        let root = scratch("echo");
+        let file = write_node(
+            &root,
+            "na",
+            "a",
+            "a",
+            &dis_block("dis", &multicast(1, group, port)),
+        );
+        let mut observer = Observer::join(group, port);
+        let gate = Arc::new(Gate {
+            ready: AtomicUsize::new(0),
+            nodes: 1,
+        });
+        let a = spawn_node("a", file, plain_registry(), &gate);
 
-    // Ten seconds of simulated time: the engine's own packets come back every tick it publishes.
-    let mut heard = Vec::new();
-    wait_for(&[&a], "ten seconds of ticks", |r| {
+        // Ten seconds of simulated time: the engine's own packets come back every tick it publishes.
+        let mut heard = Vec::new();
+        wait_for(&[&a], "ten seconds of ticks", |r| {
+            heard.extend(observer.keys());
+            r[0].tick >= 10 * TICK_RATE
+        });
+        let history = a.finish();
         heard.extend(observer.keys());
-        r[0].tick >= 10 * TICK_RATE
+
+        let base = 1_u64 << 32 | 1 << 16;
+        assert!(!heard.is_empty(), "the observer heard no entity state");
+        for key in &heard {
+            assert!(
+                *key > base && *key <= base + 65_534,
+                "published key {key:#x} lies outside the own key space"
+            );
+        }
+        let distinct: std::collections::BTreeSet<_> = heard.iter().collect();
+        assert_eq!(distinct.len(), 2, "tank and truck only: {distinct:?}");
+
+        for r in &history {
+            assert_eq!(
+                (r.owned.len(), r.ghosts.len(), r.entities),
+                (2, 0, 2),
+                "tick {}: an own entity came back as a ghost",
+                r.tick
+            );
+        }
+        let last = history.last().expect("ticks ran");
+        let status = last.adapter("dis");
+        assert!(status.echo_dropped > 0, "{status:?}");
+        assert_eq!(status.ghosts, 0, "{status:?}");
+        // Everything received was the engine's own traffic coming back.
+        assert_eq!(status.received, status.echo_dropped, "{status:?}");
+        assert_all_clean("echo/A", last);
+        print_counters("echo/A", last);
+        eprintln!("echo: observer heard {} entity states", heard.len());
     });
-    let history = a.finish();
-    heard.extend(observer.keys());
-
-    let base = 1_u64 << 32 | 1 << 16;
-    assert!(!heard.is_empty(), "the observer heard no entity state");
-    for key in &heard {
-        assert!(
-            *key > base && *key <= base + 65_534,
-            "published key {key:#x} lies outside the own key space"
-        );
-    }
-    let distinct: std::collections::BTreeSet<_> = heard.iter().collect();
-    assert_eq!(distinct.len(), 2, "tank and truck only: {distinct:?}");
-
-    for r in &history {
-        assert_eq!(
-            (r.owned.len(), r.ghosts.len(), r.entities),
-            (2, 0, 2),
-            "tick {}: an own entity came back as a ghost",
-            r.tick
-        );
-    }
-    let last = history.last().expect("ticks ran");
-    let status = last.adapter("dis");
-    assert!(status.echo_dropped > 0, "{status:?}");
-    assert_eq!(status.ghosts, 0, "{status:?}");
-    // Everything received was the engine's own traffic coming back.
-    assert_eq!(status.received, status.echo_dropped, "{status:?}");
-    assert_all_clean("echo/A", last);
-    print_counters("echo/A", last);
-    eprintln!("echo: observer heard {} entity states", heard.len());
 }
 
 // ------------------------------------------------------------------- several adapters (ASM-410)
@@ -880,159 +879,165 @@ fn multicast_loop_back_is_dropped_as_echo_and_counts_stay_constant() {
 /// `x` both peers, `y` and `z` only `x`, and neither forwards the other's entities (no gateway).
 #[test]
 fn dis_next_to_the_loopback_in_one_scenario_has_no_crosstalk_and_no_gateway() {
-    let [px, py] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let root = scratch("dis_lb");
-    let lb = adapter_block("test.net.loopback", "lb", "{}");
-    let x_file = write_node(
-        &root,
-        "nx",
-        "a",
-        "x",
-        &format!("{}{lb}", dis_block("dis", &unicast(7, 1, px, &[py]))),
-    );
-    let y_file = write_node(
-        &root,
-        "ny",
-        "b",
-        "y",
-        &dis_block("dis", &unicast(7, 2, py, &[px])),
-    );
-    let z_file = write_node(&root, "nz", "b", "z", &lb);
+    retry_on_port_in_use(|| {
+        let [px, py] = ports(2)[..] else {
+            panic!("two ports")
+        };
+        let root = scratch("dis_lb");
+        let lb = adapter_block("test.net.loopback", "lb", "{}");
+        let x_file = write_node(
+            &root,
+            "nx",
+            "a",
+            "x",
+            &format!("{}{lb}", dis_block("dis", &unicast(7, 1, px, &[py]))),
+        );
+        let y_file = write_node(
+            &root,
+            "ny",
+            "b",
+            "y",
+            &dis_block("dis", &unicast(7, 2, py, &[px])),
+        );
+        let z_file = write_node(&root, "nz", "b", "z", &lb);
 
-    let hub = LoopbackHub::new(4096);
-    let registry_of = |base: u64| -> MakeRegistry {
-        let hub = Arc::clone(&hub);
-        Box::new(move || registry_with(&[("test.net.loopback", &hub, base)]))
-    };
-    let gate = Arc::new(Gate {
-        ready: AtomicUsize::new(0),
-        nodes: 3,
+        let hub = LoopbackHub::new(4096);
+        let registry_of = |base: u64| -> MakeRegistry {
+            let hub = Arc::clone(&hub);
+            Box::new(move || registry_with(&[("test.net.loopback", &hub, base)]))
+        };
+        let gate = Arc::new(Gate {
+            ready: AtomicUsize::new(0),
+            nodes: 3,
+        });
+        let x = spawn_node("x", x_file, registry_of(1000), &gate);
+        let y = spawn_node("y", y_file, plain_registry(), &gate);
+        let z = spawn_node("z", z_file, registry_of(2000), &gate);
+
+        let x_ghosts = sources(&[
+            ("y-tank", "dis"),
+            ("y-truck", "dis"),
+            ("z-tank", "lb"),
+            ("z-truck", "lb"),
+        ]);
+        let from_x = sources(&[("x-tank", "dis"), ("x-truck", "dis")]);
+        let from_x_lb = sources(&[("x-tank", "lb"), ("x-truck", "lb")]);
+        wait_for(&[&x, &y, &z], "every engine to hold its peers", |r| {
+            has_ghosts(&r[0], &x_ghosts)
+                && has_ghosts(&r[1], &from_x)
+                && has_ghosts(&r[2], &from_x_lb)
+        });
+        let target = x.latest().map_or(0, |r| r.tick) + STEADY_TICKS;
+        wait_for(&[&x, &y, &z], "three seconds of steady state", |r| {
+            r.iter().all(|r| r.tick >= target)
+        });
+        let (hx, hy, hz) = (x.finish(), y.finish(), z.finish());
+
+        check_membership("X", &hx, &names(&["x-tank", "x-truck"]), &x_ghosts);
+        check_membership("Y", &hy, &names(&["y-tank", "y-truck"]), &from_x);
+        check_membership("Z", &hz, &names(&["z-tank", "z-truck"]), &from_x_lb);
+
+        // Counters are per adapter: Y heard only X over DIS, Z only X over the loopback, and X's
+        // adapters each hold exactly their own peer's ghosts.
+        let (lx, ly, lz) = (
+            hx.last().expect("x"),
+            hy.last().expect("y"),
+            hz.last().expect("z"),
+        );
+        assert_eq!(lx.adapter("dis").ghosts, 2);
+        assert_eq!(lx.adapter("lb").ghosts, 2);
+        assert_eq!(ly.adapter("dis").ghosts, 2);
+        assert_eq!(lz.adapter("lb").ghosts, 2);
+        assert_eq!(ly.adapter("dis").counters.decode_errors, 0);
+        for (who, l) in [("x", lx), ("y", ly), ("z", lz)] {
+            assert_all_clean(who, l);
+            print_counters(&format!("dis_lb/{who}"), l);
+        }
     });
-    let x = spawn_node("x", x_file, registry_of(1000), &gate);
-    let y = spawn_node("y", y_file, plain_registry(), &gate);
-    let z = spawn_node("z", z_file, registry_of(2000), &gate);
-
-    let x_ghosts = sources(&[
-        ("y-tank", "dis"),
-        ("y-truck", "dis"),
-        ("z-tank", "lb"),
-        ("z-truck", "lb"),
-    ]);
-    let from_x = sources(&[("x-tank", "dis"), ("x-truck", "dis")]);
-    let from_x_lb = sources(&[("x-tank", "lb"), ("x-truck", "lb")]);
-    wait_for(&[&x, &y, &z], "every engine to hold its peers", |r| {
-        has_ghosts(&r[0], &x_ghosts) && has_ghosts(&r[1], &from_x) && has_ghosts(&r[2], &from_x_lb)
-    });
-    let target = x.latest().map_or(0, |r| r.tick) + STEADY_TICKS;
-    wait_for(&[&x, &y, &z], "three seconds of steady state", |r| {
-        r.iter().all(|r| r.tick >= target)
-    });
-    let (hx, hy, hz) = (x.finish(), y.finish(), z.finish());
-
-    check_membership("X", &hx, &names(&["x-tank", "x-truck"]), &x_ghosts);
-    check_membership("Y", &hy, &names(&["y-tank", "y-truck"]), &from_x);
-    check_membership("Z", &hz, &names(&["z-tank", "z-truck"]), &from_x_lb);
-
-    // Counters are per adapter: Y heard only X over DIS, Z only X over the loopback, and X's
-    // adapters each hold exactly their own peer's ghosts.
-    let (lx, ly, lz) = (
-        hx.last().expect("x"),
-        hy.last().expect("y"),
-        hz.last().expect("z"),
-    );
-    assert_eq!(lx.adapter("dis").ghosts, 2);
-    assert_eq!(lx.adapter("lb").ghosts, 2);
-    assert_eq!(ly.adapter("dis").ghosts, 2);
-    assert_eq!(lz.adapter("lb").ghosts, 2);
-    assert_eq!(ly.adapter("dis").counters.decode_errors, 0);
-    for (who, l) in [("x", lx), ("y", ly), ("z", lz)] {
-        assert_all_clean(who, l);
-        print_counters(&format!("dis_lb/{who}"), l);
-    }
 }
 
 /// One engine runs two DIS adapters (ASM-410, b): `dis` (unicast, peer `y`) and `dis2` (multicast,
 /// peer `w`). `y` and `w` each see only `x`; `x` forwards nothing between them.
 #[test]
 fn two_dis_adapters_in_one_scenario_see_only_their_own_peers() {
-    let [px, py, pm] = ports(3)[..] else {
-        panic!("three ports")
-    };
-    let group = "239.255.42.23";
-    let root = scratch("two_dis");
-    let x_file = write_node(
-        &root,
-        "nx",
-        "a",
-        "x",
-        &format!(
-            "{}{}",
-            dis_block("dis", &unicast(7, 1, px, &[py])),
-            dis_block("dis2", &multicast(3, group, pm))
-        ),
-    );
-    let y_file = write_node(
-        &root,
-        "ny",
-        "b",
-        "y",
-        &dis_block("dis", &unicast(7, 2, py, &[px])),
-    );
-    let w_file = write_node(
-        &root,
-        "nw",
-        "b",
-        "w",
-        &dis_block("dis2", &multicast(4, group, pm)),
-    );
-    let gate = Arc::new(Gate {
-        ready: AtomicUsize::new(0),
-        nodes: 3,
-    });
-    let x = spawn_node("x", x_file, plain_registry(), &gate);
-    let y = spawn_node("y", y_file, plain_registry(), &gate);
-    let w = spawn_node("w", w_file, plain_registry(), &gate);
+    retry_on_port_in_use(|| {
+        let [px, py, pm] = ports(3)[..] else {
+            panic!("three ports")
+        };
+        let group = "239.255.42.23";
+        let root = scratch("two_dis");
+        let x_file = write_node(
+            &root,
+            "nx",
+            "a",
+            "x",
+            &format!(
+                "{}{}",
+                dis_block("dis", &unicast(7, 1, px, &[py])),
+                dis_block("dis2", &multicast(3, group, pm))
+            ),
+        );
+        let y_file = write_node(
+            &root,
+            "ny",
+            "b",
+            "y",
+            &dis_block("dis", &unicast(7, 2, py, &[px])),
+        );
+        let w_file = write_node(
+            &root,
+            "nw",
+            "b",
+            "w",
+            &dis_block("dis2", &multicast(4, group, pm)),
+        );
+        let gate = Arc::new(Gate {
+            ready: AtomicUsize::new(0),
+            nodes: 3,
+        });
+        let x = spawn_node("x", x_file, plain_registry(), &gate);
+        let y = spawn_node("y", y_file, plain_registry(), &gate);
+        let w = spawn_node("w", w_file, plain_registry(), &gate);
 
-    let x_ghosts = sources(&[
-        ("y-tank", "dis"),
-        ("y-truck", "dis"),
-        ("w-tank", "dis2"),
-        ("w-truck", "dis2"),
-    ]);
-    let from_x = sources(&[("x-tank", "dis"), ("x-truck", "dis")]);
-    let from_x_dis2 = sources(&[("x-tank", "dis2"), ("x-truck", "dis2")]);
-    wait_for(&[&x, &y, &w], "every engine to hold its peers", |r| {
-        has_ghosts(&r[0], &x_ghosts)
-            && has_ghosts(&r[1], &from_x)
-            && has_ghosts(&r[2], &from_x_dis2)
-    });
-    let target = x.latest().map_or(0, |r| r.tick) + STEADY_TICKS;
-    wait_for(&[&x, &y, &w], "three seconds of steady state", |r| {
-        r.iter().all(|r| r.tick >= target)
-    });
-    let (hx, hy, hw) = (x.finish(), y.finish(), w.finish());
+        let x_ghosts = sources(&[
+            ("y-tank", "dis"),
+            ("y-truck", "dis"),
+            ("w-tank", "dis2"),
+            ("w-truck", "dis2"),
+        ]);
+        let from_x = sources(&[("x-tank", "dis"), ("x-truck", "dis")]);
+        let from_x_dis2 = sources(&[("x-tank", "dis2"), ("x-truck", "dis2")]);
+        wait_for(&[&x, &y, &w], "every engine to hold its peers", |r| {
+            has_ghosts(&r[0], &x_ghosts)
+                && has_ghosts(&r[1], &from_x)
+                && has_ghosts(&r[2], &from_x_dis2)
+        });
+        let target = x.latest().map_or(0, |r| r.tick) + STEADY_TICKS;
+        wait_for(&[&x, &y, &w], "three seconds of steady state", |r| {
+            r.iter().all(|r| r.tick >= target)
+        });
+        let (hx, hy, hw) = (x.finish(), y.finish(), w.finish());
 
-    check_membership("X", &hx, &names(&["x-tank", "x-truck"]), &x_ghosts);
-    check_membership("Y", &hy, &names(&["y-tank", "y-truck"]), &from_x);
-    check_membership("W", &hw, &names(&["w-tank", "w-truck"]), &from_x_dis2);
+        check_membership("X", &hx, &names(&["x-tank", "x-truck"]), &x_ghosts);
+        check_membership("Y", &hy, &names(&["y-tank", "y-truck"]), &from_x);
+        check_membership("W", &hw, &names(&["w-tank", "w-truck"]), &from_x_dis2);
 
-    let (lx, ly, lw) = (
-        hx.last().expect("x"),
-        hy.last().expect("y"),
-        hw.last().expect("w"),
-    );
-    assert_eq!(lx.adapter("dis").ghosts, 2);
-    assert_eq!(lx.adapter("dis2").ghosts, 2);
-    assert!(
-        lx.adapter("dis2").echo_dropped > 0,
-        "multicast comes back to X"
-    );
-    assert_eq!(ly.adapter("dis").ghosts, 2);
-    assert_eq!(lw.adapter("dis2").ghosts, 2);
-    for (who, l) in [("x", lx), ("y", ly), ("w", lw)] {
-        assert_all_clean(who, l);
-        print_counters(&format!("two_dis/{who}"), l);
-    }
+        let (lx, ly, lw) = (
+            hx.last().expect("x"),
+            hy.last().expect("y"),
+            hw.last().expect("w"),
+        );
+        assert_eq!(lx.adapter("dis").ghosts, 2);
+        assert_eq!(lx.adapter("dis2").ghosts, 2);
+        assert!(
+            lx.adapter("dis2").echo_dropped > 0,
+            "multicast comes back to X"
+        );
+        assert_eq!(ly.adapter("dis").ghosts, 2);
+        assert_eq!(lw.adapter("dis2").ghosts, 2);
+        for (who, l) in [("x", lx), ("y", ly), ("w", lw)] {
+            assert_all_clean(who, l);
+            print_counters(&format!("two_dis/{who}"), l);
+        }
+    });
 }

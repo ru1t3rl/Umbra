@@ -333,8 +333,9 @@ protocol: protocol code belongs in its own crate outside `umbra-core`, `umbra-ke
   `crates/umbra-net/tests/loopback_contract.rs`.
 - Two instances exchanging over localhost, the echo case (own broadcast or multicast coming back), several
   instances side by side, `stop` joining within a bound, queue overflow counted; then whole engines
-  (`dis_exchange.rs`) and two CLI processes (`cli_dis_pair.rs`). UDP tests pick free ports at run time
-  (ASM-246) and wait on conditions, never fixed sleeps.
+  (`dis_exchange.rs`) and two CLI processes (`cli_dis_pair.rs`). UDP tests never fix ports: an adapter binds port 0 and its peers are
+  given the address it reports, with a bounded retry only where two instances need each other's port first
+  (ASM-246, ASM-1200); they wait on conditions, never fixed sleeps.
 
 The skill `.claude/skills/add-network-adapter/SKILL.md` is the step list for agents.
 

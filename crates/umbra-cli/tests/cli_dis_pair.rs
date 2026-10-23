@@ -15,9 +15,10 @@
 
 #[path = "../../umbra-engine/tests/plugin_support/mod.rs"]
 mod plugin_support;
+#[path = "../../umbra-engine/tests/port_support/mod.rs"]
+mod port_support;
 
 use std::io::Read;
-use std::net::UdpSocket;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -115,15 +116,18 @@ fn replace_in(file: &Path, from: &str, to: &str) {
 
 #[test]
 fn two_umbra_processes_exchange_entities_over_dis() {
+    port_support::retry_on_port_in_use(two_processes_exchange_entities);
+}
+
+/// One attempt of the test above (ASM-1200: the ports are released before the processes bind them,
+/// so a port taken in between makes the attempt fail with "Address already in use" and it is rerun).
+#[expect(
+    clippy::print_stderr,
+    reason = "the summary lines of a run are printed for the milestone log (run with --nocapture)"
+)]
+fn two_processes_exchange_entities() {
     let root = plugin_support::scratch_copy(&plugin_support::dis_pair_example_dir(), "cli_pair");
-    let sockets: Vec<UdpSocket> = (0..2)
-        .map(|_| UdpSocket::bind("127.0.0.1:0").expect("ephemeral port"))
-        .collect();
-    let ports: Vec<u16> = sockets
-        .iter()
-        .map(|s| s.local_addr().expect("address").port())
-        .collect();
-    drop(sockets);
+    let ports = port_support::ports(2);
     for side in ["a", "b"] {
         let file = root.join(side).join("scenario.toml");
         // Both fixed ports appear in both files; swap through a marker so they do not collide.

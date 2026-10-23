@@ -2,7 +2,9 @@
 //! ASM-246, ASM-247, ASM-410, ASM-427..): bounded queues that drop and count on both sides, `stop`
 //! joining both threads within a second, oversized datagrams, the error contract of `publish`, garbage
 //! on the socket, unicast exchange between adapter instances in one process and several instances at
-//! once. Ports are chosen by binding `127.0.0.1:0` (ASM-246), never fixed; waits are bounded
+//! once. Ports are never fixed and never reserved-then-released (ASM-1200): an instance binds port 0
+//! and its peers are given the address it reports; only where two instances need each other's port
+//! before either is bound does [`with_free_ports`] retry a bounded number of times. Waits are bounded
 //! wait-until loops, not sleeps.
 
 #![forbid(unsafe_code)]
@@ -46,8 +48,25 @@ fn wait_until<T>(what: &str, mut f: impl FnMut() -> Option<T>) -> T {
     }
 }
 
-/// `n` distinct free loopback UDP ports: all are held until every one is chosen, then released
-/// (ASM-246: the small race until the adapters bind is accepted).
+/// Attempts of [`with_free_ports`].
+const PORT_ATTEMPTS: usize = 5;
+
+/// Runs `attempt` with `n` distinct loopback UDP ports for instances that need each other's port
+/// before either is bound (a cycle port 0 cannot break). The ports are released before `attempt`
+/// binds them, so another process can take one in between (ASM-1200); only that failure, "Address
+/// already in use", is retried, at most [`PORT_ATTEMPTS`] times with fresh ports.
+fn with_free_ports<T>(n: usize, mut attempt: impl FnMut(&[u16]) -> Result<T, String>) -> T {
+    for _ in 1..PORT_ATTEMPTS {
+        match attempt(&ports(n)) {
+            Ok(v) => return v,
+            Err(e) if e.contains("Address already in use") => {}
+            Err(e) => panic!("{e}"),
+        }
+    }
+    attempt(&ports(n)).expect("the adapters start")
+}
+
+/// `n` distinct free loopback UDP ports, held until every one is chosen, then released.
 fn ports(n: usize) -> Vec<u16> {
     let sockets: Vec<UdpSocket> = (0..n)
         .map(|_| UdpSocket::bind("127.0.0.1:0").expect("bind an ephemeral port"))
@@ -77,8 +96,24 @@ fn start(c: Config) -> DisAdapter {
         .expect("the adapter starts")
 }
 
-/// An adapter on `bind_port` sending to `peers`, site 1, application `app`.
+/// The port the adapter's socket is bound to.
+fn port_of(a: &DisAdapter) -> u16 {
+    a.local_addr().port()
+}
+
+/// An adapter on `bind_port` (0: the OS picks, read it with [`port_of`]) sending to `peers`, site 1,
+/// application `app`.
 fn adapter(app: u16, bind_port: u16, peers: &[u16], extra: &Value) -> DisAdapter {
+    try_adapter(app, bind_port, peers, extra).expect("the adapter starts")
+}
+
+/// [`adapter`] reporting a start failure as its message.
+fn try_adapter(
+    app: u16,
+    bind_port: u16,
+    peers: &[u16],
+    extra: &Value,
+) -> Result<DisAdapter, String> {
     let mut e = json!({
         "application": app,
         "bind": format!("127.0.0.1:{bind_port}"),
@@ -87,7 +122,10 @@ fn adapter(app: u16, bind_port: u16, peers: &[u16], extra: &Value) -> DisAdapter
     if let (Some(base), Some(add)) = (e.as_object_mut(), extra.as_object()) {
         base.extend(add.clone());
     }
-    start(config(&e))
+    DisConfig::new(config(&e))
+        .expect("config")
+        .start_adapter()
+        .map_err(|e| e.to_string())
 }
 
 fn key(app: u16, entity: u16) -> NetKey {
@@ -134,9 +172,8 @@ fn peer_socket() -> UdpSocket {
 
 #[test]
 fn stop_joins_both_threads_within_one_second_and_releases_the_socket() {
-    let port = ports(1)[0];
     let mut t = Transport::start(
-        lo(port),
+        lo(0),
         &Mode::Unicast {
             destinations: vec![],
         },
@@ -144,6 +181,8 @@ fn stop_joins_both_threads_within_one_second_and_releases_the_socket() {
         8,
     )
     .expect("start");
+    let port = t.local_addr().port();
+    assert_ne!(port, 0, "the OS chose a port");
     assert_eq!(t.local_addr(), SocketAddr::V4(lo(port)));
     assert!(!t.is_stopped());
     // While running, the port is taken.
@@ -164,9 +203,8 @@ fn stop_joins_both_threads_within_one_second_and_releases_the_socket() {
 
 #[test]
 fn after_stop_nothing_can_be_sent_or_received_and_the_counters_stay_readable() {
-    let port = ports(1)[0];
     let mut t = Transport::start(
-        lo(port),
+        lo(0),
         &Mode::Unicast {
             destinations: vec![],
         },
@@ -183,9 +221,8 @@ fn after_stop_nothing_can_be_sent_or_received_and_the_counters_stay_readable() {
 
 #[test]
 fn dropping_a_running_transport_stops_it() {
-    let port = ports(1)[0];
     let t = Transport::start(
-        lo(port),
+        lo(0),
         &Mode::Unicast {
             destinations: vec![],
         },
@@ -193,20 +230,19 @@ fn dropping_a_running_transport_stops_it() {
         8,
     )
     .expect("start");
+    let port = t.local_addr().port();
     drop(t);
     UdpSocket::bind(lo(port)).expect("the drop joined the threads");
 }
 
 #[test]
 fn stop_sends_what_is_queued_first() {
-    let [mine, theirs] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let peer = UdpSocket::bind(lo(theirs)).expect("peer");
+    let peer = UdpSocket::bind(lo(0)).expect("peer");
+    let theirs = peer.local_addr().expect("address").port();
     peer.set_read_timeout(Some(Duration::from_secs(5)))
         .expect("timeout");
     let mut t = Transport::start(
-        lo(mine),
+        lo(0),
         &Mode::Unicast {
             destinations: vec![lo(theirs)],
         },
@@ -229,8 +265,8 @@ fn stop_sends_what_is_queued_first() {
 
 #[test]
 fn a_port_in_use_is_a_start_error_naming_the_address() {
-    let port = ports(1)[0];
-    let _first = adapter(1, port, &[], &json!({}));
+    let first = adapter(1, 0, &[], &json!({}));
+    let port = port_of(&first);
     let mut second =
         DisConfig::new(config(&json!({"bind": format!("127.0.0.1:{port}")}))).expect("config");
     let e = second.start_adapter().expect_err("the port is taken");
@@ -244,9 +280,7 @@ fn a_port_in_use_is_a_start_error_naming_the_address() {
 
 #[test]
 fn start_adapter_runs_once_per_configuration() {
-    let port = ports(1)[0];
-    let mut c =
-        DisConfig::new(config(&json!({"bind": format!("127.0.0.1:{port}")}))).expect("config");
+    let mut c = DisConfig::new(config(&json!({"bind": "127.0.0.1:0"}))).expect("config");
     let first = c.start_adapter().expect("first start");
     let again = c.start_adapter().expect_err("second start");
     assert!(again.to_string().contains("already started"));
@@ -257,9 +291,8 @@ fn start_adapter_runs_once_per_configuration() {
 
 #[test]
 fn a_full_receive_queue_drops_the_new_datagrams_and_counts_them() {
-    let port = ports(1)[0];
     let t = Transport::start(
-        lo(port),
+        lo(0),
         &Mode::Unicast {
             destinations: vec![],
         },
@@ -267,6 +300,7 @@ fn a_full_receive_queue_drops_the_new_datagrams_and_counts_them() {
         2,
     )
     .expect("start");
+    let port = t.local_addr().port();
     let raw = peer_socket();
     for i in 0..10_u8 {
         raw.send_to(&[i; 20], lo(port)).expect("send");
@@ -286,12 +320,10 @@ fn a_full_receive_queue_drops_the_new_datagrams_and_counts_them() {
 
 #[test]
 fn a_full_send_queue_drops_the_new_datagrams_and_counts_them() {
-    let [mine, theirs] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let peer = UdpSocket::bind(lo(theirs)).expect("peer");
+    let peer = UdpSocket::bind(lo(0)).expect("peer");
+    let theirs = peer.local_addr().expect("address").port();
     let t = Transport::start(
-        lo(mine),
+        lo(0),
         &Mode::Unicast {
             destinations: vec![lo(theirs)],
         },
@@ -320,14 +352,12 @@ fn a_full_send_queue_drops_the_new_datagrams_and_counts_them() {
 
 #[test]
 fn oversized_datagrams_are_dropped_and_counted_on_both_sides() {
-    let [mine, theirs] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let peer = UdpSocket::bind(lo(theirs)).expect("peer");
+    let peer = UdpSocket::bind(lo(0)).expect("peer");
+    let theirs = peer.local_addr().expect("address").port();
     peer.set_read_timeout(Some(Duration::from_secs(5)))
         .expect("timeout");
     let t = Transport::start(
-        lo(mine),
+        lo(0),
         &Mode::Unicast {
             destinations: vec![lo(theirs)],
         },
@@ -335,6 +365,7 @@ fn oversized_datagrams_are_dropped_and_counted_on_both_sides() {
         8,
     )
     .expect("start");
+    let mine = t.local_addr().port();
 
     // Inbound: one byte over the limit is dropped, exactly the limit is kept.
     let raw = peer_socket();
@@ -373,13 +404,11 @@ fn oversized_datagrams_are_dropped_and_counted_on_both_sides() {
 
 #[test]
 fn a_failed_send_is_counted_and_publish_still_returns_ok() {
-    let [mine, theirs] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let mut peer = adapter(2, theirs, &[], &json!({}));
+    let mut peer = adapter(2, 0, &[], &json!({}));
+    let theirs = port_of(&peer);
     // Destination port 0 is refused by `sendto`; the config check forbids it, so the mode is set
     // directly. The good destination after it must keep working.
-    let mut c = config(&json!({"bind": format!("127.0.0.1:{mine}")}));
+    let mut c = config(&json!({"bind": "127.0.0.1:0"}));
     c.mode = Mode::Unicast {
         destinations: vec![lo(0), lo(theirs)],
     };
@@ -414,8 +443,7 @@ fn a_failed_send_is_counted_and_publish_still_returns_ok() {
 
 #[test]
 fn publish_and_poll_fail_after_stop_and_a_message_that_cannot_be_sent_is_a_counted_drop() {
-    let port = ports(1)[0];
-    let mut a = adapter(1, port, &[], &json!({}));
+    let mut a = adapter(1, 0, &[], &json!({}));
     // A key outside the adapter's key space is not sent; it is counted, not an error.
     let foreign = NetMessage::EntityState(state(key(9, 1), 0.0));
     assert!(a.publish_at(AT, &[foreign]).is_ok());
@@ -435,8 +463,8 @@ fn publish_and_poll_fail_after_stop_and_a_message_that_cannot_be_sent_is_a_count
 
 #[test]
 fn garbage_on_the_socket_is_counted_and_never_a_message() {
-    let pb = ports(1)[0];
-    let mut b = adapter(1, pb, &[], &json!({}));
+    let mut b = adapter(1, 0, &[], &json!({}));
+    let pb = port_of(&b);
     let raw = peer_socket();
     let to_b = lo(pb);
 
@@ -506,11 +534,13 @@ fn garbage_on_the_socket_is_counted_and_never_a_message() {
 
 #[test]
 fn two_instances_exchange_unicast_on_loopback() {
-    let [pa, pb] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let mut a = adapter(1, pa, &[pb], &json!({"version": 7}));
-    let mut b = adapter(2, pb, &[pa], &json!({"version": 6}));
+    // Each instance sends to the other's port: a cycle, so the ports are chosen first.
+    let (mut a, mut b) = with_free_ports(2, |p| {
+        let (pa, pb) = (p[0], p[1]);
+        let a = try_adapter(1, pa, &[pb], &json!({"version": 7}))?;
+        let b = try_adapter(2, pb, &[pa], &json!({"version": 6}))?;
+        Ok((a, b))
+    });
 
     a.publish_at(AT, &[NetMessage::EntityState(state(key(1, 1), 10.0))])
         .expect("a publishes");
@@ -551,13 +581,10 @@ fn two_instances_exchange_unicast_on_loopback() {
 
 #[test]
 fn several_instances_in_one_process_are_independent() {
-    let [pa, pb, pc, pfa, pfb] = ports(5)[..] else {
-        panic!("five ports")
-    };
     // A sends to B only; C listens and sends to nobody.
-    let mut a = adapter(1, pa, &[pb], &json!({}));
-    let mut b = adapter(2, pb, &[], &json!({}));
-    let mut c = adapter(3, pc, &[], &json!({}));
+    let mut b = adapter(2, 0, &[], &json!({}));
+    let mut a = adapter(1, 0, &[port_of(&b)], &json!({}));
+    let mut c = adapter(3, 0, &[], &json!({}));
     assert_eq!(
         [a.local_addr(), b.local_addr(), c.local_addr()]
             .iter()
@@ -571,9 +598,9 @@ fn several_instances_in_one_process_are_independent() {
     // instance, so both count from 1 with their own site and application.
     let weapons = json!({"weapons": {"acme.rocket": "2.2.225.3.0.0.0"}});
     let (cap_a, cap_b) = (peer_socket(), peer_socket());
-    let port_of = |s: &UdpSocket| s.local_addr().expect("address").port();
-    let mut fa = adapter(11, pfa, &[port_of(&cap_a)], &weapons);
-    let mut fb = adapter(12, pfb, &[port_of(&cap_b)], &weapons);
+    let socket_port = |s: &UdpSocket| s.local_addr().expect("address").port();
+    let mut fa = adapter(11, 0, &[socket_port(&cap_a)], &weapons);
+    let mut fb = adapter(12, 0, &[socket_port(&cap_b)], &weapons);
     let fire = |app: u16| NetMessage::Fire {
         shooter: key(app, 1),
         target: None,
@@ -635,11 +662,8 @@ fn several_instances_in_one_process_are_independent() {
 
 #[test]
 fn poll_hands_over_at_most_max_and_keeps_the_rest_queued() {
-    let [pa, pb] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let mut a = adapter(1, pa, &[pb], &json!({}));
-    let mut b = adapter(2, pb, &[], &json!({}));
+    let mut b = adapter(2, 0, &[], &json!({}));
+    let mut a = adapter(1, 0, &[port_of(&b)], &json!({}));
     for i in 0..5_u16 {
         a.publish_at(AT, &[NetMessage::EntityState(state(key(1, 1 + i), 0.0))])
             .expect("publish");
@@ -689,14 +713,15 @@ fn expect_exchange(sender: &mut DisAdapter, receiver: &mut DisAdapter, from: Net
 
 #[test]
 fn multicast_on_loopback_reaches_every_member_including_the_sender() {
-    let port = ports(1)[0];
-    let params = |app: u16| {
+    let params = |app: u16, port: u16| {
         json!({
             "application": app, "mode": "multicast", "group": "239.255.42.17",
             "interface": "127.0.0.1", "bind": format!("0.0.0.0:{port}"),
         })
     };
-    let (mut a, mut b) = (start(config(&params(1))), start(config(&params(2))));
+    // The first member takes a port; the second joins it (shared ports use SO_REUSEADDR).
+    let mut a = start(config(&params(1, 0)));
+    let mut b = start(config(&params(2, port_of(&a))));
     expect_exchange(&mut a, &mut b, key(1, 1));
     // The sender hears its own packet (multicast loop): the manager drops it as an echo (REQ-K-5).
     let own = collect(&mut a, 1);
@@ -709,14 +734,24 @@ fn multicast_on_loopback_reaches_every_member_including_the_sender() {
 
 #[test]
 fn broadcast_on_loopback_reaches_the_other_instances() {
-    let port = ports(1)[0];
-    let params = |app: u16| {
-        json!({
-            "application": app, "mode": "broadcast",
-            "broadcast_address": format!("127.255.255.255:{port}"), "bind": format!("0.0.0.0:{port}"),
-        })
-    };
-    let (mut a, mut b) = (start(config(&params(1))), start(config(&params(2))));
+    // The broadcast address carries the shared port, which is only known once bound: a cycle.
+    let (mut a, mut b) = with_free_ports(1, |p| {
+        let port = p[0];
+        let params = |app: u16| {
+            json!({
+                "application": app, "mode": "broadcast",
+                "broadcast_address": format!("127.255.255.255:{port}"),
+                "bind": format!("0.0.0.0:{port}"),
+            })
+        };
+        let start_one = |app: u16| {
+            DisConfig::new(config(&params(app)))
+                .expect("config")
+                .start_adapter()
+                .map_err(|e| e.to_string())
+        };
+        Ok((start_one(1)?, start_one(2)?))
+    });
     expect_exchange(&mut a, &mut b, key(1, 1));
     // A broadcast also comes back to its sender: the manager drops it as an echo (REQ-K-5).
     let own = collect(&mut a, 1);
@@ -728,15 +763,14 @@ fn broadcast_on_loopback_reaches_the_other_instances() {
 fn two_groups_on_one_port_do_not_hear_each_other() {
     // Linux would deliver a group's packets to every socket on the port (IP_MULTICAST_ALL) unless
     // the transport restricts each socket to the groups it joined.
-    let port = ports(1)[0];
-    let params = |app: u16, group: &str| {
+    let params = |app: u16, group: &str, port: u16| {
         json!({
             "application": app, "mode": "multicast", "group": group,
             "interface": "127.0.0.1", "bind": format!("0.0.0.0:{port}"),
         })
     };
-    let mut a = start(config(&params(1, "239.255.42.30")));
-    let mut b = start(config(&params(2, "239.255.42.31")));
+    let mut a = start(config(&params(1, "239.255.42.30", 0)));
+    let mut b = start(config(&params(2, "239.255.42.31", port_of(&a))));
     let first = |got: &[Inbound]| match &got[0] {
         Inbound::State(s) => s.key,
         other => panic!("a state, got {other:?}"),
@@ -769,21 +803,24 @@ fn two_groups_on_one_port_do_not_hear_each_other() {
 fn the_adapter_works_through_the_sdk_traits_without_a_host() {
     // `SimTime::new` and `ConfigureInput::from_parts` are public, so `configure`, `start` and `publish`
     // run here exactly as the host calls them (`poll` needs a host sink).
-    let port = ports(1)[0];
-    let input = umbra_sdk::ConfigureInput::from_parts(
-        "dis",
-        json!({"site": 1, "application": 1, "bind": format!("127.0.0.1:{port}"), "destinations": [format!("127.0.0.1:{port}")]}),
-        BTreeMap::new(),
-    );
-    let mut cfg =
-        <umbra_net_dis::DisFactory as umbra_sdk::NetworkAdapterFactory>::configure(&input)
-            .expect("configure");
     let now = umbra_sdk::SimTime::new(30, 30);
-    assert_eq!(
-        umbra_sdk::NetworkAdapterConfig::key_space(&cfg).base(),
-        1 << 32 | 1 << 16
-    );
-    let mut adapter = umbra_sdk::NetworkAdapterConfig::start(&mut cfg, now).expect("start");
+    // The adapter sends to its own port, which is only known once bound: a cycle.
+    let mut adapter = with_free_ports(1, |p| {
+        let port = p[0];
+        let input = umbra_sdk::ConfigureInput::from_parts(
+            "dis",
+            json!({"site": 1, "application": 1, "bind": format!("127.0.0.1:{port}"), "destinations": [format!("127.0.0.1:{port}")]}),
+            BTreeMap::new(),
+        );
+        let mut cfg =
+            <umbra_net_dis::DisFactory as umbra_sdk::NetworkAdapterFactory>::configure(&input)
+                .expect("configure");
+        assert_eq!(
+            umbra_sdk::NetworkAdapterConfig::key_space(&cfg).base(),
+            1 << 32 | 1 << 16
+        );
+        umbra_sdk::NetworkAdapterConfig::start(&mut cfg, now).map_err(|e| e.to_string())
+    });
     umbra_sdk::NetworkAdapter::publish(
         &mut adapter,
         now,

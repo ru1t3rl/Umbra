@@ -17,7 +17,9 @@
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
 
 mod plugin_support;
+mod port_support;
 
+use port_support::{ports, retry_on_port_in_use};
 use std::cell::RefCell;
 use std::net::UdpSocket;
 use std::path::PathBuf;
@@ -137,17 +139,6 @@ fn start(config: &dyn NetworkAdapterConfig) -> Box<dyn NetworkAdapter> {
     config.start(&AdapterStart { now: at(0) }).expect("start")
 }
 
-/// `n` distinct free loopback ports, held until all are chosen (ASM-246).
-fn ports(n: usize) -> Vec<u16> {
-    let sockets: Vec<UdpSocket> = (0..n)
-        .map(|_| UdpSocket::bind("127.0.0.1:0").expect("ephemeral port"))
-        .collect();
-    sockets
-        .iter()
-        .map(|s| s.local_addr().expect("address").port())
-        .collect()
-}
-
 fn wait_until<T>(what: &str, mut f: impl FnMut() -> Option<T>) -> T {
     let begin = Instant::now();
     loop {
@@ -228,43 +219,46 @@ fn the_key_space_is_the_entities_of_the_configured_site_and_application() {
 
 #[test]
 fn bad_params_and_template_tables_are_build_errors_naming_the_cause() {
-    let env = load();
-    let e = env
-        .try_build("dis", &json!({"application": 4}), &[])
-        .err()
-        .expect("site is required");
-    assert!(e.to_string().contains("`site`"), "{e}");
-    let ok = json!({"site": 1, "application": 4, "bind": "127.0.0.1:0"});
-    let e = env
-        .try_build(
-            "dis",
-            &ok,
-            &[
-                ("blue.tank", json!({"entity_type": "1.1.225.1.1.0.0"})),
-                ("red.truck", json!({"entity_type": "1.1.225"})),
-            ],
-        )
-        .err()
-        .expect("the token is bad");
-    let m = e.to_string();
-    assert!(
-        m.contains("red.truck") && m.contains("[network.dis]"),
-        "{m}"
-    );
-    assert!(!m.contains("blue.tank"), "{m}");
-    // A valid table builds, and building opens nothing: the port stays free.
-    let [port] = ports(1)[..] else {
-        panic!("one port")
-    };
-    let bound = json!({"site": 1, "application": 4, "bind": format!("127.0.0.1:{port}")});
-    let _config = env
-        .try_build(
-            "dis",
-            &bound,
-            &[("blue.tank", json!({"entity_type": "01.1.225.1.1.0.0"}))],
-        )
-        .expect("a valid table builds");
-    UdpSocket::bind(("127.0.0.1", port)).expect("a configuration holds no socket until it starts");
+    retry_on_port_in_use(|| {
+        let env = load();
+        let e = env
+            .try_build("dis", &json!({"application": 4}), &[])
+            .err()
+            .expect("site is required");
+        assert!(e.to_string().contains("`site`"), "{e}");
+        let ok = json!({"site": 1, "application": 4, "bind": "127.0.0.1:0"});
+        let e = env
+            .try_build(
+                "dis",
+                &ok,
+                &[
+                    ("blue.tank", json!({"entity_type": "1.1.225.1.1.0.0"})),
+                    ("red.truck", json!({"entity_type": "1.1.225"})),
+                ],
+            )
+            .err()
+            .expect("the token is bad");
+        let m = e.to_string();
+        assert!(
+            m.contains("red.truck") && m.contains("[network.dis]"),
+            "{m}"
+        );
+        assert!(!m.contains("blue.tank"), "{m}");
+        // A valid table builds, and building opens nothing: the port stays free.
+        let [port] = ports(1)[..] else {
+            panic!("one port")
+        };
+        let bound = json!({"site": 1, "application": 4, "bind": format!("127.0.0.1:{port}")});
+        let _config = env
+            .try_build(
+                "dis",
+                &bound,
+                &[("blue.tank", json!({"entity_type": "01.1.225.1.1.0.0"}))],
+            )
+            .expect("a valid table builds");
+        UdpSocket::bind(("127.0.0.1", port))
+            .expect("a configuration holds no socket until it starts");
+    });
 }
 
 // ---------------------------------------------------------------------------- the warning
@@ -325,138 +319,142 @@ fn the_security_warning_is_logged_by_start_exactly_for_wide_exposure() {
 
 #[test]
 fn one_image_configured_twice_exchanges_unicast_on_loopback() {
-    let env = load();
-    let [pa, pb] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let ca = env.build("a", &params(1, pa, &[pb]));
-    let cb = env.build("b", &params(2, pb, &[pa]));
-    assert_ne!(
-        ca.key_space(),
-        cb.key_space(),
-        "distinct application, distinct keys"
-    );
-    let (ka, kb) = (ca.key_space(), cb.key_space());
-    let mut a = start(ca.as_ref());
-    let mut b = start(cb.as_ref());
+    retry_on_port_in_use(|| {
+        let env = load();
+        let [pa, pb] = ports(2)[..] else {
+            panic!("two ports")
+        };
+        let ca = env.build("a", &params(1, pa, &[pb]));
+        let cb = env.build("b", &params(2, pb, &[pa]));
+        assert_ne!(
+            ca.key_space(),
+            cb.key_space(),
+            "distinct application, distinct keys"
+        );
+        let (ka, kb) = (ca.key_space(), cb.key_space());
+        let mut a = start(ca.as_ref());
+        let mut b = start(cb.as_ref());
 
-    let from_a = NetKey(ka.base + 1);
-    let from_b = NetKey(kb.base + 7);
-    a.publish(at(1), &[tank(from_a)]).expect("a publishes");
-    b.publish(at(1), &[tank(from_b)]).expect("b publishes");
+        let from_a = NetKey(ka.base + 1);
+        let from_b = NetKey(kb.base + 7);
+        a.publish(at(1), &[tank(from_a)]).expect("a publishes");
+        b.publish(at(1), &[tank(from_b)]).expect("b publishes");
 
-    let got = collect(b.as_mut(), 1);
-    let NetMessage::EntityState(s) = &got[0] else {
-        panic!("a state, got {:?}", got[0])
-    };
-    assert_eq!(s.key, from_a);
-    assert_eq!(
-        s.entity_type.as_ref().map(NetEntityType::as_str),
-        Some("1.1.225.1.1.0.0")
-    );
-    assert_eq!(s.force.as_ref().map(Force::as_str), Some("friendly"));
-    assert_eq!(s.name.as_deref(), Some("Alpha-1"));
-    assert_eq!(
-        s.position,
-        Ecef(Vec3::new(3_900_000.0, 400_000.0, 5_000_000.0))
-    );
-    assert_eq!(s.velocity, Vec3::new(10.0, -5.0, 2.0));
-    assert_eq!(s.dead_reckoning, DeadReckoning::Velocity);
-    assert_eq!(s.orientation.yaw, Radians(0.5));
+        let got = collect(b.as_mut(), 1);
+        let NetMessage::EntityState(s) = &got[0] else {
+            panic!("a state, got {:?}", got[0])
+        };
+        assert_eq!(s.key, from_a);
+        assert_eq!(
+            s.entity_type.as_ref().map(NetEntityType::as_str),
+            Some("1.1.225.1.1.0.0")
+        );
+        assert_eq!(s.force.as_ref().map(Force::as_str), Some("friendly"));
+        assert_eq!(s.name.as_deref(), Some("Alpha-1"));
+        assert_eq!(
+            s.position,
+            Ecef(Vec3::new(3_900_000.0, 400_000.0, 5_000_000.0))
+        );
+        assert_eq!(s.velocity, Vec3::new(10.0, -5.0, 2.0));
+        assert_eq!(s.dead_reckoning, DeadReckoning::Velocity);
+        assert_eq!(s.orientation.yaw, Radians(0.5));
 
-    let got = collect(a.as_mut(), 1);
-    let NetMessage::EntityState(s) = &got[0] else {
-        panic!("a state, got {:?}", got[0])
-    };
-    assert_eq!(s.key, from_b);
+        let got = collect(a.as_mut(), 1);
+        let NetMessage::EntityState(s) = &got[0] else {
+            panic!("a state, got {:?}", got[0])
+        };
+        assert_eq!(s.key, from_b);
 
-    // Removal and run control cross as well, in order.
-    a.publish(
-        at(2),
-        &[
-            NetMessage::EntityRemoved { key: from_a },
-            NetMessage::SimulationControl(ControlAction::Pause),
-        ],
-    )
-    .expect("publish");
-    let got = collect(b.as_mut(), 2);
-    assert_eq!(got[0], NetMessage::EntityRemoved { key: from_a });
-    assert_eq!(got[1], NetMessage::SimulationControl(ControlAction::Pause));
+        // Removal and run control cross as well, in order.
+        a.publish(
+            at(2),
+            &[
+                NetMessage::EntityRemoved { key: from_a },
+                NetMessage::SimulationControl(ControlAction::Pause),
+            ],
+        )
+        .expect("publish");
+        let got = collect(b.as_mut(), 2);
+        assert_eq!(got[0], NetMessage::EntityRemoved { key: from_a });
+        assert_eq!(got[1], NetMessage::SimulationControl(ControlAction::Pause));
 
-    // Nothing was dropped or malformed on either side (the host refreshes counters after a poll).
-    assert_eq!(a.counters(), AdapterCounters::default());
-    assert_eq!(b.counters(), AdapterCounters::default());
-    a.stop();
-    b.stop();
+        // Nothing was dropped or malformed on either side (the host refreshes counters after a poll).
+        assert_eq!(a.counters(), AdapterCounters::default());
+        assert_eq!(b.counters(), AdapterCounters::default());
+        a.stop();
+        b.stop();
+    });
 }
 
 // ------------------------------------------------------------------- DIS next to loopback
 
 #[test]
 fn dis_and_the_loopback_run_side_by_side_without_crosstalk() {
-    let env = load();
-    let [pa, pb] = ports(2)[..] else {
-        panic!("two ports")
-    };
-    let ca = env.build("dis_a", &params(1, pa, &[pb]));
-    let cb = env.build("dis_b", &params(2, pb, &[pa]));
+    retry_on_port_in_use(|| {
+        let env = load();
+        let [pa, pb] = ports(2)[..] else {
+            panic!("two ports")
+        };
+        let ca = env.build("dis_a", &params(1, pa, &[pb]));
+        let cb = env.build("dis_b", &params(2, pb, &[pa]));
 
-    // Two loopback endpoints of one hub, registered next to the plugin in the same registry.
-    let hub = LoopbackHub::new(64);
-    let lb_space = KeySpace {
-        base: 50_000,
-        count: 100,
-    };
-    let mut registry = Registry::new();
-    registry
-        .register_network_adapter(
-            hub.factory(ComponentId::new("test.net.loopback").expect("id"), lb_space),
-        )
-        .expect("register the loopback");
-    let lb_factory = registry
-        .network_adapter(&ComponentId::new("test.net.loopback").expect("id"))
-        .expect("registered");
-    let lb_config = |name: &str| {
-        lb_factory
-            .build(&configure_input(name, &json!({}), []))
-            .expect("loopback builds")
-    };
-    let (lb1, lb2) = (lb_config("lb1"), lb_config("lb2"));
+        // Two loopback endpoints of one hub, registered next to the plugin in the same registry.
+        let hub = LoopbackHub::new(64);
+        let lb_space = KeySpace {
+            base: 50_000,
+            count: 100,
+        };
+        let mut registry = Registry::new();
+        registry
+            .register_network_adapter(
+                hub.factory(ComponentId::new("test.net.loopback").expect("id"), lb_space),
+            )
+            .expect("register the loopback");
+        let lb_factory = registry
+            .network_adapter(&ComponentId::new("test.net.loopback").expect("id"))
+            .expect("registered");
+        let lb_config = |name: &str| {
+            lb_factory
+                .build(&configure_input(name, &json!({}), []))
+                .expect("loopback builds")
+        };
+        let (lb1, lb2) = (lb_config("lb1"), lb_config("lb2"));
 
-    let mut dis_a = start(ca.as_ref());
-    let mut dis_b = start(cb.as_ref());
-    let mut lb_a = start(lb1.as_ref());
-    let mut lb_b = start(lb2.as_ref());
+        let mut dis_a = start(ca.as_ref());
+        let mut dis_b = start(cb.as_ref());
+        let mut lb_a = start(lb1.as_ref());
+        let mut lb_b = start(lb2.as_ref());
 
-    // A publishes one entity on the DIS side and another on the loopback side; B hears only DIS.
-    let dis_key = NetKey(ca.key_space().base + 1);
-    let lb_key = NetKey(lb_space.base + 1);
-    dis_a.publish(at(1), &[tank(dis_key)]).expect("dis publish");
-    lb_a.publish(at(1), &[tank(lb_key)])
-        .expect("loopback publish");
+        // A publishes one entity on the DIS side and another on the loopback side; B hears only DIS.
+        let dis_key = NetKey(ca.key_space().base + 1);
+        let lb_key = NetKey(lb_space.base + 1);
+        dis_a.publish(at(1), &[tank(dis_key)]).expect("dis publish");
+        lb_a.publish(at(1), &[tank(lb_key)])
+            .expect("loopback publish");
 
-    let over_dis = collect(dis_b.as_mut(), 1);
-    assert!(matches!(&over_dis[0], NetMessage::EntityState(s) if s.key == dis_key));
-    let over_loopback = collect(lb_b.as_mut(), 1);
-    assert!(matches!(&over_loopback[0], NetMessage::EntityState(s) if s.key == lb_key));
+        let over_dis = collect(dis_b.as_mut(), 1);
+        assert!(matches!(&over_dis[0], NetMessage::EntityState(s) if s.key == dis_key));
+        let over_loopback = collect(lb_b.as_mut(), 1);
+        assert!(matches!(&over_loopback[0], NetMessage::EntityState(s) if s.key == lb_key));
 
-    // Nothing crossed: the loopback peer never hears the DIS entity, DIS never hears the loopback one.
-    let mut extra = Vec::new();
-    lb_b.poll(at(2), 8, &mut extra).expect("poll");
-    dis_b.poll(at(2), 8, &mut extra).expect("poll");
-    dis_a.poll(at(2), 8, &mut extra).expect("poll");
-    lb_a.poll(at(2), 8, &mut extra).expect("poll");
-    assert!(extra.is_empty(), "no message may cross adapters: {extra:?}");
+        // Nothing crossed: the loopback peer never hears the DIS entity, DIS never hears the loopback one.
+        let mut extra = Vec::new();
+        lb_b.poll(at(2), 8, &mut extra).expect("poll");
+        dis_b.poll(at(2), 8, &mut extra).expect("poll");
+        dis_a.poll(at(2), 8, &mut extra).expect("poll");
+        lb_a.poll(at(2), 8, &mut extra).expect("poll");
+        assert!(extra.is_empty(), "no message may cross adapters: {extra:?}");
 
-    // Counters are per adapter: the DIS side saw one datagram each way, the loopback its own.
-    assert_eq!(dis_a.counters(), AdapterCounters::default());
-    assert_eq!(dis_b.counters(), AdapterCounters::default());
-    assert_eq!(lb_a.counters(), AdapterCounters::default());
-    assert_eq!(lb_b.counters(), AdapterCounters::default());
-    assert_eq!(hub.starts(), 2);
-    for a in [&mut dis_a, &mut dis_b, &mut lb_a, &mut lb_b] {
-        a.stop();
-    }
+        // Counters are per adapter: the DIS side saw one datagram each way, the loopback its own.
+        assert_eq!(dis_a.counters(), AdapterCounters::default());
+        assert_eq!(dis_b.counters(), AdapterCounters::default());
+        assert_eq!(lb_a.counters(), AdapterCounters::default());
+        assert_eq!(lb_b.counters(), AdapterCounters::default());
+        assert_eq!(hub.starts(), 2);
+        for a in [&mut dis_a, &mut dis_b, &mut lb_a, &mut lb_b] {
+            a.stop();
+        }
+    });
 }
 
 // --------------------------------------------------------------------------- the contract
@@ -542,20 +540,22 @@ mod contract {
 
 #[test]
 fn start_errors_are_net_errors_naming_the_adapter() {
-    let env = load();
-    let [port] = ports(1)[..] else {
-        panic!("one port")
-    };
-    let first = env.build("first", &params(1, port, &[]));
-    let second = env.build("second", &params(2, port, &[]));
-    let mut running = start(first.as_ref());
-    let e = second
-        .start(&AdapterStart { now: at(0) })
-        .err()
-        .expect("the port is taken");
-    let NetError::Start(m) = &e else {
-        panic!("a start error, got {e:?}")
-    };
-    assert!(m.contains(&format!("127.0.0.1:{port}")), "{m}");
-    running.stop();
+    retry_on_port_in_use(|| {
+        let env = load();
+        let [port] = ports(1)[..] else {
+            panic!("one port")
+        };
+        let first = env.build("first", &params(1, port, &[]));
+        let second = env.build("second", &params(2, port, &[]));
+        let mut running = start(first.as_ref());
+        let e = second
+            .start(&AdapterStart { now: at(0) })
+            .err()
+            .expect("the port is taken");
+        let NetError::Start(m) = &e else {
+            panic!("a start error, got {e:?}")
+        };
+        assert!(m.contains(&format!("127.0.0.1:{port}")), "{m}");
+        running.stop();
+    });
 }
