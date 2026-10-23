@@ -22,6 +22,11 @@ export interface ScenarioLoaderProps {
    * rows map to `{ path, label }`), so the shell passes the listing here later without a change (ASM-812, ASM-931).
    */
   suggestions?: readonly ScenarioSuggestion[];
+  /**
+   * Variant of the submit Button. `filled` (the default) is the view's one azure command; a page that already
+   * shows another filled command (the dashboard's RunControls) passes `tonal` (ASM-972).
+   */
+  submitVariant?: "filled" | "tonal";
 }
 
 const CLOCK_OPTIONS: readonly {
@@ -49,6 +54,7 @@ export function ScenarioLoader({
   recentPaths = [],
   onLoaded,
   suggestions = EXAMPLE_SCENARIOS,
+  submitVariant = "filled",
 }: ScenarioLoaderProps): ReactElement {
   const [path, setPath] = useState("");
   const [clock, setClock] = useState<ClockChoice>("");
@@ -142,7 +148,7 @@ export function ScenarioLoader({
         />
       </div>
       <div className="umbra-scenario-loader-row">
-        <Button type="submit" variant="filled" disabled={load.isPending}>
+        <Button type="submit" variant={submitVariant} disabled={load.isPending}>
           {t("loader.submit")}
         </Button>
       </div>

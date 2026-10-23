@@ -3,6 +3,7 @@ export {
   type SettingsProviderProps,
 } from "./components/SettingsProvider/SettingsProvider.tsx";
 export { useAffiliationOf } from "./hooks/useAffiliationOf.ts";
+export { useRecordRecentScenario } from "./hooks/useRecordRecentScenario.ts";
 export { useSettings } from "./hooks/useSettings.ts";
 export { useThemeStorage } from "./hooks/useThemeStorage.ts";
 export { useUpdateSettings } from "./hooks/useUpdateSettings.ts";
@@ -16,3 +17,4 @@ export {
   type Settings,
   type SettingsPatch,
 } from "./model/settings.ts";
+export { withRecentPath } from "./model/withRecentPath.ts";

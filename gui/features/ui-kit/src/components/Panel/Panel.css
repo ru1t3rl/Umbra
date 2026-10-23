@@ -27,3 +27,7 @@
 .vt-panel-body {
   padding: var(--space-4);
 }
+/* A list inside a glass Panel shows the glass, not an opaque surface (the same reasoning as the CommandBar rule). */
+.vt-panel .vt-vlist {
+  background: transparent;
+}

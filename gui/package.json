@@ -16,7 +16,7 @@
     "typecheck": "tsc -b",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "bun test",
+    "test": "bun test --isolate",
     "gen:api": "bun scripts/gen-api.mjs",
     "gen:tokens": "bun scripts/gen-tokens.mjs",
     "check:tokens": "bun scripts/check-tokens.mjs",

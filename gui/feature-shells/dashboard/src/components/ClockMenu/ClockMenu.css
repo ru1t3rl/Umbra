@@ -1,0 +1,27 @@
+/* No positioning context here: the panel hangs from the bar (the fixed wrapper) and its right edge, so it never
+   lands on the alert column in the middle of the page. */
+.dashboard-clock {
+  display: inline-flex;
+}
+
+.dashboard-clock-panel {
+  position: absolute;
+  top: calc(100% - var(--space-2));
+  right: var(--space-4);
+  z-index: 3;
+  width: 320px;
+}
+
+.dashboard-clock-panel[hidden] {
+  display: none;
+}
+
+.dashboard-clock-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dashboard-clock-panel:focus {
+  outline: none;
+}

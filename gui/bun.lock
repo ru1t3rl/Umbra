@@ -42,10 +42,16 @@
       "version": "0.0.0",
       "dependencies": {
         "@umbra/engine-stream": "workspace:*",
+        "@umbra/entity-inspector": "workspace:*",
+        "@umbra/log-view": "workspace:*",
         "@umbra/map-view": "workspace:*",
         "@umbra/runtime-config": "workspace:*",
         "@umbra/scenario-control": "workspace:*",
+        "@umbra/settings": "workspace:*",
         "@umbra/ui-kit": "workspace:*",
+      },
+      "devDependencies": {
+        "@umbra/data": "workspace:*",
       },
       "peerDependencies": {
         "react": "^19.3.1",
@@ -160,6 +166,7 @@
       },
       "peerDependencies": {
         "react": "^19.3.1",
+        "react-dom": "^19.3.1",
       },
     },
     "features/schema-form": {

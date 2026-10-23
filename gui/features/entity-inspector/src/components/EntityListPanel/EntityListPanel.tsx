@@ -47,7 +47,7 @@ export function EntityListPanel({
   const selectedIndex = selectedId === null ? -1 : indexById(shown, selectedId);
 
   return (
-    <div className="umbra-entity-list">
+    <div className="umbra-entity-list" {...(shown.length === 0 ? { "data-empty": "" } : {})}>
       <EntityFilters
         query={query}
         onQueryChange={setQuery}

@@ -8,6 +8,7 @@ Foundation feature (tier `foundation`): versioned app settings (ADR 0074). Depen
 - `SettingsBackend { read(): unknown; write(settings): void }` (synchronous; `read` never throws). `createLocalStorageBackend(storage?)` uses the key `umbra.settings.v1`. The desktop backend (WI-22) satisfies the interface structurally.
 - `useThemeStorage()`: a stable `Storage`-like view of `appearance.theme` (only `umbra.theme` maps) for `ThemeProvider.storage` on desktop; writes go through the provider, so there is one writer. The web app does not use it (the theme stays in localStorage `umbra.theme`, ASM-301).
 - `SettingsProvider({ backend?, children })` reads once (a changed `backend` prop after mount is ignored; cross-tab is last writer wins); a file from a newer version is used but never written back; `useSettings()` (defaults outside a provider); `useUpdateSettings()` (stable; merges one level per section (an `affiliationOverrides` patch replaces the whole map), re-parses, skips unchanged results, one write per effective update; no-op outside a provider).
+- `useRecordRecentScenario()`: a stable `(path) => void` that records a loaded scenario path as the newest recent one (once, capped at 10) and persists it; `withRecentPath(recent, path)` is the pure rule (ASM-975, WI-14 review).
 - `useAffiliationOf()`: override (trimmed, case-insensitive) first, then `defaultAffiliationOf` (the ASM-305 table); stable while overrides are unchanged.
 
 ```tsx

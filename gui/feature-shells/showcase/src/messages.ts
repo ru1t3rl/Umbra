@@ -61,6 +61,7 @@ export const t = defineMessages({
   "sample.id-0007": "9:0:0007",
   "sample.plt": "PLT",
   "sample.sec": "SEC",
+  "sample.theme-compact": "Compact theme switch",
   "floating.heading": "Floating CommandBar over a map",
   "sample.start-exercise": "Start exercise",
   "sample.remove-entity": "Remove entity",

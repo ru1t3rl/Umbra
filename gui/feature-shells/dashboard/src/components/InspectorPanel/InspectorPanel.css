@@ -1,0 +1,16 @@
+/* The right glass panel: the inspector's own Panel is the glass; this wrapper only places it. */
+.dashboard-right {
+  position: fixed;
+  z-index: 1;
+  top: var(--dashboard-inset-top, 0px);
+  right: var(--space-4);
+  bottom: var(--space-4);
+  width: 400px;
+  max-width: calc(100% - 2 * var(--space-4));
+  overflow: auto;
+  pointer-events: none;
+}
+
+.dashboard-right > * {
+  pointer-events: auto;
+}

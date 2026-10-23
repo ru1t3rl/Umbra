@@ -20,3 +20,8 @@
   flex: 1;
   min-height: 0;
 }
+
+/* An empty list keeps no blank box: the message above says why, the listbox takes no height. */
+.umbra-entity-list[data-empty] .umbra-entity-list-rows {
+  flex: 0 0 0;
+}

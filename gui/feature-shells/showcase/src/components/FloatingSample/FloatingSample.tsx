@@ -1,4 +1,4 @@
-import { Badge, Chip, CommandBar, Panel, Readout } from "@umbra/ui-kit";
+import { Badge, Chip, CommandBar, Panel, Readout, ThemeToggle } from "@umbra/ui-kit";
 import type { ReactElement } from "react";
 import { t } from "../../messages.ts";
 import { Section } from "../Section/Section.tsx";
@@ -26,6 +26,7 @@ export function FloatingSample(): ReactElement {
           <Chip glass icon="grid_on">
             {t("sample.mgrs-grid")}
           </Chip>
+          <ThemeToggle iconOnly label={t("sample.theme-compact")} />
           <Panel title={t("sample.layers")} width={240}>
             <p className="showcase-muted">{t("sample.tracks-and-grid")}</p>
           </Panel>

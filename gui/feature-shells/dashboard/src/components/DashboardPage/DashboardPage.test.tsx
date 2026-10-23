@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { DataProvider } from "@umbra/data";
 import {
   connectEngineStream,
   type EngineStreamConnection,
@@ -8,7 +9,8 @@ import {
   type WebSocketLike,
 } from "@umbra/engine-stream";
 import { RuntimeConfigProvider } from "@umbra/runtime-config";
-import { ThemeProvider } from "@umbra/ui-kit";
+import { SettingsProvider } from "@umbra/settings";
+import { NavigationProvider, ThemeProvider } from "@umbra/ui-kit";
 import type { ReactElement } from "react";
 
 /**
@@ -135,18 +137,35 @@ function renderPage(
   return render(
     <ThemeProvider>
       <RuntimeConfigProvider config={config}>
-        <EngineStreamProvider connection={connection}>
-          <DashboardPage />
-        </EngineStreamProvider>
+        <SettingsProvider backend={{ read: () => undefined, write: () => {} }}>
+          <EngineStreamProvider connection={connection}>
+            <DataProvider>
+              <NavigationProvider
+                items={[{ path: "/", label: "Live map", icon: "map" }]}
+                currentPath="/"
+                navigate={() => {}}
+              >
+                <DashboardPage />
+              </NavigationProvider>
+            </DataProvider>
+          </EngineStreamProvider>
+        </SettingsProvider>
       </RuntimeConfigProvider>
     </ThemeProvider>,
   );
 }
 
+/** The CommandBar header: Testing Library also maps the Panel headers in the asides to the banner role (ASM-979). */
+function cpBanner(): HTMLElement {
+  const bar = screen.getAllByRole("banner").find((el) => el.classList.contains("vt-cmdbar"));
+  expect(bar).toBeDefined();
+  return bar as HTMLElement;
+}
+
 describe("DashboardPage", () => {
   test("has the banner, the main landmark with one h1 and the map region", () => {
     renderPage();
-    const banner = screen.getByRole("banner");
+    const banner = cpBanner();
     expect(banner).toHaveTextContent("Umbra");
     expect(banner).toHaveTextContent("Live map");
     expect(banner).toHaveClass("vt-cmdbar-floating");
@@ -182,8 +201,9 @@ describe("DashboardPage", () => {
     renderPage();
     send(hello);
     send(frame(0, 7, [entity(1), entity(2)]));
+    const bar = cpBanner();
     const dd = (label: string) =>
-      screen.getByText(label).closest("dl")?.querySelector(".vt-readout-value");
+      within(bar).getByText(label).closest("dl")?.querySelector(".vt-readout-value");
     expect(dd("Entities")).toHaveTextContent("2");
     expect(dd("Tick")).toHaveTextContent("7");
     expect(dd("Sim time")).toHaveTextContent("T+00:00:07");

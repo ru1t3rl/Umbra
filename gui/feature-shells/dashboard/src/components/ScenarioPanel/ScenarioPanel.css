@@ -1,0 +1,10 @@
+/* A child of the alert column, after the alerts: they never overlap. It scrolls inside the viewport. */
+.dashboard-scenario {
+  width: 100%;
+  max-height: calc(100vh - var(--dashboard-inset-top, 0px) - var(--space-8));
+  overflow: auto;
+}
+
+.dashboard-scenario:focus {
+  outline: none;
+}

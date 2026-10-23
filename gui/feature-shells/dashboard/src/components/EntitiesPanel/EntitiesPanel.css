@@ -1,0 +1,59 @@
+/* The left glass panel. It floats under the bar (top is the measured inset) and over the map; the Cards, lists and
+   tabs inside are tonal surfaces, never glass. */
+.dashboard-left {
+  position: fixed;
+  z-index: 1;
+  top: var(--dashboard-inset-top, 0px);
+  left: var(--space-4);
+  bottom: var(--space-4);
+  width: 320px;
+  max-width: calc(100% - 2 * var(--space-4));
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.dashboard-left[data-collapsed="true"] {
+  bottom: auto;
+}
+
+.dashboard-left-panel {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 0 1 auto;
+}
+
+.dashboard-left[data-collapsed="false"] .dashboard-left-panel {
+  flex: 1;
+}
+
+.dashboard-left-panel > .vt-panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-3);
+}
+
+.dashboard-left[data-collapsed="true"] .vt-panel-body {
+  display: none;
+}
+
+.dashboard-left[data-collapsed="true"] .vt-panel-head {
+  border-bottom: 0;
+}
+
+.dashboard-left-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: var(--space-3);
+}
+
+.dashboard-left-view {
+  flex: 1;
+  min-height: 0;
+}

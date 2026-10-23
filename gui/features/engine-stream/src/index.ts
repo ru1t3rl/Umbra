@@ -9,6 +9,7 @@ export { useControlSeq } from "./hooks/useControlSeq.ts";
 export { useEntity } from "./hooks/useEntity.ts";
 export { useEntitySource } from "./hooks/useEntitySource.ts";
 export { useJournalSource } from "./hooks/useJournalSource.ts";
+export { useRunState } from "./hooks/useRunState.ts";
 export { useRunStatus } from "./hooks/useRunStatus.ts";
 export { useStreamStatus } from "./hooks/useStreamStatus.ts";
 export { streamUrl } from "./model/url.ts";

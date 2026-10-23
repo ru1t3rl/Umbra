@@ -9,3 +9,16 @@
   align-items: flex-end;
   gap: var(--space-2);
 }
+
+/* The bar layout is one line: the row never wraps (it would stack the buttons outside the 48 px bar, ASM-988). */
+.umbra-run-controls-bar {
+  flex-direction: row;
+  align-items: center;
+}
+.umbra-run-controls-bar .umbra-run-controls-row {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.umbra-run-controls-bar .vt-btn {
+  white-space: nowrap;
+}

@@ -7,10 +7,14 @@
   },
   "include": ["src", "../../test/jest-dom.d.ts"],
   "references": [
+    { "path": "../../features/data" },
     { "path": "../../features/engine-stream" },
+    { "path": "../../features/entity-inspector" },
+    { "path": "../../features/log-view" },
     { "path": "../../features/map-view" },
     { "path": "../../features/runtime-config" },
     { "path": "../../features/scenario-control" },
+    { "path": "../../features/settings" },
     { "path": "../../features/ui-kit" }
   ]
 }

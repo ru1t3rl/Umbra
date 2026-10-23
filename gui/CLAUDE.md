@@ -57,7 +57,7 @@ Every component and every hook lives in its own file, in a directory named for i
 - The GUI never contains engine logic. It only calls the generated client and decodes the stream.
 
 ## Scripts (root package.json, run with bun)
-`dev`, `build`, `preview`, `typecheck` (tsc -b), `lint` (biome check), `format`, `test` (bun test), `test:e2e` (playwright), `check:layout`, `check:deps`, `gen:api`, `gen:tokens`, `check:tokens`, `check:contrast`, `check:licenses`, `verify` (the ordered list of the `verify-frontend` skill; gate 15), `tauri`. Scripts are added by the work item that creates their input.
+`dev`, `build`, `preview`, `typecheck` (tsc -b), `lint` (biome check), `format`, `test` (bun test --isolate, ASM-985), `test:e2e` (playwright), `check:layout`, `check:deps`, `gen:api`, `gen:tokens`, `check:tokens`, `check:contrast`, `check:licenses`, `verify` (the ordered list of the `verify-frontend` skill; gate 15), `tauri`. Scripts are added by the work item that creates their input.
 
 ## Design system (Vantage, amendment A-003)
 All UI follows docs/design-system/ (README.md, tactical-display.md, UMBRA-IMPLEMENTATION.md). Use the apply-design-system skill for any UI work.

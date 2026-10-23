@@ -1,4 +1,4 @@
-/* The map fills the viewport; the bar and the connection banner float over it (tokens only). */
+/* The map fills the viewport; the bar, the panels and the alerts float over it (tokens only). */
 .dashboard-map {
   position: fixed;
   inset: 0;
@@ -21,7 +21,28 @@
   position: absolute;
   /* set inline from the measured bar (useBarInset): ui-kit height plus the bar margins */
   top: var(--dashboard-inset-top, 0px);
-  left: var(--space-4);
+  /* centred between the left panel and the inspector, which both start at the same top */
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1;
-  width: min(420px, calc(100% - 2 * var(--space-4)));
+  width: min(512px, calc(100% - 2 * var(--space-4)));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The slot a failed run command renders its Alert into (RunControls layout "bar"); empty most of the time. */
+.dashboard-problem:empty {
+  display: none;
+}
+
+/* The title keeps its natural width (the bar measures overflow to decide how compact it must be, ASM-988). */
+.dashboard-bar .vt-cmdbar-title {
+  min-width: auto;
+}
+
+/* An Alert is 480 px plus padding by itself; in the column it takes the column's width, so it never overflows it. */
+.dashboard-alert .vt-alert {
+  width: 100%;
+  box-sizing: border-box;
 }

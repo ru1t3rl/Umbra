@@ -22,7 +22,7 @@ bun run verify                   # the ordered list below, stops at the first fa
 7. `lint`: biome check (lint + format)
 8. `check:layout`: one component per file in `components/<Name>/<Name>.tsx`, one hook per file in `hooks/use<Name>.ts(x)`, contexts in `context/<Name>Context.ts` (ADR 0046, added in M5b WI-12b)
 9. `check:deps`: dependency-cruiser layering, tiers, no deep imports, no cycles (added in M5b WI-2; also runs the ADR 0045 plain-request scan)
-10. `test`: bun test, unit + component + shell tests
+10. `test`: bun test --isolate, unit + component + shell tests
 11. `build`: vite production build
 12. `test:e2e`: playwright, two projects (`ui` in M5b WI-7, `engine` in WI-16). Prerequisites: Chromium (`bunx playwright install chromium`); for the `engine` project only, the release binary `target/release/umbra` or `UMBRA_BIN` (`cargo build -p umbra-cli --release --locked`; gate 9 of `scripts/gates.sh` builds it before gate 15; e2e never builds it, ASM-311). Global setup builds the e2e bundle and serves it engine-free for `ui`; the worker-scoped `engineServer` fixture (`e2e/support/fixtures.ts`) starts `umbra serve` and a proxied preview for `e2e/engine/**` (ASM-514)
 

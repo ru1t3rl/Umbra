@@ -14,6 +14,7 @@ test("the package exports exactly the stream API", () => {
     "useEntity",
     "useEntitySource",
     "useJournalSource",
+    "useRunState", // WI-14 review (append-only, standing instruction 2026-10-23, ASM-987)
     "useRunStatus",
     "useStreamStatus",
   ]);
