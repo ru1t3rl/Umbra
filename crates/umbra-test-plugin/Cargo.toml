@@ -25,6 +25,9 @@ network = []
 network_peer = []
 # Builds the plugin `test.plugin.kinds` (motion model, sensor, condition and action fixtures, ABI 0.2) instead.
 kinds = []
+# Transitional, until M7 WI-9 bridges conditions and actions (ASM-718): the plugin `test.plugin.kinds` with
+# only its motion models and sensors, so an ABI 0.2 host with the motion and sensor bridges can load it.
+kinds_motion_sensor = []
 
 [dependencies]
 umbra-sdk = { path = "../umbra-sdk" }

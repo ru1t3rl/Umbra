@@ -44,13 +44,15 @@ impl<'a> MotionCtx<'a> {
 }
 
 impl MotionCtx<'_> {
-    /// Simulation tick number.
+    /// Simulation tick number when the host knows it, else 0: the host's motion model is time-free, so
+    /// the ABI 0.2 host passes 0 (ASM-720). A model must not depend on it (equal inputs must give
+    /// bit-identical outputs).
     #[must_use]
     pub fn tick(&self) -> u64 {
         self.tick
     }
 
-    /// Tick rate in Hz.
+    /// Tick rate in Hz: `1 / dt` rounded to the nearest whole hertz, at least 1 (ASM-720).
     #[must_use]
     pub fn rate_hz(&self) -> u32 {
         self.rate_hz

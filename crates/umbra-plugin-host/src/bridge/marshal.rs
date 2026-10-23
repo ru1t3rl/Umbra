@@ -18,11 +18,18 @@
 //! `struct_size` bytes read, every value checked (finite numbers, non-zero entities, UTF-8, ADR
 //! 0002 id grammar, JSON payloads).
 //!
+//! **ABI 0.2 kinds** (ADR 0050): [`kinematic_out`], [`intent_out`] and [`target_out`] write the
+//! records of a motion `step` and a sensor `sense` call in the plugin's declared minor (version and
+//! size), borrowing strings from core values for the call; [`kinematic_in`] checks a motion result
+//! (finite, unit quaternion within 1e-9, ASM-616) and [`contact_within`] reads a plugin-written contact
+//! like the other plugin-written structs.
+//!
 //! **Scratch.** The buffers of a `tick_batch` call live in the image's call state (guarded by the
 //! per-image call lock) and are reused: after warm-up a batch call allocates nothing. Views point
 //! into kernel data (forces, contacts' forces) and into the scratch's own route and contact arrays
 //! only for the duration of the call; every buffer holding pointers is cleared after the call.
-//! Routes are copied (core `Ecef` is never cast).
+//! Routes are copied (core `Ecef` is never cast). The motion and sensor bridges keep their intent,
+//! payload, target and contact buffers here too.
 
 #![expect(
     unsafe_code,
@@ -35,9 +42,9 @@ use std::sync::Arc;
 use umbra_core::dead_reckoning::DeadReckoning;
 use umbra_core::net::{NetEntityState, NetEntityType, NetKey, NetMessage};
 use umbra_core::{
-    BbType, BbValue, ComponentId, ControlAction, Ecef, EntityId, EntityView, Force, Intent,
-    MAX_ID_LEN, MetersPerSecond, ParamValue, Radians, Status, TemplateId, Vec3, WeaponId,
-    WorldEuler,
+    BbType, BbValue, ComponentId, Contact, ControlAction, Ecef, EntityId, EntityView, Force,
+    Intent, KinematicState, MAX_ID_LEN, Meters, MetersPerSecond, ParamValue, Quaternion, Radians,
+    Status, TemplateId, Vec3, WeaponId, WorldEuler,
 };
 use umbra_plugin_api::{
     UMBRA_ABI_VERSION, UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_DR_ACCELERATION,
@@ -52,21 +59,28 @@ use umbra_plugin_api::{
     UMBRA_STATUS_RUNNING, UMBRA_STATUS_SUCCESS, UMBRA_VALUE_BOOL, UMBRA_VALUE_ENTITY,
     UMBRA_VALUE_INTEGER, UMBRA_VALUE_NUMBER, UMBRA_VALUE_POSITION, UMBRA_VALUE_STRING,
     UmbraBehavior, UmbraBehaviorItem, UmbraContact, UmbraEntityView, UmbraInstance, UmbraIntent,
-    UmbraNetMessage, UmbraQuat, UmbraStatus, UmbraStr, UmbraValue, UmbraVec3,
+    UmbraKinematicState, UmbraNetMessage, UmbraQuat, UmbraStatus, UmbraStr, UmbraTarget,
+    UmbraValue, UmbraVec3,
 };
 
 use crate::descriptor::{Headed, NETWORK_ADAPTER_MINOR, read_header, read_prefix};
 use crate::host_api::{abi_size, bytes};
-use crate::tokens::BatchCall;
+use crate::tokens::{BatchCall, SenseCall};
 
 /// Number of minors this host knows.
 const HOST_MINORS: usize = UMBRA_ABI_VERSION_MINOR as usize + 1;
 /// Sizes of the plugin-written structs per minor (append-only, R-B3).
-/// Minor 1 (ADR 0033) and minor 2 (ADR 0050) changed neither struct.
+/// Minor 1 (ADR 0033) and minor 2 (ADR 0050) changed none of them. Contacts are plugin-written since
+/// minor 2 (a sensor's contact sink); the struct exists since minor 0.
 const INTENT_SIZES: [usize; HOST_MINORS] = [
     size_of::<UmbraIntent>(),
     size_of::<UmbraIntent>(),
     size_of::<UmbraIntent>(),
+];
+const CONTACT_SIZES: [usize; HOST_MINORS] = [
+    size_of::<UmbraContact>(),
+    size_of::<UmbraContact>(),
+    size_of::<UmbraContact>(),
 ];
 const VALUE_SIZES: [usize; HOST_MINORS] = [
     size_of::<UmbraValue>(),
@@ -121,11 +135,22 @@ pub(crate) struct Scratch {
     /// RNG pointers, pushed intents and per-item intent counts; moved into the call record during
     /// the call and back afterwards.
     pub(crate) batch: BatchCall,
+    /// The intents of a motion `step` call (ABI 0.2), borrowing strings from the core intents and
+    /// from `payloads`.
+    pub(crate) step_intents: Vec<UmbraIntent>,
+    /// The JSON text of the `Custom` payloads of a motion `step` call.
+    pub(crate) payloads: Vec<String>,
+    /// The candidates of a sensor `sense` call (ABI 0.2), borrowing their force strings from the
+    /// kernel.
+    pub(crate) targets: Vec<UmbraTarget>,
+    /// The observer stream, candidate ids and pushed contacts of a `sense` call; moved into the call
+    /// record during the call and back afterwards.
+    pub(crate) sense: SenseCall,
 }
 
-// SAFETY: the raw pointers in the scratch (handles, views, contacts, items, RNG streams) are
-// written, used and cleared within one plugin call made under the image's call lock, on the thread
-// making the call; `LoadedImage::call` clears the scratch before and after every call body, on
+// SAFETY: the raw pointers in the scratch (handles, views, contacts, items, RNG streams, the strings
+// of step intents and targets) are written, used and cleared within one plugin call made under the
+// image's call lock, on the thread making the call; `LoadedImage::call` clears the scratch before and after every call body, on
 // every return path, so between calls every pointer-holding buffer is empty (only capacity remains)
 // and moving the scratch to another thread (with the lock) moves no live pointer. The pointers are
 // never dereferenced by the host in any case.
@@ -145,6 +170,10 @@ impl Scratch {
         self.batch.rngs.clear();
         self.batch.intents.clear();
         self.batch.counts.clear();
+        self.step_intents.clear();
+        self.payloads.clear();
+        self.targets.clear();
+        self.sense.clear();
     }
 
     /// Sum of the capacities (the warm-up growth probe of the tests).
@@ -160,6 +189,11 @@ impl Scratch {
             + self.batch.rngs.capacity()
             + self.batch.intents.capacity()
             + self.batch.counts.capacity()
+            + self.step_intents.capacity()
+            + self.payloads.capacity()
+            + self.targets.capacity()
+            + self.sense.candidates.capacity()
+            + self.sense.contacts.capacity()
     }
 
     /// Copies the contacts and route of `entity` into the scratch arrays; returns their span.
@@ -823,6 +857,187 @@ pub(crate) fn has_abi_form(ty: BbType) -> bool {
     )
 }
 
+/// Largest accepted deviation of a motion result's orientation norm from 1 (the core contract
+/// tolerance, `umbra_core::motion::contract`; ASM-616).
+pub(crate) const UNIT_TOLERANCE: f64 = 1e-9;
+
+fn quat(q: Quaternion) -> UmbraQuat {
+    UmbraQuat {
+        w: q.w,
+        x: q.x,
+        y: q.y,
+        z: q.z,
+    }
+}
+
+/// The host-written kinematic state `state` for a plugin of minor `minor` (ABI 0.2).
+pub(crate) fn kinematic_out(state: &KinematicState, minor: u32) -> UmbraKinematicState {
+    UmbraKinematicState {
+        abi_version: written_version(minor),
+        struct_size: written_size::<UmbraKinematicState>(minor),
+        position: ecef(state.position),
+        velocity: vec3(state.velocity),
+        orientation: quat(state.orientation),
+    }
+}
+
+/// The core state of a motion result the plugin wrote into the host-owned `out` (its header is the
+/// host's and is not read): every component finite and the orientation a unit quaternion within
+/// [`UNIT_TOLERANCE`] (ADR 0050, ASM-616); `Err` names the problem.
+pub(crate) fn kinematic_in(out: &UmbraKinematicState) -> Result<KinematicState, String> {
+    let position = finite_vec3(out.position, "step output position")?;
+    let velocity = finite_vec3(out.velocity, "step output velocity")?.0;
+    let q = out.orientation;
+    if ![q.w, q.x, q.y, q.z].iter().all(|c| c.is_finite()) {
+        return Err("step output orientation is not finite".to_owned());
+    }
+    let norm = (q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z).sqrt();
+    if (norm - 1.0).abs() > UNIT_TOLERANCE {
+        return Err(format!(
+            "step output orientation is not a unit quaternion (norm {norm}, tolerance \
+             {UNIT_TOLERANCE})"
+        ));
+    }
+    Ok(KinematicState {
+        position,
+        velocity,
+        orientation: Quaternion {
+            w: q.w,
+            x: q.x,
+            y: q.y,
+            z: q.z,
+        },
+    })
+}
+
+/// An all-zero intent of `kind` in the layout of minor `minor` (unused fields stay zero or empty).
+fn intent_blank(kind: u32, minor: u32) -> UmbraIntent {
+    UmbraIntent {
+        abi_version: written_version(minor),
+        struct_size: written_size::<UmbraIntent>(minor),
+        kind,
+        reserved_0: 0,
+        position: UmbraVec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        value: 0.0,
+        entity: 0,
+        id: text(""),
+        payload: text(""),
+    }
+}
+
+/// The host-written form of `intent` for a motion step of a plugin of minor `minor` (ADR 0016 table,
+/// the reverse of [`intent_within`]), its strings borrowed from `intent` and, for `Custom`, from
+/// `payload` (the payload's JSON text); `None` for a variant this ABI has no kind for (`Intent` is
+/// non-exhaustive).
+pub(crate) fn intent_out(intent: &Intent, payload: &str, minor: u32) -> Option<UmbraIntent> {
+    Some(match intent {
+        Intent::MoveTo { destination } => {
+            let mut out = intent_blank(UMBRA_INTENT_MOVE_TO, minor);
+            out.position = ecef(*destination);
+            out
+        }
+        Intent::FollowRoute => intent_blank(UMBRA_INTENT_FOLLOW_ROUTE, minor),
+        Intent::SetSpeed(speed) => {
+            let mut out = intent_blank(UMBRA_INTENT_SET_SPEED, minor);
+            out.value = speed.0;
+            out
+        }
+        Intent::SetHeading(heading) => {
+            let mut out = intent_blank(UMBRA_INTENT_SET_HEADING, minor);
+            out.value = heading.0;
+            out
+        }
+        Intent::Hold => intent_blank(UMBRA_INTENT_HOLD, minor),
+        Intent::Fire { target, weapon } => {
+            let mut out = intent_blank(UMBRA_INTENT_FIRE, minor);
+            out.entity = target.get();
+            out.id = text(weapon.as_str());
+            out
+        }
+        Intent::Spawn {
+            template,
+            position,
+            heading,
+        } => {
+            let mut out = intent_blank(UMBRA_INTENT_SPAWN, minor);
+            out.id = text(template.as_str());
+            out.position = ecef(*position);
+            out.value = heading.0;
+            out
+        }
+        Intent::Despawn => intent_blank(UMBRA_INTENT_DESPAWN, minor),
+        Intent::Custom { kind, .. } => {
+            let mut out = intent_blank(UMBRA_INTENT_CUSTOM, minor);
+            out.id = text(kind.as_str());
+            out.payload = text(payload);
+            out
+        }
+        _ => return None,
+    })
+}
+
+/// The host-written target view of entity `id` for a sense call of a plugin of minor `minor`, its
+/// force string borrowed from `force` (ABI 0.2); `ownership` is `UMBRA_OWNERSHIP_*`.
+pub(crate) fn target_out(
+    id: EntityId,
+    state: &KinematicState,
+    force: Option<&Force>,
+    ownership: u32,
+    minor: u32,
+) -> UmbraTarget {
+    UmbraTarget {
+        abi_version: written_version(minor),
+        struct_size: written_size::<UmbraTarget>(minor),
+        id: id.get(),
+        position: ecef(state.position),
+        velocity: vec3(state.velocity),
+        orientation: quat(state.orientation),
+        force: text(force.map_or("", Force::as_str)),
+        ownership,
+        reserved_0: 0,
+    }
+}
+
+/// The core contact of a plugin-written `UmbraContact` (a sensor's contact sink, ABI 0.2) of a plugin
+/// declaring minor `ceiling`: a non-zero entity, finite position and velocity, a finite range of at
+/// least 0, and a force that is empty (none) or a valid force name (ASM-719). Whether the entity is a
+/// candidate is the sink's check. `Err` names the problem.
+///
+/// # Safety
+/// `ptr` is what the plugin passed to the contact sink: null, or valid for the call with its string.
+pub(crate) unsafe fn contact_within(
+    ptr: *const UmbraContact,
+    ceiling: u32,
+) -> Result<Contact, String> {
+    // SAFETY: forwarded caller contract.
+    let c = unsafe { read(ptr, "contact", &CONTACT_SIZES, 0, ceiling) }?;
+    let entity = EntityId::new(c.entity).ok_or_else(|| "contact entity is 0".to_owned())?;
+    let position = finite_vec3(c.position, "contact position")?;
+    let velocity = finite_vec3(c.velocity, "contact velocity")?.0;
+    if !(c.range_m.is_finite() && c.range_m >= 0.0) {
+        return Err(format!(
+            "contact range_m {} is not a finite distance of at least 0",
+            c.range_m
+        ));
+    }
+    // SAFETY: the contact's string is valid for the call (caller).
+    let force = match unsafe { id_text(c.force, "contact force") }?.as_str() {
+        "" => None,
+        name => Some(Force::new(name).map_err(|e| format!("contact force {name:?}: {e}"))?),
+    };
+    Ok(Contact::new(
+        entity,
+        position,
+        velocity,
+        force,
+        Meters(c.range_m),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -925,5 +1140,152 @@ mod tests {
         assert_eq!(status(3), Ok(Status::Running));
         assert!(status(0).is_err_and(|e| e.contains("unset")));
         assert!(status(7).is_err_and(|e| e.contains('7')));
+    }
+
+    // ------------------------------------------------------------ ABI 0.2 kinds (M7 WI-8)
+
+    fn p3(x: f64, y: f64, z: f64) -> Ecef {
+        Ecef(Vec3 { x, y, z })
+    }
+
+    /// ADR 0016 table: every intent a step carries reads back as itself through the plugin-side
+    /// reader (the host's own), in the plugin's minor.
+    #[test]
+    fn step_intents_round_trip_in_the_plugins_minor() {
+        let intents = [
+            Intent::MoveTo {
+                destination: p3(1.0, 2.0, 3.0),
+            },
+            Intent::SetSpeed(MetersPerSecond(4.5)),
+            Intent::Hold,
+            Intent::FollowRoute,
+            Intent::SetHeading(Radians(-0.25)),
+            Intent::Fire {
+                target: EntityId::new(9).unwrap_or_else(|| panic!("id")),
+                weapon: WeaponId::new("test.gun").unwrap_or_else(|e| panic!("{e}")),
+            },
+            Intent::Spawn {
+                template: TemplateId::new("test.tpl").unwrap_or_else(|e| panic!("{e}")),
+                position: p3(4.0, 5.0, 6.0),
+                heading: Radians(1.5),
+            },
+            Intent::Despawn,
+            Intent::Custom {
+                kind: ComponentId::new("test.event.ping").unwrap_or_else(|e| panic!("{e}")),
+                payload: serde_json::json!({"a": 1}),
+            },
+        ];
+        for intent in &intents {
+            let payload = match intent {
+                Intent::Custom { payload, .. } => payload.to_string(),
+                _ => String::new(),
+            };
+            let raw = intent_out(intent, &payload, 2).unwrap_or_else(|| panic!("{intent:?}"));
+            assert_eq!(raw.abi_version, written_version(2));
+            assert_eq!(raw.struct_size, abi_size::<UmbraIntent>());
+            // SAFETY: a valid local intent whose strings borrow `intent` and `payload`.
+            let back = unsafe { intent_within(&raw const raw, 2) };
+            assert_eq!(back.as_ref(), Ok(intent));
+        }
+    }
+
+    #[test]
+    fn a_motion_result_must_be_finite_with_a_unit_orientation() {
+        let state = KinematicState {
+            position: p3(1.0, 2.0, 3.0),
+            velocity: Vec3 {
+                x: 0.5,
+                y: 0.0,
+                z: -0.5,
+            },
+            orientation: Quaternion {
+                w: 0.6,
+                x: 0.0,
+                y: 0.8,
+                z: 0.0,
+            },
+        };
+        let out = kinematic_out(&state, 2);
+        assert_eq!(out.abi_version, written_version(2));
+        assert_eq!(kinematic_in(&out), Ok(state));
+        let mut near = kinematic_out(&state, 2);
+        near.orientation.w = 1.0 + 0.9e-9;
+        near.orientation.y = 0.0;
+        assert!(kinematic_in(&near).is_ok(), "within the tolerance");
+        near.orientation.w = 1.0 + 1.1e-9;
+        assert!(kinematic_in(&near).is_err_and(|e| e.contains("unit quaternion")));
+        let mut bad = kinematic_out(&state, 2);
+        bad.velocity.y = f64::INFINITY;
+        assert!(kinematic_in(&bad).is_err_and(|e| e.contains("velocity is not finite")));
+        bad = kinematic_out(&state, 2);
+        bad.position.z = f64::NAN;
+        assert!(kinematic_in(&bad).is_err_and(|e| e.contains("position is not finite")));
+        bad = kinematic_out(&state, 2);
+        bad.orientation.x = f64::NAN;
+        assert!(kinematic_in(&bad).is_err_and(|e| e.contains("orientation is not finite")));
+    }
+
+    fn raw_contact() -> UmbraContact {
+        UmbraContact {
+            abi_version: written_version(2),
+            struct_size: abi_size::<UmbraContact>(),
+            entity: 3,
+            position: UmbraVec3 {
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+            },
+            velocity: UmbraVec3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            force: text("blue"),
+            range_m: 10.0,
+        }
+    }
+
+    /// An edit that breaks a contact.
+    type ContactEdit = fn(&mut UmbraContact);
+
+    fn contact_of(c: &UmbraContact) -> Result<Contact, String> {
+        // SAFETY: a valid local contact with a static string.
+        unsafe { contact_within(c, 2) }
+    }
+
+    /// ASM-719: what a plugin contact must be.
+    #[test]
+    fn plugin_contacts_are_checked_and_copied() {
+        let c = contact_of(&raw_contact()).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(c.entity.get(), 3);
+        assert_eq!(c.position, p3(1.0, 2.0, 3.0));
+        assert_eq!(c.velocity.y, 1.0);
+        assert_eq!(c.force.as_ref().map(Force::as_str), Some("blue"));
+        assert_eq!(c.range, Meters(10.0));
+        let mut none = raw_contact();
+        none.force = text("");
+        assert_eq!(contact_of(&none).map(|c| c.force), Ok(None));
+        let mut zero = raw_contact();
+        zero.range_m = 0.0;
+        assert!(contact_of(&zero).is_ok(), "range 0 is a distance");
+        let cases: [(ContactEdit, &str); 6] = [
+            (|c| c.entity = 0, "entity is 0"),
+            (|c| c.position.x = f64::NAN, "position is not finite"),
+            (|c| c.velocity.z = f64::INFINITY, "velocity is not finite"),
+            (|c| c.range_m = -1.0, "range_m"),
+            (|c| c.range_m = f64::NAN, "range_m"),
+            (|c| c.force = text("Blue"), "force"),
+        ];
+        for (edit, needle) in cases {
+            let mut c = raw_contact();
+            edit(&mut c);
+            assert!(
+                contact_of(&c).is_err_and(|e| e.contains(needle)),
+                "{needle}"
+            );
+        }
+        let mut newer = raw_contact();
+        newer.abi_version = written_version(3);
+        assert!(contact_of(&newer).is_err_and(|e| e.contains("abi_version")));
     }
 }

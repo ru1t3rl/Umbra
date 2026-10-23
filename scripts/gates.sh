@@ -77,7 +77,9 @@ gate 1-fmt cargo fmt --all -- --check
 gate 2-clippy cargo clippy --workspace --all-targets --locked --offline -- -D warnings
 # Gate 2 feature rows (M7 WI-10b): the workspace run builds umbra-test-plugin with default features only, so
 # every feature that gates code is linted on its own (and `network,kinds` together; the four fault features too).
-for f in network network_peer kinds bad_schema network,kinds entry_panics init_fails init_panics shutdown_panics; do
+# `kinds_motion_sensor` is transitional (M7 WI-8, ASM-718): WI-9 removes the feature and its row.
+for f in network network_peer kinds bad_schema network,kinds entry_panics init_fails init_panics shutdown_panics \
+    kinds_motion_sensor; do
     gate "2-clippy-$f" cargo clippy -p umbra-test-plugin --all-targets --locked --offline \
         --features "$f" -- -D warnings
 done

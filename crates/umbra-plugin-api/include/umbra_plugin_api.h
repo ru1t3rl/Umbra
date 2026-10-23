@@ -1130,11 +1130,13 @@ typedef struct {
    */
   uint32_t struct_size;
   /**
-   * Current tick number (simulation time = `tick / rate_hz`, REQ-K-4).
+   * Current tick number when the host knows it, else 0. The core motion model is time-free (a step
+   * is a function of state, intents, `dt` and terrain only), so the ABI 0.2 host writes 0; a model
+   * must not depend on it (ASM-720).
    */
   uint64_t tick;
   /**
-   * Tick rate in Hz.
+   * Tick rate in Hz: `1 / dt` rounded to the nearest whole hertz, at least 1 (ASM-720).
    */
   uint32_t rate_hz;
   /**

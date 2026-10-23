@@ -45,7 +45,10 @@ ADR 0019 rules (no implicit padding, sizes multiples of 8), pinned in `layout.rs
   `UmbraBlackboard` (header, `ctx`, `get(ctx, UmbraStr key, const UmbraValueSink*)`,
   `set(ctx, UmbraStr key, const UmbraValue* or null to unset)`), `UmbraMotionStep` (header, tick,
   rate_hz, dt, `state`, intents array + count (host-written `UmbraIntent`s in the plugin's minor),
-  `const UmbraTerrain*`), `UmbraTarget` (header, id, position, velocity, orientation, force, ownership
+  `const UmbraTerrain*`) *(Amended 2026-10-23 by ASM-720, M7 WI-8: `tick` is the current tick when the
+  host knows it, else 0 (the core motion model carries no time, so the ABI 0.2 host writes 0; a model must
+  not depend on it), and `rate_hz` is `round(1 / dt)`, at least 1. Doc comments only, no layout change.)*,
+  `UmbraTarget` (header, id, position, velocity, orientation, force, ownership
   `u32` 1 owned / 2 remote), `UmbraSenseCall` (header, tick, rate_hz, observer `UmbraTarget`, candidates
   array + count (all other entities, id order, pre-tick), rng token, `const UmbraTerrain*`),
   `UmbraContactSink` (header, ctx, `push(ctx, const UmbraContact*)`, copying), `UmbraLeafCall` (header,

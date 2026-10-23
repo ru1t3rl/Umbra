@@ -6,8 +6,10 @@
 //! capability (else the plugin), `param_types`, `outputs` and `result` from the metadata; no
 //! subgraphs (v0 metadata has none, so a plugin behavior counts one level of subgraph depth).
 //! Every `network adapter` capability (ABI 0.1) becomes a registered network adapter factory
-//! (`ComponentKind::NetworkAdapter`, ADR 0033), the same one registry (D-8); the registry keeps no
-//! catalog metadata for that kind.
+//! (`ComponentKind::NetworkAdapter`, ADR 0033), and every `motion model` and `sensor` capability (ABI
+//! 0.2, ADR 0050) a registered motion model or sensor factory, the same one registry (D-8) as the
+//! built-ins, so a scenario uses them exactly like built-ins; the registry keeps no catalog metadata
+//! for these kinds (their ABI metadata is empty).
 //! Registration is all-or-nothing: the capabilities of every loaded plugin go into a copy of the
 //! registry, which replaces the original only when all of them were accepted.
 
@@ -17,7 +19,9 @@ use umbra_core::{ComponentInfo, Provenance, Registry};
 
 use crate::bridge::HostCapability;
 use crate::bridge::factory::PluginFactory;
+use crate::bridge::motion::PluginMotionFactory;
 use crate::bridge::network::PluginNetworkFactory;
+use crate::bridge::sensor::PluginSensorFactory;
 use crate::descriptor::Capability;
 use crate::error::PluginError;
 
@@ -38,6 +42,14 @@ pub(crate) fn register<'a>(
             HostCapability::Network(capability) => {
                 let factory = PluginNetworkFactory::new(Arc::clone(capability));
                 staged.register_network_adapter(Arc::new(factory))?;
+            }
+            HostCapability::Motion(capability) => {
+                let factory = PluginMotionFactory::new(Arc::clone(capability));
+                staged.register_motion_model(Arc::new(factory))?;
+            }
+            HostCapability::Sensor(capability) => {
+                let factory = PluginSensorFactory::new(Arc::clone(capability));
+                staged.register_sensor(Arc::new(factory))?;
             }
         }
     }

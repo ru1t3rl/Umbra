@@ -1,13 +1,14 @@
 //! The host's copying sinks for plugin output (ADR 0019 "Memory", ADR 0021 "Host-side guards"): the
-//! intent sink of a `tick_batch` call, the value sink of an `output` call and the message sink of a
-//! network adapter's `poll` call (ABI 0.1, ADR 0033).
+//! intent sink of a `tick_batch` call, the value sink of an `output` call, the message sink of a
+//! network adapter's `poll` call (ABI 0.1, ADR 0033) and the contact sink of a sensor's `sense` call
+//! (ABI 0.2, ADR 0050).
 //!
 //! Both are `extern "C"` leaves: they catch panics, resolve their token against the calling
 //! thread's top call record only, copy what the plugin passed and never call into a plugin. No
 //! record is `UMBRA_ERR_STATE` without any lookup; with a record, every misuse records a breach on
 //! it (the call then faults the capability) and returns `UMBRA_ERR_STATE` (a token of another call
-//! or sink) or `UMBRA_ERR_INVALID_ARGUMENT` (a bad item index, intent, value or message, or a push
-//! beyond the poll's `max`).
+//! or sink) or `UMBRA_ERR_INVALID_ARGUMENT` (a bad item index, intent, value, message or contact, a
+//! contact naming no candidate, or a push beyond the poll's `max` or `UMBRA_MAX_CONTACTS_PER_SENSE`).
 
 #![expect(
     unsafe_code,
@@ -16,8 +17,9 @@
 
 use umbra_plugin_api::{
     UMBRA_ABI_VERSION, UMBRA_ERR_INTERNAL, UMBRA_ERR_INVALID_ARGUMENT, UMBRA_ERR_STATE,
-    UMBRA_MAX_INTENTS_PER_ITEM, UMBRA_OK, UmbraCode, UmbraIntent, UmbraIntentSink, UmbraNetMessage,
-    UmbraNetSink, UmbraToken, UmbraValue, UmbraValueSink,
+    UMBRA_MAX_CONTACTS_PER_SENSE, UMBRA_MAX_INTENTS_PER_ITEM, UMBRA_OK, UmbraCode, UmbraContact,
+    UmbraContactSink, UmbraIntent, UmbraIntentSink, UmbraNetMessage, UmbraNetSink, UmbraToken,
+    UmbraValue, UmbraValueSink,
 };
 
 use super::marshal::{self, written_size, written_version};
@@ -52,6 +54,17 @@ pub(crate) fn net_sink(ctx: UmbraToken, minor: u32) -> UmbraNetSink {
         struct_size: written_size::<UmbraNetSink>(minor),
         ctx,
         push: Some(net_push),
+    }
+}
+
+/// The contact sink of a sensor's `sense` call whose sink token is `ctx`, written in the plugin's
+/// declared minor `minor` (ABI 0.2).
+pub(crate) fn contact_sink(ctx: UmbraToken, minor: u32) -> UmbraContactSink {
+    UmbraContactSink {
+        abi_version: written_version(minor),
+        struct_size: written_size::<UmbraContactSink>(minor),
+        ctx,
+        push: Some(contact_push),
     }
 }
 
@@ -229,6 +242,73 @@ unsafe extern "C" fn net_push(ctx: UmbraToken, message: *const UmbraNetMessage) 
     })
 }
 
+/// Appends a copy of `*contact` to the current `sense` call (handed to the caller only after a clean
+/// call), at most `UMBRA_MAX_CONTACTS_PER_SENSE` per call. The contact must name a candidate of the
+/// call (ADR 0050); it is read with the plugin's declared minor as the ceiling.
+unsafe extern "C" fn contact_push(ctx: UmbraToken, contact: *const UmbraContact) -> UmbraCode {
+    guarded(UMBRA_ERR_INTERNAL, || {
+        // Phase 1: the token and the cap, against the top record.
+        let checked = tokens::with_top(|r| {
+            let ours = r.sink(Sink::Contact) == ctx;
+            let Some(sense) = r.sense.as_ref().filter(|_| ours) else {
+                return refuse(
+                    r,
+                    UMBRA_ERR_STATE,
+                    "contact sink: stale or foreign token (not this call's contact sink)"
+                        .to_owned(),
+                );
+            };
+            if sense.contacts.len() >= UMBRA_MAX_CONTACTS_PER_SENSE {
+                return refuse(
+                    r,
+                    UMBRA_ERR_INVALID_ARGUMENT,
+                    format!(
+                        "contact sink: more than {UMBRA_MAX_CONTACTS_PER_SENSE} contacts in one \
+                         sense call"
+                    ),
+                );
+            }
+            Ok(r.minor)
+        });
+        let minor = match checked {
+            None => return UMBRA_ERR_STATE,
+            Some(Err(code)) => return code,
+            Some(Ok(minor)) => minor,
+        };
+        // Phase 2: copy and check the contact (no stack borrow while reading plugin memory).
+        // SAFETY: the plugin passes the contact (null is refused) and its string borrowed for the
+        // duration of this call (ADR 0019).
+        let converted = unsafe { marshal::contact_within(contact, minor) };
+        // Phase 3: check it names a candidate, then store it.
+        tokens::with_top(|r| {
+            let contact = match converted {
+                Ok(contact) => contact,
+                Err(why) => {
+                    return refuse(
+                        r,
+                        UMBRA_ERR_INVALID_ARGUMENT,
+                        format!("contact sink: {why}"),
+                    );
+                }
+            };
+            let Some(sense) = r.sense.as_mut() else {
+                return Err(UMBRA_ERR_STATE);
+            };
+            let entity = contact.entity.get();
+            if sense.candidates.binary_search(&entity).is_err() {
+                return refuse(
+                    r,
+                    UMBRA_ERR_INVALID_ARGUMENT,
+                    format!("contact sink: entity {entity} is not a candidate of this sense call"),
+                );
+            }
+            sense.contacts.push(contact);
+            Ok(())
+        })
+        .map_or(UMBRA_ERR_STATE, |r| r.err().unwrap_or(UMBRA_OK))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -325,5 +405,84 @@ mod tests {
         let output = tokens::with_top(|r| r.output.take()).flatten();
         assert_eq!(output.and_then(|o| o.value), Some(BbValue::Integer(5)));
         assert!(active.finish().breach.is_some_and(|b| b.contains("twice")));
+    }
+
+    fn contact(entity: u64) -> UmbraContact {
+        UmbraContact {
+            abi_version: written_version(2),
+            struct_size: crate::host_api::abi_size::<UmbraContact>(),
+            entity,
+            position: UmbraVec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            velocity: UmbraVec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            force: UmbraStr {
+                ptr: b"".as_ptr(),
+                len: 0,
+            },
+            range_m: 1.0,
+        }
+    }
+
+    /// ABI 0.2 (ADR 0050, ASM-719): the contact sink takes contacts of candidates only, with this
+    /// call's token, up to the cap; the first misuse is the breach.
+    #[test]
+    fn the_contact_sink_takes_candidates_of_this_call_up_to_the_cap() {
+        use crate::tokens::SenseCall;
+        let image = tokens::make(202, tokens::HOST_CTX_INDEX);
+        let active = call(image, 5);
+        tokens::with_top(|r| {
+            r.minor = 2;
+            r.sense = Some(SenseCall {
+                candidates: vec![2, 4],
+                ..SenseCall::default()
+            });
+        });
+        let sink = contact_sink(tokens::sink_token(image, 5, Sink::Contact), 2);
+        let push = sink.push.unwrap_or_else(|| panic!("push"));
+        let (four, three) = (contact(4), contact(3));
+        // SAFETY: valid local contacts; the record is on this thread.
+        unsafe {
+            assert_eq!(push(sink.ctx, &raw const four), UMBRA_OK);
+            assert_eq!(
+                push(tokens::sink_token(image, 5, Sink::Terrain), &raw const four),
+                UMBRA_ERR_STATE,
+                "another service's token"
+            );
+            assert_eq!(
+                push(tokens::sink_token(image, 4, Sink::Contact), &raw const four),
+                UMBRA_ERR_STATE,
+                "another call's token"
+            );
+            assert_eq!(push(sink.ctx, &raw const three), UMBRA_ERR_INVALID_ARGUMENT);
+            assert_eq!(push(sink.ctx, std::ptr::null()), UMBRA_ERR_INVALID_ARGUMENT);
+        }
+        tokens::with_top(|r| {
+            if let Some(sense) = r.sense.as_mut() {
+                let kept = sense.contacts[0].clone();
+                sense.contacts.resize(UMBRA_MAX_CONTACTS_PER_SENSE, kept);
+            }
+        });
+        // SAFETY: as above.
+        let over = unsafe { push(sink.ctx, &raw const four) };
+        assert_eq!(over, UMBRA_ERR_INVALID_ARGUMENT, "the cap");
+        let sense = tokens::with_top(|r| r.sense.take()).flatten();
+        let sense = sense.unwrap_or_else(|| panic!("sense"));
+        assert_eq!(sense.contacts.len(), UMBRA_MAX_CONTACTS_PER_SENSE);
+        assert_eq!(sense.contacts[0].entity.get(), 4);
+        assert!(
+            active
+                .finish()
+                .breach
+                .is_some_and(|b| b.contains("contact sink: stale or foreign"))
+        );
+        // SAFETY: without a record the callback refuses before reading.
+        assert_eq!(unsafe { push(sink.ctx, &raw const four) }, UMBRA_ERR_STATE);
     }
 }

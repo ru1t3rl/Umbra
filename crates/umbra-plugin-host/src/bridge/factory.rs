@@ -14,6 +14,10 @@
 //! thread-local stack of host ids (process-unique, never reused, ASM-138), pushed by the guard and
 //! popped when it drops: call-scoped, like the call records, not persistent global state. A guard
 //! leaked with `mem::forget` leaves its id on the stack, but no other host ever has that id.
+//!
+//! [`configure_handle`] is the same `configure` step for the kinds of ABI 0.2 (motion models and
+//! sensors from M7 WI-8): one helper for every kind whose `configure` returns a handle, with the same
+//! scope, fault and null checks and messages `plugin <kind> <id>: ...`.
 
 #![expect(
     unsafe_code,
@@ -25,9 +29,9 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use umbra_core::{Behavior, BehaviorId, BuildError, ComponentId, Factory, ParamSchema, ParamValue};
-use umbra_plugin_api::{UMBRA_OK, UmbraBehavior};
+use umbra_plugin_api::{UMBRA_OK, UmbraBehavior, UmbraCode, UmbraErrorSink, UmbraStr};
 
-use super::batch::PluginCapability;
+use super::batch::{PluginCapability, problem};
 use super::behavior::PluginBehavior;
 use super::marshal;
 use crate::api::HostMode;
@@ -148,6 +152,50 @@ impl Factory<dyn Behavior> for PluginFactory {
             }
         }
     }
+}
+
+/// The `configure` entry of a kind whose configured handle is `H` (ABI 0.2, ADR 0050).
+pub(crate) type ConfigureFn<H> = unsafe extern "C" fn(
+    params: UmbraStr,
+    out: *mut *mut H,
+    err: *const UmbraErrorSink,
+) -> UmbraCode;
+
+/// Calls `configure` of `cap` (a capability of the kind `what`, for messages) with `params` as JSON
+/// text and returns the plugin's non-null handle. Like a behavior's `build`: in a run-mode host only
+/// inside the host's build scope (RR-m2), never on a faulted capability, and a non-OK result (a panic
+/// included) or an OK with a null handle is a [`BuildError`] naming the capability, not a fault (R-M9).
+pub(crate) fn configure_handle<V, H>(
+    cap: &PluginCapability<V>,
+    what: &str,
+    params: &ParamValue,
+    configure: ConfigureFn<H>,
+) -> Result<*mut H, BuildError> {
+    let fail = |message: String| BuildError::new(format!("plugin {what} {}: {message}", cap.id()));
+    if cap.host().mode == HostMode::Run && !in_scope(cap.host()) {
+        return Err(fail("plugin host not attached to this engine".to_owned()));
+    }
+    if cap.faulted() {
+        return Err(fail("the capability is faulted for this host".to_owned()));
+    }
+    let text = serde_json::to_string(params).map_err(|e| fail(e.to_string()))?;
+    let mut out: *mut H = std::ptr::null_mut();
+    // SAFETY: `configure` is a required entry of the open image's validated vtable (the capability
+    // holds the image); `text`, `out` and the error sink outlive the call; the call lock serialises
+    // calls.
+    let outcome = cap.call(|scope, _| unsafe {
+        configure(marshal::text(&text), &raw mut out, scope.error_sink())
+    });
+    let (code, finished) = outcome.map_err(|e| fail(format!("configure: {e}")))?;
+    if let Some(problem) = problem(code, &finished) {
+        return Err(fail(format!("configure {problem}")));
+    }
+    if out.is_null() {
+        return Err(fail(
+            "configure returned UMBRA_OK with a null handle".to_owned(),
+        ));
+    }
+    Ok(out)
 }
 
 #[cfg(test)]

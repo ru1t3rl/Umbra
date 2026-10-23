@@ -244,9 +244,9 @@ ABI 0.2 (ADR 0050) adds four kinds that plug into the same places as the built-i
 `builtin.cond.*` and `builtin.action.*`. A plugin that exports any of them declares ABI 0.2, so its
 `plugin.toml` says `abi = "0.2"`; behaviors and network adapters in the same plugin keep their own minors
 (0 and 1), and a plugin without an ABI 0.2 kind keeps declaring 0.0 or 0.1 (ADR 0033). The SDK side is
-complete; the host bridges that register these kinds land in M7 WI-8 (motion models, sensors) and WI-9
-(conditions, actions); until then the host validates such a plugin completely and then rejects it as
-unsupported, naming `capabilities[<i>].kind` ([not in v0](#not-in-v0)). The fixture
+complete. The host registers motion models and sensors like built-ins (M7 WI-8); the bridges of
+conditions and actions land in WI-9, and until then the host validates a plugin that exports one
+completely and then rejects it as unsupported, naming `capabilities[<i>].kind` ([not in v0](#not-in-v0)). The fixture
 `crates/umbra-test-plugin/src/kinds.rs` (feature `kinds`) has a small example of every kind; the example
 plugins `hover`, `radar`, `bearing` and `dispatch` follow (M7 WI-17, WI-18).
 
@@ -261,16 +261,22 @@ Shared rules of the four kinds:
 - **Services come with the call** (ADR 0050, H2): the terrain in a motion step or a sense call
   (`ctx.terrain()`), the blackboard in a condition check or an action tick (`bb`). They borrow the call,
   so they cannot be kept or sent to another thread, and the host resolves their tokens against the call
-  (a stale or foreign token faults the capability, REQ-P-11).
+  (a stale or foreign token faults the capability, REQ-P-11). A raw-ABI plugin that calls a service from
+  another thread, or after its call returned, gets `UMBRA_ERR_STATE` and no answer (ADR 0019 RR-M2;
+  no call is faulted then, since none can be blamed). Terrain answers come from the scenario's terrain
+  provider of that very call, converted from ECEF as a built-in converts, so a plugin sees exactly what a
+  built-in sees (REQ-C-6, ASM-722).
 - **Refusals end the call.** A refused terrain query, blackboard access, RNG draw, contact or intent
   returns an `Err` naming what was refused, and the whole call then returns the host's code whether or
   not the plugin looks at the error: the host has faulted the capability, so a result built afterwards
   (a motion state, a condition answer, an action status) is never reported. Propagate with `?`.
-- **Faults** (ADR 0050; the host side from WI-8/WI-9): a panic or an `Err` faults the capability; motion keeps the entity's position and
+- **Faults** (ADR 0050; the host side of motion models and sensors since WI-8, of conditions and actions
+  from WI-9): a panic or an `Err` faults the capability; motion keeps the entity's position and
   orientation with zero velocity, a sensor gives no contacts that tick, a condition answers false, an action
   reports Failure with that call's intents discarded. `abort` ends the run after the tick
   ([faults](#faults)).
-- **Determinism**: time is `ctx.tick()` and `ctx.rate_hz()`; randomness only from `ctx.rng()` (sensors:
+- **Determinism**: time is `ctx.tick()` and `ctx.rate_hz()` (a motion step has no time: its `tick()` is
+  0 and its `rate_hz()` is `1 / dt` rounded, ASM-720); randomness only from `ctx.rng()` (sensors:
   the observer's stream; leaves: the entity's stream); trigonometry only through
   [`umbra_sdk::math`](#determinism).
 
@@ -288,8 +294,10 @@ and `line_of_sight(a, b)`. Motion models have no metadata and no randomness.
 `sense(&self, ctx, observer, candidates, out)` runs for one observer against every other entity in id
 order, as they were before the tick (`TargetView`: id, kinematic state, force, `Ownership::Owned` or
 `Remote`). Push a `Contact` per perceived candidate with `out.push(&contact)`; the contact must name a
-candidate id (the host refuses others), and the kernel sorts and deduplicates contacts as it does for
-built-ins. Draw from `ctx.rng()` in a fixed order (for example one draw per candidate that passed your
+candidate id (the host refuses others), have a finite position, velocity and range (range at least 0)
+and an empty or valid force name, at most `UMBRA_MAX_CONTACTS_PER_SENSE` (4096) per call; one refused
+contact discards all contacts of that call (ASM-719). The kernel sorts and deduplicates contacts as it
+does for built-ins. Draw from `ctx.rng()` in a fixed order (for example one draw per candidate that passed your
 gates, in candidate order). Sensors have no metadata.
 
 **Condition** (`Condition`, list under `conditions:`).
@@ -592,8 +600,9 @@ scenario, with capabilities and a stopping fault, is `GET /api/v1/plugins`. Load
 - The `component` kind (5) stays reserved (ASM-620); a capability of that kind is rejected as
   unsupported. The motion model (2), sensor (4), condition (6) and action (7) kinds are defined in ABI 0.2
   (ADR 0050): their structs are in the header and the host validates their descriptor entries (schema,
-  metadata, vtable), but until the host bridges land (M7 WI-8, WI-9) a plugin that exports one is then
-  rejected as unsupported, naming `capabilities[<i>].kind`. The network adapter
+  metadata, vtable). Motion models and sensors are registered like built-ins (M7 WI-8); until the
+  bridges of conditions and actions land (WI-9) a plugin that exports one is then rejected as
+  unsupported, naming `capabilities[<i>].kind`. The network adapter
   kind (3) is defined in ABI 0.1 (ADR 0033): its structs are in the header, the host validates its
   descriptor entries and registers it as a network adapter through the host bridge (M6 WI-11: `configure`
   and `key_space` at build, `start` once, `publish`/`poll` on the tick path, `counters` read after each

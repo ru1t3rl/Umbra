@@ -1215,7 +1215,8 @@ fn two_plugin_images_with_network_adapters_run_side_by_side_and_fault_independen
 // ----------------------------------------------------- ABI 0.2 kinds rows (M7 WI-2, ADR 0050, ASM-668)
 //
 // The fixture is `umbra-test-plugin` built with the feature `kinds` (plugin `test.plugin.kinds`, ABI
-// 0.2; capabilities in its `kinds` module), loaded through the shared build helper. Rows that a safe
+// 0.2; capabilities in its `kinds` module; until WI-9 the transitional `kinds_motion_sensor` build,
+// ASM-718), loaded through the shared build helper. Rows that a safe
 // SDK plugin cannot produce (a stale or foreign service token, an unset condition result) are in the
 // raw-ABI files written with WI-8/9. Ignored until the bridge of their kind exists (and WI-10, the SDK
 // side): motion models and sensors WI-8, conditions and actions WI-9.
@@ -1281,7 +1282,6 @@ mod kinds_rows {
     macro_rules! motion_fault {
         ($name:ident, $capability:literal, $needle:literal) => {
             #[test]
-            #[ignore = "M7 WI-8"]
             fn $name() {
                 let env = env();
                 let model = env
@@ -1321,7 +1321,6 @@ mod kinds_rows {
 
     /// ADR 0021: under `disable_capability` the run goes on and the other capabilities keep working.
     #[test]
-    #[ignore = "M7 WI-8"]
     fn under_disable_capability_a_faulty_motion_model_is_marked_faulted_and_another_still_steps() {
         let env = env_with(PluginFaultPolicy::DisableCapability);
         let bad = env.motion("test.motion.nan", "{}").expect("build");
@@ -1357,19 +1356,16 @@ mod kinds_rows {
     }
 
     #[test]
-    #[ignore = "M7 WI-8"]
     fn a_contact_naming_a_non_candidate_is_refused_and_faults_the_sensor() {
         assert_no_contacts_and_one_sense_fault(&env(), "test.sensor.unknown_contact", "candidate");
     }
 
     #[test]
-    #[ignore = "M7 WI-8"]
     fn a_panic_in_sense_yields_no_contacts_and_faults_the_sensor() {
         assert_no_contacts_and_one_sense_fault(&env(), "test.sensor.panic_sense", "panic");
     }
 
     #[test]
-    #[ignore = "M7 WI-8"]
     fn under_disable_capability_a_faulty_sensor_is_marked_faulted_and_another_still_contacts() {
         let env = env_with(PluginFaultPolicy::DisableCapability);
         let bad = env.sensor("test.sensor.panic_sense", "{}").expect("build");

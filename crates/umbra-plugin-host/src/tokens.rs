@@ -5,12 +5,12 @@
 //! in the low half, 0 invalid. Tokens are checked, never dereferenced.
 //! - `host_ctx`: the image lifecycle generation (from the image table) and index
 //!   [`HOST_CTX_INDEX`].
-//! - Sink tokens (error, intent, value and network message sinks): the image's **call** generation,
-//!   and an index
-//!   that packs the low 16 bits of the image lifecycle generation (the image "tag") with the sink
-//!   kind, so a sink token names its image as well as its call.
-//! - RNG tokens: the call generation and `item + 1`; the image is named by the `host_ctx` argument
-//!   of the RNG callback.
+//! - Sink tokens (error, intent, value, network message and contact sinks) and service tokens (the
+//!   terrain service of ABI 0.2): the image's **call** generation, and an index that packs the low 16
+//!   bits of the image lifecycle generation (the image "tag") with the sink or service kind, so such a
+//!   token names its image, its call and its kind.
+//! - RNG tokens: the call generation and `item + 1` (a sense call has the one item 0); the image is
+//!   named by the `host_ctx` argument of the RNG callback.
 //!
 //! Generations wrap; a wrapped generation can at worst misattribute a call to another call of the
 //! same thread, never cause undefined behavior.
@@ -25,6 +25,7 @@
 //! record anywhere on the current thread's stack is re-entry ([`is_active`]), found before the
 //! image's call lock is taken (RR-B1).
 
+use std::any::Any;
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -33,6 +34,7 @@ use umbra_core::net::NetMessage;
 use umbra_core::{BbValue, Intent, PluginId, RngStream};
 use umbra_plugin_api::UmbraToken;
 
+use crate::host_api::drop_payload;
 use crate::log::PluginLog;
 
 /// Index (low half) of an image lifecycle's `host_ctx` token.
@@ -49,6 +51,10 @@ pub(crate) enum Sink {
     Value = 3,
     /// The message sink of a network adapter's `poll` call (ABI 0.1).
     NetPoll = 4,
+    /// The terrain service of a motion `step` or sensor `sense` call (ABI 0.2, ADR 0050).
+    Terrain = 5,
+    /// The contact sink of a sensor `sense` call (ABI 0.2, ADR 0050).
+    Contact = 6,
 }
 
 /// Packs a token; `generation` must be non-zero for the token to be valid (callers skip 0).
@@ -118,6 +124,47 @@ pub(crate) struct PollCall {
     pub(crate) messages: Vec<NetMessage>,
 }
 
+/// The terrain service state of a motion `step` or sensor `sense` call (ABI 0.2, ADR 0050): the
+/// provider the core call received, valid only during that call.
+#[derive(Clone, Copy)]
+pub(crate) struct TerrainCall {
+    /// Points to a `&dyn TerrainProvider` on the bridge's stack frame, which outlives the call (the
+    /// bridge clears this state before its frame ends). Read only by the terrain service
+    /// (`bridge::services`) during the call.
+    pub(crate) provider: *const (),
+}
+
+impl TerrainCall {
+    /// The state for a call whose provider reference is `*provider` (a local of the caller).
+    pub(crate) fn new(provider: &&dyn umbra_core::TerrainProvider) -> Self {
+        Self {
+            provider: std::ptr::from_ref(provider).cast(),
+        }
+    }
+}
+
+/// The per-call state of a sensor's `sense` call (ABI 0.2), moved into the record for the duration of
+/// the call and back into the image's scratch afterwards (no allocation after warm-up).
+#[derive(Default)]
+pub(crate) struct SenseCall {
+    /// The observer's entity stream, pointing into the kernel's `SenseContext`, valid only during the
+    /// call (the bridge does not touch the context while the plugin runs).
+    pub(crate) rng: Option<*mut RngStream>,
+    /// The candidates' ids, sorted: a contact must name one (ADR 0050).
+    pub(crate) candidates: Vec<u64>,
+    /// Pushed contacts in push order, handed to the caller only after a clean call.
+    pub(crate) contacts: Vec<umbra_core::Contact>,
+}
+
+impl SenseCall {
+    /// Empties it, keeping capacity (no pointer survives a call).
+    pub(crate) fn clear(&mut self) {
+        self.rng = None;
+        self.candidates.clear();
+        self.contacts.clear();
+    }
+}
+
 /// One in-progress call into a plugin on this thread.
 pub(crate) struct CallRecord {
     /// The image lifecycle the call goes into (its `host_ctx`).
@@ -140,6 +187,14 @@ pub(crate) struct CallRecord {
     pub(crate) output: Option<OutputCall>,
     /// Set during a network adapter's `poll` call.
     pub(crate) poll: Option<PollCall>,
+    /// Set during a motion `step` or sensor `sense` call (ABI 0.2).
+    pub(crate) terrain: Option<TerrainCall>,
+    /// Set during a sensor's `sense` call (ABI 0.2).
+    pub(crate) sense: Option<SenseCall>,
+    /// The payload of the first panic of the call's `TerrainProvider` (a host-side bug), kept so the
+    /// bridge resumes it on the caller after the plugin call returns (ASM-722 b); later ones are
+    /// dropped. Taken by the bridge before the record is popped.
+    pub(crate) provider_panic: Option<Box<dyn Any + Send>>,
 }
 
 impl CallRecord {
@@ -161,6 +216,9 @@ impl CallRecord {
             batch: None,
             output: None,
             poll: None,
+            terrain: None,
+            sense: None,
+            provider_panic: None,
         }
     }
 
@@ -174,6 +232,22 @@ impl CallRecord {
     /// The token of `sink` in this call.
     pub(crate) const fn sink(&self, sink: Sink) -> UmbraToken {
         sink_token(self.image, self.generation, sink)
+    }
+
+    /// Whether this call carries RNG tokens (a `tick_batch` or a `sense` call).
+    pub(crate) fn has_rng(&self) -> bool {
+        self.batch.is_some() || self.sense.is_some()
+    }
+
+    /// The entity stream named by RNG token index `index` (`item + 1`) of this call: an item of a
+    /// `tick_batch` call, or the observer of a `sense` call (index 1); `None` if it names none.
+    pub(crate) fn rng(&self, index: u32) -> Option<*mut RngStream> {
+        let item = (index as usize).checked_sub(1)?;
+        match (&self.batch, &self.sense) {
+            (Some(batch), _) => batch.rngs.get(item).copied(),
+            (None, Some(sense)) => sense.rng.filter(|_| item == 0),
+            (None, None) => None,
+        }
     }
 
     /// Records `message` as the call's breach unless one is recorded already (the first wins).
@@ -268,7 +342,7 @@ impl ActiveCall {
             return Finished::default();
         }
         let (image, generation) = (self.image, self.generation);
-        CALLS
+        let popped = CALLS
             .try_with(|calls| {
                 let mut calls = calls.try_borrow_mut().ok()?;
                 // Always the top record (calls nest strictly); searched from the top for
@@ -276,15 +350,27 @@ impl ActiveCall {
                 let at = calls
                     .iter()
                     .rposition(|r| r.image == image && r.generation == generation)?;
-                let record = calls.remove(at);
-                Some(Finished {
-                    error: record.error,
-                    breach: record.breach,
-                })
+                let mut record = calls.remove(at);
+                let panic = record.provider_panic.take();
+                Some((
+                    Finished {
+                        error: record.error,
+                        breach: record.breach,
+                    },
+                    panic,
+                ))
             })
             .ok()
-            .flatten()
-            .unwrap_or_default()
+            .flatten();
+        let Some((finished, panic)) = popped else {
+            return Finished::default();
+        };
+        // A provider panic the bridge did not take (a bridge bug) is dropped guarded, outside the
+        // stack's borrow: a payload whose `Drop` panics is forgotten instead of unwinding (ASM-722 b).
+        if let Some(payload) = panic {
+            drop_payload(payload);
+        }
+        finished
     }
 }
 
@@ -368,5 +454,54 @@ mod tests {
         let _call = ActiveCall::push(record(make(12, HOST_CTX_INDEX), 1));
         let inside = with_top(|_| is_active(image));
         assert_eq!(inside, Some(true), "a borrowed stack counts as active");
+    }
+
+    /// ABI 0.2: a sense call's one RNG token names its observer stream (index 1) and nothing else; a
+    /// batch call's tokens name its items; a call with neither has no RNG.
+    #[test]
+    fn rng_tokens_name_a_batch_item_or_the_sense_observer() {
+        let mut stream = umbra_core::SimRng::new(1).stream(umbra_core::StreamKey::scenario(1));
+        let ptr: *mut RngStream = &raw mut stream;
+        let mut r = record(make(13, HOST_CTX_INDEX), 1);
+        assert!(!r.has_rng());
+        assert_eq!(r.rng(1), None);
+        r.sense = Some(SenseCall {
+            rng: Some(ptr),
+            ..SenseCall::default()
+        });
+        assert!(r.has_rng());
+        assert_eq!(r.rng(1), Some(ptr));
+        assert_eq!(r.rng(0), None, "index 0 is no token");
+        assert_eq!(r.rng(2), None, "a sense call has one item");
+        r.sense = None;
+        r.batch = Some(BatchCall {
+            rngs: vec![std::ptr::null_mut(), ptr],
+            ..BatchCall::default()
+        });
+        assert_eq!(r.rng(2), Some(ptr));
+        assert_eq!(r.rng(3), None);
+    }
+
+    /// A payload whose `Drop` panics.
+    struct LoudDrop;
+
+    impl Drop for LoudDrop {
+        fn drop(&mut self) {
+            panic!("payload drop panics");
+        }
+    }
+
+    /// Re-review item 1: a provider panic left on the record (no bridge took it) is dropped guarded
+    /// when the record is popped, so even a payload whose `Drop` panics does not unwind out of `finish`.
+    #[test]
+    fn an_untaken_provider_panic_is_dropped_guarded_when_the_record_is_popped() {
+        let active = ActiveCall::push(record(make(14, HOST_CTX_INDEX), 1));
+        with_top(|r| r.provider_panic = Some(Box::new(LoudDrop)));
+
+        let finished = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| active.finish()));
+
+        let finished = finished.unwrap_or_else(|_| panic!("finish must not unwind"));
+        assert_eq!((finished.error, finished.breach), (None, None));
+        assert_eq!(with_top(|_| ()), None, "the record is popped");
     }
 }

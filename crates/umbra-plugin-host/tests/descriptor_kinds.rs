@@ -9,7 +9,8 @@
 //! rejected at every minor. At minor 2 the host validates the schema, the metadata (empty for motion
 //! models and sensors, `blackboard_params` for conditions and actions, ASM-643) and the kind's vtable of
 //! every capability, and only then reports the first capability of a kind it has no bridge for yet as
-//! `Unsupported`, naming its index and kind (WI-7; the bridges are WI-8 and WI-9, ASM-708).
+//! `Unsupported`, naming its index and kind (WI-7, ASM-708). Motion models and sensors are bridged
+//! since WI-8 and load; conditions and actions reach `Unsupported` until WI-9.
 #![expect(unsafe_code, reason = "forges raw ABI structs")]
 #![expect(
     clippy::cast_possible_truncation,
@@ -23,6 +24,7 @@ use std::ffi::c_void;
 use std::mem::size_of;
 
 use support::forge::{Parts, capability, leak_str, parts};
+use umbra_core::ComponentKind;
 use umbra_plugin_api::{
     UMBRA_ABI_VERSION_MAJOR, UMBRA_ABI_VERSION_MINOR, UMBRA_CAPABILITY_ACTION,
     UMBRA_CAPABILITY_COMPONENT, UMBRA_CAPABILITY_CONDITION, UMBRA_CAPABILITY_MOTION_MODEL,
@@ -525,31 +527,69 @@ fn valid_rows<V: NewKind>() -> Vec<Row> {
     ]
 }
 
-/// A fully valid capability of each new kind passes every descriptor check and is then refused as
-/// `Unsupported` (no host bridge until WI-8/9), naming its index, id and kind.
+/// A fully valid capability of each new kind passes every descriptor check. A motion model or a sensor
+/// (bridged since WI-8) then loads as a capability of its kind; a condition or an action is refused
+/// as `Unsupported` (no host bridge until WI-9), naming its index, id and kind.
 #[test]
-fn a_valid_capability_of_each_new_kind_reaches_unsupported_naming_its_index_and_kind() {
+fn a_valid_capability_of_each_new_kind_loads_once_bridged_else_reaches_unsupported() {
     let rows = each_kind!(valid_rows);
     assert_eq!(rows.len(), 8);
     for (label, p) in rows {
-        let err = load!(p).expect_err(&label);
+        let bridged = if label.starts_with("motion") {
+            Some(("test.motion.forge", ComponentKind::MotionModel))
+        } else if label.starts_with("sensor") {
+            Some(("test.sensor.forge", ComponentKind::Sensor))
+        } else {
+            None
+        };
+        let loaded = load!(p);
 
-        assert_unsupported_row(&label, &err);
+        match bridged {
+            Some((id, kind)) => {
+                let info = loaded.unwrap_or_else(|e| panic!("{label}: {e}"));
+                let index: usize = part(&label, 1)
+                    .parse()
+                    .unwrap_or_else(|e| panic!("{label}: {e}"));
+                let cap = &info.capabilities[index];
+                assert_eq!((cap.id.as_str(), cap.kind), (id, kind), "{label}");
+            }
+            None => assert_unsupported_row(&label, &loaded.expect_err(&label)),
+        }
     }
 }
 
 /// With two capabilities of kinds without a bridge, the first one is named.
 #[test]
 fn the_first_capability_without_a_bridge_is_named() {
-    let mut p = new_kind::<UmbraMotionVTable>(|_| {});
-    let mut condition = new_kind::<UmbraConditionVTable>(|_| {});
-    p.caps.push(condition.caps.remove(0));
+    let mut p = new_kind::<UmbraConditionVTable>(|_| {});
+    let mut action = new_kind::<UmbraActionVTable>(|_| {});
+    p.caps.push(action.caps.remove(0));
     p.desc.capabilities = p.caps.as_ptr();
     p.desc.capability_count = p.caps.len();
 
     let err = load!(p).expect_err("two unbridged capabilities");
 
-    assert_unsupported(&err, 0, "test.motion.forge", UMBRA_CAPABILITY_MOTION_MODEL);
+    assert_unsupported(&err, 0, "test.cond.forge", UMBRA_CAPABILITY_CONDITION);
+}
+
+/// WI-8: a bridged motion model or sensor before an unbridged condition does not hide it.
+#[test]
+fn a_bridged_capability_first_does_not_hide_a_later_unbridged_one() {
+    for first in ["motion", "sensor"] {
+        let mut p = if first == "motion" {
+            new_kind::<UmbraMotionVTable>(|_| {})
+        } else {
+            new_kind::<UmbraSensorVTable>(|_| {})
+        };
+        let mut condition = new_kind::<UmbraConditionVTable>(|_| {});
+        p.caps.push(condition.caps.remove(0));
+        p.desc.capabilities = p.caps.as_ptr();
+        p.desc.capability_count = p.caps.len();
+
+        let err = load!(p).expect_err(first);
+
+        assert_unsupported(&err, 1, "test.cond.forge", UMBRA_CAPABILITY_CONDITION);
+    }
 }
 
 /// A plugin whose capability 0 has the reserved or unknown `kind` (behind the behavior vtable), the
@@ -561,15 +601,15 @@ fn reserved_first(kind: UmbraCapabilityKind) -> Parts {
 }
 
 /// ASM-708 (review Minor 1): a reserved kind (5) is deferred like the kinds without a bridge, so an
-/// earlier capability without a bridge is the one named.
+/// earlier capability without a bridge is the one named (a condition since WI-8 bridged motion).
 #[test]
 fn a_reserved_kind_after_an_unbridged_capability_does_not_hide_it() {
-    let mut p = new_kind::<UmbraMotionVTable>(|_| {});
+    let mut p = new_kind::<UmbraConditionVTable>(|_| {});
     push_behavior(&mut p, "test.component.later", true).kind = UMBRA_CAPABILITY_COMPONENT;
 
-    let err = load!(p).expect_err("motion, then component");
+    let err = load!(p).expect_err("condition, then component");
 
-    assert_unsupported(&err, 0, "test.motion.forge", UMBRA_CAPABILITY_MOTION_MODEL);
+    assert_unsupported(&err, 0, "test.cond.forge", UMBRA_CAPABILITY_CONDITION);
 }
 
 /// ASM-708 (review Minor 1): a reserved (5) or unknown (99) kind first does not mask a broken later
@@ -617,10 +657,11 @@ fn a_reserved_or_unknown_kind_is_checked_up_to_its_schema() {
     }
 }
 
-/// Review nit 3: a valid motion model first does not mask a later condition's bad metadata.
+/// Review nit 3: a valid unbridged capability (an action, since WI-8 bridged motion) first does not
+/// mask a later condition's bad metadata.
 #[test]
 fn an_unbridged_capability_first_does_not_mask_a_later_bad_leaf_metadata() {
-    let mut p = new_kind::<UmbraMotionVTable>(|_| {});
+    let mut p = new_kind::<UmbraActionVTable>(|_| {});
     let mut condition = new_kind_at::<UmbraConditionVTable>(
         0,
         r#"{"blackboard_params":[{"param":"key","type":"bool","access":"read_write"}]}"#,

@@ -39,7 +39,11 @@ pub fn lon(east_m: f64) -> f64 {
     4.0 + east_m / M_PER_DEG_LON
 }
 
-pub use super::plugin_support::example_plugins;
+/// `plugin_support::example_plugins` (a wrapper, not a re-export, so a binary that does not use it gets
+/// no unused-import warning).
+pub fn example_plugins(names: &[&str]) -> PathBuf {
+    super::plugin_support::example_plugins(names)
+}
 
 /// Writes `files` (`(relative path, text)`) under a fresh directory and returns the directory.
 pub fn write_dir(tag: &str, files: &[(&str, &str)]) -> PathBuf {

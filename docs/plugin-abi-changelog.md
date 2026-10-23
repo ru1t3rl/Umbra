@@ -49,6 +49,11 @@ kind's minor, or the SDK must keep writing the old prefix. A major bump needs an
   `Unsupported` naming `capabilities[<i>].kind` and the kind, until the host bridges of M7 WI-8 (motion
   model, sensor, terrain service) and WI-9 (condition, action, blackboard service) land (ASM-708).
   `PluginError::Unsupported` gained the field `field` (the capability's index).
+- Host (WI-8): motion models and sensors are bridged and registered like built-ins (core `MotionModel`,
+  `Sensor`); the terrain service answers from the call's `TerrainProvider` and refuses a stale, foreign
+  (another call's, or another service's) or off-thread token; contacts must name a candidate. No layout
+  change. Clarified (doc comment only): `UmbraMotionStep.tick` is 0 from this host, because the core
+  motion model carries no time, and `rate_hz` is `1 / dt` rounded, at least 1 (ASM-720).
 - The C example `c-circle` is compiled against the 0.2 header and declares 0.2 (`plugin.toml`
   `abi = "0.2"`); its behavior structs are unchanged. Behavior-only SDK plugins still declare 0.0 and the
   DIS plugin 0.1 (ADR 0033 rule).

@@ -31,18 +31,25 @@
 //!
 //! ABI 0.2 kinds (M7 WI-2, ASM-668, module `kinds`): the feature `kinds` makes the crate plugin
 //! `test.plugin.kinds` 0.1.0 with a motion model, sensor, condition and action fixture each
-//! (`test.motion.*`, `test.sensor.*`, `test.cond.*`, `test.action.*`), implemented in M7 WI-10.
+//! (`test.motion.*`, `test.sensor.*`, `test.cond.*`, `test.action.*`), implemented in M7 WI-10. The
+//! transitional feature `kinds_motion_sensor` (M7 WI-8, ASM-718) builds the same plugin with only its
+//! motion models and sensors, until the host bridges conditions and actions (WI-9 removes it); with
+//! `kinds` as well, `kinds` wins.
 
 #![forbid(unsafe_code)]
 #![cfg_attr(
-    any(feature = "network_peer", feature = "kinds"),
+    any(
+        feature = "network_peer",
+        feature = "kinds",
+        feature = "kinds_motion_sensor"
+    ),
     expect(
         dead_code,
         reason = "the network peer and the kinds plugin export only their own capabilities, not the behaviors"
     )
 )]
 
-#[cfg(feature = "kinds")]
+#[cfg(any(feature = "kinds", feature = "kinds_motion_sensor"))]
 mod kinds;
 #[cfg(any(feature = "network", feature = "network_peer"))]
 mod network;
@@ -393,7 +400,11 @@ fn shutdown() {
 
 /// Exports the plugin with the default capabilities plus the behaviors `$extra` and the network
 /// adapters `$net`.
-#[cfg(not(any(feature = "network_peer", feature = "kinds")))]
+#[cfg(not(any(
+    feature = "network_peer",
+    feature = "kinds",
+    feature = "kinds_motion_sensor"
+)))]
 macro_rules! fixture {
     ([$($extra:ty),*], [$($net:ty),*]) => {
         export_plugin! {
@@ -416,17 +427,28 @@ macro_rules! fixture {
     feature = "bad_schema",
     feature = "network",
     feature = "network_peer",
-    feature = "kinds"
+    feature = "kinds",
+    feature = "kinds_motion_sensor"
 )))]
 fixture!([], []);
 #[cfg(all(
     feature = "bad_schema",
-    not(any(feature = "network", feature = "network_peer", feature = "kinds"))
+    not(any(
+        feature = "network",
+        feature = "network_peer",
+        feature = "kinds",
+        feature = "kinds_motion_sensor"
+    ))
 ))]
 fixture!([BadSchema], []);
 #[cfg(all(
     feature = "network",
-    not(any(feature = "bad_schema", feature = "network_peer", feature = "kinds"))
+    not(any(
+        feature = "bad_schema",
+        feature = "network_peer",
+        feature = "kinds",
+        feature = "kinds_motion_sensor"
+    ))
 ))]
 fixture!(
     [],
@@ -440,7 +462,11 @@ fixture!(
 #[cfg(all(
     feature = "network",
     feature = "bad_schema",
-    not(any(feature = "network_peer", feature = "kinds"))
+    not(any(
+        feature = "network_peer",
+        feature = "kinds",
+        feature = "kinds_motion_sensor"
+    ))
 ))]
 fixture!(
     [BadSchema],
@@ -477,6 +503,24 @@ export_plugin! {
     ],
     actions: [
         kinds::Count, kinds::Emit, kinds::MarkAction, kinds::ReadOnlyWrite, kinds::PanicTick
+    ],
+    init: init,
+    shutdown: shutdown,
+}
+// The transitional motion-and-sensor build of `test.plugin.kinds` (M7 WI-8, ASM-718; removed by WI-9).
+#[cfg(all(
+    feature = "kinds_motion_sensor",
+    not(any(feature = "kinds", feature = "network_peer"))
+))]
+export_plugin! {
+    id: "test.plugin.kinds",
+    name: "Umbra test kinds",
+    version: "0.1.0",
+    motion_models: [
+        kinds::Coast, kinds::TerrainEcho, kinds::NonUnit, kinds::Nan, kinds::PanicStep
+    ],
+    sensors: [
+        kinds::All, kinds::Los, kinds::Coin, kinds::UnknownContact, kinds::PanicSense
     ],
     init: init,
     shutdown: shutdown,

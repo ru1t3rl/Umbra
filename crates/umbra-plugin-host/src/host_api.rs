@@ -135,7 +135,8 @@ unsafe extern "C" fn host_log(
 }
 
 /// The host's RNG draw (ADR 0021, R-B4): the next `u64` of the entity stream named by `rng`, the
-/// RNG token of a batch item of the current `tick_batch` call. No call record on this thread is
+/// RNG token of a batch item of the current `tick_batch` call or of the observer of the current
+/// `sense` call (ABI 0.2). No call record on this thread is
 /// `UMBRA_ERR_STATE` without any lookup (another thread, outside a call). With a record, every
 /// misuse also records a breach that faults the capability: another image's `host_ctx` or a call
 /// without RNG tokens or a token of another call (`UMBRA_ERR_STATE`), a token naming no item or a
@@ -192,18 +193,17 @@ fn draw<T>(
         if r.image != host_ctx {
             return refuse(r, UMBRA_ERR_STATE, "host_ctx of another image or lifecycle");
         }
-        let Some(batch) = r.batch.as_ref() else {
+        if !r.has_rng() {
             return refuse(
                 r,
                 UMBRA_ERR_STATE,
-                "no RNG token is valid outside tick_batch",
+                "no RNG token is valid outside tick_batch and sense calls",
             );
-        };
+        }
         if tokens::generation_of(rng) != r.generation {
             return refuse(r, UMBRA_ERR_STATE, "stale RNG token of another call");
         }
-        let index = tokens::index_of(rng) as usize;
-        let Some(&stream) = index.checked_sub(1).and_then(|i| batch.rngs.get(i)) else {
+        let Some(stream) = r.rng(tokens::index_of(rng)) else {
             return refuse(r, UMBRA_ERR_INVALID_ARGUMENT, "the RNG token names no item");
         };
         if out.is_null() || !(out as usize).is_multiple_of(8) {
@@ -213,9 +213,9 @@ fn draw<T>(
                 "null or misaligned out pointer",
             );
         }
-        // SAFETY: the bridge set this pointer from the item's `&mut RngStream` for the duration of
-        // the current call on this thread and does not touch the items while the plugin runs; the
-        // record (and so the pointer) is popped before the call returns to the kernel.
+        // SAFETY: the bridge set this pointer from the item's (or the sense call's) `&mut RngStream`
+        // for the duration of the current call on this thread and does not touch it while the plugin
+        // runs; the record (and so the pointer) is popped before the call returns to the kernel.
         Ok(next(unsafe { &mut *stream }))
     })
     .unwrap_or(Err(UMBRA_ERR_STATE))
