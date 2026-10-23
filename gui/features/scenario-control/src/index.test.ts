@@ -9,5 +9,8 @@ test("the package exports exactly the M5b slice plus the WI-7 controls", () => {
     "RunControls",
     "RunFaultAlert",
     "RunStatusBar",
+    // WI-8 (append-only, human standing approval 2026-10-23)
+    "ScenarioLoader",
+    "ScenarioSummary",
   ]);
 });

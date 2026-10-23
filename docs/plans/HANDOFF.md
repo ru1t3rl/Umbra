@@ -45,11 +45,11 @@ Then, in the execution order the plan states (ASM-679): WI-5, WI-6, WI-7, WI-10 
 WI-10b, WI-8, WI-9, WI-11, WI-12, WI-13, WI-14, WI-15, WI-16, WI-16a, WI-16b, WI-17..WI-24.
 
 ## M8 (branch `m8`)
-Done, reviewed, full gate 15 green (`bun run verify`, 12 steps incl. Playwright 38 passed): WI-1..WI-7.
+Done, reviewed, full gate 15 green (`bun run verify`, 12 steps incl. Playwright 38 passed): WI-1..WI-7. WI-8 (ScenarioLoader, ScenarioSummary) done after that.
 Showcase screenshot baselines approved by the human 2026-10-22 (`70efdfe`). ADR 0043 amended
 (components import their own CSS, human decision 2026-10-22).
 
-Next: WI-8 (scenario-control `ScenarioLoader`, `ScenarioSummary`), then WI-9..WI-23 in plan order.
+Next: WI-9..WI-23 in plan order.
 M7-dependent items wait for M7 (ADR 0047): WI-24 (contract sync after `m7` merges into `develop`;
 M7 already regenerated its own GUI client for 1.2.0 on `m7`), WI-25, WI-26, WI-27, WI-28 (close-out
 after `m7-done`). Gap G-1/G-2 fallbacks stay until M7 WI-16a/16b land.
@@ -59,6 +59,7 @@ M7 H1..H10 (plan), ADR 0058 accepted, ADR 0059 accepted, frozen-test edits for W
 version literal, `recording: None,` in `wire.rs`, append-only AT-21 rows in `contract.rs`; no standing
 rule: ask again for any other existing-test edit). M8 H-1..H-10 (plan), ADR 0043 amendment (option a),
 bun pin 1.4.4, showcase baselines.
+Standing approval (2026-10-23): append-only additions of new public export names to M8 features' `index.test.ts` export lists; any other frozen-test edit still needs asking.
 
 ## Working rules learned in this session
 - Each work item: failing tests (test engineer) -> implementation -> `code-reviewer` -> fixes ->
