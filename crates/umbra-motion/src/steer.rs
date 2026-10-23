@@ -104,3 +104,25 @@ pub(crate) fn stopping_speed(accel: f64, dt: f64, distance: f64) -> f64 {
     let h = 0.5 * accel * dt;
     (h * h + 2.0 * accel * distance).sqrt() - h
 }
+
+/// Whether the heading must be held because the destination at `a` lies inside the turn-side
+/// circle of `radius`: the circle that a vehicle turning at the maximum rate sweeps, on the side of
+/// the error. Such a destination is unreachable by turning (reaching it would need a smaller
+/// radius).
+///
+/// Let `reach` be the distance from the destination to the circle's centre. Hold when
+/// `reach < radius`, or when `reach < radius + margin` and the destination is behind the vehicle.
+/// The behind-band is what makes the rule robust: holding moves a destination behind the vehicle
+/// away from the circle, so a destination that leaves the hold zone does so with room to spare;
+/// ahead, holding would shrink `reach`, so a destination ahead in the band keeps turning (turning
+/// keeps `reach` constant). Without the band a destination that leaves the zone at exactly the
+/// threshold dips back in by rounding and flies another circle (the lattice case `d = 49.95`,
+/// abeam, from rest). The margin is two step lengths: the sweep in ASM-694 shows 0 and a
+/// twentieth of that re-orbit, half of it and up work.
+pub(crate) fn inside_turn_circle(a: &Approach, radius: f64, margin: f64) -> bool {
+    let (sin_e, cos_e) = math::sin_cos(a.error);
+    let ahead = a.distance * cos_e;
+    let gap = (a.distance * sin_e).abs() - radius;
+    let reach = math::hypot(ahead, gap);
+    reach < radius || (reach < radius + margin && ahead < 0.0)
+}

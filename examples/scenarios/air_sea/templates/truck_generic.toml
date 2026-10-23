@@ -1,0 +1,7 @@
+schema_version = 1
+id = "truck.generic"
+description = "Generic truck"
+
+[motion]
+model = "builtin.ground.kinematic"
+params = { max_speed_mps = 20.0, max_turn_rate_dps = 40.0, max_accel_mps2 = 2.0 }

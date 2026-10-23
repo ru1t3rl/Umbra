@@ -96,28 +96,6 @@ impl SeaKinematic {
     }
 }
 
-/// Whether the heading must be held because the destination at `a` lies inside the turn-side
-/// circle of `radius`: the circle that a vessel turning at the maximum rate sweeps, on the side of
-/// the error. Such a destination is unreachable by turning (reaching it would need a smaller
-/// radius).
-///
-/// Let `reach` be the distance from the destination to the circle's centre. Hold when
-/// `reach < radius`, or when `reach < radius + margin` and the destination is behind the vessel.
-/// The behind-band is what makes the rule robust: holding moves a destination behind the vessel
-/// away from the circle, so a destination that leaves the hold zone does so with room to spare;
-/// ahead, holding would shrink `reach`, so a destination ahead in the band keeps turning (turning
-/// keeps `reach` constant). Without the band a destination that leaves the zone at exactly the
-/// threshold dips back in by rounding and flies another circle (the lattice case `d = 49.95`,
-/// abeam, from rest). The margin is two step lengths: the sweep in ASM-694 shows 0 and a
-/// twentieth of that re-orbit, half of it and up work.
-fn inside_turn_circle(a: &steer::Approach, radius: f64, margin: f64) -> bool {
-    let (sin_e, cos_e) = math::sin_cos(a.error);
-    let ahead = a.distance * cos_e;
-    let gap = (a.distance * sin_e).abs() - radius;
-    let reach = math::hypot(ahead, gap);
-    reach < radius || (reach < radius + margin && ahead < 0.0)
-}
-
 impl MotionModel for SeaKinematic {
     fn id(&self) -> &MotionModelId {
         &self.id
@@ -177,7 +155,7 @@ impl MotionModel for SeaKinematic {
         let margin = 2.0 * speed.max(new_speed) * dt;
         let steer_out = toward
             .as_ref()
-            .is_some_and(|a| inside_turn_circle(a, p.min_turn_radius.0, margin));
+            .is_some_and(|a| steer::inside_turn_circle(a, p.min_turn_radius.0, margin));
         // The turn step is proportional to the speed, so a vessel at rest does not pivot.
         let error = if steer_out {
             None

@@ -1,0 +1,70 @@
+{
+  "title": "builtin.air.kinematic parameters",
+  "description": "Kinematic aircraft limits. Units are given by key suffix. The turn rate is g * tan(max_bank) / max(speed, 1 m/s), capped by max_turn_rate_dps; the target height is the MoveTo destination's height above the ellipsoid.",
+  "type": "object",
+  "properties": {
+    "max_speed_mps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000,
+      "description": "Maximum speed in meters per second."
+    },
+    "min_speed_mps": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 0,
+      "description": "Minimum speed in meters per second while flying; must be below max_speed_mps. With 0 the aircraft can stop on a destination."
+    },
+    "max_accel_mps2": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000,
+      "description": "Maximum acceleration and deceleration in meters per second squared."
+    },
+    "max_climb_rate_mps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000,
+      "description": "Maximum climb rate in meters per second."
+    },
+    "max_descent_rate_mps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000,
+      "description": "Maximum descent rate in meters per second; defaults to max_climb_rate_mps."
+    },
+    "max_bank_deg": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "exclusiveMaximum": 90,
+      "description": "Maximum bank angle in degrees (0 to 90, exclusive); sets the turn rate."
+    },
+    "max_turn_rate_dps": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 3600,
+      "description": "Optional cap on the turn rate in degrees per second."
+    },
+    "min_altitude_agl_m": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100000,
+      "default": 0,
+      "description": "Lowest allowed height above the terrain in meters; below it the aircraft climbs."
+    }
+  },
+  "required": ["max_speed_mps", "max_accel_mps2", "max_climb_rate_mps", "max_bank_deg"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "max_speed_mps": 200.0,
+      "min_speed_mps": 50.0,
+      "max_accel_mps2": 5.0,
+      "max_climb_rate_mps": 15.0,
+      "max_descent_rate_mps": 10.0,
+      "max_bank_deg": 30.0,
+      "min_altitude_agl_m": 100.0
+    }
+  ]
+}

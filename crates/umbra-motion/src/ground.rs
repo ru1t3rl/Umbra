@@ -61,6 +61,17 @@ pub enum MotionParamError {
         /// The rejected value.
         value: f64,
     },
+    /// A value was outside its allowed range (for example a minimum speed that is not below the
+    /// maximum, or a bank angle outside (0, 90) degrees).
+    #[error("{name} must be {expected}, got {value}")]
+    OutOfRange {
+        /// The offending parameter.
+        name: &'static str,
+        /// The rejected value, in the model's units.
+        value: f64,
+        /// The allowed range, in words.
+        expected: &'static str,
+    },
 }
 
 pub(crate) fn require_positive(name: &'static str, value: f64) -> Result<(), MotionParamError> {

@@ -1,0 +1,70 @@
+# The M7 air and sea example (ADR 0051, WI-6): an aircraft on a climbing route, a ship on a square
+# route and a ground vehicle on a square route, one motion model per domain, on flat terrain at
+# 52 N 4 E. Waypoints were computed with 1 degree of latitude = 111 200 m and longitude scaled by
+# cos(latitude), then rounded to 7 decimals (about 1 cm); they define the routes as written.
+schema_version = 1
+
+[scenario]
+name = "air_sea"
+seed = 7
+tick_rate_hz = 30
+clock = "afap"
+duration_s = 300.0
+template_paths = ["templates"]
+
+[terrain]
+provider = "builtin.terrain.flat"
+params = { height_m = 0.0 }
+
+# The aircraft climbs from 300 m to 1500 m over four 5 km legs at 100 m/s (10 m/s climb, so the climb
+# is done after 120 s, well before the last waypoint) and holds its height at the end.
+[[entities]]
+template = "aircraft.light"
+name = "aircraft-1"
+group = "air"
+position = { lat_deg = 52.0, lon_deg = 4.0, alt_m = 300.0 }
+heading_deg = 90.0
+speed_mps = 100.0
+[entities.route]
+arrival_radius_m = 150.0
+cruise_speed_mps = 100.0
+waypoints = [
+  { lat_deg = 52.0, lon_deg = 4.0730337, alt_m = 800.0 },
+  { lat_deg = 52.044964, lon_deg = 4.0730337, alt_m = 1300.0 },
+  { lat_deg = 52.044964, lon_deg = 4.0, alt_m = 1500.0 },
+  { lat_deg = 52.044964, lon_deg = 3.9269663, alt_m = 1500.0 },
+]
+
+# The ship sails a 400 m square on the surface (height 0).
+[[entities]]
+template = "ship.patrol_boat"
+name = "ship-1"
+group = "sea"
+position = { lat_deg = 51.9730216, lon_deg = 4.0 }
+heading_deg = 90.0
+[entities.route]
+arrival_radius_m = 10.0
+cruise_speed_mps = 8.0
+waypoints = [
+  { lat_deg = 51.9730216, lon_deg = 4.0058392 },
+  { lat_deg = 51.9766187, lon_deg = 4.0058392 },
+  { lat_deg = 51.9766187, lon_deg = 4.0 },
+  { lat_deg = 51.9730216, lon_deg = 4.0 },
+]
+
+# The truck drives a 600 m square.
+[[entities]]
+template = "truck.generic"
+name = "truck-1"
+group = "land"
+position = { lat_deg = 52.0, lon_deg = 3.9561798 }
+heading_deg = 0.0
+[entities.route]
+arrival_radius_m = 10.0
+cruise_speed_mps = 15.0
+waypoints = [
+  { lat_deg = 52.0053957, lon_deg = 3.9561798 },
+  { lat_deg = 52.0053957, lon_deg = 3.9649438 },
+  { lat_deg = 52.0, lon_deg = 3.9649438 },
+  { lat_deg = 52.0, lon_deg = 3.9561798 },
+]

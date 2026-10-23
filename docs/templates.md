@@ -325,6 +325,34 @@ never reverses, does not turn at rest, and turns at `speed / min_turn_radius_m`.
 params = { max_speed_mps = 12.0, max_accel_mps2 = 0.5, min_turn_radius_m = 80.0, surface_height_m = 0.0 }
 ```
 
+### `builtin.air.kinematic` (motion model, M7)
+Kinematic aircraft (REQ-M-2, ADR 0051, ASM-607..609, ASM-699..704). The speed (length of the velocity
+vector) stays within `[min_speed_mps, max_speed_mps]` while flying and changes by at most
+`max_accel_mps2 * dt` per step. The turn rate is `g * tan(max_bank) / max(speed, 1 m/s)`, capped by
+`max_turn_rate_dps`, so the turn radius grows with the square of the speed. The target height is the
+`MoveTo` destination's height above the WGS-84 ellipsoid (else the current height; routes expand to
+`MoveTo`), reached at the climb or descent rate (at most a 45 degree flight path), never below the
+terrain plus `min_altitude_agl_m`. Pitch is the flight-path angle and roll the bank of the step.
+`Hold` and no intent slow to `min_speed_mps`, keeping heading and height. An aircraft with
+`min_speed_mps > 0` cannot stop: a `MoveTo` is flown over, and a finished route loiters over its last
+waypoint (keep the climb done before it). With `min_speed_mps = 0` it brakes and stops on the
+destination like the ground model.
+
+| Parameter | Unit | Bound |
+|---|---|---|
+| `max_speed_mps` (required) | m/s | > 0, <= 1000 |
+| `min_speed_mps` (default 0) | m/s | within [0, 1000], below `max_speed_mps` |
+| `max_accel_mps2` (required) | m/s^2 | > 0, <= 1000 |
+| `max_climb_rate_mps` (required) | m/s | > 0, <= 1000 |
+| `max_descent_rate_mps` (default = climb rate) | m/s | > 0, <= 1000 |
+| `max_bank_deg` (required) | degrees | > 0, < 90 |
+| `max_turn_rate_dps` (optional) | degrees per second | > 0, <= 3600 |
+| `min_altitude_agl_m` (default 0) | m above the terrain | within [0, 100000] |
+
+```toml
+params = { max_speed_mps = 120.0, min_speed_mps = 40.0, max_accel_mps2 = 3.0, max_climb_rate_mps = 10.0, max_bank_deg = 25.0 }
+```
+
 ### `builtin.terrain.flat` (terrain provider, the default for scenarios)
 Flat terrain at a constant height above the WGS-84 ellipsoid.
 

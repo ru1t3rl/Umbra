@@ -1,0 +1,7 @@
+schema_version = 1
+id = "aircraft.light"
+description = "Light aircraft: 40 to 120 m/s, 10 m/s climb, 25 degrees of bank"
+
+[motion]
+model = "builtin.air.kinematic"
+params = { max_speed_mps = 120.0, min_speed_mps = 40.0, max_accel_mps2 = 3.0, max_climb_rate_mps = 10.0, max_descent_rate_mps = 8.0, max_bank_deg = 25.0 }

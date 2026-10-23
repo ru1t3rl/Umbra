@@ -1,0 +1,7 @@
+schema_version = 1
+id = "ship.patrol_boat"
+description = "Patrol boat: 10 m/s, 80 m smallest turn radius, on the sea surface"
+
+[motion]
+model = "builtin.sea.kinematic"
+params = { max_speed_mps = 10.0, max_accel_mps2 = 0.5, min_turn_radius_m = 80.0, surface_height_m = 0.0 }

@@ -1,6 +1,5 @@
 //! AT-13 (M7): property tests for `builtin.air.kinematic`: whatever the state and intents, the
-//! per-step limits hold. Requirements: REQ-M-2, REQ-K-4, ADR 0051, ASM-607..609. Ignored until
-//! M7 WI-6.
+//! per-step limits hold. Requirements: REQ-M-2, REQ-K-4, ADR 0051, ASM-607..609. Enabled in M7 WI-6.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -54,7 +53,6 @@ proptest! {
     /// REQ-M-2: speed within [min, max] and `max_accel * dt` per step, climb and descent within
     /// their rates, heading change within the bank-limited rate, output finite.
     #[test]
-    #[ignore = "M7 WI-6"]
     fn given_any_state_and_intents_when_stepped_then_every_limit_holds(
         heading in -3.0..3.0_f64,
         speed in MIN_SPEED..MAX_SPEED,
@@ -85,7 +83,6 @@ proptest! {
 
     /// REQ-K-4: a step is a pure function of its inputs.
     #[test]
-    #[ignore = "M7 WI-6"]
     fn given_the_same_inputs_when_stepped_twice_then_outputs_are_bit_identical(
         heading in -3.0..3.0_f64,
         speed in MIN_SPEED..MAX_SPEED,

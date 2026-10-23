@@ -3,7 +3,7 @@
 //!
 //! Parameters: 50..200 m/s, 5 m/s^2, climb 15 m/s, descent 10 m/s, bank 30 degrees (turn rate
 //! `9.80665 * tan(30 deg) / v`, 0.0566 rad/s at 100 m/s), no turn cap unless a test sets one,
-//! 30 Hz, near 52 N 4 E. Written in M7 WI-1 against stubs; every test is ignored until M7 WI-6.
+//! 30 Hz, near 52 N 4 E. Written in M7 WI-1 against stubs, enabled in M7 WI-6.
 
 #![forbid(unsafe_code)]
 #![expect(clippy::expect_used, reason = "tests construct known-valid values")]
@@ -18,8 +18,8 @@ use common::{
 };
 use umbra_core::motion::contract::check_motion_model;
 use umbra_core::{
-    Intent, LocalFrame, Meters, MetersPerSecond, MetersPerSecondSquared, MotionModel, Radians,
-    RadiansPerSecond, TerrainProvider,
+    Geodetic, Intent, LocalFrame, Meters, MetersPerSecond, MetersPerSecondSquared, MotionModel,
+    Radians, RadiansPerSecond, TerrainProvider,
 };
 use umbra_motion::{AIR_KINEMATIC_ID, AirKinematic, AirKinematicParams};
 
@@ -60,7 +60,6 @@ fn bank_turn_rate(speed: f64) -> f64 {
 
 /// REQ-M-2, ADR 0002: the model id is the namespaced built-in id.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_the_model_when_asked_for_its_id_then_it_is_builtin_air_kinematic() {
     assert_eq!(model().id().as_str(), "builtin.air.kinematic");
     assert_eq!(AIR_KINEMATIC_ID, "builtin.air.kinematic");
@@ -68,14 +67,12 @@ fn given_the_model_when_asked_for_its_id_then_it_is_builtin_air_kinematic() {
 
 /// REQ-M-2: `params()` returns what the model was built with.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_valid_params_when_built_then_params_round_trip() {
     assert_eq!(model().params(), params());
 }
 
 /// REQ-M-2, ADR 0051: speeds, rates and the bank are validated.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_an_invalid_limit_when_built_then_it_is_rejected() {
     let bad = [
         AirKinematicParams {
@@ -136,7 +133,6 @@ fn given_an_invalid_limit_when_built_then_it_is_rejected() {
 
 /// REQ-M-1: the shared motion-model contract holds for level, climbing, turning and holding cases.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_assorted_states_and_intents_when_checked_then_the_motion_contract_holds() {
     let cruise = start(1.0, 120.0, 1000.0);
     let cases = vec![
@@ -161,7 +157,6 @@ fn given_assorted_states_and_intents_when_checked_then_the_motion_contract_holds
 /// ADR 0051: a far, high destination is approached at exactly the maximum climb rate and never
 /// faster.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_a_high_destination_when_stepped_then_climb_rate_is_capped_and_reached() {
     let from = start(0.0, 120.0, 1000.0);
 
@@ -193,7 +188,6 @@ fn given_a_high_destination_when_stepped_then_climb_rate_is_capped_and_reached()
 
 /// ADR 0051: a low destination is approached at exactly the maximum descent rate.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_a_low_destination_when_stepped_then_descent_rate_is_capped_and_reached() {
     let from = start(0.0, 120.0, 3000.0);
 
@@ -218,15 +212,20 @@ fn given_a_low_destination_when_stepped_then_descent_rate_is_capped_and_reached(
 
 /// ASM-607: the aircraft levels off at the destination's height without overshooting it.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_a_destination_100_m_up_when_stepped_long_enough_then_it_levels_off_exactly_there() {
     let from = start(0.0, 120.0, 1000.0);
+    // The destination's *ellipsoidal* height is 1100 m (ASM-607). `move_to(.., up)` would put it
+    // `up` meters above the tangent plane at the origin, which at 30 km is about 70 m higher still
+    // because of the Earth's curvature, so the point is built from geodetic coordinates.
+    let target = Geodetic::from_degrees(52.27, 4.0, 1100.0).expect("valid position");
 
     let states = run(
         &model(),
         &flat(),
         from,
-        &[move_to(0.0, 30_000.0, 100.0)],
+        &[Intent::MoveTo {
+            destination: target.to_ecef(),
+        }],
         400,
     );
 
@@ -242,7 +241,6 @@ fn given_a_destination_100_m_up_when_stepped_long_enough_then_it_levels_off_exac
 
 /// ASM-607: `SetHeading` and `SetSpeed` keep the current height.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_a_heading_command_when_stepped_then_height_is_kept() {
     let from = start(0.0, 120.0, 1234.0);
 
@@ -263,7 +261,6 @@ fn given_a_heading_command_when_stepped_then_height_is_kept() {
 /// 9.80665 * tan(30 deg) / 100 = 0.05662 rad/s, and the roll equals the bank in a saturated right
 /// turn.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_a_90_degree_right_turn_at_100_mps_when_stepped_then_turn_rate_is_the_bank_limited_rate() {
     let from = start(0.0, 100.0, 1000.0);
     let intents = [
@@ -287,7 +284,6 @@ fn given_a_90_degree_right_turn_at_100_mps_when_stepped_then_turn_rate_is_the_ba
 
 /// ASM-608: a lower `max_turn_rate` caps the bank-limited rate.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_a_turn_rate_cap_when_turning_then_the_cap_is_the_limit() {
     let cap = 1.0_f64.to_radians();
     let capped = model_with(AirKinematicParams {
@@ -310,7 +306,6 @@ fn given_a_turn_rate_cap_when_turning_then_the_cap_is_the_limit() {
 
 /// ASM-608: `Hold` slows to `min_speed` (not to a stop) and keeps heading and height.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_a_fast_aircraft_when_holding_then_it_slows_to_min_speed_keeping_heading_and_height() {
     let from = start(0.7, 150.0, 2000.0);
 
@@ -331,7 +326,6 @@ fn given_a_fast_aircraft_when_holding_then_it_slows_to_min_speed_keeping_heading
 
 /// ASM-608: pitch equals the flight-path angle (positive nose up) during a climb.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_a_steady_climb_when_stepped_then_pitch_is_the_flight_path_angle() {
     let from = start(0.0, 120.0, 1000.0);
 
@@ -360,7 +354,6 @@ fn given_a_steady_climb_when_stepped_then_pitch_is_the_flight_path_angle() {
 /// position (a half-meter margin covers the one-step sampling lag), although the destination is
 /// below the terrain.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_rising_terrain_when_flying_toward_a_low_point_then_it_stays_above_the_agl_floor() {
     let agl = 100.0;
     let terrain = SlopedTerrain { slope: 0.05 };
@@ -384,7 +377,6 @@ fn given_rising_terrain_when_flying_toward_a_low_point_then_it_stays_above_the_a
 
 /// ASM-609: below the floor the aircraft climbs at the maximum climb rate.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_an_aircraft_below_the_floor_when_stepped_then_it_climbs_at_max_climb_rate() {
     let m = model_with(AirKinematicParams {
         min_altitude_agl: Meters(100.0),
@@ -403,7 +395,6 @@ fn given_an_aircraft_below_the_floor_when_stepped_then_it_climbs_at_max_climb_ra
 
 /// ADR 0051: speed stays in `[min_speed, max_speed]` and changes by at most `max_accel * dt`.
 #[test]
-#[ignore = "M7 WI-6"]
 fn given_a_speed_command_above_max_when_stepped_then_speed_ramps_and_stops_at_max() {
     let from = start(0.0, MIN_SPEED, 1000.0);
 

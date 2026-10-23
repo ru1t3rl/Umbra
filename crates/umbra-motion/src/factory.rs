@@ -7,13 +7,16 @@ use std::sync::Arc;
 
 use umbra_core::{
     BuildError, ComponentId, Factory, Meters, MetersPerSecond, MetersPerSecondSquared, MotionModel,
-    ParamSchema, ParamValue, RadiansPerSecond, Registry, RegistryError,
+    ParamSchema, ParamValue, Radians, RadiansPerSecond, Registry, RegistryError,
 };
 
+use crate::air::{AIR_KINEMATIC_ID, AirKinematic, AirKinematicParams};
 use crate::ground::{
     GROUND_KINEMATIC_ID, GroundKinematic, GroundKinematicParams, MotionParamError,
 };
 use crate::sea::{SEA_KINEMATIC_ID, SeaKinematic, SeaKinematicParams};
+
+const AIR_SCHEMA_JSON: &str = include_str!("../schemas/builtin.air.kinematic.json");
 
 const SEA_SCHEMA_JSON: &str = include_str!("../schemas/builtin.sea.kinematic.json");
 const SCHEMA_JSON: &str = include_str!("../schemas/builtin.ground.kinematic.json");
@@ -44,6 +47,11 @@ fn key_of(name: &str) -> Option<&'static str> {
         "max_accel" => Some("max_accel_mps2"),
         "min_turn_radius" => Some("min_turn_radius_m"),
         "surface_height" => Some("surface_height_m"),
+        "min_speed" => Some("min_speed_mps"),
+        "max_climb_rate" => Some("max_climb_rate_mps"),
+        "max_descent_rate" => Some("max_descent_rate_mps"),
+        "max_bank" => Some("max_bank_deg"),
+        "min_altitude_agl" => Some("min_altitude_agl_m"),
         _ => None,
     }
 }
@@ -59,6 +67,22 @@ pub(crate) fn located(error: &MotionParamError) -> BuildError {
         },
         MotionParamError::NotFinite { name, value } => match key_of(name) {
             Some(key) => at(key, format!("`{key}` must be finite, got {value}")),
+            None => BuildError::new(error.to_string()),
+        },
+        MotionParamError::OutOfRange {
+            name,
+            value,
+            expected,
+        } => match key_of(name) {
+            // the bank is carried in radians but set in degrees
+            Some(key) if *name == "max_bank" => at(
+                key,
+                format!(
+                    "`{key}` must be {expected}, got {}",
+                    Radians(*value).to_degrees()
+                ),
+            ),
+            Some(key) => at(key, format!("`{key}` must be {expected}, got {value}")),
             None => BuildError::new(error.to_string()),
         },
         // The built-in id is a constant checked by a unit test: no parameter is at fault, so
@@ -168,19 +192,28 @@ impl Factory<dyn MotionModel> for SeaKinematicFactory {
     }
 }
 
-/// Builds [`crate::AirKinematic`] from validated parameters. M7 WI-1 stub: implemented, with its schema
-/// `schemas/builtin.air.kinematic.json`, in M7 WI-6 (ADR 0051); not yet registered by [`register_builtins`].
+/// Builds [`crate::AirKinematic`] from validated parameters (ADR 0051). The schema is
+/// `schemas/builtin.air.kinematic.json`; `min_speed_mps` and `min_altitude_agl_m` default to 0,
+/// `max_descent_rate_mps` to the climb rate, and `max_turn_rate_dps` is optional.
 pub struct AirKinematicFactory {
-    _private: (),
+    id: ComponentId,
+    schema: ParamSchema,
 }
 
 impl AirKinematicFactory {
-    /// The factory.
+    /// The factory, with its schema loaded from `schemas/builtin.air.kinematic.json`.
     ///
     /// # Panics
-    /// Always, until M7 WI-6.
+    /// Never in practice: the id constant and the embedded schema are valid (unit-tested).
+    #[expect(
+        clippy::expect_used,
+        reason = "embedded constants, proven valid by tests"
+    )]
     pub fn new() -> Self {
-        unimplemented!("M7 WI-6")
+        Self {
+            id: ComponentId::new(AIR_KINEMATIC_ID).expect("built-in id is valid"),
+            schema: ParamSchema::from_json_str(AIR_SCHEMA_JSON).expect("embedded schema is valid"),
+        }
     }
 }
 
@@ -190,18 +223,40 @@ impl Default for AirKinematicFactory {
     }
 }
 
+/// Reads the number at `key` when present, else `None`.
+fn optional_number(params: &ParamValue, key: &str) -> Result<Option<f64>, BuildError> {
+    match params.get(key) {
+        None => Ok(None),
+        Some(_) => number(params, key).map(Some),
+    }
+}
+
 impl Factory<dyn MotionModel> for AirKinematicFactory {
     fn id(&self) -> &ComponentId {
-        unimplemented!("M7 WI-6")
+        &self.id
     }
 
     fn param_schema(&self) -> &ParamSchema {
-        unimplemented!("M7 WI-6")
+        &self.schema
     }
 
     fn build(&self, params: &ParamValue) -> Result<Arc<dyn MotionModel>, BuildError> {
-        let _ = params;
-        unimplemented!("M7 WI-6")
+        let max_climb_rate = number(params, "max_climb_rate_mps")?;
+        let limits = AirKinematicParams {
+            max_speed: MetersPerSecond(number(params, "max_speed_mps")?),
+            min_speed: MetersPerSecond(optional_number(params, "min_speed_mps")?.unwrap_or(0.0)),
+            max_accel: MetersPerSecondSquared(number(params, "max_accel_mps2")?),
+            max_climb_rate: MetersPerSecond(max_climb_rate),
+            max_descent_rate: MetersPerSecond(
+                optional_number(params, "max_descent_rate_mps")?.unwrap_or(max_climb_rate),
+            ),
+            max_bank: Radians::from_degrees(number(params, "max_bank_deg")?),
+            max_turn_rate: optional_number(params, "max_turn_rate_dps")?
+                .map(RadiansPerSecond::from_degrees_per_second),
+            min_altitude_agl: Meters(optional_number(params, "min_altitude_agl_m")?.unwrap_or(0.0)),
+        };
+        let model = AirKinematic::new(limits).map_err(|e| located(&e))?;
+        Ok(Arc::new(model))
     }
 }
 
@@ -212,7 +267,8 @@ impl Factory<dyn MotionModel> for AirKinematicFactory {
 /// the id (IDs are unique across kinds, ASM-063).
 pub fn register_builtins(registry: &mut Registry) -> Result<(), RegistryError> {
     registry.register_motion_model(Arc::new(GroundKinematicFactory::new()))?;
-    registry.register_motion_model(Arc::new(SeaKinematicFactory::new()))
+    registry.register_motion_model(Arc::new(SeaKinematicFactory::new()))?;
+    registry.register_motion_model(Arc::new(AirKinematicFactory::new()))
 }
 
 #[cfg(test)]
