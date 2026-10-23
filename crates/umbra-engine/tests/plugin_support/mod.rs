@@ -112,7 +112,9 @@ pub fn plugins_dir(packages: &[(&str, &Path)]) -> PathBuf {
     static N: AtomicUsize = AtomicUsize::new(0);
     let n = N.fetch_add(1, Ordering::SeqCst);
     let id = std::process::id();
-    let root = tmp_root().join(format!("plugin-packages/{id}-{n}"));
+    let parent = tmp_root().join("plugin-packages");
+    prune_stale_packages(&parent, id);
+    let root = parent.join(format!("{id}-{n}"));
     let _ = std::fs::remove_dir_all(&root);
     for (name, lib) in packages {
         let dir = root.join(name);
@@ -125,6 +127,49 @@ pub fn plugins_dir(packages: &[(&str, &Path)]) -> PathBuf {
         std::fs::copy(lib, dir.join(file)).expect("copy the library");
     }
     root
+}
+
+/// Removes, once per process, the `<pid>-<n>` package directories under `parent` left by earlier test
+/// processes. Each holds copies of whole plugin libraries and was never deleted, because a library
+/// may still be loaded while its process runs; over many runs they filled the disk (57 GB), and RAM
+/// where the target dir sits on a tmpfs. A directory is stale when its process is gone: on Linux when
+/// `/proc/<pid>` is absent, elsewhere when it is older than an hour (no test process runs that long).
+/// Removal errors are ignored, so a library still loaded (Windows) only keeps its directory.
+fn prune_stale_packages(parent: &Path, own: u32) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let Ok(entries) = std::fs::read_dir(parent) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(pid) = name
+                .to_str()
+                .and_then(|n| n.split_once('-'))
+                .and_then(|(pid, _)| pid.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            if pid != own && !process_alive(pid, &entry.path()) {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    });
+}
+
+#[cfg(target_os = "linux")]
+fn process_alive(pid: u32, _dir: &Path) -> bool {
+    Path::new("/proc").join(pid.to_string()).exists()
+}
+
+#[cfg(not(target_os = "linux"))]
+fn process_alive(_pid: u32, dir: &Path) -> bool {
+    const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(3600);
+    std::fs::metadata(dir)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_none_or(|age| age < MAX_AGE)
 }
 
 /// Writes `<plugins dir>/<package>/plugin.toml` for plugin `id` `version` and ABI 0.0 (ADR 0022).
