@@ -75,6 +75,12 @@ fi
 
 gate 1-fmt cargo fmt --all -- --check
 gate 2-clippy cargo clippy --workspace --all-targets --locked --offline -- -D warnings
+# Gate 2 feature rows (M7 WI-10b): the workspace run builds umbra-test-plugin with default features only, so
+# every feature that gates code is linted on its own (and `network,kinds` together; the four fault features too).
+for f in network network_peer kinds bad_schema network,kinds entry_panics init_fails init_panics shutdown_panics; do
+    gate "2-clippy-$f" cargo clippy -p umbra-test-plugin --all-targets --locked --offline \
+        --features "$f" -- -D warnings
+done
 gate 3-test cargo test --workspace --locked --offline
 gate 4-determinism cargo test -p umbra-engine --test determinism --test behavior_determinism \
     --test plugin_determinism --test handle_determinism --test net_determinism \
