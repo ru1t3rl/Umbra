@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": ".tsbuild",
+    "tsBuildInfoFile": ".tsbuild/log-view.tsbuildinfo",
+    "types": ["bun"]
+  },
+  "include": ["src", "../../test/jest-dom.d.ts"],
+  "references": [
+    {
+      "path": "../engine-stream"
+    },
+    {
+      "path": "../ui-kit"
+    }
+  ]
+}

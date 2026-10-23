@@ -9,6 +9,7 @@
     { "path": "./features/entity-inspector" },
     { "path": "./features/engine-stream" },
     { "path": "./features/settings" },
+    { "path": "./features/log-view" },
     { "path": "./features/map-view" },
     { "path": "./features/runtime-config" },
     { "path": "./features/schema-form" },
